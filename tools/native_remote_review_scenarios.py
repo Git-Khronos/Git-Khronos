@@ -26,7 +26,7 @@ def remote_review_workflows(driver, fixtures, report):
     assert fixtures.git(repository, 'remote', 'get-url', '--push', 'origin') == str(remote)
     fixtures.git(repository, 'tag', '-a', 'main', '-m', 'Same-named tag must stay local')
     fixtures.git(repository, 'tag', '-a', 'local-only', '-m', 'Unselected tag must stay local')
-    fixtures.git(repository, 'branch', 'unpublished')
+    fixtures.git(repository, 'branch', 'unpublished', 'HEAD')
     fixtures.git(repository, 'config', 'push.followTags', 'true')
     fixtures.git(repository, 'config', 'push.recurseSubmodules', 'only')
     inspect_remote_refs = lambda: fixtures.git(remote, 'for-each-ref', '--format=%(refname)').splitlines()
@@ -46,7 +46,12 @@ def remote_review_workflows(driver, fixtures, report):
     driver.wait('return !!document.querySelector(' + json.dumps(publish) + ')')
     assert str(repository) in driver.script('return document.querySelector(arguments[0]).textContent', publish)
     driver.click_visible(publish + ' .confirm-action', 'Publish Branch')
-    driver.wait("return document.querySelector('.activity-status')?.textContent.includes('Published main to origin')")
+    outcome = driver.wait("""return (() => {
+      if (document.querySelector('.activity-status')?.textContent.includes('Published main to origin')) return 'published';
+      const error = document.querySelector('.error-toast');
+      return error?.getClientRects().length ? error.textContent.trim() : false;
+    })()""")
+    assert outcome == 'published', f'Publish Branch did not finish: {outcome}'
     assert fixtures.git(remote, 'rev-parse', 'refs/heads/main') == original['head']
     published_refs = inspect_remote_refs()
     assert published_refs == ['refs/heads/main'], published_refs
