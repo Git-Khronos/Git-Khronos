@@ -2983,3 +2983,12 @@ The checked package, verification JSON, and a successful APT dry run are in
 `target/local-review/qualified-0.1.6-a953fe3/`. It uses a fixture update key
 and has not been published. These receipts do not qualify newer changes on
 `dev` or a package built with the production publisher key.
+
+The release workflow and local verifier now also require the installed
+working-tree recap suite on Ubuntu 24.04 (`9f8bd0c`). The new check opens
+both Tree rows for the same partially staged file: the staged diff shows
+`+1 −1`, the unstaged diff shows `+2 −1`, and the checkout and index stay
+unchanged while inspecting. It passed on the same `a953fe3` installer in
+`target/local-review/native-tree-sides.y0BzNo9l/`, where the updated verifier
+reports 35/35 checks from 50 passing reports (`verified-release-35.json`).
+The newer renderer is being built and qualified separately.
