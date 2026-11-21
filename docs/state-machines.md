@@ -472,11 +472,17 @@ Changed ownership or failed inspection stays in review with an error; there is
 no fallback checkout, force option, repair or automatic replay. Closing or
 changing the active repository retires the request; a late read cannot navigate.
 Opening the owner uses the existing repository navigation path so source commit
-drafts are saved. Git remains authoritative if occupancy changes before an
-ordinary native checkout.
+drafts are saved. If occupancy changes before an ordinary native checkout, Git
+still decides whether the switch is allowed. After a refusal, native code
+classifies a fresh, bounded registration read without parsing Git's error text.
+The same source checkout may then offer navigation if refresh confirms an owner;
+it never retries the switch or opens the owner without confirmation. Unrelated
+errors or failed ownership reads retain the ordinary Git error.
 
 Coverage: `repository-location.spec.ts`, renderer
-`branch-checkout-worktree.spec.ts` and existing branch-panel interaction tests.
+`branch-checkout-worktree.spec.ts` (including a stale graph double-click and
+late refusal after a tab switch), branch-panel interaction tests, and the
+real-Git occupied-branch test preserving both worktrees.
 
 ### Transient overlays (F46)
 

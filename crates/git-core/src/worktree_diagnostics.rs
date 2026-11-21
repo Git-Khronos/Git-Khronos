@@ -23,6 +23,26 @@ pub struct WorktreeRegistrationReview {
     pub prune_report: String,
 }
 
+pub(super) fn branch_has_other_checkout(path: &Path, branch: &str) -> Result<bool, AppError> {
+    let (listing, truncated) = run_git_with_stdout_limit(
+        path,
+        &["worktree", "list", "--porcelain", "-z"],
+        MAX_REPORT_BYTES,
+    )?;
+    ensure_success("check branch ownership after a refused checkout", &listing)?;
+    if truncated {
+        return Err(unsupported(
+            "The complete registration list exceeds the review limit.",
+        ));
+    }
+    let current = resolve_repository(path)?;
+    Ok(parse_registrations(&listing.stdout)?.iter().any(|entry| {
+        entry.branch.as_deref() == Some(branch)
+            && !entry.bare
+            && !fs::canonicalize(&entry.path).is_ok_and(|registered| registered == current)
+    }))
+}
+
 pub fn review_worktree_registrations(path: &Path) -> Result<WorktreeRegistrationReview, AppError> {
     let (listing, truncated) = run_git_with_stdout_limit(
         path,

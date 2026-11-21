@@ -14,9 +14,9 @@
     @defer (on immediate) {
       <gc-checkout-worktree-dialog [request]="request" (closed)="closeCheckoutWorktree()" (opened)="openCheckoutWorktree($event)" />
     } @placeholder {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading checkout review" (keydown)="handleCheckoutLoaderKey($event)"><p role="status">Loading checkout review. No checkout command has been run.</p><button #checkoutWorktreeLoaderClose type="button" (click)="closeCheckoutWorktree()">Cancel</button></section></div>
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading checkout review" (keydown)="handleCheckoutLoaderKey($event)"><p role="status">Loading checkout review. No checkout will be retried automatically.</p><button #checkoutWorktreeLoaderClose type="button" (click)="closeCheckoutWorktree()">Cancel</button></section></div>
     } @error {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Checkout review unavailable" (keydown)="handleCheckoutLoaderKey($event)"><p role="alert">Checkout review could not load. No checkout command has been run. Close and restart to retry.</p><button #checkoutWorktreeLoaderClose type="button" (click)="closeCheckoutWorktree()">Close</button></section></div>
+      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Checkout review unavailable" (keydown)="handleCheckoutLoaderKey($event)"><p role="alert">Checkout review could not load. No checkout will be retried automatically. Close and restart to retry.</p><button #checkoutWorktreeLoaderClose type="button" (click)="closeCheckoutWorktree()">Close</button></section></div>
     }
   }
   @let deferredActions = deferredGitActionLease();

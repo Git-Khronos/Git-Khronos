@@ -20,6 +20,7 @@ async function setup(page: Page) {
     app.setAutoFetchInterval(0);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const fixture = { calls: [] as any[], changed: false, missing: false, failRefresh: false,
+      checkoutFailure: null as string | null,
       hold: false, finish: null as any, ownerPath, branch: branch.name, sourcePath: source.path, sourceId: source.id };
     (window as any).__checkoutWorktree = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
@@ -35,9 +36,11 @@ async function setup(page: Page) {
         path: args.path, name: source.name, status: { ...source.status, branch: branch.name },
         branches: source.branches.map((entry: any) => ({ ...entry, current: entry.name === branch.name })),
         worktrees: worktrees.map(entry => ({ ...entry, current: entry.path === args.path })) });
-      if (command === 'checkout_branch') return Promise.resolve({ ...snapshot,
-        status: { ...source.status, branch: args.name },
-        branches: source.branches.map((entry: any) => ({ ...entry, current: entry.name === args.name })) });
+      if (command === 'checkout_branch') {
+        if (fixture.checkoutFailure) return Promise.reject({ kind: fixture.checkoutFailure, message: 'Owned checkout refused' });
+        return Promise.resolve({ ...snapshot, status: { ...source.status, branch: args.name },
+          branches: source.branches.map((entry: any) => ({ ...entry, current: entry.name === args.name })) });
+      }
       if (command === 'refresh_repository_metadata') return Promise.resolve(git.repository());
       if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
       if (command === 'inspect_commit') return Promise.resolve({ oid: args.oid, message: 'Owned fixture commit',
@@ -47,6 +50,66 @@ async function setup(page: Page) {
     return { branch: branch.name, sourcePath: source.path, ownerPath };
   });
 }
+
+async function loseCachedOwner(page: Page, failureKind: string, failRefresh = false): Promise<void> {
+  await page.evaluate(({ failureKind, failRefresh }) => {
+    const fixture = (window as any).__checkoutWorktree;
+    fixture.checkoutFailure = failureKind;
+    fixture.failRefresh = failRefresh;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.repositories.update((tabs: any[]) => tabs.map(tab => ({ ...tab,
+      worktrees: tab.worktrees.filter((entry: any) => entry.current) })));
+  }, { failureKind, failRefresh });
+}
+
+test('graph double click recovers when another checkout took the branch after the last read', async ({ page }) => {
+  const fixture = await setup(page);
+  await loseCachedOwner(page, 'branchInAnotherWorktree');
+  await page.locator('.commit-row .branch-column .ref-pill.local', { hasText: fixture.branch }).dblclick();
+  const dialog = page.getByRole('dialog', { name: 'Branch is open in another checkout' });
+  await expect(dialog).toContainText(fixture.ownerPath);
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  const calls = () => page.evaluate(() => (window as any).__checkoutWorktree.calls
+    .filter((entry: any) => ['checkout_branch', 'refresh_repository', 'open_repository'].includes(entry.command))
+    .map((entry: any) => entry.command));
+  expect(await calls()).toEqual(['checkout_branch', 'refresh_repository']);
+  await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
+  await expect(page.locator('.status-repository-path')).toHaveText(fixture.ownerPath);
+  expect(await calls()).toEqual(['checkout_branch', 'refresh_repository', 'refresh_repository', 'open_repository']);
+});
+
+for (const failure of ['other Git error', 'refresh failed'] as const) {
+  test(`late checkout refusal keeps normal error feedback when ${failure === 'refresh failed' ? 'the refresh failed' : 'Git reports a different error'}`, async ({ page }) => {
+    const fixture = await setup(page);
+    await loseCachedOwner(page, failure === 'refresh failed' ? 'branchInAnotherWorktree' : 'gitFailure', failure === 'refresh failed');
+    await page.locator('.commit-row .branch-column .ref-pill.local', { hasText: fixture.branch }).dblclick();
+    await expect(page.locator('.error-toast')).toContainText(`Checkout ${fixture.branch} in ${fixture.sourcePath}: Owned checkout refused`);
+    await expect(page.getByRole('dialog', { name: 'Branch is open in another checkout' })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls.filter(
+      (entry: any) => entry.command === 'open_repository'))).toEqual([]);
+  });
+}
+
+test('a late checkout refusal does not open a review in a different repository', async ({ page }) => {
+  const fixture = await setup(page);
+  await loseCachedOwner(page, 'branchInAnotherWorktree');
+  await page.evaluate(() => { (window as any).__checkoutWorktree.hold = true; });
+  await page.locator('.commit-row .branch-column .ref-pill.local', { hasText: fixture.branch }).dblclick();
+  await expect.poll(() => page.evaluate(() => !!(window as any).__checkoutWorktree.finish)).toBe(true);
+  const activity = await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const other = { ...git.repository(), id: 'another-repository', path: '/workspace/unrelated' };
+    git.repositories.update((tabs: any[]) => [...tabs, other]);
+    git.activeRepositoryId.set(other.id);
+    const fixture = (window as any).__checkoutWorktree;
+    fixture.finish();
+    return fixture.calls.filter((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command));
+  });
+  expect(activity).toEqual([{ command: 'checkout_branch', args: { repoId: expect.any(String), name: fixture.branch } }]);
+  await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
+  await expect(page.locator('.status-repository-path')).toHaveText('/workspace/unrelated');
+  await expect(page.getByRole('dialog', { name: 'Branch is open in another checkout' })).toHaveCount(0);
+});
 
 async function requestCheckout(page: Page, branch: string) {
   const item = page.getByRole('list', { name: 'Local branches' })

@@ -3009,7 +3009,16 @@ fn parse_raw_commit(raw: &[u8]) -> Result<RawCommit, AppError> {
 
 pub fn checkout_branch(path: &Path, name: &str) -> Result<(), AppError> {
     validate_branch_name(path, name)?;
-    run_mutation(path, &["switch", "--", name], "switch branches")
+    run_mutation(path, &["switch", "--", name], "switch branches").map_err(|mut error| {
+        // Git makes the switch decision. Only classify a refusal when a fresh
+        // registration read confirms another owner; never parse Git's prose.
+        if error.kind == "gitFailure"
+            && worktree_diagnostics::branch_has_other_checkout(path, name).unwrap_or(false)
+        {
+            error.kind = "branchInAnotherWorktree".into();
+        }
+        error
+    })
 }
 
 pub fn checkout_remote_branch(path: &Path, name: &str) -> Result<(), AppError> {

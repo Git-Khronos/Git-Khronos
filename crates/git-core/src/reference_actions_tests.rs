@@ -1875,9 +1875,12 @@ fn reference_actions_occupied_branch_checkout_and_deletion_preserve_both_worktre
         .stdout;
     let refs = run_git(path, &["show-ref"]).unwrap().stdout;
     assert_eq!(
-        checkout_branch(path, "occupied").unwrap_err().kind,
+        checkout_branch(path, "absent-local-branch").unwrap_err().kind,
         "gitFailure"
     );
+    let blocked = checkout_branch(path, "occupied").unwrap_err();
+    assert_eq!(blocked.kind, "branchInAnotherWorktree");
+    assert!(!blocked.message.is_empty());
     for force in [false, true] {
         assert_eq!(
             delete_branch(path, "occupied", force).unwrap_err().kind,

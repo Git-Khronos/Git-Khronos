@@ -1822,17 +1822,30 @@ export class AppComponent implements OnInit, OnDestroy {
     const repository = this.git.repository();
     if (!repository || this.git.busy() || this.checkoutWorktreeRequest()) return null;
     if (repository.status.branch === name) return null;
-    const owner = branchCheckoutOwner(repository, name);
+    const workspaceId = this.git.activeWorkspaceId();
+    const opener = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    let owner = branchCheckoutOwner(repository, name);
     if (!owner) {
       const result = await this.git.checkout(name);
-      if (result?.status === 'error' && this.git.repository()?.id === repository.id && result.error) {
-        this.git.error.set(`Checkout ${name} in ${repository.path}: ${result.error}`);
+      const current = this.git.repository();
+      if (result?.status !== 'error' || current?.id !== repository.id || current.path !== repository.path
+        || workspaceId !== this.git.activeWorkspaceId() || this.checkoutWorktreeRequest()) return result;
+      // A different checkout may have taken the branch since the last read.
+      // A native refusal plus a refreshed owner can offer navigation, not a retry.
+      if (result.failureKind === 'branchInAnotherWorktree' && !result.refreshError) {
+        owner = branchCheckoutOwner(current, name);
       }
-      return result;
+      if (!owner) {
+        if (result.error && this.git.error() === result.error) {
+          this.git.error.set(`Checkout ${name} in ${repository.path}: ${result.error}`);
+        }
+        return result;
+      }
+      if (this.git.error() === result.error) this.git.error.set(null);
     }
     this.checkoutWorktreeRequest.set({ repositoryId: repository.id, repositoryPath: repository.path,
       branch: name, worktreePath: owner.path, prunable: owner.prunable,
-      returnFocus: returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null) });
+      returnFocus: opener });
     return null;
   }
 
