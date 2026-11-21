@@ -1,3 +1,5 @@
+import { ConflictEditorComponent, type ConflictEditorAction } from './conflict-editor.component';
+import type { ConflictDetails } from '@git-khronos/contracts';
 import type { PushDestinationReview } from '@git-khronos/contracts';
 import { MainMenuContentComponent } from './main-menu-content.component';
 import { GraphActionMenuComponent } from './graph-action-menu.component';
@@ -686,7 +688,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 
 @Component({
   selector: 'gc-root',
-  imports: [ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
+  imports: [ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, FileMediaComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, FileBlameComponent, FileHistoryComponent,
     GraphActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CommitTemplateBannerComponent, CommitSignatureComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -8968,6 +8970,23 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.repositoryOperation().historyOperation) this.selectWip();
   }
 
+  protected readonly ownsConflictDetails = (conflict: ConflictDetails): boolean => this.git.conflictDetails() === conflict;
+  private readonly conflictLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('conflictLoaderClose');
+  private readonly conflictLoaderFocus = afterRenderEffect(() => this.conflictLoaderClose()?.nativeElement.focus());
+
+  protected dispatchConflictEditor(conflict: ConflictDetails, action: ConflictEditorAction): void {
+    if (!this.ownsConflictDetails(conflict) || this.fileToolsDialog()) return;
+    switch (action.kind) {
+      case 'close': this.closeConflictTool(); break;
+      case 'reload': void this.openConflictTool(conflict.path); break;
+      case 'external': void this.openFileTools({ kind: 'merge', path: conflict.path }); break;
+      case 'copy': this.useConflictSide(action.side); break;
+      case 'edit': this.conflictOutput.set(action.value); break;
+      case 'resolve': void this.resolveOpenConflict(action.side); break;
+      case 'dismissWarning': this.dismissBackgroundOperationWarningFallback(action.id, action.event); break;
+    }
+  }
+
   protected async openConflictTool(path: string): Promise<void> {
     if (this.git.busy()) return;
     const request = ++this.conflictActionRequest;
@@ -9019,14 +9038,15 @@ export class AppComponent implements OnInit, OnDestroy {
     }, { injector: this.injector });
   }
 
-  protected handleConflictKeydown(event: KeyboardEvent): void {
+  protected handleConflictEditorKey(conflict: ConflictDetails, event: KeyboardEvent): void {
+    if (!this.ownsConflictDetails(conflict) || this.fileToolsDialog()) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
       this.closeConflictTool();
       return;
     }
-    this.cycleDialogFocus(document.querySelector<HTMLElement>('.merge-tool') ?? undefined, event);
+    this.cycleDialogFocus(event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined, event);
   }
 
   protected async resolveContextConflict(resolution: 'current' | 'incoming'): Promise<void> {

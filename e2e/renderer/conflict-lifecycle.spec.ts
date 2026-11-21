@@ -122,3 +122,53 @@ for (const scenario of ['dismissed-error', 'replacement-editor', 'unrelated-erro
     }
   });
 }
+
+for (const mode of ['late', 'failure'] as const) {
+  test(`conflict editor ${mode} import cannot write or reopen a dismissed request`, async ({ page }) => {
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let settle!: () => void;
+    const settled = new Promise<void>(resolve => { settle = resolve; });
+    let requests = 0;
+    await page.route('**/chunk-*.js', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      if (!/\bclass\s+_?ConflictEditorComponent\b/.test(source)) {
+        await route.fulfill({ response, body: source });
+        return;
+      }
+      requests++;
+      await held;
+      if (mode === 'failure') await route.abort();
+      else await route.fulfill({ response, body: source });
+      settle();
+    });
+    try {
+      await prepare(page, true);
+      expect(requests).toBe(0);
+      const opener = page.getByTitle('Open Merge Tool for original.txt', { exact: true });
+      const loading = page.getByRole('dialog', { name: 'Opening merge conflict editor', exact: true });
+      const failed = page.getByRole('dialog', { name: 'Merge conflict editor unavailable', exact: true });
+      await opener.click();
+      await expect.poll(() => requests).toBe(1);
+      await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
+      if (mode === 'failure') {
+        release();
+        await expect(failed.getByRole('alert')).toContainText('No file was changed.');
+        await expect(failed.getByRole('button', { name: 'Close' })).toBeFocused();
+      }
+      await page.keyboard.press('Escape');
+      await expect(loading).toHaveCount(0);
+      await expect(failed).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      release();
+      await settled;
+      await expect(page.getByRole('dialog', { name: 'Merge conflict editor', exact: true })).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      expect(await page.evaluate(() => (window as any).__conflictLifecycle.calls.filter(
+        (call: { command: string }) => call.command === 'resolve_conflict'))).toEqual([]);
+    } finally { release(); }
+  });
+}

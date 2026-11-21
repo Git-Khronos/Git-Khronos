@@ -87,6 +87,9 @@ test('explains rebase side meanings and traps focus in a compact editor', async 
   const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
   await expect(dialog).toContainText('Current is the destination history');
   await expect(dialog).toContainText('Incoming is the commit now being replayed');
+  await expect(dialog.locator('.merge-content')).toHaveCSS('display', 'grid');
+  await expect(dialog.locator('.merge-sides')).toHaveCSS('display', 'grid');
+  await expect(dialog.locator('.merge-output textarea')).toHaveCSS('resize', 'none');
   const last = dialog.getByRole('button', { name: 'Save Output & Mark Resolved' });
   await last.focus();
   await page.keyboard.press('Tab');

@@ -2483,76 +2483,14 @@
     }
   }
   @if (git.conflictDetails(); as conflict) {
-    <div class="merge-tool-backdrop" (click)="closeConflictTool()">
-      <section class="merge-tool" [inert]="!!fileToolsDialog()" role="dialog" aria-modal="true" aria-label="Merge conflict editor" (click)="$event.stopPropagation()" (keydown)="handleConflictKeydown($event)">
-        <header>
-          <span class="merge-mark"><gc-icon name="merge" [size]="18" /></span>
-          <div><small>MERGE TOOL</small><h2>{{ conflict.path }}</h2><p>Choose a side or edit the resolved output, then mark the file resolved.</p></div>
-          <button type="button" aria-label="Close conflict editor" title="Close Merge Tool" (click)="closeConflictTool()"><gc-icon name="x" [size]="14" /></button>
-          @if (!conflict.submodule) {
-            <button class="merge-external-tool" type="button" [disabled]="git.busy() || git.browserPreview()" (click)="openFileTools({ kind: 'merge', path: conflict.path })">Review external merge program</button>
-          }
-        </header>
-        <div class="merge-notices">
-        @if (git.backgroundOperationWarnings().length) {
-          @defer (on immediate) { <gc-background-operation-warnings /> }
-          @placeholder { <p role="status">Loading background operation warnings…</p> }
-          @error {
-            <section aria-label="Background operation warnings">
-              <p>Warning controls could not load. Restart the application to retry.</p>
-              @for (warning of git.backgroundOperationWarnings(); track warning.operationId) {
-                <div><p role="alert">{{ warning.message }}</p><button type="button" aria-label="Dismiss background operation warning" (click)="dismissBackgroundOperationWarningFallback(warning.operationId, $event)">Dismiss</button></div>
-              }
-            </section>
-          }
-        }
-        @if (git.repository()?.status?.rebaseInProgress) {
-          <p class="merge-warning">During rebase, Current is the destination history plus commits already replayed. Incoming is the commit now being replayed, not the destination branch.</p>
-        } @else {
-          <p class="merge-warning">Current is index stage 2 (ours); Incoming is index stage 3 (the changes being merged or replayed). A missing side means deletion, not an empty file.</p>
-        }
-        @if (git.error()) { <p class="merge-warning" role="alert" tabindex="-1">{{ git.error() }}</p> }
-        @if (conflict.submodule) { <p class="merge-warning">Choose which recorded submodule commit the parent repository should keep. The checked-out submodule directory and any local changes inside it stay untouched.</p> }
-        </div>
-        <div class="merge-content" [class.binary]="conflict.binary" [class.submodule]="conflict.submodule">
-        @if (conflict.submodule) {
-          <div class="submodule-conflict">
-            <div class="submodule-conflict-intro"><gc-icon name="repo" [size]="24" /><div><strong>Submodule commit conflict</strong><p>Select the gitlink recorded in the parent repository. This does not check out, fetch, reset, or modify files inside the submodule.</p></div></div>
-            <div class="merge-sides">
-              <section><header><span>CURRENT</span><small>Ours · stage 2</small></header>@if (conflict.current !== null) { <pre>{{ conflict.current }}</pre> } @else { <div class="deleted-side">Submodule deleted on this side</div> }</section>
-              <section><header><span>INCOMING</span><small>Theirs · stage 3</small></header>@if (conflict.incoming !== null) { <pre>{{ conflict.incoming }}</pre> } @else { <div class="deleted-side">Submodule deleted on this side</div> }</section>
-            </div>
-          </div>
-        } @else if (conflict.binary) {
-          <div class="binary-conflict"><gc-icon name="file" [size]="30" /><strong>Binary file conflict</strong><p>This file cannot be edited as text. Choose the current or incoming version.</p></div>
-        } @else {
-          <div class="merge-sides">
-            <section>
-              <header><span>CURRENT</span><small>Ours · stage 2</small><button type="button" [disabled]="git.busy() || !conflict.editable || conflict.current === null" (click)="useConflictSide('current')">Use current</button></header>
-              @if (conflict.current !== null) { <pre>{{ conflict.current }}</pre> } @else { <div class="deleted-side">File deleted on this side</div> }
-            </section>
-            <section>
-              <header><span>INCOMING</span><small>Theirs · stage 3</small><button type="button" [disabled]="git.busy() || !conflict.editable || conflict.incoming === null" (click)="useConflictSide('incoming')">Use incoming</button></header>
-              @if (conflict.incoming !== null) { <pre>{{ conflict.incoming }}</pre> } @else { <div class="deleted-side">File deleted on this side</div> }
-            </section>
-          </div>
-          <section class="merge-output">
-            <header><span>OUTPUT</span><small>Edit the final file</small></header>
-            <textarea aria-label="Resolved output for {{ conflict.path }}" spellcheck="false" [readOnly]="!conflict.editable || git.busy()" [gcTextValue]="conflictOutput()" (gcTextValueChange)="conflictOutput.set($event)"></textarea>
-          </section>
-          @if (conflict.truncated) { <div class="merge-warning">This preview was truncated at 256 KB. Text saving is disabled to prevent data loss.</div> }
-          @if (!conflict.editable && !conflict.truncated) { <div class="merge-warning">This file type cannot be saved as text. Choose a complete side, or resolve it with Git.</div> }
-        }
-        </div>
-        <footer>
-          <span>{{ conflict.submodule ? 'Only the selected gitlink is staged' : conflict.binary ? 'Choose the version to keep' : 'Saving stages the file as resolved' }}</span>
-          <button type="button" title="Reload the latest conflict; replace unsaved editor output" (click)="openConflictTool(conflict.path)" [disabled]="git.busy()">Reload conflict</button>
-          <button type="button" (click)="resolveOpenConflict('current')" [disabled]="git.busy()">{{ !conflict.currentExists ? 'Accept current deletion' : conflict.submodule ? 'Keep Current Commit' : 'Take Current' }}</button>
-          <button type="button" (click)="resolveOpenConflict('incoming')" [disabled]="git.busy()">{{ !conflict.incomingExists ? 'Accept incoming deletion' : conflict.submodule ? 'Keep Incoming Commit' : 'Take Incoming' }}</button>
-          @if (conflict.editable) { <button class="primary" type="button" (click)="resolveOpenConflict('output')" [disabled]="git.busy()">Save Output &amp; Mark Resolved</button> }
-        </footer>
-      </section>
-    </div>
+    @defer (on immediate) {
+      <gc-conflict-editor [details]="conflict" [draft]="conflictOutput()" [suspended]="!!fileToolsDialog()" [ownsDetails]="ownsConflictDetails"
+        (requested)="dispatchConflictEditor($event.conflict, $event.action)" (keyPressed)="handleConflictEditorKey($event.conflict, $event.event)" />
+    } @loading {
+      <ng-container *ngTemplateOutlet="conflictEditorFallback; context: { conflict, failed: false }" />
+    } @error {
+      <ng-container *ngTemplateOutlet="conflictEditorFallback; context: { conflict, failed: true }" />
+    }
   }
   @if (savedDiscards(); as recoveries) {
     <div class="confirmation-backdrop" [class.over-recovery]="recoveryHistoryOpen()" (click)="dismissSavedDiscards()">
@@ -2842,6 +2780,15 @@
     <section class="confirmation-dialog" role="dialog" aria-modal="true" [attr.aria-label]="failed ? 'Reference editor unavailable' : 'Loading reference editor'" (keydown)="handleReferenceEditorKey($event, kind)">
       <p [attr.role]="failed ? 'alert' : 'status'">{{ failed ? 'Reference editor could not load. No command was run. Close and restart to retry.' : 'Loading reference editor. No command has been run.' }}</p>
       <button #referenceEditorLoaderClose type="button" (click)="closeReferenceEditor(kind)">{{ failed ? 'Close' : 'Cancel' }}</button>
+    </section>
+  </div>
+</ng-template>
+
+<ng-template #conflictEditorFallback let-conflict="conflict" let-failed="failed">
+  <div class="confirmation-backdrop">
+    <section class="confirmation-dialog" role="dialog" aria-modal="true" [attr.aria-label]="failed ? 'Merge conflict editor unavailable' : 'Opening merge conflict editor'" (keydown)="handleConflictEditorKey(conflict, $event)">
+      <p [attr.role]="failed ? 'alert' : 'status'">{{ failed ? 'The conflict editor could not load. No file was changed. Close it and restart to retry.' : 'Opening the conflict editor…' }}</p>
+      <button #conflictLoaderClose type="button" (click)="dispatchConflictEditor(conflict, { kind: 'close' })">{{ failed ? 'Close' : 'Cancel' }}</button>
     </section>
   </div>
 </ng-template>

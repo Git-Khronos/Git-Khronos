@@ -1726,3 +1726,15 @@ with statistics reports 1,447,724 initial bytes versus 1,449,856: 2,132 bytes
 moved off startup, giving 2,276 bytes of headroom under the unchanged 1.45 MB
 limit. The 900 kB warning remains, and startup latency was not benchmarked.
 The shortcut, deferred main menu, and updater renderer suites passed 42 cases.
+
+## Deferred merge conflict editor — 2026-11-21
+
+The conflict editor and its scoped styles now load when the editor opens. The
+root still owns drafts, operation scope, and Native Git actions. Loading and
+failed-import fallbacks trap keyboard focus, can be dismissed, and never
+dispatch a resolution. Tests assert that scoped styles preserve the compact
+layout. Initial bytes dropped from 1,447,724 to 1,434,707, leaving 15,293 bytes
+under the unchanged error limit; the 900 kB warning remains. The 40 owning
+renderer tests and 86 neighboring cases passed. A publisher-key-enabled Debian
+package also passed 271 native cases. That local package is not the Jammy
+release artifact and was not published or installed.

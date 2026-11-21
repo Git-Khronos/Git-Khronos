@@ -1,0 +1,71 @@
+@let conflict = details();
+<div class="merge-tool-backdrop" (click)="act(conflict, { kind: 'close' })">
+  <section class="merge-tool" [inert]="suspended()" role="dialog" aria-modal="true" aria-label="Merge conflict editor" (click)="$event.stopPropagation()" (keydown)="keyPressed.emit({ conflict, event: $event })">
+    <header>
+      <span class="merge-mark"><gc-icon name="merge" [size]="18" /></span>
+      <div><small>MERGE TOOL</small><h2>{{ conflict.path }}</h2><p>Choose a side or edit the resolved output, then mark the file resolved.</p></div>
+      <button type="button" #closeButton aria-label="Close conflict editor" title="Close Merge Tool" (click)="act(conflict, { kind: 'close' })"><gc-icon name="x" [size]="14" /></button>
+      @if (!conflict.submodule) {
+        <button class="merge-external-tool" type="button" [disabled]="git.busy() || git.browserPreview()" (click)="act(conflict, { kind: 'external' })">Review external merge program</button>
+      }
+    </header>
+    <div class="merge-notices">
+    @if (git.backgroundOperationWarnings().length) {
+      @defer (on immediate) { <gc-background-operation-warnings /> }
+      @placeholder { <p role="status">Loading background operation warnings…</p> }
+      @error {
+        <section aria-label="Background operation warnings">
+          <p>Warning controls could not load. Restart the application to retry.</p>
+          @for (warning of git.backgroundOperationWarnings(); track warning.operationId) {
+            <div><p role="alert">{{ warning.message }}</p><button type="button" aria-label="Dismiss background operation warning" (click)="act(conflict, { kind: 'dismissWarning', id: warning.operationId, event: $event })">Dismiss</button></div>
+          }
+        </section>
+      }
+    }
+    @if (git.repository()?.status?.rebaseInProgress) {
+      <p class="merge-warning">During rebase, Current is the destination history plus commits already replayed. Incoming is the commit now being replayed, not the destination branch.</p>
+    } @else {
+      <p class="merge-warning">Current is index stage 2 (ours); Incoming is index stage 3 (the changes being merged or replayed). A missing side means deletion, not an empty file.</p>
+    }
+    @if (git.error()) { <p class="merge-warning" role="alert" tabindex="-1">{{ git.error() }}</p> }
+    @if (conflict.submodule) { <p class="merge-warning">Choose which recorded submodule commit the parent repository should keep. The checked-out submodule directory and any local changes inside it stay untouched.</p> }
+    </div>
+    <div class="merge-content" [class.binary]="conflict.binary" [class.submodule]="conflict.submodule">
+    @if (conflict.submodule) {
+      <div class="submodule-conflict">
+        <div class="submodule-conflict-intro"><gc-icon name="repo" [size]="24" /><div><strong>Submodule commit conflict</strong><p>Select the gitlink recorded in the parent repository. This does not check out, fetch, reset, or modify files inside the submodule.</p></div></div>
+        <div class="merge-sides">
+          <section><header><span>CURRENT</span><small>Ours · stage 2</small></header>@if (conflict.current !== null) { <pre>{{ conflict.current }}</pre> } @else { <div class="deleted-side">Submodule deleted on this side</div> }</section>
+          <section><header><span>INCOMING</span><small>Theirs · stage 3</small></header>@if (conflict.incoming !== null) { <pre>{{ conflict.incoming }}</pre> } @else { <div class="deleted-side">Submodule deleted on this side</div> }</section>
+        </div>
+      </div>
+    } @else if (conflict.binary) {
+      <div class="binary-conflict"><gc-icon name="file" [size]="30" /><strong>Binary file conflict</strong><p>This file cannot be edited as text. Choose the current or incoming version.</p></div>
+    } @else {
+      <div class="merge-sides">
+        <section>
+          <header><span>CURRENT</span><small>Ours · stage 2</small><button type="button" [disabled]="git.busy() || !conflict.editable || conflict.current === null" (click)="act(conflict, { kind: 'copy', side: 'current' })">Use current</button></header>
+          @if (conflict.current !== null) { <pre>{{ conflict.current }}</pre> } @else { <div class="deleted-side">File deleted on this side</div> }
+        </section>
+        <section>
+          <header><span>INCOMING</span><small>Theirs · stage 3</small><button type="button" [disabled]="git.busy() || !conflict.editable || conflict.incoming === null" (click)="act(conflict, { kind: 'copy', side: 'incoming' })">Use incoming</button></header>
+          @if (conflict.incoming !== null) { <pre>{{ conflict.incoming }}</pre> } @else { <div class="deleted-side">File deleted on this side</div> }
+        </section>
+      </div>
+      <section class="merge-output">
+        <header><span>OUTPUT</span><small>Edit the final file</small></header>
+        <textarea aria-label="Resolved output for {{ conflict.path }}" spellcheck="false" [readOnly]="!conflict.editable || git.busy()" [gcTextValue]="draft()" (gcTextValueChange)="act(conflict, { kind: 'edit', value: $event })"></textarea>
+      </section>
+      @if (conflict.truncated) { <div class="merge-warning">This preview was truncated at 256 KB. Text saving is disabled to prevent data loss.</div> }
+      @if (!conflict.editable && !conflict.truncated) { <div class="merge-warning">This file type cannot be saved as text. Choose a complete side, or resolve it with Git.</div> }
+    }
+    </div>
+    <footer>
+      <span>{{ conflict.submodule ? 'Only the selected gitlink is staged' : conflict.binary ? 'Choose the version to keep' : 'Saving stages the file as resolved' }}</span>
+      <button type="button" title="Reload the latest conflict; replace unsaved editor output" (click)="act(conflict, { kind: 'reload' })" [disabled]="git.busy()">Reload conflict</button>
+      <button type="button" (click)="act(conflict, { kind: 'resolve', side: 'current' })" [disabled]="git.busy()">{{ !conflict.currentExists ? 'Accept current deletion' : conflict.submodule ? 'Keep Current Commit' : 'Take Current' }}</button>
+      <button type="button" (click)="act(conflict, { kind: 'resolve', side: 'incoming' })" [disabled]="git.busy()">{{ !conflict.incomingExists ? 'Accept incoming deletion' : conflict.submodule ? 'Keep Incoming Commit' : 'Take Incoming' }}</button>
+      @if (conflict.editable) { <button class="primary" type="button" (click)="act(conflict, { kind: 'resolve', side: 'output' })" [disabled]="git.busy()">Save Output &amp; Mark Resolved</button> }
+    </footer>
+  </section>
+</div>
