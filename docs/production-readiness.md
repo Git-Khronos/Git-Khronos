@@ -2191,6 +2191,12 @@ receipt without process-start identity is reported as unverified. Reading
 status never starts, restarts, or interrupts a validation. Receipts are
 written atomically so a poll does not read a partial result.
 
+Installed acceptance also publishes its final `report.json` atomically,
+after cleanup is complete. A live `--release-progress` query therefore
+sees either a complete result or an awaiting gate, not a half-written
+report. `progress.json` remains a separate running status, not evidence
+that a release gate passed.
+
 Readiness-wait follow-up, 2026-10-24: a controlled four-second browser-reply
 delivery delay reproduces the old client-polling timeout on valid geometry.
 The corrected browser-side wait keeps the same three-second readiness deadline

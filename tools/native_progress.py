@@ -1,8 +1,24 @@
 """Record completed native scenarios while an installed run is still active."""
 import json
 import os
+from pathlib import Path
 import sys
+from tempfile import NamedTemporaryFile
 import time
+
+
+def write_native_receipt(path, receipt):
+    """Publish complete JSON atomically inside the owned evidence directory."""
+    contents = json.dumps(receipt, indent=2) + '\n'
+    output = NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                prefix=f'.{path.name}-', suffix='.tmp', delete=False)
+    temporary = Path(output.name)
+    try:
+        with output:
+            output.write(contents)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 class ScenarioProgress(list):
@@ -58,10 +74,8 @@ class ScenarioProgress(list):
             'elapsedSeconds': round(now - self.started, 1),
         }
         if self.can_record:
-            temporary = self.path.with_suffix('.tmp')
             try:
-                temporary.write_text(json.dumps(progress, indent=2) + '\n')
-                temporary.replace(self.path)
+                write_native_receipt(self.path, progress)
             except OSError as error:
                 self.can_record = False
                 print(f'Native acceptance progress file unavailable: {error}', file=self.stream, flush=True)

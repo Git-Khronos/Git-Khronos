@@ -4,11 +4,43 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
-from native_progress import ScenarioProgress
+from native_progress import ScenarioProgress, write_native_receipt
 
 
 class ScenarioProgressTest(unittest.TestCase):
+    def test_report_discovery_cannot_see_partial_final_json(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = root / 'report.json'
+            payload = {'passed': True, 'scenarios': ['done']}
+            replace = os.replace
+
+            def observe_before_publish(temporary, target):
+                temporary, target = Path(temporary), Path(target)
+                self.assertEqual(target, report)
+                self.assertEqual(temporary.parent, root)
+                self.assertFalse(report.exists())
+                self.assertEqual(json.loads(temporary.read_text()), payload)
+                replace(temporary, target)
+
+            with patch('native_progress.os.replace', side_effect=observe_before_publish):
+                write_native_receipt(report, payload)
+            self.assertEqual(json.loads(report.read_text()), payload)
+            self.assertEqual(list(root.iterdir()), [report])
+
+    def test_failed_final_publication_preserves_known_receipt_and_removes_temp_file(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            report = root / 'report.json'
+            write_native_receipt(report, {'passed': False})
+            with patch('native_progress.os.replace', side_effect=OSError('fixture refused atomic publication')):
+                with self.assertRaisesRegex(OSError, 'fixture refused'):
+                    write_native_receipt(report, {'passed': True})
+            self.assertEqual(json.loads(report.read_text()), {'passed': False})
+            self.assertEqual(list(root.iterdir()), [report])
+
     def test_snapshots_keep_completed_evidence_separate_from_final_report(self):
         clock = [10.0]
         log = io.StringIO()

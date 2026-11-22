@@ -25,7 +25,7 @@ import tempfile
 import time
 import traceback
 import uuid
-from native_progress import ScenarioProgress
+from native_progress import ScenarioProgress, write_native_receipt
 from xml.sax.saxutils import quoteattr
 from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
@@ -1532,7 +1532,7 @@ def main():
         if not report["passed"]:
             progress.note_failure()
             report["failurePhase"] = progress.failure_phase
-        (output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+        write_native_receipt(output / "report.json", report)
         progress.finish(report["passed"])
     print(json.dumps(report, indent=2), flush=True)
     print(f"Evidence: {output}", flush=True)
