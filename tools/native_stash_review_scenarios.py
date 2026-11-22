@@ -208,13 +208,18 @@ def stash_review_workflows(driver, fixtures, report):
 
     boot()
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'untracked-note.txt'))
-    driver.click_visible('[aria-label="Stash options"]')
     driver.script("""window.__ownedStashToolbarClicks = [];
-      document.querySelector('#stash-options-menu').addEventListener('click', event => {
-        window.__ownedStashToolbarClicks.push({ trusted: event.isTrusted, target: event.target.tagName });
-      }, { capture: true });""")
+      window.__ownedStashToolbarClickListener = event => {
+        const item = event.target instanceof Element
+          ? event.target.closest('#stash-options-menu button[role=menuitem]') : null;
+        if (item) window.__ownedStashToolbarClicks.push({ trusted: event.isTrusted, target: event.target.tagName });
+      };
+      document.addEventListener('click', window.__ownedStashToolbarClickListener, true);""")
+    driver.click_visible('[aria-label="Stash options"]')
     driver.click_visible('#stash-options-menu button[role=menuitem]', 'Stash with options…Choose which changes and files to save')
-    report['stashToolbarClick'] = driver.script('return window.__ownedStashToolbarClicks')
+    report['stashToolbarClick'] = driver.script('''const clicks = window.__ownedStashToolbarClicks;
+      document.removeEventListener('click', window.__ownedStashToolbarClickListener, true);
+      return clicks;''')
     ready()
     driver.click_visible(modal + ' input[name=stashMessage]')
     driver.script('''const field = document.querySelector('[name=stashMessage]');
