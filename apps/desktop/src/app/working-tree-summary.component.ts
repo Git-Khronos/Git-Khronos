@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, Directive, effect, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, Directive, effect, inject, input, output, signal } from '@angular/core';
 import { ipc, type RepositoryStatus, type WorkingTreeChangeSummary, type WorkingTreeSummaries } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 
+type RecapSection = 'staged' | 'unstaged';
 type SummaryState = { phase: 'loading' | 'unavailable' | 'preview' }
   | { phase: 'ready' | 'refreshing'; value: WorkingTreeChangeSummary };
 const EMPTY: SummaryState = { phase: 'ready', value: { additions: 0, deletions: 0, uncountedFiles: 0, partial: false } };
@@ -12,6 +13,7 @@ interface Request {
   checkoutScope: string;
   status: RepositoryStatus;
   contentRevision: number;
+  retainedOnRetry?: { section: RecapSection; value: WorkingTreeChangeSummary };
 }
 
 function sameSnapshot(first: Request, next: Request): boolean {
@@ -35,22 +37,28 @@ function sameSnapshot(first: Request, next: Request): boolean {
     } @else if (current.phase === 'loading') {
       <span class="pending" role="status">Counting lines…</span>
     } @else if (current.phase === 'unavailable') {
-      <span class="pending" title="Refresh the repository to retry.">Line counts unavailable</span>
+      <span class="pending">Line counts unavailable</span>
+      <button class="retry" type="button" [attr.aria-label]="'Retry ' + section() + ' line counts'"
+        (click)="retryRequested.emit(current)">Retry</button>
     } @else {
       <span class="pending" title="Line totals are calculated by Git in the desktop app.">+— −—</span>
     }
   `,
   styles: [`
-    :host { display: inline-flex; flex: 0 0 auto; align-items: center; text-transform: none; }
+    :host { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; text-transform: none; }
     .summary { display: inline-flex; align-items: center; gap: 5px; font: 12px "SFMono-Regular", Consolas, monospace; font-variant-numeric: tabular-nums; }
     .summary span { color: #62d7a6; }
     .summary i { color: #ef849b; font-style: normal; }
     .summary em, .pending { color: var(--text-muted); font-size: 11px; font-style: normal; font-weight: 400; }
+    .retry { min-block-size: 24px; padding-inline: 4px; border: 0; background: transparent;
+      color: var(--accent); font: inherit; font-size: 11px; text-decoration: underline; }
+    .retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   `],
 })
 export class WorkingTreeSummaryComponent {
   readonly state = input.required<SummaryState>();
-  readonly section = input.required<'staged' | 'unstaged'>();
+  readonly section = input.required<RecapSection>();
+  readonly retryRequested = output<SummaryState>();
 
   description(refreshing: boolean): string {
     const basis = this.section() === 'staged'
@@ -123,6 +131,22 @@ export class WorkingTreeSummariesDirective {
     });
   }
 
+  retry(section: RecapSection, painted: SummaryState): boolean {
+    const previous = this.desired;
+    if (!previous || this.reading || !this.current(previous)
+      || painted.phase !== 'unavailable' || this[section]() !== painted) return false;
+    const other = section === 'staged' ? 'unstaged' : 'staged';
+    const sibling = this[other]();
+    this.desired = {
+      ...previous,
+      retainedOnRetry: sibling.phase === 'ready' ? { section: other, value: sibling.value } : undefined,
+    };
+    this[section].set({ phase: 'loading' });
+    if (sibling.phase === 'unavailable') this[other].set({ phase: 'loading' });
+    this.pump();
+    return true;
+  }
+
   private current(request: Request): boolean {
     const repository = this.git.repository();
     return !this.destroyed && this.desired === request && !this.git.busy() && this.visible()
@@ -134,6 +158,13 @@ export class WorkingTreeSummariesDirective {
 
   private apply(request: Request, result?: WorkingTreeSummaries): void {
     if (!this.current(request)) return;
+    const retained = request.retainedOnRetry;
+    if (retained && !result?.[retained.section]) {
+      // An explicit retry belongs to this exact snapshot. An error at the
+      // other read must not erase this already measured, unchanged side.
+      result = { staged: result?.staged ?? null, unstaged: result?.unstaged ?? null,
+        [retained.section]: retained.value };
+    }
     this.lastMeasurement = result ? { request, result } : null;
     const project = (hasChanges: boolean, summary: WorkingTreeChangeSummary | null | undefined): SummaryState =>
       !hasChanges ? EMPTY : summary ? { phase: 'ready', value: summary } : { phase: 'unavailable' };

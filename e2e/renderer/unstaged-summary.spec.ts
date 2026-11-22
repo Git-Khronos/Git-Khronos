@@ -10,10 +10,11 @@ test.beforeEach(async ({ page }) => {
     // timer can otherwise increment the native call count between assertions.
     app.cancelLiveStatusRefresh();
     app.scheduleLiveStatusRefresh = () => {};
-    const state: any = { app, git, requests: [] };
+    const state: any = { app, git, requests: [], otherCommands: [] };
     (window as any).__unstagedSummary = state;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       if (command === 'working_tree_change_summary') return new Promise((resolve, reject) => state.requests.push({ args, resolve, reject }));
+      state.otherCommands.push(command);
       if (command === 'refresh_repository_status') return Promise.resolve(structuredClone(git.repository().status));
       return Promise.resolve(git.repository());
     } };
@@ -142,7 +143,55 @@ test('a failed recount retires previously measured totals instead of leaving the
   await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
   await expect(recap.getByRole('img', { name: /41 additions.*updating/i })).toBeVisible();
   await page.evaluate(() => (window as any).__unstagedSummary.requests[1].reject(new Error('Owned recount failure')));
-  await expect(recap).toHaveText('Line counts unavailable');
+  await expect(recap).toContainText('Line counts unavailable');
+});
+
+test('retry recounts only the current recap request and preserves the other measured side', async ({ page }) => {
+  const staged = page.locator('.staged-section gc-working-tree-summary');
+  const unstaged = page.locator('.unstaged-section gc-working-tree-summary');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: { additions: 9, deletions: 2, uncountedFiles: 0, partial: false }, unstaged: null,
+  }));
+  const retry = unstaged.getByRole('button', { name: 'Retry unstaged line counts' });
+  await expect(retry).toBeVisible();
+  await page.evaluate(() => { (window as any).__unstagedSummary.otherCommands.length = 0; });
+  await retry.focus();
+  await retry.press('Enter');
+  await expect(page.getByRole('button', { name: /^Unstaged Files/ })).toBeFocused();
+  await expect(unstaged.getByRole('status')).toHaveText('Counting lines…');
+  await expect(staged.getByRole('img', { name: '9 additions and 2 deletions in staged files' })).toBeVisible();
+  await expect(retry).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[1].reject(new Error('Owned retry failure')));
+  await expect(retry).toBeVisible();
+  await expect(staged).toContainText('+9');
+  await retry.click();
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(3);
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[2].resolve({
+    staged: null,
+    unstaged: { additions: 4, deletions: 1, uncountedFiles: 0, partial: false },
+  }));
+  await expect(unstaged.getByRole('img', { name: '4 additions and 1 deletion in unstaged files' })).toBeVisible();
+  await expect(staged).toContainText('+9');
+  expect(await page.evaluate(() => (window as any).__unstagedSummary.otherCommands)).toEqual([]);
+});
+
+test('a retry control painted for an obsolete checkout cannot start another read', async ({ page }) => {
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({ staged: null, unstaged: null }));
+  const retry = page.getByRole('button', { name: 'Retry unstaged line counts' });
+  await expect(retry).toBeVisible();
+  const visits = await retry.evaluate((button: HTMLButtonElement) => {
+    const { git, requests } = (window as any).__unstagedSummary;
+    const original = git.repository();
+    const replacement = { ...original, id: 'owned-recap-retry-replacement', path: '/owned/recap-retry-replacement' };
+    git.repositories.update((items: any[]) => [...items, replacement]);
+    git.activateRepository(replacement.id);
+    button.click();
+    return { callsBeforeRender: requests.length, next: replacement.id };
+  });
+  expect(visits.callsBeforeRender).toBe(1);
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  expect(await page.evaluate(() => (window as any).__unstagedSummary.requests[1].args.repoId)).toBe(visits.next);
 });
 
 test('a replacement checkout cannot inherit the previous checkout’s measured totals', async ({ page }) => {
@@ -230,6 +279,16 @@ test('recap and Stage all remain within a narrow file-section header', async ({ 
   expect(await section.locator('.file-section-title').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expect(section.getByRole('button', { name: 'Stage all changes', exact: true })).toBeVisible();
   await page.screenshot({ path: 'target/local-review/unstaged-summary/narrow-header.png' });
+});
+
+test('the unavailable recap and its Retry control wrap within a narrow header', async ({ page }) => {
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({ staged: null, unstaged: null }));
+  const section = page.locator('.unstaged-section');
+  await section.evaluate(element => { (element as HTMLElement).style.width = '250px'; });
+  const retry = section.getByRole('button', { name: 'Retry unstaged line counts' });
+  await expect(retry).toBeVisible();
+  expect(await section.locator('.file-section-title').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(section.getByRole('button', { name: 'Stage all changes', exact: true })).toBeVisible();
 });
 
 test('one native read supplies independent staged and unstaged counts', async ({ page }) => {

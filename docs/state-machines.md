@@ -613,6 +613,11 @@ An unchanged-status recount keeps the last measured counts visible and
 marked as updating. It does not borrow counts across visits, checkout
 paths, or changed status snapshots. A failed recount reports missing
 counts, and both sections still share one in-flight read.
+An unavailable section can request a read-only Retry using its painted
+state and checkout scope. It keeps the other section's measured totals for
+the same snapshot if the retry cannot measure them again. The initiating
+section's heading takes keyboard focus when its Retry control is removed;
+an obsolete painted control cannot start a new count or move focus.
 
 The installed `first-status` release check holds the initial complete
 file scan while history is usable. It requires a loading state instead of
