@@ -124,6 +124,19 @@ their accessible labels together, including singular counts and exclusions.
 It covers staging, rename previews, and updates after an external edit with
 unchanged porcelain status.
 
+## Focused offline update consent check
+
+In a disposable Linux container with only the loopback interface (for
+example Docker `--network none`), run a test-publisher installer with
+`--suite application-update-consent --installed --headless`. This is separate
+from the release publisher-trust preflight. The actual Updates dialog must
+attempt a manual check while automatic updates are off, restore opt-in
+across a real application restart and then schedule an offline check, and
+restore opt-out across a second restart, leaving the scheduler idle past
+its first startup tick without removing manual checks.
+There is no installable offer, no installer is invoked, and the owned
+Git checkout is unchanged.
+
 ## Focused wrapped diff rendering check
 
 Run `--suite diff-rendering` with a reviewed installer to check a real Git

@@ -1190,7 +1190,7 @@ def performance(driver, fixtures, report):
 def main():
     suites = (
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
-        "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
+        "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates", "application-update-consent",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
         "workspace-pull-upstreams", "pull-submodule-scope", "merge-preview",
@@ -1229,6 +1229,10 @@ def main():
         parser.error(f"{args.suite} requires --headless (private Xvfb)")
     if args.suite == "patch-export" and not args.headless:
         parser.error("patch-export requires --headless (private Xvfb)")
+    if args.suite == "application-update-consent" and not (
+        args.headless and args.installed and {name for _, name in socket.if_nameindex()} == {"lo"}
+    ):
+        parser.error("application-update-consent requires --headless --installed in a disposable loopback-only network namespace")
     output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
     output.mkdir(parents=True)
     progress = ScenarioProgress(output, args.suite)
@@ -1498,6 +1502,9 @@ def main():
             elif args.suite == "diff-rendering":
                 from native_diff_line_selection_scenarios import wrapped_diff_rendering
                 repository, repo_id = wrapped_diff_rendering(driver, fixtures, report)
+            elif args.suite == "application-update-consent":
+                from native_application_updates_scenarios import application_update_consent
+                repository, repo_id = application_update_consent(driver, fixtures, report)
             elif args.suite == "checkout-snapshot":
                 from native_checkout_snapshot_scenarios import coherent_checkout_snapshot
                 repository, repo_id = coherent_checkout_snapshot(driver, fixtures, report)

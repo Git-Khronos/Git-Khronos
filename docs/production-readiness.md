@@ -4410,7 +4410,14 @@ suite passed all 13 tests on Git 2.39.5 and 2.56.1. The nested committed
 attribute test uses nonoverlapping file edits that conflict under the
 target's committed rule but would merge under the dirty checkout's rule.
 Source-test receipts: `target/local-review/merge-preview-old-git.wZcprnoD/`.
-The updated installed merge-preview check is separate from this result.
+The test-publisher `360ec10` package also passed the installed
+`merge-preview` suite on Debian 12 with Git 2.39.5 (23 scenarios).
+The WebView and native preview both found the expected conflict under the
+nested committed rule and left the dirty checkout unchanged. The same
+artifact passed its focused bisect-voting suite. SHA-256:
+`5533e4d02c34d448b2fb689ad1031902928b9c82bf0046ea05dba2d6b6b639b2`.
+Receipt:
+`target/local-review/updater/jammy-builder/legacy-merge-release.r03Od98H/reports.json`.
 
 ### Worktree setup resize focus
 
@@ -4452,3 +4459,17 @@ chunk and 2,648-byte CSS asset are outside the initial asset list. The
 900 kB warning and 1.45 MB hard limit remain unchanged. These are asset
 sizes, not startup timings. Local receipts:
 `target/local-review/initial-renderer-audit.C87xATJU/`.
+
+### Installed offline update consent
+
+The test-publisher `360ec10` package passed the focused consent suite on
+Debian 12 in a loopback-only container. The real Updates dialog attempted
+a manual check while automatic updates were off. After enabling automatic
+updates, a different process restored consent and reached the expected
+offline result without a manual click. After disabling and starting a third
+process, the updater stayed idle past its first scheduler tick and manual
+checks remained available. The staged/untracked fixture and Git metadata
+were unchanged throughout. The same report also passed the two inherited
+Git-context checks. No signed offer, download, or installation was exercised.
+Exact-package receipt:
+`target/local-review/updater/jammy-builder/installed-update-consent.VTlWYy4j/reports.json`.

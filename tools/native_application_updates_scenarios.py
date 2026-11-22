@@ -1,4 +1,4 @@
-"""Packaged updater trust boundaries, without networking or installation."""
+"""Packaged updater trust and offline preference boundaries, without installation."""
 import json
 import os
 from native_worktree_scenarios import checkout_footprint
@@ -65,3 +65,85 @@ def application_updates_workflow(driver, fixtures, report):
     driver.wait('return document.activeElement?.getAttribute("aria-label") === "Main menu"')
     assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
     report['scenarios'].append('native-updater-refuses-manual-check-and-automatic-consent-without-trust-and-preserves-owned-git-data')
+
+
+def application_update_consent(driver, fixtures, report):
+    """Check manual/automatic dispatch and durable opt-in/out without an offer."""
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('installed-update-consent', commits=2)
+    tracked = repository / 'fixture.txt'
+    tracked.write_text('Owned staged contents during update consent.\n', encoding='utf-8')
+    fixtures.git(repository, 'add', '--', tracked.name)
+    note = repository / 'update-consent-note.txt'
+    note.write_text('Owned untracked contents during update consent.\n', encoding='utf-8')
+    files = (tracked.name, note.name)
+    repo_id = open_ui(driver, repository)
+    before = checkout_footprint(fixtures, repository, files)
+    dialog = 'gc-application-updates-dialog [role=dialog]'
+    checkbox = dialog + ' input[type=checkbox]'
+    feedback = dialog + ' .feedback'
+    evidence = report['applicationUpdateConsent'] = {}
+
+    def open_updates():
+        driver.click_visible('[aria-label="Main menu"]')
+        driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Updates')
+        driver.wait('return !!document.querySelector(' + json.dumps(checkbox) + ')')
+
+    def observe(label, automatic):
+        driver.wait(f'''const checkbox = document.querySelector({json.dumps(checkbox)});
+          return checkbox?.checked === {json.dumps(automatic)} && !checkbox.disabled;''')
+        state = driver.invoke('application_update_status')
+        assert state['configured'] and not state['storageError'] and state['automatic'] is automatic, state
+        assert state['offerId'] is None and not state['verified'] and not state['canInstall'] and not state['canDownload'], state
+        assert checkout_footprint(fixtures, repository, files) == before
+        evidence[label] = {key: state[key] for key in (
+            'revision', 'phase', 'automatic', 'canCheck', 'canDownload', 'canInstall', 'runningVersion',
+        )}
+        return state
+
+    def wait_offline():
+        driver.wait('return document.querySelector(' + json.dumps(feedback)
+                    + ')?.textContent.includes("The signed update source could not be reached.")', timeout=45)
+
+    def restart(label):
+        proof = driver.restart_application()
+        evidence[label] = proof
+        current = open_ui(driver, repository)
+        open_updates()
+        return current
+
+    open_updates()
+    initial = observe('default', False)
+    assert initial['canCheck'], initial
+    driver.click_visible(dialog + ' button', 'Check for updates')
+    wait_offline()
+    manual = observe('manualCheckOffline', False)
+    assert manual['phase'] == 'failed' and manual['canCheck'] and manual['revision'] > initial['revision'], manual
+    report['scenarios'].append('native-updater-manual-check-runs-offline-without-automatic-consent')
+
+    driver.click_visible(checkbox)
+    observe('optedIn', True)
+    repo_id = restart('enabledRestart')
+    observe('optInRestored', True)
+    # No manual click in the new process: reaching the offline result proves
+    # the scheduler honored durable consent, not just the new checkbox state.
+    wait_offline()
+    automatic = observe('automaticCheckOffline', True)
+    assert automatic['phase'] == 'failed', automatic
+    report['scenarios'].append('native-updater-opt-in-survives-process-restart-and-schedules-an-offline-check')
+
+    driver.click_visible(checkbox)
+    observe('optedOut', False)
+    repo_id = restart('disabledRestart')
+    # The first scheduler pass is due five seconds after process startup.
+    # Observe past that window rather than treating an immediate idle read
+    # as evidence that the scheduler respects the restored opt-out.
+    driver.request('POST', driver.path('execute/async'), {'script': '''
+      const done = arguments[arguments.length - 1];
+      setTimeout(() => done(true), 6000);
+    ''', 'args': []})
+    disabled = observe('optOutRestored', False)
+    assert disabled['canCheck'] and disabled['phase'] == 'idle', disabled
+    report['scenarios'].append('native-updater-opt-out-survives-process-restart-and-keeps-manual-checks-available')
+    return repository, repo_id
