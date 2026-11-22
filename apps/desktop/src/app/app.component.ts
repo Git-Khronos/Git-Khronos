@@ -1630,7 +1630,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const kind = overlay.kind;
     const busy = this.git.busy();
     const identity = (name: string, label: string, className = name) =>
-      ({ id: name + '-options-menu', className: className + '-menu', label: label + ' options', busy });
+      ({ visit: overlay, id: name + '-options-menu', className: className + '-menu', label: label + ' options', busy });
     const target = () => {
       const remote = this.currentRemote();
       return {
@@ -12065,7 +12065,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected runToolbarOptionsAction(view: ToolbarOptionsView, action: ToolbarOptionsAction): void {
     const opener = this.toolbarOverlays.activeOverlay()?.returnFocus;
-    if (this.toolbarOptionsView() !== view || this.git.busy()) return;
+    const currentView = this.toolbarOptionsView();
+    if (this.git.busy()) return;
+    if (action === 'fetchOptions') {
+      // Remote status can redraw this menu without changing its checkout visit.
+      // This action only opens a live review; it does not execute a fetch.
+      if (currentView?.kind === 'fetch' && currentView.visit === view.visit) this.openFetchOptionsFromToolbar();
+      return;
+    }
+    if (currentView !== view) return;
     if (typeof action !== 'string') {
       if (action.kind === 'checkout') void this.checkoutFromToolbar(action.branch);
       else if (action.kind === 'pull') void this.executePullStrategy(action.strategy);
@@ -12074,7 +12082,6 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     switch (action) {
       case 'fetchAll': this.toolbarOverlays.close('fetch'); void this.runAutoFetchNow(); break;
-      case 'fetchOptions': this.openFetchOptionsFromToolbar(); break;
       case 'push': this.toolbarOverlays.close('push'); void this.pushCurrentBranch(); break;
       case 'forcePush': this.requestForcePush(); break;
       case 'createBranch': this.openBranchCreatorFromToolbarMenu(); break;

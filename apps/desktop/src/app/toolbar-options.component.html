@@ -7,7 +7,7 @@
       <b>{{ menu.detail }}</b>
     </header>
     <button type="button" role="menuitem" (click)="activate.emit('fetchAll')" [disabled]="menu.disabled"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Fetch updates without pruning</small></span></button>
-    <button type="button" role="menuitem" (click)="activate.emit('fetchOptions')"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
+    <button type="button" role="menuitem" (click)="activate.emit('fetchOptions')" [disabled]="menu.busy"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
   }
   @case ('pull') {
     <header class="toolbar-menu-context">

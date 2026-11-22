@@ -53,6 +53,48 @@ async function openOptions(page: Page): Promise<void> {
   await expect(page.getByRole('dialog', { name: 'Fetch branches with options' })).toBeVisible();
 }
 
+test('Fetch Options stays actionable when remote status changes before the menu redraws', async ({ page }) => {
+  await setup(page);
+  const opener = page.getByRole('button', { name: 'Fetch options', exact: true });
+  await opener.click();
+  const item = page.getByRole('menuitem', { name: /Fetch branches with options/ });
+  await expect(item).toBeVisible();
+  // Deliver the click between a background state update and Angular's redraw.
+  await item.evaluate((button: HTMLButtonElement) => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.backgroundFetchFailures.set({
+      [git.repository().id]: { message: 'Remote status changed', requiresFetchAll: false },
+    });
+    button.click();
+  });
+  const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  const commands = await page.evaluate(() => (window as any).__fetchFixture.calls.map((call: any) => call.command));
+  expect(commands).not.toContain('fetch_branches');
+  expect(commands).not.toContain('fetch_repository');
+  await page.keyboard.press('Escape');
+  await expect(opener).toBeFocused();
+});
+
+test('a retired Fetch Options menu cannot open a review in a new visit of the same menu', async ({ page }) => {
+  await setup(page);
+  await page.getByRole('button', { name: 'Fetch options', exact: true }).click();
+  const item = page.getByRole('menuitem', { name: /Fetch branches with options/ });
+  await expect(item).toBeVisible();
+  const openedFromRetiredMenu = await item.evaluate((button: HTMLButtonElement) => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const oldVisit = app.toolbarOverlays.activeOverlay();
+    app.toolbarOverlays.close('fetch');
+    app.toolbarOverlays.open({ kind: 'fetch', scope: oldVisit.scope }, oldVisit.returnFocus);
+    button.click();
+    return !!app.fetchRequest();
+  });
+  expect(openedFromRetiredMenu).toBe(false);
+  await item.click();
+  await expect(page.getByRole('dialog', { name: 'Fetch branches with options' })).toBeVisible();
+});
+
 test('scoped fetch defaults to one remote without pruning and sends cancellable typed options', async ({ page }) => {
   await setup(page);
   await openOptions(page);

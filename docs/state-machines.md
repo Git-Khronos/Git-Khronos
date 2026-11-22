@@ -1277,6 +1277,19 @@ Workspace menu journeys exercise existing actions and compact/full-height
 layout. Packaged smoke waits for the focused real Manage Repositories action,
 not the loading escape, before measuring menu layout and testing Tab dismissal.
 
+### Fetch toolbar review
+
+The open toolbar menu and checkout visit own the review opener. A refreshed
+remote status line can replace the presentation model without retiring that
+visit. Opening Fetch Options in that interval does not fetch: it opens a
+review for the live checkout, with a separate submit action. An old menu
+visit or an active foreground Git operation still blocks the opener. Direct
+menu actions that can run Git retain the stricter rendered-model guard.
+
+Coverage: `fetch-options.spec.ts` delivers a click between a remote status
+update and the next render and checks review focus, no fetch and focus return.
+It also exercises a retired menu callback after reopening the same menu.
+
 ### Deferred graph action presentation
 
 The graph action menu's optional template and exclusive form styles live in

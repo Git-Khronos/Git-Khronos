@@ -6,6 +6,8 @@ import { PULL_STRATEGY_CHOICES, PULL_STRATEGY_LABEL, type PullStrategy } from '.
 export type ToolbarOptionsKind = 'fetch' | 'pull' | 'push' | 'branch' | 'stash' | 'lfs' | 'sparseCheckout';
 
 interface MenuIdentity {
+  /** Opaque root-owned lease, stable across presentation updates. */
+  readonly visit: object;
   readonly id: string;
   readonly className: string;
   readonly label: string;
