@@ -407,7 +407,7 @@ def bisect_reports_the_first_bad_commit(driver, fixtures, report):
     fixtures.git(repository, 'bisect', 'start', '--no-checkout', bad, good)
     repo_id = open_ui(driver, repository)
     status = driver.invoke('refresh_repository_status', repoId=repo_id)
-    assert status['bisectResult'] == {'oid': bad, 'term': 'bad'} and not status.get('bisectCandidate')
+    assert status['bisectResult'] == {'kind': 'found', 'oid': bad, 'term': 'bad'} and not status.get('bisectCandidate')
     selector = '[aria-label="Git bisect result found"]'
     assert driver.wait("return document.querySelector(" + json.dumps(selector) + ")?.querySelector('small')?.title") == bad
     actions = driver.script("return [...document.querySelectorAll(" + json.dumps(selector + ' button') +
@@ -428,6 +428,53 @@ def bisect_reports_the_first_bad_commit(driver, fixtures, report):
     assert not (repository / '.git/BISECT_START').exists()
     assert fixtures.git(repository, 'rev-parse', 'HEAD') == good
     report['scenarios'].append('native-bisect-result-reports-first-bad-and-prevents-extra-votes')
+
+
+def bisect_reports_inconclusive_candidates(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-inconclusive', commits=5)
+    bad = fixtures.git(repository, 'rev-parse', 'HEAD')
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~4')
+    expected = set(fixtures.git(repository, 'rev-list', f'{good}..{bad}').splitlines())
+    before = checkout_footprint(fixtures, repository)
+    fixtures.git(repository, 'bisect', 'start', '--no-checkout', bad, good)
+    repo_id = open_ui(driver, repository)
+    for _ in range(3):
+        candidate = driver.invoke('refresh_repository_status', repoId=repo_id)['bisectCandidate']
+        assert candidate['noCheckout']
+        driver.invoke('mark_bisect', repoId=repo_id, verdict='skip', candidate=candidate)
+        assert fixtures.git(repository, 'rev-parse', 'refs/bisect/skip-' + candidate['oid']) == candidate['oid']
+    status = driver.invoke('refresh_repository_status', repoId=repo_id)
+    result = status['bisectResult']
+    assert result['kind'] == 'ambiguous' and result['term'] == 'bad', status
+    assert set(result['possibleOids']) == expected and not status.get('bisectCandidate')
+    selector = '[aria-label="Git bisect result inconclusive"]'
+    driver.wait("return !!document.querySelector(" + json.dumps(selector) + ")")
+    options = driver.script("return [...document.querySelectorAll(" + json.dumps(selector + ' option') +
+                            ")].map(option => option.value)")
+    assert options == result['possibleOids']
+    actions = driver.script("return [...document.querySelectorAll(" + json.dumps(selector + ' button') +
+                            ")].map(button => button.textContent.trim())")
+    assert actions == ['View commit', 'Reset'], actions
+    selected = next(oid for oid in options if oid != bad)
+    driver.script("document.querySelector(arguments[0]).value = arguments[1]", selector + ' select', selected)
+    driver.click_scrolled_text(selector + ' button', 'View commit', wait_for_ready=True)
+    driver.wait("return document.querySelector('.commit-row.selected')?.dataset.commitOid === " + json.dumps(selected))
+    log = repository / '.git/BISECT_LOG'
+    state = log.read_bytes()
+    stopped = checkout_footprint(fixtures, repository)
+    assert all(stopped[key] == before[key] for key in before if key != 'references')
+    try:
+        driver.invoke('mark_bisect', repoId=repo_id, verdict='good', candidate=candidate)
+    except RuntimeError as error:
+        assert json.loads(str(error))['kind'] == 'bisectResultAmbiguous'
+    else:
+        raise AssertionError('The native command accepted a vote for an inconclusive search')
+    assert checkout_footprint(fixtures, repository) == stopped and log.read_bytes() == state
+    driver.click_scrolled_text(selector + ' button', 'Reset', wait_for_ready=True)
+    driver.wait("return !document.querySelector('.bisect-progress')")
+    assert not (repository / '.git/BISECT_START').exists()
+    assert checkout_footprint(fixtures, repository) == before
+    report['scenarios'].append('native-bisect-inconclusive-keeps-possible-results-and-refuses-extra-votes')
 
 
 def replay_recovery_preserves_ignored_files(driver, fixtures, report):
@@ -495,6 +542,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
     bisect_vote_binds_the_test_candidate(driver, fixtures, report)
     bisect_reports_the_first_bad_commit(driver, fixtures, report)
+    bisect_reports_inconclusive_candidates(driver, fixtures, report)
     replay_recovery_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')

@@ -8581,6 +8581,17 @@ export class AppComponent implements OnInit, OnDestroy {
     queueMicrotask(() => this.commitListElement?.scrollTo({ top: target, behavior: 'smooth' }));
   }
 
+  protected viewBisectCommit(oid: string): void {
+    const result = this.git.bisectResult();
+    if (!result || (result.kind === 'found' ? result.oid !== oid : !result.possibleOids.includes(oid))) return;
+    // A bisect revision may be outside the loaded graph or on an unlisted
+    // ref. The details panel can inspect the exact commit without paging.
+    this.selectCommit(oid);
+    if (this.graphCommitByOid().has(oid)) {
+      queueMicrotask(() => this.scrollGraphCommitIntoView(oid, 'center', 'smooth'));
+    }
+  }
+
   protected async jumpToCommit(oid: string): Promise<void> {
     let repository = this.git.repository();
     if (!repository) return;

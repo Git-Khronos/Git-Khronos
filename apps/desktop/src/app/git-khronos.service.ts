@@ -148,6 +148,14 @@ function sameItems<T>(left: readonly T[], right: readonly T[], key: (item: T) =>
   return left.length === right.length && left.every((item, index) => key(item) === key(right[index]));
 }
 
+function sameBisectResult(left: RepositoryStatus['bisectResult'], right: RepositoryStatus['bisectResult']): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.term !== right.term) return false;
+  if (left.kind === 'found' && right.kind === 'found') return left.oid === right.oid;
+  return left.kind === 'ambiguous' && right.kind === 'ambiguous'
+    && sameItems(left.possibleOids, right.possibleOids, oid => oid);
+}
+
 function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): boolean {
   const leftOperation = repositoryOperationState(left);
   const rightOperation = repositoryOperationState(right);
@@ -171,8 +179,7 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
     && leftOperation.bisectInProgress === rightOperation.bisectInProgress
     && left.bisectCandidate?.oid === right.bisectCandidate?.oid
     && left.bisectCandidate?.noCheckout === right.bisectCandidate?.noCheckout
-    && left.bisectResult?.oid === right.bisectResult?.oid
-    && left.bisectResult?.term === right.bisectResult?.term
+    && sameBisectResult(left.bisectResult, right.bisectResult)
     && left.entryCount === right.entryCount
     && left.entriesTruncated === right.entriesTruncated
     && left.entries.length === right.entries.length

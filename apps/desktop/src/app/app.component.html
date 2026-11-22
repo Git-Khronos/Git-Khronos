@@ -1080,18 +1080,27 @@
         @if (operationState.bisectInProgress) {
           @let target = bisectVoteTarget();
           @let result = git.bisectResult();
-          <div class="bisect-progress" role="status" [attr.aria-label]="result ? 'Git bisect result found' : 'Git bisect in progress'">
-            <span><gc-icon name="history" [size]="13" /><strong>{{ result ? 'BISECT RESULT FOUND' : 'BISECT IN PROGRESS' }}</strong></span>
-            @if (result) {
+          <div class="bisect-progress" role="status" [attr.aria-label]="result?.kind === 'found' ? 'Git bisect result found' : result?.kind === 'ambiguous' ? 'Git bisect result inconclusive' : 'Git bisect in progress'">
+            <span><gc-icon name="history" [size]="13" /><strong>{{ result?.kind === 'found' ? 'BISECT RESULT FOUND' : result?.kind === 'ambiguous' ? 'BISECT INCONCLUSIVE' : 'BISECT IN PROGRESS' }}</strong></span>
+            @if (result?.kind === 'found') {
               <small [title]="result.oid">First {{ result.term }} commit {{ shortOid(result.oid) }}</small>
+            } @else if (result?.kind === 'ambiguous') {
+              <small title="Skipped revisions prevent Git from identifying a single result.">{{ result.possibleOids.length }} possible first {{ result.term }} commits; some revisions were skipped.</small>
             } @else if (target) {
               <small [title]="target.candidate.oid">Test commit {{ shortOid(target.candidate.oid) }}, then classify the result. @if (target.candidate.noCheckout) { Checkout unchanged. }</small>
             } @else {
               <small>Candidate unavailable. Refresh the repository before voting.</small>
             }
             <div>
-              @if (result) {
-                <button type="button" (click)="jumpToCommit(result.oid)">View result</button>
+              @if (result?.kind === 'found') {
+                <button type="button" (click)="viewBisectCommit(result.oid)">View result</button>
+              } @else if (result?.kind === 'ambiguous') {
+                <select #possibleResult aria-label="Possible bisect result">
+                  @for (oid of result.possibleOids; track oid) {
+                    <option [value]="oid" [title]="oid">{{ shortOid(oid) }}</option>
+                  }
+                </select>
+                <button type="button" (click)="viewBisectCommit(possibleResult.value)">View commit</button>
               } @else {
                 <button class="good" type="button" [disabled]="git.busy() || !target" (click)="markBisect('good', target)">Good</button><button class="bad" type="button" [disabled]="git.busy() || !target" (click)="markBisect('bad', target)">Bad</button><button type="button" [disabled]="git.busy() || !target" (click)="markBisect('skip', target)">Skip</button>
               }

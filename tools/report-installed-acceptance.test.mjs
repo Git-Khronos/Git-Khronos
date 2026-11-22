@@ -551,6 +551,7 @@ test('installed detached checkout requires safe switches and ignored-file recove
     'native-bisect-start-refuses-a-stale-branch-at-the-same-tip',
     'native-bisect-vote-rejects-an-obsolete-no-checkout-candidate',
     'native-bisect-result-reports-first-bad-and-prevents-extra-votes',
+    'native-bisect-inconclusive-keeps-possible-results-and-refuses-extra-votes',
     'native-cherry-pick-abort-preserves-ignored-reset-file',
     'native-revert-skip-preserves-ignored-reset-file',
     'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',

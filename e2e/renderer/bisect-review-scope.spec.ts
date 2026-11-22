@@ -133,12 +133,13 @@ test('a found bisect result replaces the test candidate and stops offering votes
   await openVote(page, true);
   await page.evaluate(() => {
     const state = (window as any).__bisectVote;
-    const { app, git } = state;
+    const { git } = state;
     state.viewed = [];
-    app.jumpToCommit = (oid: string) => state.viewed.push(oid);
+    git.inspectCommit = (oid: string) => state.viewed.push(oid);
+    git.inspectHistoryCommit = async () => null;
     git.repositories.update((items: any[]) => items.map(item => item.id === git.activeRepositoryId()
       ? { ...item, status: { ...item.status, bisectCandidate: undefined,
-        bisectResult: { oid: 'c'.repeat(40), term: 'bad' } } } : item));
+        bisectResult: { kind: 'found', oid: 'c'.repeat(40), term: 'bad' } } } : item));
   });
   const banner = page.getByRole('status', { name: 'Git bisect result found' });
   await expect(banner).toContainText('First bad commit ccccccc');
@@ -149,4 +150,50 @@ test('a found bisect result replaces the test candidate and stops offering votes
   await expect(banner.getByRole('button', { name: 'Reset', exact: true })).toBeEnabled();
   await banner.getByRole('button', { name: 'View result', exact: true }).click();
   expect(await page.evaluate(() => (window as any).__bisectVote.viewed)).toEqual(['c'.repeat(40)]);
+});
+
+test('an inconclusive bisect lets the user inspect each possibility instead of voting again', async ({ page }) => {
+  await openVote(page, true);
+  await page.evaluate(async () => {
+    const state = (window as any).__bisectVote;
+    const { git } = state;
+    state.viewed = [];
+    state.outsideGraph = [];
+    git.inspectCommit = (oid: string) => state.viewed.push(oid);
+    git.inspectHistoryCommit = async (oid: string) => {
+      state.outsideGraph.push(oid);
+      return null;
+    };
+    state.nextStatus = { ...git.repository().status, bisectCandidate: undefined,
+      bisectResult: { kind: 'ambiguous', term: 'bad', possibleOids: ['c'.repeat(40), 'e'.repeat(40)] } };
+    await git.refreshStatusInBackground();
+  });
+
+  const banner = page.getByRole('status', { name: 'Git bisect result inconclusive' });
+  await expect(banner).toContainText('2 possible first bad commits; some revisions were skipped.');
+  await expect(banner.getByRole('button')).toHaveText(['View commit', 'Reset']);
+  const options = banner.getByRole('combobox', { name: 'Possible bisect result' });
+  await expect(options.locator('option')).toHaveText(['cccccccc', 'eeeeeeee']);
+  await options.selectOption('e'.repeat(40));
+  await banner.getByRole('button', { name: 'View commit' }).click();
+  expect(await page.evaluate(() => {
+    const state = (window as any).__bisectVote;
+    return { viewed: state.viewed, outsideGraph: state.outsideGraph, selected: state.app.selectedCommit() };
+  })).toEqual({ viewed: ['e'.repeat(40)], outsideGraph: ['e'.repeat(40)], selected: 'e'.repeat(40) });
+
+  // A background refresh that changes only the list must not be deduplicated.
+  await page.evaluate(async () => {
+    const state = (window as any).__bisectVote;
+    state.nextStatus = { ...state.nextStatus,
+      bisectResult: { kind: 'ambiguous', term: 'bad', possibleOids: ['c'.repeat(40), 'f'.repeat(40)] } };
+    await state.git.refreshStatusInBackground();
+  });
+  await expect(options.locator('option')).toHaveText(['cccccccc', 'ffffffff']);
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  const search = page.getByRole('combobox', { name: 'Search commands' });
+  await search.fill('Bisect Mark');
+  await expect(page.getByRole('option', { name: /Bisect: Mark/ })).toHaveCount(0);
+  await search.fill('Bisect Reset');
+  await expect(page.getByRole('option', { name: /Bisect: Reset/ })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__bisectVote.calls)).toEqual([]);
 });

@@ -794,8 +794,13 @@ recording an explicit OID, never relying on Git's implicit default.
 An unavailable candidate disables votes but does not disable Reset.
 When Git records a unique result, the banner shows that exact commit
 instead of presenting another test candidate. Only View result and Reset
-remain. A bounded terminal log record must match the current bad/new ref;
-an unreadable or inconsistent result does not authorize a new vote.
+remain. If skipped revisions leave more than one possible first bad/new
+commit, the banner offers those exact commits for inspection without
+offering another vote. A bounded terminal log must match the current
+bad/new or skipped references. Git's exit code 2 counts as a recorded
+vote only when both the inconclusive result and the reviewed vote's ref
+are verified. An unreadable or inconsistent result does not authorize
+a new vote.
 Neither guard predicts checkout obstructions when Git advances the search.
 Cherry-pick and Revert Skip check the current HEAD reset, while Abort
 checks the native sequencer's original commit for a multi-commit replay.

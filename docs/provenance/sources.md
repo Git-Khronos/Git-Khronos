@@ -921,6 +921,9 @@ Used for:
 - Presenting Git's first matching commit. Owned Git fixtures verified that
   the terminal replay-log record matches the exact bad/new ref for both
   default terms and a custom term.
+- Explaining when skipped revisions prevent a unique result. Owned Git
+  fixtures verified the terminal list of possible commits and the vote
+  ref recorded by the command even when Git returns exit code 2.
 - Restoring the original branch and commit with Git's reset operation.
 
 No source code was copied.
