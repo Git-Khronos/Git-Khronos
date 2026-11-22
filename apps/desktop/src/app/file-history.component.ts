@@ -44,8 +44,8 @@ import { HistorySearchService } from './history-search.service';
         }
       </div>
       <footer>
-        <button #retryButton type="button" [disabled]="!owned() || history.fileBusy() || history.fileComplete()" (click)="history.nextFile()">{{ owned() && history.fileComplete() ? 'All available file history loaded' : history.fileError() ? 'Retry file history page' : 'Load older file history' }}</button>
-        <button type="button" [disabled]="!canChangeStart()" title="Read history again from the selected starting point" (click)="history.reloadFile(revision(), path())">Reload file history</button>
+        <button #retryButton type="button" [attr.aria-disabled]="canLoadMore() ? null : 'true'" (click)="loadMore()">{{ owned() && history.fileComplete() ? 'All available file history loaded' : owned() && history.fileError() ? 'Retry file history page' : 'Load older file history' }}</button>
+        <button type="button" [attr.aria-disabled]="canChangeStart() ? null : 'true'" title="Read history again from the selected starting point" (click)="reload()">Reload file history</button>
         @if (owned() && history.fileBusy()) {
           <button #cancelButton type="button" [attr.aria-disabled]="history.fileCancelling() ? 'true' : null"
             (click)="!history.fileCancelling() && history.cancelFile()">{{ history.fileCancelling() ? 'Stopping…' : history.fileCancellationRequested() ? 'Retry cancellation' : 'Cancel file history' }}</button>
@@ -91,11 +91,22 @@ export class FileHistoryComponent {
   readonly startingPoint = computed(() => this.history.fileStartingPoint(this.revision(), this.path()));
   readonly alternateStart = computed(() => this.startingPoint() !== null && this.startingPoint() !== this.revision());
   readonly canChangeStart = computed(() => this.owned() && (!this.history.fileBusy() || this.history.fileCancellationRequested()));
+  readonly canLoadMore = computed(() => this.owned() && !this.history.fileBusy() && !this.history.fileComplete());
   readonly draft = linkedSignal({ source: () => [this.revision(), this.path()], computation: (): string => '' });
   private readonly injector = inject(Injector);
   private readonly retryButton = viewChild.required<ElementRef<HTMLButtonElement>>('retryButton');
   private readonly cancelButton = viewChild<ElementRef<HTMLButtonElement>>('cancelButton');
   private wasBusy = false;
+
+  // Keep the active control focusable while a read is pending. A disabled
+  // native button would drop keyboard focus before the next page arrives.
+  loadMore(): void {
+    if (this.canLoadMore()) void this.history.nextFile();
+  }
+
+  reload(): void {
+    if (this.canChangeStart()) void this.history.reloadFile(this.revision(), this.path());
+  }
 
   applyStartingPoint(): void {
     if (this.canChangeStart()) void this.history.changeFileStartingPoint(this.revision(), this.path(), this.draft());
@@ -113,7 +124,7 @@ export class FileHistoryComponent {
       if (this.wasBusy && !busy && document.activeElement === this.cancelButton()?.nativeElement) {
         afterNextRender(() => {
           const button = this.retryButton().nativeElement;
-          if (document.activeElement === document.body && !button.disabled && button.getClientRects().length) button.focus();
+          if (document.activeElement === document.body && this.canLoadMore() && button.getClientRects().length) button.focus();
         }, { injector: this.injector });
       }
       this.wasBusy = busy;

@@ -499,6 +499,11 @@ owning revision and exact path determine whether the pane can resume existing
 results or a replacement pending cancellation. A replacement uses a fresh
 cursor; continuation resolves no alias again. Another file or checkout cannot
 reuse the alternate starting point.
+File History keeps keyboard focus on Reload and Load older while a native
+read makes those actions unavailable. Their activation checks the current
+file target and read state; Enter or Space during a pending page does not
+start another read. After the last page, the focused pagination control
+reports that all available history is loaded.
 Historical file and blame navigation also retain the originating viewer and
 read scope. A closed or replaced viewer or a newer navigation retires the
 older request before it can select a commit, open a different file, or surface

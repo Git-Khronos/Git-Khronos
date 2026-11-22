@@ -20,6 +20,7 @@ async function prepare(page: Page, file: boolean): Promise<void> {
         const name = file ? args.path : args.query.message;
         state.reads.push({ name, repoId: args.repoId, revision: args.revision });
         if (state.reads.length === 1) return new Promise(resolve => { state.finishInitial = resolve; started(); });
+        if (state.holdNext) return new Promise(resolve => { state.finishNext = resolve; });
         return Promise.resolve({ entries: [{ oid: 'a'.repeat(40), subject: name,
           authorName: 'Fixture', authorEmail: 'fixture@example.test', authoredAt: '2026-01-01T00:00:00Z',
           path: name, previousPath: null }], cursor: null, complete: true, scanned: 1 });
@@ -44,6 +45,42 @@ async function showHistory(page: Page, file: boolean) {
     app.diffInsightMode.set('history');
   });
   return page.getByRole('region', { name: 'File history', exact: true });
+}
+
+for (const action of ['Load older file history', 'Reload file history']) {
+  test(`file history keeps keyboard focus on ${action} during and after a read`, async ({ page }) => {
+    await prepare(page, true);
+    const pane = await showHistory(page, true);
+    await page.evaluate(async () => {
+      const state = (window as any).__historyLifecycle;
+      state.holdNext = true;
+      state.finishInitial({ entries: [], cursor: { fixture: true }, complete: false, scanned: 10 });
+      await state.initial;
+    });
+    const button = pane.getByRole('button', { name: action, exact: true });
+    await expect(button).toBeEnabled();
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await expect(pane.getByRole('status')).toHaveText('Reading file history…');
+    await expect(button).toBeFocused();
+    await expect(button).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
+    const reads = await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      state.finishNext({ entries: [], cursor: null, complete: true, scanned: 1 });
+      return state.reads.length;
+    });
+    expect(reads).toBe(2);
+    const settled = pane.getByRole('button', {
+      name: action === 'Load older file history' ? 'All available file history loaded' : action,
+      exact: true,
+    });
+    await expect(pane).toHaveAttribute('aria-busy', 'false');
+    await expect(settled).toBeFocused();
+    if (action === 'Load older file history') await expect(settled).toBeDisabled();
+    else await expect(settled).toBeEnabled();
+  });
 }
 
 test('file history keeps a pending alternate starting point only for the originating checkout and file', async ({ page }) => {
