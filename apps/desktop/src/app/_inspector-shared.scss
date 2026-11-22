@@ -1,0 +1,75 @@
+// Shared between the working directory and on-demand revision inspectors.
+@mixin overflow-action {
+  .inspector-overflow-action { width: 30px; min-width: 30px; height: 30px; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #8c8b9f; }
+  .inspector-overflow-action:hover, .inspector-overflow-action:focus-visible { border-color: #55536d; background: #403f58; color: white; }
+  .inspector-overflow-action.menu-open { border-color: #736ca0; background: #4a4668; color: #f0edff; box-shadow: 0 0 0 1px #8f84ed26; }
+}
+
+@mixin file-controls {
+  .working-tree-view-toolbar { height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 9px; border-bottom: 1px solid var(--inspector-divider); background: var(--inspector-bar); }
+  .file-filter { height: 25px; min-width: 54px; flex: 1; display: flex; align-items: center; gap: 5px; margin: 0 7px; padding: 0 5px; border: 1px solid var(--inspector-control-border); border-radius: 3px; background: var(--inspector-control); color: var(--inspector-muted); }
+  .file-filter:focus-within { border-color: var(--purple); color: var(--nav-text); }
+  .file-filter input { width: 100%; min-width: 0; height: 24px; border: 0; outline: 0; background: transparent; color: var(--inspector-text-strong); font-size: var(--font-size-body); }
+  .file-filter input::placeholder { color: var(--inspector-muted); }
+  .file-filter-count { min-width: 15px; padding: 1px 4px; border-radius: 7px; background: var(--inspector-control-hover); color: var(--nav-text); font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+  .file-filter button { width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center; padding: 0; border-radius: 2px; background: transparent; color: var(--inspector-muted); }
+  .file-filter button:hover { background: var(--inspector-control-hover); color: white; }
+  .file-sort-direction { height: 25px; display: inline-flex; align-items: center; gap: 2px; padding: 0 6px; border-radius: 3px; background: transparent; color: var(--inspector-muted); font-size: var(--font-size-body); }
+  .file-sort-direction b { color: var(--inspector-text); font-size: var(--font-size-body); font-weight: 500; }
+  .file-sort-direction:hover { background: var(--inspector-control-hover); color: white; }
+  .file-view-switch { display: inline-flex; overflow: hidden; border: 1px solid var(--inspector-control-border); border-radius: 3px; background: var(--inspector-control); }
+  .file-view-switch button { min-width: 58px; height: 25px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border-left: 1px solid var(--inspector-control-border); background: transparent; color: var(--inspector-muted); font-size: var(--font-size-body); }
+  .file-view-switch button:first-child { border-left: 0; }
+  .file-view-switch button:hover { color: var(--inspector-text-strong); }
+  .file-view-switch button:focus-visible { position: relative; z-index: 1; outline: 2px solid color-mix(in srgb, var(--purple) 78%, white); outline-offset: -2px; color: white; }
+  .file-view-switch button.active { background: var(--inspector-row-selected); color: white; box-shadow: inset 0 -2px var(--purple); }
+}
+
+@mixin file-section {
+  .file-section-title { height: 33px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; color: var(--nav-text); font-size: var(--font-size-body); font-weight: 700; text-transform: uppercase; }
+  .file-section-title button { padding: 4px 6px; background: transparent; color: var(--accent); font-size: var(--font-size-body); text-transform: none; }
+  .file-section-title > button:not(.file-section-toggle) { flex: 0 0 auto; white-space: nowrap; }
+  .file-section-title .file-section-toggle { min-width: 0; display: inline-flex; align-items: center; gap: 3px; margin-left: -6px; overflow: hidden; color: var(--nav-text); font-size: var(--font-size-body); font-weight: 500; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
+  .file-section-title .file-section-toggle:hover { color: white; }
+  .discard-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px; }
+  .discard-actions button { background: transparent; color: var(--accent); padding: 4px; font-size: 12px; }
+}
+
+@mixin file-directory {
+  .file-tree-directory { width: 100%; height: 27px; display: grid; grid-template-columns: 11px 13px minmax(0, 1fr); align-items: center; gap: 5px; border-top: 1px solid var(--inspector-divider); background: var(--inspector-row); color: var(--muted); font: var(--font-size-body) var(--font-mono); text-align: left; }
+  .file-tree-directory:hover { background: var(--inspector-row-hover); color: var(--inspector-text-strong); }
+  .file-tree-directory > gc-icon:nth-child(2) { color: #6c91b6; }
+  .file-tree-directory span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+@mixin clean-state {
+  .clean-state { padding: 12px; color: #9291a5; text-align: center; font-size: var(--font-size-body); }
+}
+
+@mixin line-counts($selector) {
+  #{$selector} { display: inline-flex; flex: none; align-items: center; gap: 5px; font: 12px "SFMono-Regular", Consolas, monospace; font-variant-numeric: tabular-nums; }
+  #{$selector} span { color: #62d7a6; }
+  #{$selector} i { color: #ef849b; font-style: normal; }
+  #{$selector} em { color: #8d8c9e; font-style: normal; }
+}
+
+@mixin compact-file-controls {
+  @container (max-width: 260px) {
+    .working-tree-view-toolbar { height: 64px; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 25px 25px; align-content: center; justify-content: stretch; gap: 4px; padding: 4px 7px; }
+    .working-tree-view-toolbar .file-sort-direction { grid-column: 1; grid-row: 1; }
+    .working-tree-view-toolbar .file-filter { grid-column: 2; grid-row: 1; margin: 0; }
+    .working-tree-view-toolbar .file-view-switch { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
+  }
+}
+
+@mixin virtual-file-spacer {
+  .virtual-file-spacer { width: 100%; pointer-events: none; }
+}
+
+@mixin details-loading {
+  .details-loading { display: grid; gap: 7px; padding: 14px; }
+  .details-loading span { height: 8px; border-radius: 3px; background: linear-gradient(90deg, #29283b, #3a3952, #29283b); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+  .details-loading span:nth-child(2) { width: 78%; }
+  .details-loading span:nth-child(3) { width: 58%; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+}

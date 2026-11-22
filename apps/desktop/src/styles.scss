@@ -995,32 +995,7 @@ button.grouped-reference-location:hover, button.grouped-reference-location:focus
 .interactive-remote-ref, .interactive-tag-ref { cursor: pointer; }
 .interactive-remote-ref:hover, .interactive-remote-ref:focus-visible,
 .interactive-tag-ref:hover, .interactive-tag-ref:focus-visible { filter: brightness(1.18); }
-.selected-stash-actions { display: flex; gap: 6px; margin: 10px 14px 14px; }
-.selected-stash-actions button { min-width: 0; display: grid; flex: 1; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 5px; padding: 7px 8px; border: 1px solid var(--inspector-control-border); border-radius: 3px; background: var(--inspector-control); color: var(--inspector-text); text-align: left; }
-.selected-stash-actions button > span { min-width: 0; display: grid; gap: 1px; }
-.selected-stash-actions button strong, .selected-stash-actions button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.selected-stash-actions button strong { font-size: 12px; font-weight: 700; }
-.selected-stash-actions button small { color: inherit; font-size: 11px; opacity: .78; }
-.selected-stash-actions .apply-stash { border-color: var(--signature-valid-border); background: var(--signature-valid-surface); color: var(--signature-valid-strong); }
-.selected-stash-actions .pop-stash { border-color: var(--signature-warning-border); background: var(--signature-warning-surface); color: var(--signature-warning-text); }
-.selected-stash-actions .apply-stash:hover { filter: brightness(1.12); }
-.selected-stash-actions .pop-stash:hover { filter: brightness(1.14); }
-@container (max-width: 300px) { .selected-stash-actions { flex-direction: column; } }
-.author-card { display: flex; align-items: center; gap: 10px; margin: 0; padding: 11px 13px 13px; border-top: 1px solid var(--border); }
-.author-card > span:last-child { display: flex; flex-direction: column; font-size: var(--font-size-body); }
-.author-card small { margin-top: 2px; color: var(--muted); }
-.author-details { min-width: 0; gap: 3px; }
-.author-details > strong { overflow: hidden; color: var(--inspector-text-strong); text-overflow: ellipsis; white-space: nowrap; }
-.author-meta { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; color: var(--muted); font-size: 12px; }
-.author-meta small { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.author-meta time { white-space: nowrap; }
-.author-meta time::before { margin-right: 7px; color: var(--inspector-divider); content: '·'; }
-.coauthor-card { padding-top: 11px; }
-.coauthor-card em { margin-left: 4px; color: var(--accent); font-size: 12px; font-style: normal; font-weight: 700; }
-.coauthor-card .coauthor-remove { display: grid; place-items: center; width: 22px; height: 22px; margin-left: auto; border-radius: 3px; color: var(--muted); }
-.coauthor-card .coauthor-remove:hover, .coauthor-card .coauthor-remove:focus-visible { background: var(--inspector-control-hover); color: var(--inspector-text-strong); }
 .avatar { display: grid; place-items: center; width: 18px; height: 18px; overflow: hidden; border-radius: 50%; background: var(--author-color, #4b4968); color: #fff; font-size: 9px; font-weight: 800; line-height: 1; text-align: center; text-shadow: 0 1px 2px #0008; white-space: nowrap; }
-.large-avatar { width: 34px; height: 34px; font-size: 12px; background: var(--author-color, #3e7766); color: #fff; text-shadow: 0 1px 2px #0008; box-shadow: inset 0 0 0 1px #ffffff2e; }
 .commit-panel dl { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 8px; margin: 13px 14px 16px; font-size: 12px; }
 .commit-panel dt { color: var(--muted); }
 .commit-panel dd { display: flex; gap: 5px; margin: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -1276,14 +1251,6 @@ button.status-sync:hover:not(:disabled) { background: var(--status-hover); color
 .publish-empty span { flex: 1; }
 .publish-empty button { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 3px; background: #4a3040; color: #f0b7ca; font-size: 12px; font-weight: 750; }
 .publish-empty button:hover { background: #5c394b; color: white; }
-
-/* Commit signature verification */
-.commit-signature-placeholder { box-sizing: border-box; min-height: 42px; display: flex; align-items: center; gap: 8px; margin: 11px 14px 0; padding: 8px 9px; border: 1px solid var(--signature-neutral-border); border-radius: 4px; background: var(--signature-neutral-surface); }
-.signature-placeholder-icon { width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%; background: var(--signature-neutral-icon); animation: signature-placeholder-pulse 1.2s ease-in-out infinite; }
-.signature-placeholder-copy { min-width: 0; display: grid; flex: 1; gap: 5px; }
-.signature-placeholder-copy i { width: 42%; height: 6px; border-radius: 999px; background: var(--signature-neutral-icon); animation: signature-placeholder-pulse 1.2s ease-in-out infinite; }
-.signature-placeholder-copy i:last-child { width: 72%; opacity: .72; animation-delay: 120ms; }
-@keyframes signature-placeholder-pulse { 50% { opacity: .48; } }
 
 /* Focus treatment for keyboard-operable workspace splitters lives here to keep
    the component stylesheet within its enforced bundle budget. */

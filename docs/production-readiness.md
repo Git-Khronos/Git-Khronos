@@ -4253,3 +4253,26 @@ selector passed against the unchanged installer.
 SHA-256: `5058f7e6619c3f18e0e87d4e4f8210e093fd96decfcd9053d8f237a079722623`.
 Focused receipt:
 `target/local-review/updater/jammy-builder/previous-branch-recheck.j6VNjRnG/reports.json`.
+
+### Load the revision inspector body on demand
+
+Commit, stash and comparison bodies now share one deferred component,
+while the shell keeps the title, close control, working-directory composer
+and native operation ownership. Delayed content follows the current
+selection and cannot steal working-directory focus or overwrite a draft.
+If the chunk fails, the user can close the panel or return to the working
+directory. The existing commit editor and reference strip still load
+independently.
+
+Compared with `cf2bed7`, the exact production build reduced initial
+output from 1,307,952 to 1,272,520 raw bytes (−35,432), including −3,465
+initial stylesheet bytes. Independent encodings fell by 6,915 gzip bytes
+and 5,310 Brotli bytes. The 50,528-byte inspector chunk is outside the
+initial asset list and loads on the first revision inspection. These are
+asset sizes, not startup or first-open latency measurements; the 900 kB
+warning and all budget settings remain unchanged.
+
+140 focused Chromium regressions passed before the final fallback focus
+and stylesheet cleanup. The final renderer passed 38 loading, focus,
+compact-layout, navigation and diff-bounds cases. Receipts:
+`target/local-review/revision-inspector.qGE6HtTG/`.

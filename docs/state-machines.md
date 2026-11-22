@@ -902,6 +902,14 @@ base tree and checking the resulting target tree ID. Only then may it create
 a new destination file outside the checkout and Git metadata. WIP is not an
 eligible comparison export; it has its own tracked-patch workflow.
 
+Commit, stash and comparison bodies share an on-demand revision inspector.
+The shell still owns the sticky title and close action, selection, file
+viewport, checkout scope and pending Git reviews. A slow renderer load
+displays the latest selection rather than restoring an old one, and
+returning to the working directory leaves the draft and focus with its
+owner. A failed inspector can be closed or left for the working directory.
+The reference strip and commit editor retain their own loading lifecycles.
+
 ### Toolbar split menus
 
 The primary toolbar buttons and their split toggles are always available.

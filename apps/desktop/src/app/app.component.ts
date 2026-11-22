@@ -26,7 +26,7 @@ import { ApplicationUpdatesDialogComponent, type ApplicationUpdatesRequest } fro
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import type { FileMediaSelection } from './file-media.component';
 import { DiffWorkspaceComponent } from './diff-workspace.component';
-import { CommitReferenceStripComponent } from './commit-reference-strip.component';
+import { RevisionInspectorComponent } from './revision-inspector.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest, type FeatureRebaseSelection, type WorkflowConflictTarget } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest, type WorkspaceTabsCloseRequest } from './workspace-center.component';
@@ -116,8 +116,7 @@ import { GitDocumentationService } from './git-documentation.service';
 import { CommitPolicyFieldsComponent } from './commit-policy-fields.component';
 import { CoauthorPickerComponent } from './coauthor-picker.component';
 import { CommitTemplateBannerComponent } from './commit-template-banner.component';
-import { CommitSignatureComponent } from './commit-signature.component';
-import { CommitEditFormComponent, type CommitEditFieldChange, type CommitEditFormView } from './commit-edit-form.component';
+import type { CommitEditFieldChange, CommitEditFormView } from './commit-edit-form.component';
 import { InteractiveRebaseEditorComponent, type InteractiveRebaseState, type RebaseAction, type RebaseStepView } from './interactive-rebase-editor.component';
 import { HistoryReviewDialogComponent, type PendingHistoryAction } from './history-review-dialog.component';
 import { calculateVirtualWindow, type VirtualWindow } from './virtual-list';
@@ -365,7 +364,7 @@ interface ReferencePresentation {
   groups: ReferenceGroup[];
 }
 
-interface FileChangeStats {
+export interface FileChangeStats {
   additions: number;
   deletions: number;
   uncountedFiles: number;
@@ -714,8 +713,8 @@ function stableAuthorColor(identity: string): string {
 
 @Component({
   selector: 'gc-root',
-  imports: [ToolbarOptionsComponent, DialogFallbackFocusDirective, WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
-    GraphActionMenuComponent, SidebarItemActionsComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+  imports: [ToolbarOptionsComponent, DialogFallbackFocusDirective, WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, RevisionInspectorComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
+    GraphActionMenuComponent, SidebarItemActionsComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -740,7 +739,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitSearch = viewChild<ElementRef<HTMLInputElement>>('commitSearch');
   private readonly commitSearchToggle = viewChild<ElementRef<HTMLButtonElement>>('commitSearchToggle');
   private readonly historySearchToggle = viewChild<ElementRef<HTMLButtonElement>>('historySearchToggle');
-  private readonly commitReferenceStrip = viewChild<CommitReferenceStripComponent>('commitReferenceStrip');
+  private readonly revisionInspector = viewChild<RevisionInspectorComponent>('revisionInspector');
+  private readonly commitReferenceStrip = () => this.revisionInspector()?.referenceStrip();
   private readonly preferencesToggle = viewChild<ElementRef<HTMLButtonElement>>('preferencesToggle');
   private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
   private readonly documentationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('documentationLoaderClose');
@@ -766,9 +766,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitPanelClose = viewChild<ElementRef<HTMLButtonElement>>('commitPanelClose');
   private readonly authorFilterSearch = viewChild<ElementRef<HTMLInputElement>>('authorFilterSearch');
   private readonly commitSummary = viewChild<ElementRef<HTMLInputElement>>('commitSummary');
-  private readonly commitEditForm = viewChild<CommitEditFormComponent>('commitEditForm');
-  private readonly commitEditFallback = viewChild<ElementRef<HTMLButtonElement>>('commitEditFallback');
-  private readonly commitEditTrigger = viewChild<ElementRef<HTMLButtonElement>>('commitEditTrigger');
+  private readonly commitEditForm = () => this.revisionInspector()?.editForm();
+  private readonly commitEditFallback = () => this.revisionInspector()?.editFallback();
+  private readonly commitEditTrigger = () => this.revisionInspector()?.editTrigger();
   private commitEditFocusOrigin: HTMLElement | null = null;
   private commitEditGeneration = 0;
   private readonly commitEditRenderFocus = afterRenderEffect(() => {
@@ -9823,6 +9823,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.setPanelVisibility('commit-panel', true, focusInspector);
   }
 
+  protected returnFromRevisionInspectorFailure(): void {
+    this.openWorkingDirectory(false);
+    afterNextRender(() => {
+      if (this.changesOpen() && this.canRestoreFocusFrom(null)) {
+        this.commitPanelClose()?.nativeElement.focus({ preventScroll: true });
+      }
+    }, { injector: this.injector });
+  }
+
   protected selectWip(): void {
     if (this.commitMessageEditing()) this.cancelCommitMessageEdit();
     this.clearPanelFileSelection();
@@ -10192,6 +10201,68 @@ export class AppComponent implements OnInit, OnDestroy {
     scheduleDetailReferenceStackClose: this.scheduleDetailReferenceStackClose.bind(this),
     scheduleTagPreview: this.scheduleTagPreview.bind(this),
     tagPreview: () => this.tagPreview(),
+  };
+
+  /** Revision presentation can load separately; the shell still owns selection and reviews. */
+  readonly revisionInspectorView = {
+    applyStashFromMenu: this.applyStashFromMenu.bind(this),
+    authorColor: this.authorColor.bind(this),
+    beginCommitMessageEdit: this.beginCommitMessageEdit.bind(this),
+    canEditSelectedCommitMessage: this.canEditSelectedCommitMessage.bind(this),
+    cancelReviewedCommitEdit: this.cancelReviewedCommitEdit.bind(this),
+    changedFilesOpen: this.changedFilesOpen,
+    commitEditFormView: this.commitEditFormView,
+    commitEditReview: this.commitEditReview,
+    commitMessageEditing: this.commitMessageEditing,
+    commitReferenceStripView: this.commitReferenceStripView,
+    compareSelectedCommitWithWorkingTree: this.compareSelectedCommitWithWorkingTree.bind(this),
+    comparisonFileStats: this.comparisonFileStats,
+    contextMenu: this.contextMenu,
+    displayedCommitFiles: this.displayedCommitFiles,
+    displayedComparisonFiles: this.displayedComparisonFiles,
+    fileDirectory: this.fileDirectory.bind(this),
+    fileFilter: this.fileFilter,
+    fileFilterQuery: this.fileFilterQuery,
+    fileName: this.fileName.bind(this),
+    git: { busy: this.git.busy, browserPreview: this.git.browserPreview, commitComparison: this.git.commitComparison,
+      commitDetails: this.git.commitDetails, choosingComparisonPatchDestination: this.git.choosingComparisonPatchDestination,
+      detailsBusy: this.git.detailsBusy, inspectedStashReference: this.git.inspectedStashReference,
+      saveComparisonPatch: this.git.saveComparisonPatch.bind(this.git) },
+    handleCommitFileActionKeydown: this.handleCommitFileActionKeydown.bind(this),
+    handleFileViewModeKeydown: this.handleFileViewModeKeydown.bind(this),
+    initials: this.initials.bind(this),
+    isCommitDirectoryCollapsed: this.isCommitDirectoryCollapsed.bind(this),
+    isPanelFileSelected: this.isPanelFileSelected.bind(this),
+    jumpToCommit: this.jumpToCommit.bind(this),
+    openCommitFileMenu: this.openCommitFileMenu.bind(this),
+    openCommitMenu: this.openCommitMenu.bind(this),
+    relatedCommitSubject: this.relatedCommitSubject.bind(this),
+    removeReviewedCommitCoAuthor: this.removeReviewedCommitCoAuthor.bind(this),
+    removeSelectedCommitCoAuthor: this.removeSelectedCommitCoAuthor.bind(this),
+    requestApplySelectedStashFile: this.requestApplySelectedStashFile.bind(this),
+    requestSelectedCommitCherryPick: this.requestSelectedCommitCherryPick.bind(this),
+    revisionFileWindows: this.revisionFileWindows,
+    selectPanelFile: this.selectPanelFile.bind(this),
+    selectedCommitBody: this.selectedCommitBody,
+    selectedCommitChildren: this.selectedCommitChildren,
+    selectedCommitCoAuthors: this.selectedCommitCoAuthors,
+    selectedCommitData: this.selectedCommitData,
+    selectedCommitFileStats: this.selectedCommitFileStats,
+    selectedCommitRows: this.selectedCommitRows,
+    selectedStash: this.selectedStash,
+    selectedStashFile: this.selectedStashFile,
+    selectionIsContiguous: this.selectionIsContiguous,
+    setFileFilter: (value: string) => this.fileFilter.set(value),
+    setWorkingTreeViewMode: this.setWorkingTreeViewMode.bind(this),
+    shortOid: this.shortOid.bind(this),
+    submitCommitMessageEdit: this.submitCommitMessageEdit.bind(this),
+    toggleChangedFiles: () => this.changedFilesOpen.update(open => !open),
+    toggleCommitDirectory: this.toggleCommitDirectory.bind(this),
+    toggleWorkingTreeSort: this.toggleWorkingTreeSort.bind(this),
+    updateCommitEditField: this.updateCommitEditField.bind(this),
+    updateCommitFilesViewport: this.updateCommitFilesViewport.bind(this),
+    workingTreeSortAscending: this.workingTreeSortAscending,
+    workingTreeViewMode: this.workingTreeViewMode,
   };
 
   /** Renderer model for the on-demand diff. Repository and viewport state stay in the shell. */
@@ -15988,3 +16059,5 @@ export type GraphActionMenuContext = NonNullable<ReturnType<AppComponent['contex
 export type MainMenuView = ReturnType<AppComponent['mainMenuView']>;
 
 export type CommandPaletteActionSources = AppComponent['commandPaletteActionSources'];
+
+export type RevisionInspectorView = AppComponent['revisionInspectorView'];

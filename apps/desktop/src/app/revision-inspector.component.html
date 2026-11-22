@@ -1,0 +1,227 @@
+@let view = model();
+@let git = view.git;
+
+<ng-template #revisionChangedFiles let-source let-revision="revision" let-total="total" let-truncated="truncated" let-partialTotals="partialTotals" let-stats="stats">
+  @let isComparison = source === 'comparison';
+  @let emptyMessage = isComparison ? 'These commits have identical file trees' : 'This commit has no file changes';
+  <section class="commit-file-section" [class.comparison-files]="isComparison">
+    <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="view.changedFilesOpen()" (click)="view.toggleChangedFiles()"><gc-icon [name]="view.changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ total }}{{ truncated ? '+' : '' }})</button><ng-container [ngTemplateOutlet]="recap()" [ngTemplateOutletContext]="{ $implicit: stats }" /></div>
+    @if (view.changedFilesOpen()) {
+      @let files = isComparison ? view.displayedComparisonFiles() : view.displayedCommitFiles();
+      <div class="working-tree-view-toolbar commit-file-view-toolbar">
+        <button class="file-sort-direction" type="button" title="Sort files {{ view.workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ view.workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="view.toggleWorkingTreeSort()"><span>A</span><b>{{ view.workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
+        <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="view.fileFilter()" (gcTextValueChange)="view.setFileFilter($event)" (keydown.escape)="$event.stopPropagation(); view.setFileFilter('')" />@if (view.fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ files.length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="view.setFileFilter('')"><gc-icon name="x" [size]="9" /></button> }</label>
+        <div class="file-view-switch" role="group" aria-label="Changed files layout" (keydown)="view.handleFileViewModeKeydown($event)"><button type="button" data-file-view-mode="path" [class.active]="view.workingTreeViewMode() === 'path'" [attr.aria-pressed]="view.workingTreeViewMode() === 'path'" [attr.tabindex]="view.workingTreeViewMode() === 'path' ? 0 : -1" (click)="view.setWorkingTreeViewMode('path')"><gc-icon name="file" [size]="11" />Path</button><button type="button" data-file-view-mode="tree" [class.active]="view.workingTreeViewMode() === 'tree'" [attr.aria-pressed]="view.workingTreeViewMode() === 'tree'" [attr.tabindex]="view.workingTreeViewMode() === 'tree' ? 0 : -1" (click)="view.setWorkingTreeViewMode('tree')"><gc-icon name="folder-git" [size]="11" />Tree</button></div>
+      </div>
+      @if (!isComparison) {
+        @if (view.selectedStash(); as stash) {
+          @if (revision === stash.oid && git.inspectedStashReference()) {
+            <div class="discard-actions">
+              <button type="button" [disabled]="!view.selectedStashFile() || git.busy()" title="Select one changed file to apply its saved changes" (click)="view.requestApplySelectedStashFile($event)">Apply selected stashed file…</button>
+            </div>
+          }
+        }
+      }
+      @if (partialTotals) { <p class="commit-files-limit">Some files could not be counted. The file list is not shortened by the line-count limit.</p> }
+      @if (truncated) { <div class="commit-files-limit">Showing the first {{ total }} changed files to keep this commit responsive.</div> }
+      <div class="commit-file-list" (scroll)="view.updateCommitFilesViewport($event)">
+        @let tree = view.workingTreeViewMode() === 'tree';
+        @let window = view.revisionFileWindows[isComparison ? 'comparison' : 'commit']();
+        <div class="virtual-file-spacer" [style.height.px]="window.topPadding" aria-hidden="true"></div>
+        @for (row of window.items; track row.key) {
+          @if (row.kind === 'directory') {
+            <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!view.isCommitDirectoryCollapsed(row.path)" (click)="view.toggleCommitDirectory(row.path)"><gc-icon [name]="view.isCommitDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
+          } @else if (row.file; as file) {
+            @let selected = view.isPanelFileSelected(file.path, source);
+            <button class="commit-file" [class.tree-commit-file]="tree" type="button" [style.padding-left.px]="tree ? 10 + row.depth * 12 : null"
+              [class.selected]="selected" [attr.aria-current]="selected ? 'true' : null"
+              [attr.aria-label]="'Open diff for ' + (file.previousPath ? file.previousPath + ' renamed to ' + file.path : file.path)"
+              (click)="view.selectPanelFile($event, file, source, files)"
+              (keydown)="view.handleCommitFileActionKeydown($event, file, revision, source)"
+              (contextmenu)="view.openCommitFileMenu($event, file, revision, source)"
+              title="Open diff for {{ file.previousPath ? file.previousPath + ' → ' + file.path : file.path }}">
+              <span class="change-kind" [attr.data-status]="file.status.charAt(0)">{{ file.status.charAt(0) }}</span>
+              <span class="commit-file-path">
+                @if (tree) {
+                  @if (file.previousPath) { <small>{{ file.previousPath }} →</small> }{{ row.label }}
+                } @else {
+                  @if (file.previousPath) { <small class="previous-path">{{ file.previousPath }} →</small> }
+                  <span class="current-path"><strong>{{ view.fileName(file.path) }}</strong><small>{{ view.fileDirectory(file.path) }}</small></span>
+                }
+              </span>
+              <span class="file-line-stats">
+                @if (file.additions !== null) { <span>+{{ file.additions }}</span><i>−{{ file.deletions }}</i> }
+                @else { <em>{{ source === 'comparison' ? 'not counted' : 'binary' }}</em> }
+                <gc-icon class="commit-file-open" name="chevron-right" [size]="10" />
+              </span>
+            </button>
+          }
+        } @empty { <div class="clean-state">{{ view.fileFilterQuery() ? 'No matching changed files' : emptyMessage }}</div> }
+        <div class="virtual-file-spacer" [style.height.px]="window.bottomPadding" aria-hidden="true"></div>
+      </div>
+    }
+  </section>
+</ng-template>
+
+@if (git.commitComparison() || view.selectedCommitRows().length > 1) {
+  <section class="comparison-summary" aria-label="Selected commit range">
+    <header>
+      <strong>{{ git.commitComparison()?.workingTree ? 'Viewing working directory changes since this commit' : git.commitComparison()?.comparisonMode === 'mergeBase' ? 'Merge base → target comparison' : 'Direct-tip comparison' }}</strong>
+      @if (git.commitComparison(); as comparison) {
+        @if (!comparison.workingTree) {
+          <button class="comparison-patch-action" type="button"
+            title="Save all committed changes between the resolved revisions, regardless of file filters"
+            [disabled]="!comparison.files.length || git.browserPreview() || git.busy() || git.choosingComparisonPatchDestination()"
+            (click)="git.saveComparisonPatch()">Save comparison patch…</button>
+        }
+      }
+    </header>
+    @if (git.commitComparison()?.workingTree) {
+      @if (view.selectedCommitRows()[0]; as row) {
+        <article class="comparison-commit-card">
+          <span class="comparison-avatar" [style.--author-color]="view.authorColor(row.commit.authorName, row.commit.authorEmail)">{{ view.initials(row.commit.authorName) }}</span>
+          <div><strong>{{ row.commit.subject || '(no commit message)' }}</strong><small>{{ row.commit.authoredAt | date: 'short' }} · by {{ row.commit.authorName }}</small></div>
+          <code>{{ view.shortOid(row.commit.oid) }}</code><b>FROM</b>
+        </article>
+      }
+      <article class="comparison-commit-card working-tree-target">
+        <span class="comparison-avatar"><gc-icon name="file" [size]="12" /></span>
+        <div><strong>Working directory</strong><small>{{ workingChanges() }} current {{ workingChanges() === 1 ? 'change' : 'changes' }}</small></div>
+        <code>WIP</code><b>TO</b>
+      </article>
+    } @else if (view.selectedCommitRows().length > 1) {
+      @for (row of [view.selectedCommitRows().at(-1)!, view.selectedCommitRows()[0]]; track row.commit.oid; let index = $index) {
+        <article class="comparison-commit-card">
+          <span class="comparison-avatar" [style.--author-color]="view.authorColor(row.commit.authorName, row.commit.authorEmail)">{{ view.initials(row.commit.authorName) }}</span>
+          <div><strong>{{ row.commit.subject || '(no commit message)' }}</strong><small>{{ row.commit.authoredAt | date: 'short' }} · by {{ row.commit.authorName }}</small></div>
+          <code>{{ view.shortOid(row.commit.oid) }}</code><b>{{ index === 0 ? 'FROM' : 'TO' }}</b>
+        </article>
+      }
+    } @else if (git.commitComparison(); as comparison) {
+      @if (comparison.inputRevisions; as source) {
+        <p class="comparison-endpoint">
+          {{ comparison.comparisonMode === 'mergeBase' ? 'Merge base of ' + source.base + ' and ' + source.target : source.base }}
+          <code [title]="comparison.baseOid">{{ view.shortOid(comparison.baseOid) }}</code>
+          <span aria-hidden="true"> → </span><span class="sr-only"> to </span>{{ source.target }} <code [title]="comparison.targetOid">{{ view.shortOid(comparison.targetOid) }}</code>
+        </p>
+      } @else {
+        <p><code>{{ view.shortOid(comparison.baseOid) }}</code> → <code>{{ view.shortOid(comparison.targetOid) }}</code></p>
+      }
+    }
+  </section>
+  @if (!git.commitComparison() && !view.selectionIsContiguous()) {
+    <div class="comparison-unavailable"><span><gc-icon name="git-commit" [size]="18" /></span><strong>Combined diff unavailable</strong><p>Select consecutive commits with Shift, or select exactly two commits with Ctrl/Cmd.</p></div>
+  } @else if (git.commitComparison(); as comparison) {
+    <ng-container [ngTemplateOutlet]="revisionChangedFiles" [ngTemplateOutletContext]="{
+      $implicit: 'comparison', revision: comparison.targetOid, total: comparison.files.length, truncated: false,
+      partialTotals: comparison.lineTotalsPartial, stats: view.comparisonFileStats(),
+    }" />
+    @if (git.detailsBusy()) {
+      <div class="details-loading"><span></span><span></span><span></span></div>
+    }
+  } @else if (git.detailsBusy()) {
+    <div class="details-loading"><span></span><span></span><span></span></div>
+  }
+} @else if (view.selectedCommitData(); as commit) {
+  @if (!view.selectedStash() && !view.commitMessageEditing()) {
+    <nav class="commit-quick-actions" aria-label="Selected commit actions">
+      <button type="button" aria-label="Compare selected commit with working directory" title="Compare selected commit with working directory" [disabled]="git.busy()" (click)="view.compareSelectedCommitWithWorkingTree(commit.oid)"><gc-icon name="file" [size]="12" /><span aria-hidden="true">Compare</span></button>
+      <button type="button" title="Cherry-pick selected commit" [disabled]="git.busy()" (click)="view.requestSelectedCommitCherryPick(commit, $event)"><gc-icon name="cherry-pick" [size]="12" /><span>Cherry-pick</span></button>
+      <button class="inspector-overflow-action" [class.menu-open]="view.contextMenu()?.kind === 'commit' && view.contextMenu()?.oid === commit.oid" type="button" title="More commit actions" aria-label="More commit actions" aria-haspopup="menu" [attr.aria-expanded]="view.contextMenu()?.kind === 'commit' && view.contextMenu()?.oid === commit.oid" (click)="view.openCommitMenu($event, commit, true)"><gc-icon name="more" [size]="15" /></button>
+    </nav>
+  }
+  @if (!view.selectedStash() && commit.decorations.length) {
+    @defer (on immediate) {
+      <gc-commit-reference-strip #commitReferenceStrip [selection]="commit" [model]="view.commitReferenceStripView" />
+    } @loading (after 120ms) {
+      <p class="commit-reference-strip-state" role="status">Loading commit references…</p>
+    } @error {
+      <p class="commit-reference-strip-state" role="alert">Commit references could not load. Restart Git Khronos to try again; the commit remains available.</p>
+    }
+  }
+  @if (view.selectedStash(); as stash) {
+    <div class="selected-stash-actions">
+      <button class="apply-stash" type="button" title="Apply the stash and keep it saved" [disabled]="git.busy()" (click)="view.applyStashFromMenu(false)">
+        <gc-icon name="archive-restore" [size]="13" />
+        <span><strong>Apply Stash</strong><small>Keep saved</small></span>
+      </button>
+      <button class="pop-stash" type="button" title="Apply the stash and remove it after success" [disabled]="git.busy()" (click)="view.applyStashFromMenu(true)">
+        <gc-icon name="archive" [size]="13" />
+        <span><strong>Pop Stash</strong><small>Remove after applying</small></span>
+      </button>
+    </div>
+  }
+  <section class="commit-overview" aria-label="Commit summary">
+  @if (view.commitEditReview(); as editReview) {
+    @for (request of [editReview]; track request) {
+      @defer (on immediate) {
+        <gc-commit-edit-form #commitEditForm [model]="view.commitEditFormView"
+          (changed)="view.updateCommitEditField(request, $event)" (removed)="view.removeReviewedCommitCoAuthor(request, $event)"
+          (saved)="view.submitCommitMessageEdit(request)" (dismissed)="view.cancelReviewedCommitEdit(request)" />
+      } @placeholder {
+        <div class="commit-edit-fallback">
+          <p role="status">Opening commit editor…</p>
+          <button #commitEditFallback type="button" (click)="view.cancelReviewedCommitEdit(request)">Cancel</button>
+        </div>
+      } @error {
+        <div class="commit-edit-fallback">
+          <p role="alert">The commit editor couldn’t load. Cancel now and restart the app to try again.</p>
+          <button #commitEditFallback type="button" (click)="view.cancelReviewedCommitEdit(request)">Cancel</button>
+        </div>
+      }
+    }
+  } @else if (view.canEditSelectedCommitMessage()) {
+    <button #commitEditTrigger class="editable-commit-message" type="button" title="Edit the author, message and co-authors of this commit" (click)="view.beginCommitMessageEdit()">
+      <span><gc-icon name="edit" [size]="12" /> Edit commit</span>
+      <h2>{{ commit.subject || '(no commit message)' }}</h2>
+      @if (view.selectedCommitBody()) { <p class="commit-body">{{ view.selectedCommitBody() }}</p> }
+    </button>
+  } @else {
+    <h2>{{ commit.subject || '(no commit message)' }}</h2>
+    @if (view.selectedCommitBody()) { <p class="commit-body">{{ view.selectedCommitBody() }}</p> }
+  }
+  <div class="author-card commit-author-card">
+    <span class="avatar large-avatar" [style.--author-color]="view.authorColor(commit.authorName, commit.authorEmail)">{{ view.initials(commit.authorName) }}</span>
+    <span class="author-details">
+      <strong>{{ commit.authorName }}</strong>
+      <span class="author-meta"><small>{{ commit.authorEmail }}</small><time [attr.datetime]="commit.authoredAt">{{ commit.authoredAt | date: 'MMM d, y, HH:mm' }}</time></span>
+    </span>
+  </div>
+  @for (author of view.selectedCommitCoAuthors(); track author.email) {
+    <div class="author-card coauthor-card">
+      <span class="avatar large-avatar" [style.--author-color]="view.authorColor(author.name, author.email)">{{ view.initials(author.name) }}</span>
+      <span><strong>{{ author.name }} <em>Co-author</em></strong><small>{{ author.email }}</small></span>
+      @if (!view.commitMessageEditing() && view.canEditSelectedCommitMessage()) {
+        <button class="coauthor-remove" type="button" title="Remove this co-author (you can review before saving)" aria-label="Remove co-author {{ author.name }} from this commit" (click)="view.removeSelectedCommitCoAuthor(author.email)"><gc-icon name="x" [size]="11" /></button>
+      }
+    </div>
+  }
+  </section>
+  @if (!view.selectedStash() && git.commitDetails(); as details) {
+    @defer (on immediate) {
+      <gc-commit-signature [signature]="details.signature" />
+    } @placeholder {
+      <div class="commit-signature-placeholder" role="status" aria-label="Loading signature verification">
+        <span class="signature-placeholder-icon" aria-hidden="true"></span>
+        <span class="signature-placeholder-copy" aria-hidden="true"><i></i><i></i></span>
+      </div>
+    } @error {
+      <p class="inspector-empty" role="alert">Signature view unavailable. Preserve drafts before restarting.</p>
+    }
+  }
+  <dl class="commit-relations">
+    <dt>Parents</dt><dd class="related-commits">@for (parent of commit.parents; track $index) { @let parentSubject = view.relatedCommitSubject(parent); <button class="related-commit-link" type="button" title="{{ parentSubject || parent }}" aria-label="Jump to parent commit {{ parent }}{{ parentSubject ? ': ' + parentSubject : '' }}" (click)="view.jumpToCommit(parent)"><gc-icon name="git-commit" [size]="9" /><code>{{ view.shortOid(parent) }}</code>@if (parentSubject) { <span>{{ parentSubject }}</span> }</button> } @empty { <span class="root-commit-label">Root commit</span> }</dd>
+    @if (view.selectedCommitChildren().length) {
+      <dt>Children</dt><dd class="related-commits">@for (child of view.selectedCommitChildren(); track child.oid) { <button class="related-commit-link" type="button" title="{{ child.subject || child.oid }}" aria-label="Jump to child commit {{ child.oid }}{{ child.subject ? ': ' + child.subject : '' }}" (click)="view.jumpToCommit(child.oid)"><gc-icon name="git-commit" [size]="9" /><code>{{ view.shortOid(child.oid) }}</code>@if (child.subject) { <span>{{ child.subject }}</span> }</button> }</dd>
+    }
+  </dl>
+  @if (git.commitDetails(); as details) {
+    <ng-container [ngTemplateOutlet]="revisionChangedFiles" [ngTemplateOutletContext]="{
+      $implicit: 'commit', revision: details.oid, total: details.files.length, truncated: details.filesTruncated,
+      partialTotals: false, stats: view.selectedCommitFileStats(),
+    }" />
+  }
+  @if (git.detailsBusy()) {
+    <div class="details-loading"><span></span><span></span><span></span></div>
+  }
+}
