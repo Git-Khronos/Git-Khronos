@@ -853,7 +853,10 @@ instead of presenting another test candidate. Only View result and Reset
 remain. If skipped revisions leave more than one possible first bad/new
 commit, the banner offers those exact commits for inspection without
 offering another vote. A bounded terminal log must match the current
-bad/new or skipped references. Git's exit code 2 counts as a recorded
+bad/new or skipped references and the session's configured new term.
+The reader accepts both older bare terms and the single-quoted terms
+observed in Git 2.56; apostrophes that are part of a custom term remain
+literal. Git's exit code 2 counts as a recorded
 vote only when both the inconclusive result and the reviewed vote's ref
 are verified. An unreadable or inconsistent result does not authorize
 a new vote.

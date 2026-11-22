@@ -6671,14 +6671,21 @@ pub enum BisectResult {
     },
 }
 
-fn parse_bisect_result_record(line: &[u8]) -> Option<(&str, &str)> {
+fn parse_bisect_result_record<'a>(line: &'a [u8], expected_term: &str) -> Option<&'a str> {
     let delimiter = b" commit: [";
     let split = line.windows(delimiter.len()).position(|part| part == delimiter)?;
     let after = &line[split + delimiter.len()..];
     let end = after.iter().position(|byte| *byte == b']')?;
     let term = std::str::from_utf8(&line[..split]).ok()?;
     let oid = std::str::from_utf8(&after[..end]).ok()?;
-    (!term.is_empty() && validate_commit_oid(oid).is_ok()).then_some((term, oid))
+    // Git 2.56 quotes result terms. Match the actual session term, not a
+    // stripped guess: a custom term may itself contain apostrophes.
+    let matches = term == expected_term
+        || term
+            .strip_prefix('\'')
+            .and_then(|rest| rest.strip_suffix('\''))
+            == Some(expected_term);
+    (matches && validate_commit_oid(oid).is_ok()).then_some(oid)
 }
 
 fn bisect_ref_matches(path: &Path, name: &str, oid: &str) -> Result<bool, AppError> {
@@ -6707,14 +6714,18 @@ fn read_bisect_result(path: &Path) -> Result<Option<BisectResult>, AppError> {
     // result elsewhere in the replayable log does not end the current round.
     let mut lines = log.rsplit(|byte| *byte == b'\n');
     let last = lines.next().ok_or_else(inconsistent)?;
+    let active_term = || -> Result<String, AppError> {
+        Ok(read_bisect_terms(path, directory)?.map_or_else(|| "bad".to_owned(), |terms| terms.new))
+    };
     if let Some(record) = last.strip_prefix(b"# first ") {
-        let (term, oid) = parse_bisect_result_record(record).ok_or_else(inconsistent)?;
-        if !bisect_ref_matches(path, term, oid)? {
+        let term = active_term()?;
+        let oid = parse_bisect_result_record(record, &term).ok_or_else(inconsistent)?;
+        if !bisect_ref_matches(path, &term, oid)? {
             return Err(inconsistent());
         }
         return Ok(Some(BisectResult::Found {
             oid: oid.to_owned(),
-            term: term.to_owned(),
+            term,
         }));
     }
 
@@ -6723,7 +6734,8 @@ fn read_bisect_result(path: &Path) -> Result<Option<BisectResult>, AppError> {
     let Some(record) = last.strip_prefix(prefix) else {
         return if last == header { Err(inconsistent()) } else { Ok(None) };
     };
-    let (term, last_oid) = parse_bisect_result_record(record).ok_or_else(inconsistent)?;
+    let term = active_term()?;
+    let last_oid = parse_bisect_result_record(record, &term).ok_or_else(inconsistent)?;
     let mut seen = HashSet::from([last_oid]);
     let mut possible_oids = vec![last_oid.to_owned()];
     loop {
@@ -6732,8 +6744,8 @@ fn read_bisect_result(path: &Path) -> Result<Option<BisectResult>, AppError> {
             break;
         }
         let record = line.strip_prefix(prefix).ok_or_else(inconsistent)?;
-        let (current_term, oid) = parse_bisect_result_record(record).ok_or_else(inconsistent)?;
-        if current_term != term || !seen.insert(oid) {
+        let oid = parse_bisect_result_record(record, &term).ok_or_else(inconsistent)?;
+        if !seen.insert(oid) {
             return Err(inconsistent());
         }
         possible_oids.push(oid.to_owned());
@@ -6759,7 +6771,7 @@ fn read_bisect_result(path: &Path) -> Result<Option<BisectResult>, AppError> {
     possible_oids.reverse();
     Ok(Some(BisectResult::Ambiguous {
         possible_oids,
-        term: term.to_owned(),
+        term,
     }))
 }
 
@@ -18942,6 +18954,7 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         for (opts, term) in [
             (&[][..], "bad"),
             (&["--no-checkout", "--term-old=fast", "--term-new=slow"][..], "slow"),
+            (&["--no-checkout", "--term-old=fast", "--term-new='slow'"][..], "'slow'"),
         ] {
             let repo = TestRepository::new();
             let path = &repo.path;
@@ -18965,6 +18978,12 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             let vote = BisectCandidate { oid: bad, no_checkout: !opts.is_empty(), first_parent: false, terms: None };
             assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectResultAlreadyFound");
             assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
+
+            repo.git(&["update-ref", "refs/bisect/foreign", vote.oid.as_str()]);
+            let foreign = format!("# first foreign commit: [{}] Wrong result term\n", vote.oid);
+            fs::write(path.join(".git/BISECT_LOG"), [log.as_slice(), foreign.as_bytes()].concat()).unwrap();
+            assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectResultUnverified");
+            repo.git(&["update-ref", "-d", "refs/bisect/foreign"]);
 
             let forged = format!("# first {term} commit: [{good}] Mismatched log record\n");
             fs::write(path.join(".git/BISECT_LOG"), [log.as_slice(), forged.as_bytes()].concat()).unwrap();
