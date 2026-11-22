@@ -39,6 +39,67 @@ async function prepare(page: Page, ui = false): Promise<void> {
   }, ui);
 }
 
+for (const operation of ['merge', 'rebase', 'cherryPick', 'revert', 'mailPatch', 'none'] as const) {
+  test(`show conflicted files is read-only during ${operation}`, async ({ page }) => {
+    await prepare(page, true);
+    await page.evaluate(operation => {
+      const { app, git } = (window as any).__conflictLifecycle;
+      git.repositories.update((repos: any[]) => repos.map(repo => repo.id !== git.activeRepositoryId() ? repo : {
+        ...repo, status: { ...repo.status, operations: operation === 'none' ? [] : [{ kind: operation, editStopped: false, split: null, noCommit: false }] },
+      }));
+      app.setPanelVisibility('commit-panel', false);
+      app.fileFilter.set('hidden-by-a-previous-filter');
+      app.conflictedFilesOpen.set(false);
+    }, operation);
+    const nav = page.getByRole('group', { name: 'Conflict navigation' });
+    await expect(nav.getByRole('status')).toHaveText('2 files need conflict resolution');
+    const show = nav.getByRole('button', { name: 'Show conflicted files' });
+    await show.focus();
+    await show.press('Enter');
+    const inspector = page.getByRole('complementary', { name: 'Working directory inspector' });
+    const heading = inspector.getByRole('button', { name: 'Conflicted Files (2)' });
+    await expect(heading).toBeFocused();
+    await expect(heading).toHaveAttribute('aria-expanded', 'true');
+    await expect(inspector.getByRole('button', { name: 'original.txt', exact: true })).toBeVisible();
+    await expect(inspector.getByRole('button', { name: 'new.txt', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => (window as any).__conflictLifecycle.calls.filter((call: any) =>
+      /^(inspect_conflict|resolve_conflict|abort_|continue_|skip_|stage_)/.test(call.command)))).toEqual([]);
+  });
+}
+
+test('the compact conflict shortcut focuses pagination when Git has more conflicts than the loaded file list', async ({ page }) => {
+  await page.setViewportSize({ width: 560, height: 640 });
+  await prepare(page, true);
+  await page.evaluate(() => {
+    const { app, git } = (window as any).__conflictLifecycle;
+    git.repositories.update((repos: any[]) => repos.map(repo => repo.id !== git.activeRepositoryId() ? repo : {
+      ...repo, status: { ...repo.status, entries: [], entriesTruncated: true, conflicted: 1, entryCount: 1001 },
+    }));
+    app.setPanelVisibility('commit-panel', false);
+  });
+  const nav = page.getByRole('group', { name: 'Conflict navigation' });
+  await expect(nav.getByRole('status')).toHaveText('1 file needs conflict resolution');
+  await nav.getByRole('button', { name: 'Show conflicted files' }).click();
+  const inspector = page.getByRole('complementary', { name: 'Working directory inspector' });
+  await expect(inspector).toContainText('Conflicted files are outside the loaded list');
+  await expect(inspector.getByRole('button', { name: /Show 1,000 more files/ })).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__conflictLifecycle.calls.some((call: any) =>
+    call.command === 'load_more_changes'))).toBe(false);
+});
+
+test('an outgoing conflict shortcut cannot open the inspector in another checkout visit', async ({ page }) => {
+  await prepare(page, true);
+  await page.evaluate(() => (window as any).__conflictLifecycle.app.setPanelVisibility('commit-panel', false));
+  const show = page.getByRole('button', { name: 'Show conflicted files' });
+  const opened = await show.evaluate((button: HTMLButtonElement) => {
+    const { app, git } = (window as any).__conflictLifecycle;
+    git.activeWorkspaceId.set('same-checkout-different-workspace');
+    button.click();
+    return app.detailsVisible();
+  });
+  expect(opened).toBe(false);
+});
+
 for (const outcome of ['success', 'error', 'dismissed-error', 'unrelated-error']) {
   for (const navigation of ['same', 'new-file', 'reopened']) {
     test(`conflict resolution ${outcome} preserves the ${navigation} editor lifecycle`, async ({ page }) => {

@@ -1051,6 +1051,13 @@
       </aside>
 
       <section class="history-panel workspace-focus-region" aria-label="Commit history" tabindex="-1" [attr.inert]="historyInert() ? '' : null">
+        @if (!repo.bare && repo.status.conflicted) {
+          @let conflictScope = git.activeRepositoryReadScope();
+          <div class="conflict-navigation" role="group" aria-label="Conflict navigation">
+            <small role="status">{{ repo.status.conflicted === 1 ? '1 file needs conflict resolution' : repo.status.conflicted + ' files need conflict resolution' }}</small>
+            <button type="button" aria-controls="repository-commit-panel" (click)="showRepositoryConflicts(conflictScope)">Show conflicted files</button>
+          </div>
+        }
         @if (operationState.mergeInProgress) {
           <div class="merge-progress" role="status" aria-label="Git merge in progress">
             <span><gc-icon name="merge" [size]="13" /><strong>MERGE IN PROGRESS</strong></span>
@@ -1416,10 +1423,13 @@
           </section>
           @if (repo.status.entriesTruncated) {
             <div class="history-loader change-loader" aria-live="polite">
+              @if (repo.status.conflicted && !conflictedEntries().length && !fileFilterQuery()) {
+                <small>Conflicted files are outside the loaded list. Show more files to find them.</small>
+              }
               @if (git.changesLoading()) {
                 <span><i></i>Loading more changed files…</span>
               } @else {
-                <button type="button" (click)="git.loadMoreChanges()">Show 1,000 more files · {{ repo.status.entries.length }} of {{ repo.status.entryCount }}</button>
+                <button #moreChangedFiles type="button" (click)="git.loadMoreChanges()">Show 1,000 more files · {{ repo.status.entries.length }} of {{ repo.status.entryCount }}</button>
               }
             </div>
           }

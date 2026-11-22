@@ -64,6 +64,11 @@ unchanged, so the final check distinguishes shallow metadata from commit
 identity. The harness observes the actual watcher; it does not refresh
 the renderer itself.
 
+Use `--suite conflict-navigation` to start a real conflicting merge and
+move from the commit inspector to the focused **Conflicted Files** section
+with **Show conflicted files**. Independent Git reads verify that
+`MERGE_HEAD`, refs, index, config and working files do not change.
+
 Read-only readiness checks tolerate WebKit's exact transient result-parsing
 error within the original deadline. Direct scripts, clicks and Git
 operations are not retried after an uncertain reply.

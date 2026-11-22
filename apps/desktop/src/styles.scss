@@ -806,6 +806,10 @@ code, kbd { font-family: var(--font-mono); }
 
 /* Commit graph shell and draggable header */
 .history-panel { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--history-surface); }
+.conflict-navigation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; padding: 4px 8px; border-bottom: 1px solid var(--inspector-divider); background: var(--inspector-list); color: var(--text); }
+.conflict-navigation button { min-height: 26px; padding: 3px 8px; border: 1px solid var(--inspector-divider); border-radius: 3px; background: var(--inspector-row); color: var(--text); }
+.conflict-navigation button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.change-loader:has(> small) { flex-wrap: wrap; gap: 5px 8px; }
 .history-loader { min-height: 38px; display: grid; place-items: center; border-top: 1px solid #2d2d40; background: #191925; }
 .history-loader button { padding: 6px 12px; border: 1px solid #45445d; border-radius: 3px; background: #29283b; color: #aaa9bb; font-size: 12px; }
 .history-loader button:hover { border-color: #6d698e; background: #343249; color: white; }

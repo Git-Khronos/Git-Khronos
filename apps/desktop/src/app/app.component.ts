@@ -765,6 +765,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly commitPanelToggle = viewChild<ElementRef<HTMLButtonElement>>('commitPanelToggle');
   private readonly commitPanel = viewChild<ElementRef<HTMLElement>>('commitPanel');
   private readonly conflictedSectionHeading = viewChild<ElementRef<HTMLButtonElement>>('conflictedSectionHeading');
+  private readonly moreChangedFiles = viewChild<ElementRef<HTMLButtonElement>>('moreChangedFiles');
   private readonly commitPanelClose = viewChild<ElementRef<HTMLButtonElement>>('commitPanelClose');
   private readonly authorFilterSearch = viewChild<ElementRef<HTMLInputElement>>('authorFilterSearch');
   private readonly commitSummary = viewChild<ElementRef<HTMLInputElement>>('commitSummary');
@@ -7264,13 +7265,14 @@ export class AppComponent implements OnInit, OnDestroy {
     );
   }
 
-  protected setPanelVisibility(panel: 'left-panel' | 'commit-panel', visible: boolean): void {
+  protected setPanelVisibility(panel: 'left-panel' | 'commit-panel', visible: boolean, focusOpeningPanel = true): void {
     const focusResponsiveSidebar = panel === 'left-panel'
       && visible
       && !this.sidebarVisible()
       && this.responsiveSidebarMode;
     const focusFullWidthInspector = panel === 'commit-panel'
       && visible
+      && focusOpeningPanel
       && !this.detailsVisible()
       && this.fullWidthInspectorMode();
     const restoreCommitPanelToggle = panel === 'commit-panel'
@@ -9777,9 +9779,9 @@ export class AppComponent implements OnInit, OnDestroy {
     void this.git.compareCommits(ordered.at(-1)!.commit.oid, ordered[0].commit.oid);
   }
 
-  protected openWorkingDirectory(): void {
+  protected openWorkingDirectory(focusInspector = true): void {
     this.selectWip();
-    this.setPanelVisibility('commit-panel', true);
+    this.setPanelVisibility('commit-panel', true, focusInspector);
   }
 
   protected selectWip(): void {
@@ -11001,15 +11003,22 @@ export class AppComponent implements OnInit, OnDestroy {
     const repo = this.git.repository();
     if (!this.ownsBranchWorkflow(request) || this.git.busy() || !repo?.status.mergeInProgress
       || !repo.status.conflicted || repo.status.branch !== target.branch || repo.headOid !== target.oid) return;
-    const active = document.activeElement;
     this.branchWorkflowRequest.set(null);
+    this.showRepositoryConflicts(request.scope);
+  }
+
+  protected showRepositoryConflicts(scope: string): void {
+    const repo = this.git.repository();
+    if (this.git.activeRepositoryReadScope() !== scope || !repo || repo.bare || !repo.status.conflicted) return;
+    const active = document.activeElement;
     this.fileFilter.set('');
     this.conflictedFilesOpen.set(true);
-    this.openWorkingDirectory();
+    // This action owns a more specific target than the panel's close button.
+    this.openWorkingDirectory(false);
     afterNextRender(() => {
-      if (this.git.activeRepositoryReadScope() !== request.scope || this.branchWorkflowRequest() || !this.changesOpen()
+      if (this.git.activeRepositoryReadScope() !== scope || this.branchWorkflowRequest() || !this.changesOpen() || !this.detailsVisible()
         || (document.activeElement !== document.body && document.activeElement !== active)) return;
-      (this.conflictedSectionHeading()?.nativeElement ?? this.commitPanel()?.nativeElement)?.focus();
+      (this.conflictedSectionHeading()?.nativeElement ?? this.moreChangedFiles()?.nativeElement ?? this.commitPanel()?.nativeElement)?.focus();
     }, { injector: this.injector });
   }
 

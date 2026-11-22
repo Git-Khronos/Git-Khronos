@@ -3974,6 +3974,17 @@ Focused receipt:
 `target/local-review/updater/jammy-builder/single-branch-fetch-release.zjv1CLVG/reports.json`.
 This is not full release qualification and predates the context-menu shortcut.
 
+### Installed shallow boundary labels and depth review
+
+The unchanged installer from `834642c` passed 61 installed setup/keyboard
+scenarios on Ubuntu 24.04. Native WebKit opened the depth review from the
+marked commit without downloading history, then showed the boundary move
+after deepening and disappear after downloading complete history.
+SHA-256: `bee9393accb2effa6f8accb0ed101d1afe6ea02af479e8f61e875c9de78201ef`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/shallow-boundary-release.AdciJWxD/reports.json`.
+This check does not include the later external-fetch watcher regression.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard
