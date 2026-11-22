@@ -2540,7 +2540,15 @@ def branch_workflow_restart_and_abort(driver, fixtures, original_repository, rep
             assert first_integration == status['completedTargets'][0]
             assert fixtures.git(repository, 'rev-parse', 'develop') == development_before
             assert not fixtures.git(repository, 'for-each-ref', '--format=%(refname)', 'refs/tags/vrecovery')
-            _workflow_button(driver, 'Close')
+            if action == 'continue':
+                driver.wait("return [...document.querySelectorAll('gc-branch-workflow-dialog button')].some(button => button.textContent.trim() === 'Inspect and continue' && button.disabled)")
+                _workflow_button(driver, 'Show conflicted files')
+                driver.wait("return !document.querySelector('gc-branch-workflow-dialog') && document.activeElement?.textContent.includes('Conflicted Files')")
+                assert fixtures.git(repository, 'rev-parse', 'main') == first_integration
+                assert fixtures.git(repository, 'diff', '--name-only', '--diff-filter=U') == 'fixture.txt'
+                report['scenarios'].append('native-ui-workflow-opens-conflicted-files-without-advancing')
+            else:
+                _workflow_button(driver, 'Close')
             # Recreate the renderer and repository session, retaining only Git's
             # durable operation/journal state, then use the actual recovery UI.
             repo_id = open_ui(driver, repository)

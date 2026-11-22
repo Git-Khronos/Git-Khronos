@@ -111,6 +111,13 @@ checkout, merge parents and captured stage before advancing. Abort affects the
 currently active merge only. Previously completed merges are retained and clearly
 reported. A separate reviewed recovery action can restore saved commits through
 new branches; do not automatically reset branches after partial completion.
+When the current checkout shows unresolved files for the paused merge, **Show
+conflicted files** opens and focuses that section in Working Directory.
+Reopen Branch workflows after staging the resolutions. Continue is unavailable
+while the current status still shows those conflicts; native Git and the
+workflow journal verify the result before advancing. A workspace switch
+retires the dialog and any unconsumed preview even if it displays the same
+checkout. Reopen to inspect the saved workflow in the new workspace.
 
 After process failure or application restart, inspect actual refs, Git operation
 state and saved stage expectations. If a stage's effect is not established, show

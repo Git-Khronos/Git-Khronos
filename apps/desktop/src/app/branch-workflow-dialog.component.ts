@@ -2,8 +2,9 @@ import { ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy
 import { ipc, type BranchWorkflowControl, type BranchWorkflowFinishStatus, type BranchWorkflowKind, type BranchWorkflowMergePolicy, type BranchWorkflowRequest, type BranchWorkflowSettings, type BranchWorkflowView, type PreparedBranchWorkflow } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 
-export interface BranchWorkflowDialogRequest { repositoryId: string; path: string; returnFocus: HTMLElement | null }
+export interface BranchWorkflowDialogRequest { repositoryId: string; path: string; scope: string; returnFocus: HTMLElement | null }
 export interface FeatureRebaseSelection { feature: string; development: string; featureOid: string; developmentOid: string }
+export interface WorkflowConflictTarget { branch: string; oid: string }
 const DEFAULTS: BranchWorkflowSettings = { version: 1, production: 'main', development: 'develop', featurePrefix: 'feature/', releasePrefix: 'release/', hotfixPrefix: 'hotfix/', tagPrefix: '' };
 
 @Component({
@@ -28,7 +29,12 @@ const DEFAULTS: BranchWorkflowSettings = { version: 1, production: 'main', devel
             @if (finish.plan.deleteTopic) { <li>Local topic cleanup — {{ finish.phase === 'complete' ? 'Finished' : 'Pending' }}</li> }
           </ol>
           @if (finish.notice) { <p role="status">{{ finish.notice }}</p> }
-          @if (finish.phase === 'conflicted') { <p>Close this dialog to resolve and stage the conflicted files. Reopen Branch workflows to continue the saved merge.</p> }
+          @if (finish.phase === 'conflicted') {
+            @if (mergeWithConflicts(); as merge) {
+              <p id="workflow-conflict-note">Resolve and stage {{ merge.count === 1 ? 'the remaining conflict' : 'all ' + merge.count + ' remaining conflicts' }}, then reopen Branch workflows to continue.</p>
+              <button type="button" [disabled]="unavailable()" (click)="showConflicts()">Show conflicted files</button>
+            } @else { <p>If you have resolved and staged the conflicts, inspect and continue the saved merge.</p> }
+          }
           <details><summary>Saved recovery captures ({{ finish.recovery.length }})</summary><ul>@for (capture of finish.recovery; track capture.id) { <li>{{ capture.label }}<code>{{ capture.headReference }}</code><code>{{ capture.headOid }}</code></li> }</ul><p>Saved captures remain available after this workflow is closed or acknowledged.</p></details>
           @if (pendingControl(); as control) {
             <div class="review" role="region" aria-label="Review workflow control"><h3>{{ control === 'abort' ? 'Stop this workflow?' : 'Acknowledge this outcome?' }}</h3>
@@ -39,12 +45,12 @@ const DEFAULTS: BranchWorkflowSettings = { version: 1, production: 'main', devel
             <footer>
               @if (finish.phase === 'complete' || finish.phase === 'aborted') { <button type="button" [disabled]="unavailable()" (click)="pendingControl.set('acknowledge')">Review acknowledgement</button> }
               @else {
-                <button type="button" [disabled]="unavailable()" (click)="control({ action: 'continue', retry: false })">Inspect and continue</button>
-                @if (finish.retryRequired) { <button type="button" [disabled]="unavailable()" (click)="retryConfirmed.set(!retryConfirmed())" [attr.aria-pressed]="retryConfirmed()">Review explicit retry</button> }
+                <button type="button" [disabled]="unavailable() || !!mergeWithConflicts()" [attr.aria-describedby]="mergeWithConflicts() ? 'workflow-conflict-note' : null" (click)="control({ action: 'continue', retry: false })">Inspect and continue</button>
+                @if (finish.retryRequired) { <button type="button" [disabled]="unavailable() || !!mergeWithConflicts()" (click)="retryConfirmed.set(!retryConfirmed())" [attr.aria-pressed]="retryConfirmed()">Review explicit retry</button> }
                 <button type="button" [disabled]="unavailable()" (click)="pendingControl.set('abort')">Review stop</button>
               }
             </footer>
-            @if (retryConfirmed()) { <div class="review"><p>The previous command may have run hooks or made partial changes. Inspect its effects before retrying the unconfirmed stage. Completed stages will be retained.</p><button type="button" [disabled]="unavailable()" (click)="control({ action: 'continue', retry: true })">Retry unconfirmed stage</button></div> }
+            @if (retryConfirmed()) { <div class="review"><p>The previous command may have run hooks or made partial changes. Inspect its effects before retrying the unconfirmed stage. Completed stages will be retained.</p><button type="button" [disabled]="unavailable() || !!mergeWithConflicts()" (click)="control({ action: 'continue', retry: true })">Retry unconfirmed stage</button></div> }
           }
         } @else {
           <nav aria-label="Branch workflow sections"><button type="button" [disabled]="unavailable()" [attr.aria-pressed]="panel() === 'topics'" (click)="setPanel('topics')">Topics</button><button type="button" [disabled]="unavailable()" [attr.aria-pressed]="panel() === 'settings'" (click)="setPanel('settings')">Configuration</button></nav>
@@ -97,6 +103,7 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
   readonly request = input.required<BranchWorkflowDialogRequest>();
   readonly closed = output<void>();
   readonly featureRebaseRequested = output<FeatureRebaseSelection>();
+  readonly conflictsRequested = output<WorkflowConflictTarget>();
   readonly view = signal<BranchWorkflowView | null>(null);
   readonly panel = signal<'topics' | 'settings'>('topics');
   readonly settings = signal<BranchWorkflowSettings>({ ...DEFAULTS });
@@ -132,8 +139,17 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
   private closedOnce = false;
   private previewBinding = '';
   private lastRequestCancelled = false;
-  readonly contextValid = computed(() => this.git.repository()?.id === this.request().repositoryId && this.git.repository()?.path === this.request().path);
+  readonly contextValid = computed(() => this.git.activeRepositoryReadScope() === this.request().scope);
   readonly unavailable = computed(() => this.busy() || this.applying() || this.git.busy() || !this.contextValid());
+  readonly mergeWithConflicts = computed(() => {
+    const repo = this.git.repository();
+    const finish = this.view()?.finish;
+    if (!repo || !finish || finish.phase !== 'conflicted' || !this.contextValid()
+      || !repo.status.mergeInProgress || !repo.status.conflicted) return null;
+    const target = finish.plan.targets[finish.completedTargets.length];
+    return target?.branch === repo.status.branch && target.oid === repo.headOid
+      ? { branch: target.branch, oid: target.oid, count: repo.status.conflicted } : null;
+  });
   readonly selectedTopic = computed(() => this.view()?.state.topics.find(topic => topic.branch === this.selectedBranch()) ?? null);
   readonly featureRebase = computed<FeatureRebaseSelection | null>(() => {
     const state = this.view()?.state;
@@ -211,6 +227,10 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
     this.invalidate();
     this.featureRebaseRequested.emit(selection);
   }
+  showConflicts(): void {
+    const merge = this.mergeWithConflicts();
+    if (merge && !this.unavailable()) this.conflictsRequested.emit(merge);
+  }
   private async prepare(request: BranchWorkflowRequest): Promise<void> {
     if (this.unavailable()) return; this.invalidate(); this.notice.set('');
     const binding = this.binding();
@@ -240,7 +260,8 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
   }
   confirmControl(): Promise<void> { const pending = this.pendingControl(); this.pendingControl.set(null); return pending ? this.control({ action: pending }) : Promise.resolve(); }
   async control(control: BranchWorkflowControl): Promise<void> {
-    const finish = this.view()?.finish; if (!finish || this.unavailable()) return;
+    const finish = this.view()?.finish;
+    if (!finish || this.unavailable() || (control.action === 'continue' && this.mergeWithConflicts())) return;
     this.retryConfirmed.set(false); this.notice.set(''); this.applying.set(true);
     try {
     await this.run('Updating saved branch workflow…', async operationId => {

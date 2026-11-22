@@ -50,6 +50,12 @@ test.beforeEach(async ({ page }) => {
           result = { version: 1, id: 'a'.repeat(32), revision: 0, ownerWorktree: fixture.repo.path, plan, phase: fixture.phase, completedTargets: fixture.phase === 'conflicted' ? [plan.targets[0].oid] : plan.targets.map((t: any) => t.oid), tagOid: plan.tag && fixture.phase === 'complete' ? 'c'.repeat(40) : null,
             recovery: plan.targets.map((t: any, i: number) => ({ id: 'owned-' + i, label: 'Original ' + t.branch, headOid: t.oid, headReference: 'refs/git-khronos/recovery/owned-' + i, snapshotOid: null, snapshotReference: null, restored: false })), checkoutBefore: null, retryRequired: fixture.phase === 'tagging', notice: fixture.phase === 'conflicted' ? 'Resolve and stage this target merge.' : fixture.phase === 'tagging' ? 'Signing failed; integrations are retained.' : null };
           fixture.view.finish = result; fixture.view.state.finishPending = true;
+          if (fixture.phase === 'conflicted') {
+            const target = plan.targets[result.completedTargets.length];
+            fixture.repo = { ...fixture.repo, headOid: target.oid, status: { ...fixture.repo.status,
+              branch: target.branch, conflicted: 1, mergeInProgress: true, entryCount: 1,
+              entries: [{ path: 'fixture.txt', conflicted: true, indexStatus: 'U', worktreeStatus: 'U' }] } };
+          }
         }
       } else if (command === 'control_branch_workflow_finish') {
         if (args.id !== fixture.view.finish.id || args.revision !== fixture.view.finish.revision) throw { message: 'Stale saved workflow revision' };
@@ -237,6 +243,42 @@ test('second-target conflict retains the first integration and requires a review
   await expect(stages).toContainText('main — Integrated');
 });
 
+test('a workflow conflict opens and focuses the conflicted files before allowing continuation', async ({ page }) => {
+  const dialog = await finishRelease(page, 'conflicted');
+  await dialog.getByRole('button', { name: 'Apply reviewed workflow', exact: true }).click();
+  const show = dialog.getByRole('button', { name: 'Show conflicted files' });
+  await expect(show).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Inspect and continue' })).toBeDisabled();
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.conflictedFilesOpen.set(false);
+    app.fileFilter.set('does-not-match');
+  });
+  await show.focus();
+  await show.press('Enter');
+  await expect(dialog).toHaveCount(0);
+  const workingDirectory = page.getByRole('complementary', { name: 'Working directory inspector' });
+  const conflicts = workingDirectory.getByRole('button', { name: 'Conflicted Files (1)' });
+  await expect(conflicts).toBeFocused();
+  await expect(conflicts).toHaveAttribute('aria-expanded', 'true');
+  await expect(workingDirectory.getByRole('button', { name: 'fixture.txt', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__workflow.calls.some((c: any) => c.command === 'control_branch_workflow_finish'))).toBe(false);
+
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const fixture = (window as any).__workflow;
+    fixture.repo = { ...fixture.repo, status: { ...fixture.repo.status, entries: [], conflicted: 0 } };
+    git.repositories.update((items: any[]) => items.map(repo => repo.id === fixture.repo.id ? fixture.repo : repo));
+  });
+  await open(page);
+  const continueButton = dialog.getByRole('button', { name: 'Inspect and continue' });
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  await expect(dialog).toContainText('Workflow complete');
+  expect(await page.evaluate(() => (window as any).__workflow.calls.filter((c: any) => c.command === 'control_branch_workflow_finish')
+    .map((c: any) => c.args.control))).toEqual([{ action: 'continue', retry: false }]);
+});
+
 test('unconfirmed signing exposes explicit retry and completed outcomes need acknowledgement', async ({ page }) => {
   const dialog = await finishRelease(page, 'tagging');
   await dialog.getByRole('button', { name: 'Apply reviewed workflow', exact: true }).click();
@@ -278,6 +320,27 @@ test('repository switch closes the workflow and prevents late previews from cros
   await page.evaluate(() => { (window as any).__workflow.finish(); });
   await expect.poll(() => page.evaluate(() => (window as any).__workflow.calls.some((c: any) => c.command === 'discard_branch_workflow_plan'))).toBe(true);
   expect(await page.evaluate(() => (window as any).__workflow.calls.some((c: any) => c.command === 'execute_branch_workflow'))).toBe(false);
+});
+
+test('switching workspaces retires a reviewed plan even when the same checkout stays active', async ({ page }) => {
+  const dialog = await open(page);
+  await dialog.getByLabel('Topic name', { exact: true }).fill('retired-topic');
+  await dialog.getByRole('button', { name: 'Review topic creation', exact: true }).click();
+  const apply = dialog.getByRole('button', { name: 'Apply reviewed workflow', exact: true });
+  await expect(apply).toBeEnabled();
+  const sameCheckout = await apply.evaluate((button: HTMLButtonElement) => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const initial = git.repository();
+    git.activeWorkspaceId.set('another-workflow-workspace');
+    // Deliver the old click before the root effect has removed the workflow.
+    button.click();
+    return git.repository() === initial;
+  });
+  expect(sameCheckout).toBe(true);
+  await expect(dialog).toHaveCount(0);
+  const mutations = await page.evaluate(() => (window as any).__workflow.calls.filter((c: any) =>
+    c.command === 'discard_branch_workflow_plan' || c.command === 'execute_branch_workflow').map((c: any) => c.command));
+  expect(mutations).toEqual(['discard_branch_workflow_plan']);
 });
 
 for (const theme of ['khronos', 'midnight']) test(`${theme} compact dialog contains keyboard focus and fits the viewport`, async ({ page }, testInfo) => {

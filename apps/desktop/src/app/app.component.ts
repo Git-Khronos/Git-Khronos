@@ -26,7 +26,7 @@ import type { FileMediaSelection } from './file-media.component';
 import { DiffWorkspaceComponent } from './diff-workspace.component';
 import { CommitReferenceStripComponent } from './commit-reference-strip.component';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
-import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest, type FeatureRebaseSelection } from './branch-workflow-dialog.component';
+import { BranchWorkflowDialogComponent, type BranchWorkflowDialogRequest, type FeatureRebaseSelection, type WorkflowConflictTarget } from './branch-workflow-dialog.component';
 import { WorkspaceCenterComponent, type WorkspaceCenterRequest, type WorkspaceTabsCloseRequest } from './workspace-center.component';
 import {
   ChangeDetectionStrategy,
@@ -764,6 +764,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly responsiveSidebarToggle = viewChild<ElementRef<HTMLButtonElement>>('responsiveSidebarToggle');
   private readonly commitPanelToggle = viewChild<ElementRef<HTMLButtonElement>>('commitPanelToggle');
   private readonly commitPanel = viewChild<ElementRef<HTMLElement>>('commitPanel');
+  private readonly conflictedSectionHeading = viewChild<ElementRef<HTMLButtonElement>>('conflictedSectionHeading');
   private readonly commitPanelClose = viewChild<ElementRef<HTMLButtonElement>>('commitPanelClose');
   private readonly authorFilterSearch = viewChild<ElementRef<HTMLInputElement>>('authorFilterSearch');
   private readonly commitSummary = viewChild<ElementRef<HTMLInputElement>>('commitSummary');
@@ -2387,7 +2388,6 @@ export class AppComponent implements OnInit, OnDestroy {
         this.referenceAction.set(null);
         this.stashDialog.set(null);
         this.mergePreviewRequest.set(null);
-        this.branchWorkflowRequest.set(null);
         this.pendingHistoryAction.set(null);
       });
     });
@@ -2396,6 +2396,8 @@ export class AppComponent implements OnInit, OnDestroy {
       untracked(() => {
         const request = this.checkoutWorktreeRequest();
         if (request && request.scope !== scope) this.checkoutWorktreeRequest.set(null);
+        const workflow = this.branchWorkflowRequest();
+        if (workflow && workflow.scope !== scope) this.branchWorkflowRequest.set(null);
         const rebase = this.interactiveRebase();
         if (rebase && rebase.checkoutScope !== scope) this.closeInteractiveRebase();
         const mergeRebase = this.mergeRebaseReview();
@@ -10948,12 +10950,32 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = returnFocus ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     this.workspaceMenuOpen.set(false);
     this.actionOverlays.close('context');
-    this.branchWorkflowRequest.set({ repositoryId: repository.id, path: repository.path,
+    this.branchWorkflowRequest.set({ repositoryId: repository.id, path: repository.path, scope: this.git.activeRepositoryReadScope(),
       returnFocus: opener?.getAttribute('role') === 'menuitem' ? this.workspaceToggle()?.nativeElement ?? null : opener });
   }
 
+  private ownsBranchWorkflow(request: BranchWorkflowDialogRequest): boolean {
+    return this.branchWorkflowRequest() === request && this.git.activeRepositoryReadScope() === request.scope;
+  }
+
+  protected showWorkflowConflicts(request: BranchWorkflowDialogRequest, target: WorkflowConflictTarget): void {
+    const repo = this.git.repository();
+    if (!this.ownsBranchWorkflow(request) || this.git.busy() || !repo?.status.mergeInProgress
+      || !repo.status.conflicted || repo.status.branch !== target.branch || repo.headOid !== target.oid) return;
+    const active = document.activeElement;
+    this.branchWorkflowRequest.set(null);
+    this.fileFilter.set('');
+    this.conflictedFilesOpen.set(true);
+    this.openWorkingDirectory();
+    afterNextRender(() => {
+      if (this.git.activeRepositoryReadScope() !== request.scope || this.branchWorkflowRequest() || !this.changesOpen()
+        || (document.activeElement !== document.body && document.activeElement !== active)) return;
+      (this.conflictedSectionHeading()?.nativeElement ?? this.commitPanel()?.nativeElement)?.focus();
+    }, { injector: this.injector });
+  }
+
   protected openWorkflowFeatureRebase(request: BranchWorkflowDialogRequest, selection: FeatureRebaseSelection): void {
-    if (this.branchWorkflowRequest() !== request || this.git.busy()) return;
+    if (!this.ownsBranchWorkflow(request) || this.git.busy()) return;
     const review = this.captureBranchPair(selection.development, selection.feature);
     if (!review || review.repositoryId !== request.repositoryId || review.repositoryPath !== request.path
       || this.git.repository()?.status.branch !== selection.feature
@@ -10964,7 +10986,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.integrationRequest.set({
       repositoryId: review.repositoryId, repositoryPath: review.repositoryPath,
       source: review.source, target: review.target, returnFocus: request.returnFocus,
-      workflowRebase: { sourceOid: review.sourceOid, targetOid: review.targetOid, scope: this.git.activeRepositoryReadScope() },
+      workflowRebase: { sourceOid: review.sourceOid, targetOid: review.targetOid, scope: request.scope },
     });
   }
 
