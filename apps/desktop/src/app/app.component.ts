@@ -88,6 +88,7 @@ import { IconComponent, type IconName } from './icon.component';
 import { TerminalPanelComponent } from './terminal-panel.component';
 import { AuthenticationComponent } from './authentication.component';
 import { GraphViewportComponent } from './graph-viewport.component';
+import { GraphSettingsContentComponent, type GraphSettingsContentView } from './graph-settings-content.component';
 import { ViewportSizeDirective } from './viewport-size.directive';
 import { WorkingTreeViewportComponent, type WorkingTreeFileListSection } from './working-tree-viewport.component';
 import { WorkingTreeSummariesDirective, WorkingTreeSummaryComponent } from './working-tree-summary.component';
@@ -581,7 +582,7 @@ interface BranchDropState {
   y: number;
 }
 
-type GraphColumn = 'branch' | 'graph' | 'message' | 'author' | 'date' | 'sha';
+export type GraphColumn = 'branch' | 'graph' | 'message' | 'author' | 'date' | 'sha';
 type PreferencesSection = 'general' | 'graph' | 'git' | 'editor' | 'terminal';
 type AuthorMarkerStyle = 'initials' | 'color';
 type ReferenceSection = 'worktrees' | 'local' | 'remote' | 'tags' | 'stashes' | 'submodules';
@@ -714,7 +715,7 @@ function stableAuthorColor(identity: string): string {
 
 @Component({
   selector: 'gc-root',
-  imports: [ToolbarOptionsComponent, DialogFallbackFocusDirective, WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, RevisionInspectorComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
+  imports: [ToolbarOptionsComponent, GraphSettingsContentComponent, DialogFallbackFocusDirective, WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, RevisionInspectorComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
     GraphActionMenuComponent, SidebarItemActionsComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -1596,6 +1597,29 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly collapsedCommitDirectories = signal<string[]>([]);
   protected readonly graphSettingsOpen = signal(false);
   protected readonly graphSettingsPosition = signal<{ x: number; y: number } | null>(null);
+  private graphSettingsAnchor: { x: number; y: number } | null = null;
+  protected readonly graphSettingsContent: GraphSettingsContentView = {
+    graphColumnLabels: GRAPH_COLUMN_LABELS,
+    graphColumnOrder: () => this.graphColumnOrder(),
+    graphColumnVisible: column => this.isGraphColumnVisible(column),
+    graphRequiredLaneCount: () => this.graphRequiredLaneCount(),
+    graphMaximumWidth: () => this.graphMaximumWidth(),
+    compactGraphColumn: () => this.compactGraphColumn(),
+    showGraphScrollMarkers: () => this.showGraphScrollMarkers(),
+    graphHorizontalScroll: () => this.graphHorizontalScroll(),
+    smartBranchVisibility: () => this.smartBranchVisibility(),
+    showCheckpoints: () => !!this.git.repository()?.showCheckpoints,
+    checkpointVisibilityDisabled: () => this.git.busy() || this.git.historyLoading() || this.git.checkpointVisibilityUpdating(),
+    fitGraphColumnToBranches: event => this.fitGraphColumnToBranches(event),
+    setCompactGraphColumn: value => this.setCompactGraphColumn(value),
+    setGraphScrollMarkers: value => this.setGraphScrollMarkers(value),
+    setGraphHorizontalScroll: value => this.setGraphHorizontalScroll(value),
+    setSmartBranchVisibility: value => this.setSmartBranchVisibility(value),
+    setCheckpointVisibility: (value, element) => this.setCheckpointVisibility(value, element),
+    setGraphColumn: (column, value) => this.setGraphColumn(column, value),
+    moveGraphColumn: (column, direction) => this.moveGraphColumn(column, direction),
+    restoreGraphDefaults: () => this.restoreGraphDefaults(),
+  };
   protected readonly authorFilterOpen = signal(false);
   /** Author filter menu offset inside the graph header, aligned under its toggle. */
   protected readonly authorFilterPosition = signal({ x: 0, y: 25 });
@@ -5776,14 +5800,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.storeGraphColumnOrder();
   }
 
-  protected graphColumnOrderIndex(column: GraphColumn): number {
-    return this.graphColumnOrder().indexOf(column);
-  }
-
-  protected graphColumnVisible(column: GraphColumn): boolean {
-    return this.isGraphColumnVisible(column);
-  }
-
   private readonly graphColumnPositions = computed(() => {
     const positions = new Map<GraphColumn, number>();
     this.graphColumnOrder()
@@ -5798,6 +5814,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected toggleGraphSettings(event: MouseEvent): void {
     event.stopPropagation();
+    this.graphSettingsAnchor = null;
     this.graphSettingsPosition.set(null);
     const open = !this.graphSettingsOpen();
     this.graphSettingsOpen.set(open);
@@ -5807,6 +5824,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected closeGraphSettings(returnFocus = false): void {
     this.graphSettingsOpen.set(false);
     this.graphSettingsPosition.set(null);
+    this.graphSettingsAnchor = null;
     if (returnFocus) queueMicrotask(() => this.graphSettingsToggle()?.nativeElement.focus());
   }
 
@@ -5814,6 +5832,7 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     this.prepareActionMenu('settings');
+    const anchor = this.graphSettingsAnchor = { x: event.clientX, y: event.clientY };
     this.graphSettingsPosition.set({
       x: Math.max(
         GRAPH_SETTINGS_VIEWPORT_GUTTER,
@@ -5824,10 +5843,18 @@ export class AppComponent implements OnInit, OnDestroy {
     this.graphSettingsOpen.set(true);
     queueMicrotask(() => requestAnimationFrame(() => {
       const element = this.graphSettingsPanel()?.nativeElement;
-      if (!element || !this.graphSettingsOpen() || !this.graphSettingsPosition()) return;
-      this.graphSettingsPosition.set(this.fittedMenuPosition(element, { x: event.clientX, y: event.clientY }));
+      if (!element || !this.graphSettingsOpen() || this.graphSettingsAnchor !== anchor || !this.graphSettingsPosition()) return;
+      this.graphSettingsPosition.set(this.fittedMenuPosition(element, anchor));
       element.focus();
     }));
+  }
+
+  protected graphSettingsContentReady(content: HTMLElement): void {
+    const panel = this.graphSettingsPanel()?.nativeElement;
+    if (this.graphSettingsOpen() && this.graphSettingsPosition() && this.graphSettingsAnchor
+      && content.isConnected && panel?.contains(content)) {
+      this.graphSettingsPosition.set(this.fittedMenuPosition(panel, this.graphSettingsAnchor));
+    }
   }
 
   protected toggleAuthorFilter(event: MouseEvent): void {

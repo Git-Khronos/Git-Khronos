@@ -1,0 +1,27 @@
+@let view = model();
+<div class="column-settings-scroll">
+  <strong>Layout</strong>
+  <button class="fit-graph-column" type="button" (click)="view.fitGraphColumnToBranches($event)"><gc-icon name="maximize" [size]="12" /><span>Fit all {{ view.graphRequiredLaneCount() }} branch {{ view.graphRequiredLaneCount() === 1 ? 'path' : 'paths' }}<small>{{ view.graphMaximumWidth() }} px</small></span></button>
+  <label><input type="checkbox" [checked]="view.compactGraphColumn()" (change)="view.setCompactGraphColumn($any($event.target).checked)" /> Compact Graph Column</label>
+  <label><input type="checkbox" [checked]="view.showGraphScrollMarkers()" (change)="view.setGraphScrollMarkers($any($event.target).checked)" /> Scroll Markers</label>
+  <label title="When off, widening a column narrows the others so the history always fits the panel"><input type="checkbox" [checked]="view.graphHorizontalScroll()" (change)="view.setGraphHorizontalScroll($any($event.target).checked)" /> Horizontal Scrolling</label>
+  <i class="settings-divider"></i>
+  <strong>Branch visibility</strong>
+  <label><input type="checkbox" [checked]="view.smartBranchVisibility()" (change)="view.setSmartBranchVisibility($any($event.target).checked)" /> Smart Branch Visibility</label>
+  <label title="Include Copilot checkpoint references and their history"><input #checkpointVisibility type="checkbox" [checked]="view.showCheckpoints()" [disabled]="view.checkpointVisibilityDisabled()" (change)="view.setCheckpointVisibility(checkpointVisibility.checked, checkpointVisibility)" /> Show Copilot checkpoints</label>
+  <i class="settings-divider"></i>
+  <strong>Columns</strong>
+  @for (column of view.graphColumnOrder(); track column; let index = $index) {
+    <div class="column-setting-row">
+      <label><input type="checkbox" [checked]="view.graphColumnVisible(column)" (change)="view.setGraphColumn(column, $any($event.target).checked)" /> {{ view.graphColumnLabels[column] }}</label>
+      <span class="column-reorder-actions" role="group" [attr.aria-label]="'Reorder ' + view.graphColumnLabels[column] + ' column'">
+        <button type="button" [disabled]="index === 0" [attr.aria-label]="'Move ' + view.graphColumnLabels[column] + ' column left'" [title]="'Move ' + view.graphColumnLabels[column] + ' column left'" (click)="view.moveGraphColumn(column, -1)"><gc-icon name="chevron-left" [size]="11" /></button>
+        <button type="button" [disabled]="index === view.graphColumnOrder().length - 1" [attr.aria-label]="'Move ' + view.graphColumnLabels[column] + ' column right'" [title]="'Move ' + view.graphColumnLabels[column] + ' column right'" (click)="view.moveGraphColumn(column, 1)"><gc-icon name="chevron-right" [size]="11" /></button>
+      </span>
+    </div>
+  }
+  <small class="column-settings-hint">Drag headers or use the arrow buttons to reorder columns.</small>
+</div>
+<footer class="column-settings-footer">
+  <button class="restore-graph-defaults" type="button" (click)="view.restoreGraphDefaults()"><gc-icon name="reset" [size]="11" />Restore graph defaults</button>
+</footer>

@@ -1315,6 +1315,19 @@ by the root; resolving an old code import does not recreate the old request.
 Coverage: renderer `deferred-graph-actions.spec.ts`, existing
 `context-menu-interactions.spec.ts` and `reference-actions.spec.ts`.
 
+### Deferred graph settings
+
+The root retains the popover shell, its close action, contextual anchor, focus
+return and preference callbacks. The controls and their styles load only when
+opened. Loading or a failed chunk leaves the same keyboard-accessible Close
+and Escape behavior. A late load cannot reopen a dismissed popover or change
+focus. When a live contextual popover grows after loading, the root refits it
+against its original anchor rather than leaving the new controls off-screen.
+
+Coverage: `deferred-graph-settings.spec.ts` holds or fails the settings
+chunk and checks focus and context fitting; `graph-columns.spec.ts` checks
+compact layout and visible controls under normal loading.
+
 ### Source-bound repository setup reviews
 
 Worktree creation (new or existing branch), submodule addition, remote editing

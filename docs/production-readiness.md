@@ -4441,3 +4441,14 @@ text, number and changed-word highlights and failed specifically at the
 three-span limit. This is negative-control evidence; the positive
 installed run uses the newer package. Receipt:
 `target/local-review/updater/jammy-builder/native-wrapped-diff-negative.uwmDIEOp/lane/results/`.
+
+### Load graph settings controls on demand
+
+Compared with `8cefd96`, the same production build command reduced
+initial output from 1,273,707 to 1,268,478 raw bytes (−5,229), including
+−1,004 initial stylesheet bytes. Independent encodings fell by 682 gzip
+bytes and 768 Brotli bytes. The graph settings controls' 7,890-byte JS
+chunk and 2,648-byte CSS asset are outside the initial asset list. The
+900 kB warning and 1.45 MB hard limit remain unchanged. These are asset
+sizes, not startup timings. Local receipts:
+`target/local-review/initial-renderer-audit.C87xATJU/`.
