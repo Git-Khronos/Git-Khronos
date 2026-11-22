@@ -307,6 +307,9 @@ The renderer rejects a moved or now-current branch, and native verifies
 the named ref before and after capturing the reviewed commit for recovery.
 Git still checks branch merge status and linked worktree occupancy. The
 preflight does not lock out independent Git writers before Git starts.
+The force follow-up uses the safe deletion's own native refusal. A
+background refresh or another action clearing or replacing the global
+error cannot turn that refusal into success or erase an unrelated error.
 
 ### Remote branch rename and deletion
 

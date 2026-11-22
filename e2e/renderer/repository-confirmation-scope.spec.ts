@@ -27,6 +27,14 @@ test.beforeEach(async ({ page }) => {
     (window as any).__scopeSource = { id: git.repository().id, path: git.repository().path };
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       (window as any).__scopeCalls.push({ command, args });
+      if (command === 'refresh_repository' && (window as any).__holdBranchRefresh) {
+        return new Promise(resolve => {
+          (window as any).__resolveBranchRefresh = () => resolve(git.repository());
+        });
+      }
+      if (command === 'refresh_repository_status' && (window as any).__holdBranchRefresh) {
+        return Promise.resolve(git.repository().status);
+      }
       if ((window as any).__holdScope === command) return new Promise((resolve, reject) => {
         const snapshot = git.repositories().find((item: any) => item.id === args.repoId);
         (window as any).__resolveScope = () => resolve(snapshot);
@@ -161,6 +169,29 @@ test('closing a busy branch review does not replay or reopen its late unmerged r
   await expect(page.locator('[role=alertdialog]')).toHaveCount(0);
   expect(await calls(page)).toHaveLength(1);
 });
+
+for (const newerError of [null, 'An unrelated action reported a later error.']) {
+  test(`branch deletion uses its own refusal when shared error is ${newerError ? 'replaced' : 'cleared'}`, async ({ page }) => {
+    const modal = await open(page, 'branch');
+    await page.evaluate(() => {
+      (window as any).__holdScope = 'delete_branch';
+      (window as any).__holdBranchRefresh = true;
+    });
+    await modal.locator('.confirm-action').click();
+    await expect.poll(async () => (await calls(page)).length).toBe(1);
+    await page.evaluate(() => (window as any).__rejectScope());
+    await expect.poll(() => page.evaluate(() => typeof (window as any).__resolveBranchRefresh)).toBe('function');
+    await page.evaluate(newerError => {
+      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      git.error.set(newerError);
+      (window as any).__resolveBranchRefresh();
+    }, newerError);
+    await expect(modal.getByRole('button', { name: 'Delete anyway', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.error()))
+      .toBe(newerError);
+    expect(await calls(page)).toHaveLength(1);
+  });
+}
 
 test('late sparse completion preserves a newer repository review and its draft', async ({ page }) => {
   const modal = await open(page, 'sparse-set');

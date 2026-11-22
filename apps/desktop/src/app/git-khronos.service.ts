@@ -354,7 +354,6 @@ export class GitKhronosService implements OnDestroy {
   });
   readonly error = signal<string | null>(null);
   readonly backgroundOperationWarnings = signal<{ operationId: string; message: string }[]>([]);
-  private lastFailureKind: string | null = null;
   readonly commitDetails = signal<CommitDetails | null>(null);
   readonly commitFileDiff = signal<CommitFileDiff | null>(null);
   readonly selectedCommitFile = signal<string | null>(null);
@@ -1925,13 +1924,9 @@ export class GitKhronosService implements OnDestroy {
 
   /** Returns 'notMerged' when Git refuses a safe delete, leaving the decision to force it to the caller. */
   async deleteBranch(name: string, force: boolean, expectedOid: string): Promise<'deleted' | 'notMerged' | 'failed'> {
-    await this.mutate('delete_branch', `Deleting ${name}…`, `Deleted ${name}`, { name, force, expectedOid });
-    if (!this.error()) return 'deleted';
-    if (!force && this.lastFailureKind === 'branchNotMerged') {
-      this.error.set(null);
-      this.activity.set(`${name} is not fully merged`);
-      return 'notMerged';
-    }
+    const result = await this.mutateWithResult('delete_branch', `Deleting ${name}…`, `Deleted ${name}`, { name, force, expectedOid });
+    if (result?.status === 'success') return 'deleted';
+    if (!force && result?.status === 'error' && result.failureKind === 'branchNotMerged') return 'notMerged';
     return 'failed';
   }
 
@@ -3440,6 +3435,8 @@ export class GitKhronosService implements OnDestroy {
     let failureKind: string | null = null;
     let ignoreFailure: string | null = null;
     let responseHeadOid: string | null = null;
+    const expectedBranchRefusal = () => command === 'delete_branch' && failureKind === 'branchNotMerged'
+      && 'force' in extra && extra.force === false;
     try {
       const inspectionRequest = { workingTree: this.workingTreeRequest, conflict: this.conflictRequest };
       this.bumpStatusGeneration(repo.id);
@@ -3462,6 +3459,7 @@ export class GitKhronosService implements OnDestroy {
           }
         } catch (error: unknown) {
           failureKind = this.errorKind(error);
+          if (expectedBranchRefusal()) report('Safe branch deletion refused by Git');
           if (command === 'ignore_path') {
             if ((failureKind === null || !SAFE_IGNORE_FAILURES.has(failureKind)) && ownsRepository()) {
               this.bumpStatusGeneration(repo.id);
@@ -3511,7 +3509,7 @@ export class GitKhronosService implements OnDestroy {
           throw error;
         }
         report(typeof done === 'function' ? done(snapshot, checkoutOutcome) : done);
-      }, repo.id, operationId);
+      }, repo.id, operationId, true, true, { announceFailure: () => !expectedBranchRefusal() });
       let failure = result === 'success' ? null : command === 'ignore_path' ? ignoreFailure ?? this.error() : this.error();
       if (result === 'error' && ownsRepository()) {
         try {
@@ -3782,7 +3780,6 @@ export class GitKhronosService implements OnDestroy {
     ].slice(-250));
     this.operations.start(id, repositoryId, operationId);
     this.error.set(null);
-    this.lastFailureKind = null;
     this.activity.set(label);
     const report: ActivityReporter = message => {
       description = message;
@@ -3796,7 +3793,6 @@ export class GitKhronosService implements OnDestroy {
       return 'success';
     } catch (error: unknown) {
       const shouldAnnounceFailure = typeof announceFailure === 'function' ? announceFailure() : announceFailure;
-      this.lastFailureKind = this.errorKind(error);
       const cancelled = this.isOperationCancelled(error);
       let detail = this.formatError(error);
       if (cancelled && repositoryId && refreshOnCancel) {
