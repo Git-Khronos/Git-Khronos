@@ -18,9 +18,10 @@ def workspace_clone_recipe(driver, fixtures, report):
     destination.mkdir()
     before = checkout_footprint(fixtures, active)
     repo_id = open_ui(driver, active)
-    driver.wait("""return !!document.querySelector('[aria-label="Edit origin remote"]')""", 40)
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
+    driver.click_scrolled_text('gc-workspace-center button', 'Refresh local state', wait_for_ready=True)
+    driver.wait("""return document.querySelector('[data-git-operation-status]')?.textContent.includes('Workspace overview refreshed')""", 40)
     buttons = 'gc-workspace-clone button'
     driver.click_scrolled_text(buttons, 'Share clone recipe…', wait_for_ready=True)
     recipe_text = driver.wait("return document.getElementById('workspace-clone-recipe')?.value")
