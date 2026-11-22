@@ -590,9 +590,13 @@ For a running qualification, use `--release-progress` with the built package
 and the same `--reports-dir` arguments. This read-only view accepts empty result
 directories and reports how many checks are satisfied, failed, missing
 required evidence, or awaiting a final report. It checks the same package and
-installed-file hashes, and never treats `progress.json` as evidence. Missing
-reports alone do not make the progress command fail; a failed or mismatched
-report does. Use `--verify-release`, not the progress command, for handoff.
+installed-file hashes, and never treats `progress.json` as evidence. Rejected
+reports (for example malformed JSON or a different package digest) are listed
+by path and reason under `rejectedReports` without hiding verified results from
+other lanes. They do not contribute to any check. Missing reports alone do
+not make the progress command fail; a verified failure or a rejected report
+causes a nonzero exit even though the JSON snapshot is still available. Use
+`--verify-release`, not the progress command, for handoff.
 
 For a strict offline handoff, check the full matrix and publisher preflight
 in one command. Supply the original installed reports, not a prior summary:

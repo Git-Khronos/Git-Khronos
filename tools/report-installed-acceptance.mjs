@@ -211,7 +211,8 @@ async function readBoundedJson(path, label, maxBytes) {
       offset += bytesRead;
     }
     if (offset !== stat.size) throw new Error(`The ${label} changed while reading it`);
-    return JSON.parse(bytes.subarray(0, offset).toString('utf8'));
+    try { return JSON.parse(bytes.subarray(0, offset).toString('utf8')); }
+    catch (error) { throw new Error(`Invalid JSON in the ${label}`, { cause: error }); }
   } finally {
     await file.close();
   }
@@ -352,11 +353,9 @@ export function selectPublisherReport(summary, environmentReports) {
   return { path: selected, raw };
 }
 
-export async function reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix = false, publisherPreflight, focusedRequest } = {}) {
-  releaseMatrix ||= !!publisherPreflight;
-  if (focusedRequest !== undefined && releaseMatrix) throw new Error('Focused acceptance cannot qualify a release matrix.');
-  const candidate = checkPackage(resolve(packagePath));
+async function collectInstalledReports(candidate, reportPaths, { collectScenarios, collectEnvironment, keepRejected = false }) {
   const reports = [];
+  const rejectedReports = [];
   const seen = new Set();
   const validatedReports = [];
   const environmentReports = new Map();
@@ -367,21 +366,54 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
     try {
       const report = await readBoundedJson(absolute, 'acceptance report', MAX_REPORT_BYTES);
       reports.push({ path, ...summarizeInstalledReport(candidate, report) });
-      if (releaseMatrix || focusedRequest !== undefined) {
+      if (collectScenarios) {
         const { suite, passed, scenarios, linuxDistribution, inheritedGitEnvironment } = report;
         validatedReports.push({ path, suite, passed, scenarios, linuxDistribution, inheritedGitEnvironment });
-        if (publisherPreflight && suite === 'environment' && linuxDistribution?.id === 'ubuntu'
+        if (collectEnvironment && suite === 'environment' && linuxDistribution?.id === 'ubuntu'
             && linuxDistribution.versionId === '22.04' && passed) environmentReports.set(path, report);
       }
     } catch (error) {
-      throw new Error(`${path}: ${error.message}`, { cause: error });
+      if (!keepRejected) throw new Error(`${path}: ${error.message}`, { cause: error });
+      // Until a report is verified, none of its scope, status or scenario
+      // fields is trusted. Keep the rejection separate from lane evidence.
+      rejectedReports.push({ path, reason: error.message });
     }
   }
-  const summary = {
+  return { reports, validatedReports, environmentReports, rejectedReports };
+}
+
+function installerReportSummary(candidate, reports) {
+  return {
     package: candidate.package,
     version: candidate.version,
     sha256: candidate.packageSha256,
     reports,
+  };
+}
+
+async function reportInstalledProgress(packagePath, reportPaths) {
+  const candidate = checkPackage(resolve(packagePath));
+  const { reports, validatedReports, rejectedReports } = await collectInstalledReports(candidate, reportPaths, {
+    collectScenarios: true, keepRejected: true,
+  });
+  return {
+    kind: 'installed-release-progress',
+    ...installerReportSummary(candidate, reports),
+    rejectedReports,
+    releaseProgress: summarizeReleaseProgress(summarizeReleaseMatrix(validatedReports), reports),
+  };
+}
+
+export async function reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix = false, publisherPreflight, focusedRequest } = {}) {
+  releaseMatrix ||= !!publisherPreflight;
+  if (focusedRequest !== undefined && releaseMatrix) throw new Error('Focused acceptance cannot qualify a release matrix.');
+  const candidate = checkPackage(resolve(packagePath));
+  const { reports, validatedReports, environmentReports } = await collectInstalledReports(candidate, reportPaths, {
+    collectScenarios: releaseMatrix || focusedRequest !== undefined,
+    collectEnvironment: !!publisherPreflight,
+  });
+  const summary = {
+    ...installerReportSummary(candidate, reports),
     ...(releaseMatrix && { releaseMatrix: summarizeReleaseMatrix(validatedReports) }),
     ...(focusedRequest !== undefined && { focusedAcceptance: summarizeFocusedAcceptance(focusedRequest, validatedReports) }),
   };
@@ -428,17 +460,15 @@ async function main(args) {
     const reportPaths = await expandAcceptanceReports(reportInputs, {
       allowEmptyDirectories: releaseProgress || focusedPlan !== undefined,
     });
-    const summary = await reportInstalledAcceptance(packagePath, reportPaths, {
-      releaseMatrix: releaseMatrix || releaseProgress, publisherPreflight, focusedRequest,
-    });
     if (releaseProgress) {
-      const { releaseMatrix: matrix, ...result } = summary;
-      console.log(JSON.stringify({
-        kind: 'installed-release-progress', ...result, releaseProgress: summarizeReleaseProgress(matrix, summary.reports),
-      }, null, 2));
-      if (summary.reports.some(report => !report.passed)) process.exitCode = 1;
+      const progress = await reportInstalledProgress(packagePath, reportPaths);
+      console.log(JSON.stringify(progress, null, 2));
+      if (progress.rejectedReports.length || progress.releaseProgress.failedReports.length) process.exitCode = 1;
       return;
     }
+    const summary = await reportInstalledAcceptance(packagePath, reportPaths, {
+      releaseMatrix, publisherPreflight, focusedRequest,
+    });
     if (focusedPlan !== undefined) {
       console.log(JSON.stringify({ kind: 'focused-installed-acceptance', ...summary }, null, 2));
       if (!summary.focusedAcceptance.complete) process.exitCode = 1;

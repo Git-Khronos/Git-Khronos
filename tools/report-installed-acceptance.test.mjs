@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { checkPackage } from './check-linux-abi.mjs';
 import { expandAcceptanceReports, parseFocusedAcceptance, reportInstalledAcceptance, selectPublisherReport, summarizeFocusedAcceptance, summarizeInstalledReport, summarizeReleaseMatrix, summarizeReleaseProgress } from './report-installed-acceptance.mjs';
 
 test('discovers only final native reports from explicitly selected roots in stable order', async (t) => {
@@ -242,6 +243,69 @@ test('release progress distinguishes missing, incomplete, failed and satisfied i
   assert.deepEqual(progress.failedReports, ['previous-failed-report.json', failed.path]);
   assert.equal(progress.checks[0].report, passed.path);
   assert.equal(progress.checks[3].report, null);
+});
+
+test('progress keeps valid parallel results visible when a report is malformed or belongs to another installer', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'khronos-installed-progress-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const payload = join(root, 'payload');
+  for (const directory of ['DEBIAN', 'usr/bin', 'usr/share/applications']) {
+    await mkdir(join(payload, directory), { recursive: true });
+  }
+  await writeFile(join(payload, 'DEBIAN/control'), [
+    'Package: git-khronos', 'Version: 0.1.6', 'Architecture: amd64',
+    'Maintainer: Fixture <owned@example.test>', 'Description: Progress test fixture',
+    'Depends: libc6 (>= 2.35)', '',
+  ].join('\n'));
+  await writeFile(join(payload, 'usr/share/applications/git-khronos.desktop'), '[Desktop Entry]\n');
+  const executable = join(payload, 'usr/bin/git-khronos');
+  const compiled = spawnSync('cc', ['-x', 'c', '-o', executable, '-'], {
+    input: 'int main(void) { return 0; }\n', encoding: 'utf8',
+  });
+  assert.equal(compiled.status, 0, compiled.stderr);
+  const artifact = join(root, 'candidate.deb');
+  const build = spawnSync('dpkg-deb', ['--root-owner-group', '--build', payload, artifact], { encoding: 'utf8' });
+  assert.equal(build.status, 0, build.stderr);
+  const packageEvidence = checkPackage(artifact);
+  const [first, second] = summarizeReleaseMatrix([]).checks;
+  const passing = {
+    ...report, suite: first.suite, linuxDistribution: first.distribution,
+    scenarios: first.requiredScenarios, packageSha256: packageEvidence.packageSha256,
+    executableSha256: packageEvidence.installedPayload.executableSha256,
+    installedDesktopEntry: { ...report.installedDesktopEntry, sha256: packageEvidence.installedPayload.desktopEntrySha256 },
+  };
+  const paths = Object.fromEntries(['passing', 'wrong', 'malformed', 'failed'].map(name => [name, join(root, `${name}.json`)]));
+  await writeFile(paths.passing, JSON.stringify(passing));
+  await writeFile(paths.wrong, JSON.stringify({
+    ...passing, suite: second.suite, linuxDistribution: second.distribution,
+    scenarios: second.requiredScenarios, packageSha256: '0'.repeat(64),
+  }));
+  await writeFile(paths.malformed, 'untrusted text that cannot be decoded');
+  await writeFile(paths.failed, JSON.stringify({ ...passing, passed: false, scenarios: [] }));
+  const cli = fileURLToPath(new URL('./report-installed-acceptance.mjs', import.meta.url));
+  const run = (mode, ...paths) =>
+    spawnSync(process.execPath, [cli, mode, artifact, ...paths], { encoding: 'utf8' });
+  const progress = run('--release-progress', paths.wrong, paths.passing, paths.malformed, paths.failed);
+  assert.equal(progress.status, 1);
+  assert.equal(progress.stderr, '');
+  const result = JSON.parse(progress.stdout);
+  assert.equal(result.kind, 'installed-release-progress');
+  assert.equal(result.sha256, packageEvidence.packageSha256);
+  assert.deepEqual(result.reports.map(row => row.path), [paths.passing, paths.failed]);
+  assert.deepEqual(result.releaseProgress.failedReports, [paths.failed]);
+  assert.equal(result.releaseProgress.counts.satisfied, 1);
+  assert.equal(result.releaseProgress.checks[0].report, paths.passing);
+  assert.equal(result.releaseProgress.checks[1].report, null);
+  assert.deepEqual(result.rejectedReports.map(row => row.path), [paths.wrong, paths.malformed]);
+  assert.match(result.rejectedReports[0].reason, /different Debian package/);
+  assert.match(result.rejectedReports[1].reason, /Invalid JSON/);
+  assert.doesNotMatch(progress.stdout, /untrusted text/);
+  assert.equal('publisherPreflight' in result, false);
+  assert.equal('releaseMatrix' in result, false);
+  const strict = run('--release-matrix', paths.passing, paths.wrong);
+  assert.equal(strict.status, 1);
+  assert.equal(strict.stdout, '');
+  assert.match(strict.stderr, /different Debian package/);
 });
 
 test('local release checks include every installed Ubuntu 24.04 workflow review required by CI', () => {

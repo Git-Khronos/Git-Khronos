@@ -2229,7 +2229,11 @@ Installed acceptance also publishes its final `report.json` atomically,
 after cleanup is complete. A live `--release-progress` query therefore
 sees either a complete result or an awaiting gate, not a half-written
 report. `progress.json` remains a separate running status, not evidence
-that a release gate passed.
+that a release gate passed. Progress reports preserve valid, exact-package
+results from sibling lanes when a final report is rejected. The rejected
+paths and reasons are separate diagnostics, and the command still exits
+nonzero. Strict acceptance and publisher verification still refuse any
+unverified report.
 
 Readiness-wait follow-up, 2026-10-24: a controlled four-second browser-reply
 delivery delay reproduces the old client-polling timeout on valid geometry.
