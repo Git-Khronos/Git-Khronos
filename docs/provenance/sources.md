@@ -1587,6 +1587,10 @@ base and the distinct metadata under the merge and apply backends.
 The [Git am manual](https://git-scm.com/docs/git-am) and owned mail-patch
 fixtures established standalone Skip and Abort semantics and confirmed
 that Abort consults `ORIG_HEAD`, unlike Abort Rebase.
+The [Git bisect manual](https://git-scm.com/docs/git-bisect) defines Reset
+and `--no-checkout`. Owned fixtures verified the original-branch and
+detached start markers and the exact Git ref check for no-checkout mode
+with both files and reftable storage.
 No upstream code was copied.
 
 ## Fast-forward Pull and ignored files

@@ -302,12 +302,48 @@ def mail_recovery_preserves_ignored_files(driver, fixtures, report):
         report['scenarios'].append(f'native-mail-patch-{action}-preserves-ignored-reset-file')
 
 
+def bisect_reset_preserves_ignored_files(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-reset', commits=6)
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~5')
+    settings = repository / 'settings.local'
+    settings.write_text('Tracked settings on the original branch.\n')
+    fixtures.git(repository, 'add', '--', settings.name)
+    fixtures.git(repository, 'commit', '-qm', 'Track settings after the test revisions')
+    original = fixtures.git(repository, 'rev-parse', 'HEAD')
+    fixtures.git(repository, 'tag', 'main', good)
+    fixtures.git(repository, 'bisect', 'start', original, good)
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') != original
+    assert not settings.exists()
+    marker = repository / '.git/BISECT_START'
+    start = marker.read_bytes()
+    saved = repository / 'saved-settings'
+    (repository / '.git/info/exclude').write_text(f'/{settings.name}\n/{saved.name}\n')
+    settings.write_text('Only copy of local test settings.\n')
+    open_ui(driver, repository)
+    driver.wait("return !!document.querySelector('.bisect-progress')")
+    before = checkout_footprint(fixtures, repository, ('fixture.txt', settings.name))
+    driver.click_scrolled_text('.bisect-progress button', 'Reset', wait_for_ready=True)
+    driver.wait("return document.querySelector('.error-toast')?.textContent.includes('Reset Bisect could overwrite ignored local contents')")
+    assert checkout_footprint(fixtures, repository, ('fixture.txt', settings.name)) == before
+    assert marker.read_bytes() == start
+    settings.rename(saved)
+    driver.click_scrolled_text('.bisect-progress button', 'Reset', wait_for_ready=True)
+    driver.wait("return !document.querySelector('.bisect-progress') && document.querySelector('.activity-status')?.textContent.includes('Bisect reset')")
+    assert not marker.exists()
+    assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == original
+    assert settings.read_text() == 'Tracked settings on the original branch.\n'
+    assert saved.read_text() == 'Only copy of local test settings.\n'
+    report['scenarios'].append('native-bisect-reset-preserves-ignored-file-and-allows-safe-retry')
+
+
 def reviewed_detached_checkout(driver, fixtures, report):
     guarded_checkout_targets(driver, fixtures, report)
     context_rebase_preserves_sibling(driver, fixtures, report)
     abort_apply_rebase_preserves_ignored_settings(driver, fixtures, report)
     recovery_reset_preserves_ignored_files(driver, fixtures, report)
     mail_recovery_preserves_ignored_files(driver, fixtures, report)
+    bisect_reset_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')
     head = fixtures.git(repository, 'rev-parse', 'HEAD')

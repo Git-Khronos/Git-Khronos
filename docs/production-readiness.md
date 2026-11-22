@@ -3416,6 +3416,16 @@ shows the Git report when Abort ends without rewinding a separately
 moved HEAD. Owned CLI reproductions are in
 `target/local-review/mail-recovery-ignored.vG001cPn/`.
 
+Bisect Reset now refuses to overwrite ignored files when restoring an
+original branch or detached start. It preserves the bisect session and
+allows retry after moving the obstruction. No-checkout sessions still
+use Git's no-worktree reset. Source tests exercise named and detached
+starts, a competing tag, unreadable state and no-checkout mode.
+Installed qualification requires the named-branch UI retry. Start and
+advance can independently select a commit that overwrites ignored files;
+those checkout paths are not covered by this Reset safeguard. Evidence:
+`target/local-review/bisect-ignored-reset.WsTgl6Ng/`.
+
 The exact `fa3e152` package passed 36 focused Ubuntu 24.04 installed
 scenarios: 19 application-updates, ten detached-checkout and seven
 workspace-Pull. These ran without the inherited-Git launcher checks.

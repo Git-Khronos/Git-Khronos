@@ -772,6 +772,10 @@ Standalone mail-patch Skip and Abort also check the reset against the
 current index. Skip checks HEAD; Abort checks Git's effective `ORIG_HEAD`,
 not the separate metadata used by Rebase Abort. Refusals keep the series
 paused. The check does not predict subsequent patches after Skip.
+Bisect Reset checks the recorded start against the live local branch or
+detached commit and leaves the session active on an ignored-file collision.
+A Git-managed `--no-checkout` session requires no restore and keeps its
+native reset behavior. Starting or advancing a bisect is separate.
 Merge, squash, fast-forward, and rebase from the branch context menu carry a
 separate review tied to that menu opening, the repository visit, and both
 branch tips. Their labels retain the selected receiver instead of mutating

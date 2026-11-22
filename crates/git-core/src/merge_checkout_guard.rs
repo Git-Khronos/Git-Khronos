@@ -297,6 +297,19 @@ fn rebase_original_tip(directory: &Path) -> Result<String, AppError> {
 
 fn rebase_state_oid(directory: &Path, name: &str) -> Result<Option<String>, AppError> {
     let unavailable = rebase_abort_unavailable;
+    let value = bounded_state_line(directory, name, 66, unavailable)?;
+    if let Some(oid) = &value {
+        validate_commit_oid(oid).map_err(|_| unavailable())?;
+    }
+    Ok(value)
+}
+
+fn bounded_state_line(
+    directory: &Path,
+    name: &str,
+    limit: u64,
+    unavailable: Unavailable,
+) -> Result<Option<String>, AppError> {
     #[cfg(unix)]
     let file = {
         use rustix::{
@@ -340,24 +353,22 @@ fn rebase_state_oid(directory: &Path, name: &str) -> Result<Option<String>, AppE
         opts.open(path).map_err(|_| unavailable())?
     };
     let metadata = file.metadata().map_err(|_| unavailable())?;
-    const LIMIT: u64 = 66; // SHA-256 hex with optional CRLF.
-    if !metadata.file_type().is_file() || metadata.len() > LIMIT {
+    if !metadata.file_type().is_file() || metadata.len() > limit {
         return Err(unavailable());
     }
     let mut bytes = Vec::new();
-    file.take(LIMIT + 1)
+    file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| unavailable())?;
-    if bytes.len() as u64 > LIMIT {
+    if bytes.len() as u64 > limit {
         return Err(unavailable());
     }
     let text = std::str::from_utf8(&bytes).map_err(|_| unavailable())?;
-    let oid = text
+    let line = text
         .strip_suffix("\r\n")
         .or_else(|| text.strip_suffix('\n'))
         .unwrap_or(text);
-    validate_commit_oid(oid).map_err(|_| unavailable())?;
-    Ok(Some(oid.to_owned()))
+    Ok(Some(line.to_owned()))
 }
 
 fn restore_obstruction(
@@ -519,6 +530,70 @@ pub(super) fn ensure_recovery_reset_preserves_ignored_files(
         }
         if reference_tip(path, "HEAD").as_ref() != Some(&head)
             || (mail_original.is_some() && reference_tip(path, "ORIG_HEAD^{commit}") != mail_original)
+        {
+            return Err(unavailable());
+        }
+        Ok(())
+    })
+}
+
+pub(super) fn ensure_bisect_reset_preserves_ignored_files(path: &Path) -> Result<(), AppError> {
+    let unavailable = || {
+        AppError::new(
+            "bisectResetIgnoredPathsUnverified",
+            "Could not verify the checkout that Bisect Reset would restore. The bisect session remains active.",
+            Some("Move or back up ignored local files, then retry Reset Bisect."),
+        )
+    };
+    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+        return Ok(());
+    };
+    // --no-checkout sessions do not restore a worktree. Use an exact Git
+    // ref query: a reftable repository need not have a BISECT_HEAD file.
+    let no_checkout = || {
+        let result = run_git(path, &["show-ref", "--verify", "--quiet", "BISECT_HEAD"])?;
+        match result.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            _ => Err(unavailable()),
+        }
+    };
+    let marker = operation_storage::git_entry(path, "BISECT_START")?;
+    let directory = marker.parent().ok_or_else(unavailable)?;
+    let read_start = || bounded_state_line(directory, "BISECT_START", 4096, unavailable)?
+        .ok_or_else(unavailable);
+    let start = read_start()?;
+    if no_checkout()? {
+        return Ok(());
+    }
+    without_lazy_fetch(|| {
+        let target = || {
+            let branch = format!("refs/heads/{start}");
+            let local = reference_tip(path, &format!("{branch}^{{commit}}"));
+            if validate_commit_oid(&start).is_ok() {
+                // An OID-shaped local branch is ambiguous to checkout.
+                if local.is_some() {
+                    return Err(unavailable());
+                }
+                return reference_tip(path, &format!("{start}^{{commit}}")).ok_or_else(unavailable);
+            }
+            validate_branch_name(path, &start).map_err(|_| unavailable())?;
+            // A same-named tag/remote must not substitute for a local branch.
+            local.ok_or_else(unavailable)
+        };
+        let receiver = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
+        let original = target()?;
+        if let Some(blocked) = restore_obstruction(path, &ignored, &original, unavailable)? {
+            return Err(AppError::new(
+                "bisectResetLocalPathObstruction",
+                format!("Reset Bisect could overwrite ignored local contents at '{blocked}'."),
+                Some("Move the ignored file or directory out of the way, then retry Reset Bisect."),
+            ));
+        }
+        if read_start()? != start
+            || no_checkout()?
+            || reference_tip(path, "HEAD").as_ref() != Some(&receiver)
+            || target()? != original
         {
             return Err(unavailable());
         }

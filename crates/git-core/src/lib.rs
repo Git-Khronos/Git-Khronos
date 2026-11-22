@@ -6542,6 +6542,7 @@ pub fn reset_bisect(path: &Path) -> Result<(), AppError> {
     if !repository_operation_state(path)?.bisect {
         return Ok(());
     }
+    merge_checkout_guard::ensure_bisect_reset_preserves_ignored_files(path)?;
     run_mutation(path, &["bisect", "reset"], "reset bisect")
 }
 
@@ -18284,6 +18285,93 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         let reset = snapshot(&repository.path).expect("snapshot reset bisect");
         assert!(!reset.status.bisect_in_progress);
         assert_eq!(reset.head_oid.as_deref(), Some(bad_oid.as_str()));
+    }
+
+    #[test]
+    fn bisect_reset_preserves_ignored_files_for_a_branch_or_detached_start() {
+        for detached in [false, true] {
+            let repository = TestRepository::new();
+            let path = &repository.path;
+            repository.write("tested.txt", "original\n");
+            stage_all(path).unwrap();
+            commit(path, "Known good").unwrap();
+            let good = reference_tip(path, "HEAD").unwrap();
+            for index in 0..4 {
+                repository.write("tested.txt", &format!("step {index}\n"));
+                stage_all(path).unwrap();
+                commit(path, &format!("Step {index}")).unwrap();
+            }
+            repository.write("settings.local", "Tracked at original HEAD\n");
+            stage_all(path).unwrap();
+            commit(path, "Track local settings").unwrap();
+            let original = reference_tip(path, "HEAD").unwrap();
+            if detached {
+                repository.git(&["switch", "--detach", &original]);
+            } else {
+                // Checkout resolves the original local branch, not this tag.
+                repository.git(&["tag", "main", &good]);
+            }
+            start_bisect(path, &original, &good).unwrap();
+            let candidate = reference_tip(path, "HEAD").unwrap();
+            assert_ne!(candidate, original);
+            assert!(!path.join("settings.local").exists());
+            fs::write(
+                path.join(".git/info/exclude"),
+                "/settings.local\n/saved-settings\n",
+            )
+            .unwrap();
+            repository.write("settings.local", "Local test configuration\n");
+            let index = fs::read(path.join(".git/index")).unwrap();
+            let marker = path.join(".git/BISECT_START");
+            let state = fs::read(&marker).unwrap();
+            let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+
+            fs::write(&marker, "not a checkout target\n").unwrap();
+            assert_eq!(reset_bisect(path).unwrap_err().kind, "bisectResetIgnoredPathsUnverified");
+            assert_eq!(reference_tip(path, "HEAD").unwrap(), candidate);
+            assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+            fs::write(&marker, &state).unwrap();
+            let error = reset_bisect(path).unwrap_err();
+            assert_eq!(error.kind, "bisectResetLocalPathObstruction", "{error:?}");
+            assert!(error.message.contains("settings.local"));
+            assert_eq!(reference_tip(path, "HEAD").unwrap(), candidate);
+            assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+            assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+            assert_eq!(fs::read(marker).unwrap(), state);
+            assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"Local test configuration\n");
+
+            fs::rename(path.join("settings.local"), path.join("saved-settings")).unwrap();
+            reset_bisect(path).unwrap();
+            assert!(!repository_operation_state(path).unwrap().bisect);
+            assert_eq!(reference_tip(path, "HEAD").unwrap(), original);
+            assert_eq!(read_status(path).unwrap().branch.as_deref(), (!detached).then_some("main"));
+            assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"Tracked at original HEAD\n");
+            assert_eq!(fs::read(path.join("saved-settings")).unwrap(), b"Local test configuration\n");
+        }
+    }
+
+    #[test]
+    fn no_checkout_bisect_reset_still_leaves_index_and_files_alone() {
+        let repository = TestRepository::new();
+        let path = &repository.path;
+        repository.write("tested.txt", "original\n");
+        stage_all(path).unwrap();
+        commit(path, "Known good").unwrap();
+        let good = reference_tip(path, "HEAD").unwrap();
+        repository.write("settings.local", "Tracked settings\n");
+        stage_all(path).unwrap();
+        commit(path, "Track settings").unwrap();
+        let original = reference_tip(path, "HEAD").unwrap();
+        repository.git(&["bisect", "start", "--no-checkout", &original, &good]);
+        repository.git(&["rm", "--cached", "--", "settings.local"]);
+        fs::write(path.join(".git/info/exclude"), "/settings.local\n").unwrap();
+        repository.write("settings.local", "Local test configuration\n");
+        let index = fs::read(path.join(".git/index")).unwrap();
+        reset_bisect(path).unwrap();
+        assert!(!repository_operation_state(path).unwrap().bisect);
+        assert_eq!(reference_tip(path, "HEAD").unwrap(), original);
+        assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"Local test configuration\n");
     }
 
     #[test]
