@@ -374,6 +374,22 @@ async fn open_repository(path: String, app: AppHandle) -> Result<RepositorySnaps
     .map_err(background_task_error)?
 }
 
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+async fn inspect_saved_checkout_status(
+    path: String,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::SavedCheckoutStatus, AppError> {
+    let (cancellation, lease) = register_active_operation(&app, operation_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
+        git_khronos_git_core::inspect_saved_checkout_status(Path::new(&path), &cancellation)
+    })
+    .await
+    .map_err(background_task_error)?
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
@@ -4287,6 +4303,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             incoming_repository_links::dismiss_incoming_repository_link_overflow,
             cancel_git_operation,
             open_repository,
+            inspect_saved_checkout_status,
             clone_repository,
             initialize_repository,
             refresh_repository,

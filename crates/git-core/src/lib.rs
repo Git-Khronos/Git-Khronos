@@ -8722,6 +8722,109 @@ pub fn status_with_entry_limit_fast(
     read_status_with_limit_mode(path, entry_limit, "normal")
 }
 
+#[derive(Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedCheckoutStatus {
+    pub branch: Option<String>,
+    pub bare: bool,
+    pub unborn: bool,
+    pub staged: usize,
+    pub unstaged: usize,
+    pub untracked: usize,
+    pub conflicted: usize,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+/// Read a saved root without enrolling it in the application's open sessions.
+pub fn inspect_saved_checkout_status(
+    path: &Path,
+    cancellation: &CancellationToken,
+) -> Result<SavedCheckoutStatus, AppError> {
+    without_lazy_fetch_cancellable(cancellation, || {
+        let changed = || {
+            AppError::new(
+                "savedCheckoutMoved",
+                "The saved path is no longer the same Git checkout root.",
+                Some("Locate the repository again to update the saved path."),
+            )
+        };
+        if !path.is_absolute() || path.as_os_str().len() > 16 * 1024 {
+            return Err(changed());
+        }
+        let root = resolve_repository(path)?;
+        if path != root {
+            return Err(changed());
+        }
+        let bare = is_explicit_bare_repository(&root);
+        let (status, unborn) = if bare {
+            let status = read_head_status(&root)?;
+            let head = run_git(&root, &["rev-parse", "--verify", "--quiet", "HEAD"])?;
+            if !head.status.success() && head.status.code() != Some(1) {
+                ensure_success("read saved repository HEAD", &head)?;
+            }
+            (status, !head.status.success())
+        } else {
+            let args = [
+                "-c",
+                "core.fsmonitor=false",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--branch",
+                "--untracked-files=normal",
+                "--ignore-submodules=none",
+            ]
+            .map(str::to_owned);
+            let output =
+                history_search::bounded_git_with_limit(&root, &args, cancellation, 4 * 1024 * 1024)
+                    .map_err(|error| match error.kind.as_str() {
+                        "historyTimeout" | "historyOutputLimit" => AppError::new(
+                            "savedCheckoutStatusLimit",
+                            "Saved checkout status exceeded the local read limit.",
+                            Some("Open the checkout to inspect it in more detail."),
+                        ),
+                        _ => error,
+                    })?;
+            let first = output
+                .stdout
+                .split(|byte| *byte == 0)
+                .next()
+                .unwrap_or_default();
+            if !first.starts_with(b"## ") {
+                return Err(AppError::new(
+                    "invalidStatus",
+                    "Git returned no checkout status.",
+                    None,
+                ));
+            }
+            let unborn = first.starts_with(b"## No commits yet on ")
+                || first.starts_with(b"## Initial commit on ");
+            (
+                parse_porcelain_status(
+                    &output.stdout,
+                    RepositoryStatus::default(),
+                    0,
+                    false,
+                    StatusOverflow::default(),
+                ),
+                unborn,
+            )
+        };
+        Ok(SavedCheckoutStatus {
+            branch: status.branch,
+            bare,
+            unborn,
+            staged: status.staged,
+            unstaged: status.unstaged,
+            untracked: status.untracked,
+            conflicted: status.conflicted,
+            ahead: status.ahead,
+            behind: status.behind,
+        })
+    })
+}
+
 fn read_status_with_limit(path: &Path, entry_limit: usize) -> Result<RepositoryStatus, AppError> {
     read_status_with_limit_mode(path, entry_limit, "all")
 }
@@ -11934,6 +12037,99 @@ esac
             observed.len()
         );
         assert_eq!(observed.into_iter().collect::<HashSet<_>>(), expected);
+    }
+
+    #[test]
+    fn saved_checkout_status_reports_dirty_and_unborn_roots_without_rewriting_index() {
+        let fixture = TestRepository::new();
+        let root = fixture.path.canonicalize().unwrap();
+        let token = CancellationToken::default();
+        let initial = inspect_saved_checkout_status(&root, &token).unwrap();
+        assert!(initial.unborn && !initial.bare);
+        fixture.write("tracked.txt", "original\n");
+        fixture.git(&["add", "tracked.txt"]);
+        fixture.git(&["commit", "-m", "Saved checkout fixture"]);
+        fixture.git(&["checkout", "--detach"]);
+        fixture.write("tracked.txt", "staged text\n");
+        fixture.git(&["add", "tracked.txt"]);
+        fixture.write("tracked.txt", "unstaged text\n");
+        fs::create_dir(root.join("untracked")).unwrap();
+        fixture.write("untracked/a.txt", "untracked A\n");
+        fixture.write("untracked/b.txt", "untracked B\n");
+        let index = fs::read(root.join(".git/index")).unwrap();
+        let status = inspect_saved_checkout_status(&root, &token).unwrap();
+        assert!(!status.bare && !status.unborn && status.branch.is_none());
+        assert_eq!(
+            (
+                status.staged,
+                status.unstaged,
+                status.untracked,
+                status.conflicted
+            ),
+            (1, 1, 1, 0)
+        );
+        assert_eq!(fs::read(root.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read_to_string(root.join("tracked.txt")).unwrap(),
+            "unstaged text\n"
+        );
+        assert_eq!(
+            inspect_saved_checkout_status(&root.join("untracked"), &token)
+                .unwrap_err()
+                .kind,
+            "savedCheckoutMoved"
+        );
+        assert_eq!(
+            inspect_saved_checkout_status(&root.join("missing"), &token)
+                .unwrap_err()
+                .kind,
+            "pathNotFound"
+        );
+        token.cancel();
+        assert_eq!(
+            inspect_saved_checkout_status(&root, &token)
+                .unwrap_err()
+                .kind,
+            "operationCancelled"
+        );
+    }
+
+    #[test]
+    fn saved_checkout_status_reports_bare_head_with_and_without_commits() {
+        let fixture = TestRepository::new();
+        let root = fixture.path.canonicalize().unwrap();
+        let bare = root.join("bare.git");
+        fixture.git(&["init", "--bare", "--initial-branch=bare-main", "bare.git"]);
+        let token = CancellationToken::default();
+        let empty = inspect_saved_checkout_status(&bare, &token).unwrap();
+        assert!(empty.bare && empty.unborn);
+        assert_eq!(empty.branch.as_deref(), Some("bare-main"));
+
+        fixture.git(&["commit", "--allow-empty", "-m", "Published fixture"]);
+        fixture.git(&["push", bare.to_str().unwrap(), "HEAD:refs/heads/bare-main"]);
+        let populated = inspect_saved_checkout_status(&bare, &token).unwrap();
+        assert!(populated.bare && !populated.unborn);
+        assert_eq!(populated.branch.as_deref(), Some("bare-main"));
+        assert_eq!(
+            (populated.staged, populated.unstaged, populated.untracked),
+            (0, 0, 0)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saved_checkout_status_does_not_start_the_configured_fsmonitor_hook() {
+        use std::os::unix::fs::PermissionsExt;
+        let fixture = TestRepository::new();
+        let root = fixture.path.canonicalize().unwrap();
+        fixture.git(&["commit", "--allow-empty", "-m", "Initial commit"]);
+        let script = root.join(".git/probe-fsmonitor");
+        fs::write(&script, "#!/bin/sh\ntouch should-not-run\n").unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o700)).unwrap();
+        fixture.git(&["config", "core.fsmonitor", script.to_str().unwrap()]);
+        let status = inspect_saved_checkout_status(&root, &CancellationToken::default()).unwrap();
+        assert!(status.branch.is_some());
+        assert!(!root.join("should-not-run").exists());
     }
 
     #[test]

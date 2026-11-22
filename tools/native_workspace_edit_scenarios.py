@@ -4,6 +4,71 @@ import json
 from native_worktree_scenarios import checkout_footprint
 
 
+def saved_checkout_status(driver, fixtures, report):
+    """Read a recovered saved path without opening it; keep a missing path's error local."""
+    active = fixtures.repository('saved-status-active', commits=2)
+    saved = fixtures.repository('saved-status-dirty', commits=2)
+    gone = fixtures.root / 'saved-status-unavailable'
+    parked = fixtures.root / 'saved-status-parked'
+    files = ('fixture.txt', 'untracked.txt')
+    fixtures.git(saved, 'switch', '-c', 'saved-status-branch')
+    (saved / files[0]).write_text('Staged fixture change.\n')
+    fixtures.git(saved, 'add', '--', files[0])
+    (saved / files[0]).write_text('Additional working tree change.\n')
+    (saved / files[1]).write_text('Untracked fixture change.\n')
+    before = checkout_footprint(fixtures, saved, files)
+    saved.rename(parked)
+    workspace = {'id': 'owned-saved-status', 'name': 'Owned saved status',
+                 'repositoryPaths': [str(path) for path in (active, saved, gone)],
+                 'activeRepositoryPath': str(active)}
+    driver.wait("return !!document.querySelector('gc-root')")
+    driver.script("""
+      localStorage.clear();
+      localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify([arguments[0]]));
+      localStorage.setItem('git-khronos.active-workspace.v1', arguments[0].id);
+    """, workspace)
+    driver.reload()
+    driver.wait('return document.querySelector(".status-repository-path")?.textContent.trim() === '
+                + json.dumps(str(active)), 60)
+    driver.wait('return document.querySelector(".error-toast")?.textContent.includes("Could not restore 2 saved repositories")', 60)
+    parked.rename(saved)
+    assert checkout_footprint(fixtures, saved, files) == before
+    index = (saved / '.git/index').read_bytes()
+
+    def layout():
+        return driver.script("""
+          return {
+            workspaces: localStorage.getItem('git-khronos.workspaces.v1'),
+            active: document.querySelector('.status-repository-path')?.textContent.trim(),
+            tabs: [...document.querySelectorAll('.repo-tab-main[role=tab]')]
+              .map(node => node.querySelector('.repo-tab-full-label').textContent.trim())
+          };
+        """)
+
+    original = layout()
+    assert original['active'] == str(active) and original['tabs'] == [active.name], original
+    driver.click_visible('.workspace-toggle')
+    driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
+    region = 'gc-workspace-center [aria-label="Saved repositories not open"]'
+
+    def row(path):
+        return region + ' li:has(input[aria-label=' + json.dumps('Select saved path ' + str(path)) + '])'
+
+    driver.click_scrolled_text(region + ' button', 'Check saved status (2)', wait_for_ready=True)
+    driver.wait('return !!document.querySelector(' + json.dumps(region + ' [role=status]')
+                + ')?.textContent.includes("2 of 2 saved paths checked.")', 40)
+    summary = driver.script('return document.querySelector(arguments[0])?.textContent', row(saved))
+    error = driver.script('return document.querySelector(arguments[0])?.textContent', row(gone) + ' [role=alert]')
+    assert 'saved-status-branch' in summary and '1 staged · 1 unstaged · 1 untracked entry · 0 conflicts' in summary, summary
+    assert 'Status unavailable:' in error, error
+    assert layout() == original
+    assert (saved / '.git/index').read_bytes() == index
+    assert checkout_footprint(fixtures, saved, files) == before
+    report['savedCheckoutStatus'] = {'summary': summary, 'missingPathError': error, 'layoutUnchanged': True}
+    report['scenarios'].append('native-saved-status-reports-dirty-and-missing-paths-without-opening-tabs-or-writing-git')
+    return active
+
+
 def reopen_workspace_tab(driver, fixtures, report):
     """Keep close history in its workspace and restore the previous saved slot."""
     first, middle, last = [

@@ -216,6 +216,91 @@ test('a reopen reply from an earlier visit cannot repopulate the current workspa
   expect(state).toEqual({ applied: false, paths: ['/owned/alpha'], retry: '/owned/beta' });
 });
 
+async function prepareSavedStatus(page: Page, hold = false) {
+  await page.evaluate(hold => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = app;
+    const fixture = (window as any).__center;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    const workspace = git.activeWorkspace();
+    git.workspaces.update((workspaces: any[]) => workspaces.map(item => item.id === workspace.id
+      ? { ...item, repositoryPaths: [fixture.first.path, fixture.second.path, '/saved/dirty', '/saved/missing'] } : item));
+    const status = { branch: 'release/work', bare: false, unborn: false, staged: 1, unstaged: 2, untracked: 3, conflicted: 1, ahead: 2, behind: 0 };
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      fixture.calls.push({ command, args });
+      if (command === 'cancel_git_operation') return Promise.resolve(true);
+      if (command !== 'inspect_saved_checkout_status') return Promise.resolve(null);
+      if (args.path === '/saved/missing') return Promise.reject({ message: 'That path no longer exists.' });
+      if (hold) return new Promise(resolve => fixture.releaseStatus = () => resolve(status));
+      return Promise.resolve(status);
+    } };
+  }, hold);
+}
+
+test('checks saved checkout status without opening tabs and keeps errors per path', async ({ page }) => {
+  await prepareSavedStatus(page);
+  const dialog = await open(page);
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  await saved.getByRole('button', { name: 'Check saved status (2)' }).click();
+  const dirty = saved.getByRole('listitem').filter({ has: page.getByRole('checkbox', { name: 'Select saved path /saved/dirty' }) });
+  await expect(dirty).toContainText('release/work');
+  await expect(dirty).toContainText('1 staged · 2 unstaged · 3 untracked entries · 1 conflict');
+  await expect(dirty).toContainText('2 ahead · 0 behind');
+  await expect(saved.getByRole('alert')).toContainText('That path no longer exists.');
+  expect(await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    return { active: git.repository().path, tabs: git.repositories().map((repo: any) => repo.path),
+      reads: (window as any).__center.calls.filter((call: any) => /saved_checkout_status|open_repository|fetch_/.test(call.command))
+        .map((call: any) => [call.command, call.args.path]) };
+  })).toEqual({ active: '/owned/alpha', tabs: ['/owned/alpha', '/owned/beta'],
+    reads: [['inspect_saved_checkout_status', '/saved/dirty'], ['inspect_saved_checkout_status', '/saved/missing']] });
+});
+
+test('checks only the selected saved checkout when a selection exists', async ({ page }) => {
+  await prepareSavedStatus(page);
+  const saved = (await open(page)).getByRole('region', { name: 'Saved repositories not open' });
+  await saved.getByRole('checkbox', { name: 'Select saved path /saved/missing' }).check();
+  await saved.getByRole('button', { name: 'Check saved status (1)' }).click();
+  await expect(saved.getByRole('status')).toContainText('1 of 1 saved paths checked.');
+  await expect(saved.getByRole('alert')).toContainText('That path no longer exists.');
+  expect(await page.evaluate(() => (window as any).__center.calls
+    .filter((call: any) => call.command === 'inspect_saved_checkout_status')
+    .map((call: any) => call.args.path))).toEqual(['/saved/missing']);
+});
+
+test('stopping saved status discards the current result and does not dispatch remaining checkouts', async ({ page }) => {
+  await prepareSavedStatus(page, true);
+  const dialog = await open(page);
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  await saved.getByRole('button', { name: 'Check saved status (2)' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseStatus)).toBe('function');
+  await saved.getByRole('button', { name: 'Stop checking status' }).click();
+  await page.evaluate(() => (window as any).__center.releaseStatus());
+  await expect(saved).toContainText('Stopped. 0 of 2 saved paths checked.');
+  await expect(saved).not.toContainText('release/work');
+  const calls = await page.evaluate(() => (window as any).__center.calls.filter((call: any) =>
+    ['inspect_saved_checkout_status', 'cancel_git_operation'].includes(call.command)));
+  expect(calls.map((call: any) => call.command)).toEqual(['inspect_saved_checkout_status', 'cancel_git_operation']);
+  expect(calls[1].args.operationId).toBe(calls[0].args.operationId);
+});
+
+test('closing the overview retires a pending saved checkout result', async ({ page }) => {
+  await prepareSavedStatus(page, true);
+  const dialog = await open(page);
+  const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
+  await saved.getByRole('button', { name: 'Check saved status (2)' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseStatus)).toBe('function');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await open(page);
+  await page.evaluate(() => (window as any).__center.releaseStatus());
+  await expect(saved.getByRole('button', { name: 'Check saved status (2)' })).toBeEnabled();
+  await expect(saved).not.toContainText('release/work');
+  expect(await page.evaluate(() => (window as any).__center.calls.filter((call: any) =>
+    ['inspect_saved_checkout_status', 'cancel_git_operation'].includes(call.command))
+    .map((call: any) => call.command))).toEqual(['inspect_saved_checkout_status', 'cancel_git_operation']);
+});
+
 test('retries a saved path, preserves membership and does not carry a draft into the opened checkout', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;

@@ -1,7 +1,7 @@
 import { HostingPanelComponent } from './hosting-panel.component';
 import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injector, OnDestroy, afterNextRender, afterRenderEffect, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { ipc, type RepositoryFiles, type RepositorySnapshot } from '@git-khronos/contracts';
+import { ipc, type RepositoryFiles, type RepositorySnapshot, type SavedCheckoutStatus } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
 import { GitKhronosService, type OpenRepositoryResult, type SavedRepositoryReplacement } from './git-khronos.service';
 import { IDENTITY_PROFILES_KEY, parseIdentityProfiles, validIdentityProfile, type IdentityProfile } from './identity-profiles';
@@ -9,6 +9,10 @@ import { runWorkspaceRemote, type WorkspaceRemoteOperation } from './workspace-a
 import { PULL_STRATEGY_LABEL, type PullStrategy } from './pull-strategy';
 import { runRepositoryFileAction } from './repository-file-actions';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
+import { CancellableOperation } from './cancellable-operation';
+
+const SAVED_STATUS_LIMIT = 32;
+type SavedStatusResult = { status: SavedCheckoutStatus; at: number } | { error: string };
 
 export interface WorkspaceCenterRequest { workspaceId: string; panel: 'overview' | 'identities' | 'hosting' | 'files'; returnFocus: HTMLElement | null }
 export interface WorkspaceTabsCloseRequest { workspaceId: string; scope: string; tabs: readonly Pick<RepositorySnapshot, 'id' | 'path'>[] }
@@ -72,6 +76,10 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
               <h3>Saved repositories not open</h3>
               <p>These paths are still in this workspace. Locate a moved repository to replace its saved path, or remove the entry without changing files on disk.</p>
               <div class="tools">
+                <button type="button" [disabled]="overviewBusy() || git.browserPreview()" (click)="scanSavedStatus()">Check saved status ({{ savedStatusTargets().length }})</button>
+                @if (savedStatusScanning()) {
+                  <button type="button" [attr.aria-disabled]="savedStatusStopping()" (click)="stopSavedStatus()">Stop checking status</button>
+                }
                 <button type="button" [disabled]="overviewBusy() || selectedUnopenedPaths().length === unopenedPaths().length" (click)="selectedSavedPaths.set(unopenedPaths())">Select all saved paths</button>
                 <button type="button" [disabled]="overviewBusy() || !selectedUnopenedPaths().length" (click)="selectedSavedPaths.set([])">Clear saved path selection</button>
                 <button type="button" [disabled]="overviewBusy() || git.browserPreview() || !selectedUnopenedPaths().length"
@@ -79,6 +87,8 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
                 <button type="button" [disabled]="overviewBusy() || !selectedUnopenedPaths().length" (click)="reviewSavedRemoval($event)">Remove selected saved paths ({{ selectedUnopenedPaths().length }})…</button>
               </div>
               <p id="locate-saved-paths-hint">Choose one new folder per selected path. Cancel stops any remaining prompts; saved replacements stay in place.</p>
+              <p>Check status without opening a tab or contacting remotes. Select up to 32 paths to limit the check.</p>
+              @if (savedStatusNotice()) { <p role="status">{{ savedStatusNotice() }}</p> }
               <ul>@for (path of unopenedPaths(); track path) {
                 <li><label class="saved-path"><input type="checkbox" [attr.aria-label]="'Select saved path ' + path" [checked]="selectedSavedPaths().includes(path)" [disabled]="overviewBusy()" (change)="toggleSavedPath(path, $any($event.target).checked)" /><code>{{ path }}</code></label>
                   <div class="tools">
@@ -87,6 +97,16 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
                     <button type="button" [attr.aria-label]="'Remove ' + path + ' from workspace'" [disabled]="overviewBusy()" (click)="removeSavedPath(path)">Remove from workspace</button>
                   </div>
                   @if (locatingPath() === path) { <p role="status">Locating repository…</p> }
+                  @if (savedStatusResults().get(path); as result) {
+                    @if ('status' in result) {
+                      <dl><dt>Checkout</dt><dd>{{ result.status.branch ?? (result.status.unborn ? 'Unborn HEAD' : 'Detached HEAD') }}{{ result.status.bare ? ' · bare repository' : result.status.unborn ? ' · no commits yet' : '' }}</dd>
+                        @if (!result.status.bare) {
+                          <dt>Working tree</dt><dd>{{ result.status.staged }} staged · {{ result.status.unstaged }} unstaged · {{ result.status.untracked }} {{ result.status.untracked === 1 ? 'untracked entry' : 'untracked entries' }} · {{ result.status.conflicted }} {{ result.status.conflicted === 1 ? 'conflict' : 'conflicts' }}</dd>
+                          @if (result.status.ahead || result.status.behind) { <dt>Tracking</dt><dd>{{ result.status.ahead }} ahead · {{ result.status.behind }} behind</dd> }
+                        }
+                        <dt>Checked locally</dt><dd>{{ result.at | date:'mediumTime' }}</dd></dl>
+                    } @else { <p role="alert">Status unavailable: {{ result.error }}</p> }
+                  }
                 </li>
               }</ul>
             }
@@ -241,7 +261,12 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly savedPathNotice = signal('');
   readonly savedPathError = signal('');
   readonly locatingPath = signal<string | null>(null);
-  readonly overviewBusy = computed(() => this.git.busy() || this.refreshing() || this.openingRepositories() || this.bulkRunning());
+  readonly savedStatusScanning = signal(false);
+  readonly savedStatusStopping = signal(false);
+  readonly savedStatusNotice = signal('');
+  readonly savedStatusResults = signal<ReadonlyMap<string, SavedStatusResult>>(new Map());
+  private savedStatusRun: { request: WorkspaceCenterRequest; read: CancellableOperation | null; stopped: boolean } | null = null;
+  readonly overviewBusy = computed(() => this.git.busy() || this.refreshing() || this.openingRepositories() || this.bulkRunning() || this.savedStatusScanning());
   readonly unopenedPaths = computed(() => {
     const opened = new Set(this.git.repositories().map(repository => repository.path));
     return (this.git.activeWorkspace()?.repositoryPaths ?? []).filter(path => !opened.has(path));
@@ -251,6 +276,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
     const selected = new Set(this.selectedSavedPaths());
     return this.unopenedPaths().filter(path => selected.has(path));
   });
+  readonly savedStatusTargets = computed(() => this.selectedUnopenedPaths().length ? this.selectedUnopenedPaths() : this.unopenedPaths());
   readonly profiles = signal<IdentityProfile[]>([]);
   readonly editingId = signal<string | null>(null);
   readonly label = signal(''); readonly name = signal(''); readonly email = signal('');
@@ -306,7 +332,13 @@ export class WorkspaceCenterComponent implements OnDestroy {
   constructor() {
     try { this.profiles.set(parseIdentityProfiles(localStorage.getItem(IDENTITY_PROFILES_KEY))); }
     catch { this.error.set('Saved identities could not be read from device storage.'); }
-    effect(() => this.panel.set(this.request().panel));
+    effect(() => {
+      const request = this.request();
+      this.panel.set(request.panel);
+      untracked(() => {
+        if (this.savedStatusRun && this.savedStatusRun.request !== request) this.stopSavedStatus();
+      });
+    });
     effect(() => {
       const panel = this.panel();
       const scope = this.git.activeRepositoryReadScope();
@@ -336,6 +368,8 @@ export class WorkspaceCenterComponent implements OnDestroy {
     effect(() => {
       const unopened = new Set(this.unopenedPaths());
       this.selectedSavedPaths.update(paths => paths.every(path => unopened.has(path)) ? paths : paths.filter(path => unopened.has(path)));
+      this.savedStatusResults.update(results => [...results.keys()].every(path => unopened.has(path))
+        ? results : new Map([...results].filter(([path]) => unopened.has(path))));
     });
     effect(() => { const pending = this.pending(); if (pending && (pending.repositoryId !== this.git.activeRepositoryId() || pending.path !== this.git.repository()?.path)) this.pending.set(null); });
     afterNextRender(() => this.focusFirst());
@@ -541,6 +575,68 @@ export class WorkspaceCenterComponent implements OnDestroy {
     }, { injector: this.injector });
   }
   activate(repositoryId: string): void { if (!this.git.busy() && !this.openingRepositories() && !this.bulkRunning()) { this.repositorySelected.emit(repositoryId); this.close(false); } }
+  async scanSavedStatus(): Promise<void> {
+    if (this.destroyed || this.overviewBusy() || this.suspended() || this.reviewPending() || this.git.browserPreview()) return;
+    const request = this.request();
+    if (request.workspaceId !== this.git.activeWorkspaceId()) return;
+    const paths = [...this.savedStatusTargets()];
+    if (!paths.length) return;
+    if (paths.length > SAVED_STATUS_LIMIT) {
+      this.savedStatusNotice.set(`Select at most ${SAVED_STATUS_LIMIT} saved paths before checking status.`);
+      return;
+    }
+    const run = { request, read: null as CancellableOperation | null, stopped: false };
+    this.savedStatusRun = run;
+    this.savedStatusScanning.set(true);
+    this.savedStatusStopping.set(false);
+    const current = () => !this.destroyed && this.savedStatusRun === run && this.request() === request
+      && request.workspaceId === this.git.activeWorkspaceId();
+    const targets = new Set(paths);
+    this.savedStatusResults.update(results => new Map([...results].filter(([path]) => !targets.has(path))));
+    let checked = 0;
+    try {
+      for (const path of paths) {
+        if (!current() || run.stopped) break;
+        if (!this.unopenedPaths().includes(path)) continue;
+        this.savedStatusNotice.set(`Checking saved status · ${checked} of ${paths.length} finished`);
+        const read = run.read = new CancellableOperation(`saved-checkout-${crypto.randomUUID()}`);
+        let result: SavedStatusResult;
+        try {
+          const status = await ipc.inspect_saved_checkout_status({ path, operationId: read.id });
+          result = { status, at: Date.now() };
+        } catch (error: unknown) {
+          result = { error: this.git.formatError(error) };
+        } finally {
+          read.finish();
+          run.read = null;
+        }
+        if (!current() || run.stopped) break;
+        if (this.unopenedPaths().includes(path)) {
+          this.savedStatusResults.update(results => new Map(results).set(path, result));
+          checked++;
+        }
+      }
+    } finally {
+      if (this.savedStatusRun === run) {
+        if (!this.destroyed) {
+          this.savedStatusScanning.set(false);
+          this.savedStatusStopping.set(false);
+          this.savedStatusNotice.set(current() ? `${run.stopped ? 'Stopped. ' : ''}${checked} of ${paths.length} saved paths checked.` : '');
+        }
+        this.savedStatusRun = null;
+      }
+    }
+  }
+
+  stopSavedStatus(): void {
+    const run = this.savedStatusRun;
+    if (!run || run.stopped) return;
+    run.stopped = true;
+    this.savedStatusStopping.set(true);
+    this.savedStatusNotice.set('Stopping saved status checks…');
+    void run.read?.cancel();
+  }
+
   retrySavedPath(path: string): void {
     if (this.destroyed || this.overviewBusy() || this.git.browserPreview()
       || this.request().workspaceId !== this.git.activeWorkspaceId() || !this.unopenedPaths().includes(path)) return;
@@ -824,12 +920,13 @@ export class WorkspaceCenterComponent implements OnDestroy {
     if (this.git.error()) this.error.set(this.git.error()!);
     else { this.pending.set(null); this.notice.set(`Applied ${apply.profile.label} to ${apply.path}`); }
   }
-  ngOnDestroy(): void { this.destroyed = true; this.invalidateFileRequest(); }
+  ngOnDestroy(): void { this.destroyed = true; this.stopSavedStatus(); this.invalidateFileRequest(); }
   close(restoreFocus = true): void {
     if (this.destroyed) return;
     const deletion = this.pendingFileDelete();
     if (deletion) { this.cancelDelete(deletion); return; }
     if (this.pendingTabsClose() || this.pendingSavedRemoval()) { this.cancelWorkspaceReview(); return; }
+    this.stopSavedStatus();
     this.locationRequest = null;
     this.locatingPath.set(null);
     const opener = this.request().returnFocus; this.closed.emit();

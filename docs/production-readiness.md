@@ -3983,6 +3983,15 @@ after deepening and disappear after downloading complete history.
 SHA-256: `bee9393accb2effa6f8accb0ed101d1afe6ea02af479e8f61e875c9de78201ef`.
 Focused receipt:
 `target/local-review/updater/jammy-builder/shallow-boundary-release.AdciJWxD/reports.json`.
+
+### Installed shallow boundary watcher refresh
+
+The Ubuntu 24.04 installer from `7f9b401` passed the four checks in the
+focused watcher plan. External deepening and unshallowing a linked checkout
+updated the boundary labels without a ref change or a manual refresh.
+SHA-256: `ed10e8dacf674584be244be4c48e4ba4c95de6800d08cf6b5c7513411eaa8ed9`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/watcher-shallow-release.vslO9hFh/reports.json`.
 This check does not include the later external-fetch watcher regression.
 
 ### Deferred Worktree and Submodule sidebar actions

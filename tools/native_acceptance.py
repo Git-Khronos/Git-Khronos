@@ -1192,7 +1192,7 @@ def main():
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
-        "workspace-batch", "workspace-saved-removal", "workspace-locate", "workspace-bulk-locate",
+        "workspace-batch", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
         "workspace-pull-upstreams", "pull-submodule-scope",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
@@ -1367,6 +1367,10 @@ def main():
             elif args.suite == "workspace-saved-removal":
                 from native_workspace_edit_scenarios import remove_saved_workspace_paths
                 repository = remove_saved_workspace_paths(driver, fixtures, report)
+                repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite == "workspace-saved-status":
+                from native_workspace_edit_scenarios import saved_checkout_status
+                repository = saved_checkout_status(driver, fixtures, report)
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
             elif args.suite == "workspace-reopen":
                 from native_workspace_edit_scenarios import reopen_workspace_tab

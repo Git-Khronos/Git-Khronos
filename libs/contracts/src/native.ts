@@ -475,6 +475,7 @@ mailPatchInProgress: boolean; bisectInProgress: boolean; bisectCandidate?: Bisec
 filesUnscanned?: boolean | null; entryCount: number; entriesTruncated: boolean; entries: WorkingTreeEntry[] }
 export type RetireForkRequest = { recordId: string; expectedRevision: string; acknowledgeUnconfirmed: boolean; operationId: string }
 export type SaveFileToolResultRequest = { contextId: string; token: string; operationId: string; finishedEditing: boolean }
+export type SavedCheckoutStatus = { branch: string | null; bare: boolean; unborn: boolean; staged: number; unstaged: number; untracked: number; conflicted: number; ahead: number; behind: number }
 export type ShallowHistoryState = { shallow: boolean; boundaryCommits: number }
 export type SigningDiagnostic = { available: boolean; program: string; format: string; keyConfigured: boolean; message: string }
 export type SigningInfo = { enabled: boolean; format: string; key: string | null }
@@ -674,6 +675,7 @@ export const acknowledge_incoming_repository_link: (args: { requestId: string })
 export const dismiss_incoming_repository_link_overflow: (args?: {}) => Promise<IncomingRepositoryLinkState> = /* @__PURE__ */ __bindOptionalCommand__("dismiss_incoming_repository_link_overflow");
 export const cancel_git_operation: (args: { operationId: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("cancel_git_operation");
 export const open_repository: (args: { path: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("open_repository");
+export const inspect_saved_checkout_status: (args: { path: string; operationId: string }) => Promise<SavedCheckoutStatus> = /* @__PURE__ */ __bindCommand__("inspect_saved_checkout_status");
 export const clone_repository: (args: { remote: string; parentPath: string; folder: string; branch?: string | null; depth?: number | null; recurseSubmodules?: boolean | null; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("clone_repository");
 export const initialize_repository: (args: { parentPath: string; folder: string; initialBranch: string; createReadme: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("initialize_repository");
 export const refresh_repository: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("refresh_repository");
@@ -956,6 +958,7 @@ export type CommandMap = {
   dismiss_incoming_repository_link_overflow: typeof dismiss_incoming_repository_link_overflow;
   cancel_git_operation: typeof cancel_git_operation;
   open_repository: typeof open_repository;
+  inspect_saved_checkout_status: typeof inspect_saved_checkout_status;
   clone_repository: typeof clone_repository;
   initialize_repository: typeof initialize_repository;
   refresh_repository: typeof refresh_repository;

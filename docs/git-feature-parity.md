@@ -54,14 +54,16 @@ behavioral cases during the audit; grouping does not remove any listed action.
    exposed: pull-triggered nested checkouts could surprise users or interact
    with local submodule state. See the
    [submodule guide](https://help.gitkraken.com/gitkraken-desktop/submodules/).
-3. **Remaining workspace actions:** bulk clone, conversion
-   of local groups to shared groups, and status aggregation for unopened
-   repositories remain unimplemented. Bulk fetch, pull and open report
+3. **Remaining workspace actions:** bulk clone and conversion
+   of local groups to shared groups remain unimplemented. Bulk fetch, pull and open report
    per-repository outcomes. Bulk close removes reviewed open tabs from this
    workspace without touching Git data or files. Saved but unopened paths
    remain in Repository overview with individual retry, locate and remove
    actions plus reviewed bulk removal. Locate replaces paths in place;
    selecting several prompts for one explicit replacement per path.
+   **Check saved status** reads selected or all unopened saved paths, up to
+   32 at a time, without opening a tab or fetching. Results are timestamped
+   local observations; an unavailable path does not hide the other results.
 
 Repository files now has a flat, native-filtered view of tracked, untracked and
 ignored files with bounded pages. Empty-file creation is currently limited to

@@ -868,6 +868,20 @@ outputs from a retired form cannot target its replacement. A cancel control
 remains available during loading or on error; a late form only takes focus
 if the user has not moved it elsewhere.
 
+### Saved checkout status
+
+Workspace overview can inspect saved checkout roots without registering a
+native repository session, opening a tab, or starting a watcher. It checks
+one path at a time and records failures separately. Read-only checks cannot
+follow a saved path into a different canonical root; locate reviews are
+separate and explicit. Native reads disable optional index writes, implicit
+promisor downloads and configured fsmonitor hooks. Untracked directories
+may count as one porcelain entry. Tracking counts refer only to local refs.
+
+The scan belongs to the workspace dialog instance. Stop retires the current
+result and prevents new reads; closing or changing workspace requests
+cancellation and cannot publish a late result in the next workspace.
+
 ### Shared deferred fetch and worktree review ownership
 
 Fetch options and linked-worktree move/repair capture the checkout ID/path and
