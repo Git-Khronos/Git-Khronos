@@ -3260,6 +3260,13 @@ before confirming. This is a fixture fix, not a retroactive pass for the
 archived full run. The exact `02ff4a7` installer separately passed all
 four Ubuntu 24.04 Pull scope scenarios, including sibling preservation.
 
+The archived `0872217` browser run recorded 2,620 passes and one failure.
+The pending-clone test read the status path immediately after a tab click,
+before the new selection rendered; it then expected the old path even
+though the correct new tab was active. The test now checks the intended
+tab ID and path independently of that paint timing. The archived run remains
+a failed result.
+
 The `62ac826` candidate adds checkout-scoped stored-reference deletion and
 keeps safe branch deletion results independent of other UI errors. Its
 pinned renderer regression run passed all 134 cases. The exact installer

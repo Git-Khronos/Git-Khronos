@@ -79,10 +79,20 @@ for (const changeTab of [false, true]) {
     await expect.poll(() => page.evaluate(() => typeof (window as any).__finishOwnedCreation)).toBe('function');
     await dialog.getByRole('button', { name: 'Close repository management' }).click();
     await expect(dialog).toHaveCount(0);
-    if (changeTab) await page.locator('.repo-tab-main').nth(1).click();
-    const original = await page.locator('.status-repository-path').innerText();
+    const tab = changeTab ? page.locator('.repo-tab-main').nth(1) :
+      page.locator('.repo-tab-main[aria-selected="true"]');
+    const tabId = await tab.getAttribute('data-repository-tab-id');
+    const expectedPath = await page.evaluate(id => {
+      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      return git.repositories().find((repository: any) => repository.id === id)?.path;
+    }, tabId);
+    expect(expectedPath).toBeTruthy();
+    if (changeTab) await tab.click();
     await finishNativeCreation(page);
-    await expect(page.locator('.status-repository-path')).toHaveText(original);
+    // The status line can still display the old repository immediately
+    // after a tab click. The intended tab, not its paint timing, is the oracle.
+    await expect(page.locator('.repo-tab-main[aria-selected="true"]')).toHaveAttribute('data-repository-tab-id', tabId!);
+    await expect(page.locator('.status-repository-path')).toHaveText(expectedPath);
     expect(await creationState(page, path)).toEqual({ recent: true, saved: 1, opened: false, requests: 1 });
   });
 }
