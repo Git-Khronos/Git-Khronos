@@ -62,7 +62,7 @@ use git_khronos_git_core::{
     signing_diagnostic as git_signing_diagnostic, skip_rebase as git_skip_rebase,
     snapshot_with_limits_fast_and_checkpoint_visibility,
     snapshot_with_limits_startup_and_checkpoint_visibility, stage_all as git_stage_all,
-    stage_path as git_stage_path, start_bisect as git_start_bisect,
+    stage_path as git_stage_path, start_reviewed_bisect as git_start_bisect,
     stash_details_at_oid as git_stash_details, stash_file_diff_at_oid as git_stash_file_diff,
     stash_with_message as git_stash, status_with_entry_limit, status_with_entry_limit_fast,
     tag_details as git_tag_details, track_lfs_pattern as git_track_lfs_pattern,
@@ -2726,12 +2726,11 @@ fn control_history_operation(
 #[specta::specta]
 fn start_bisect(
     repo_id: String,
-    bad_oid: String,
-    good_oid: String,
+    review: git_khronos_git_core::BisectStartReview,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
-        git_start_bisect(path, &bad_oid, &good_oid)
+        git_start_bisect(path, &review)
     })
 }
 

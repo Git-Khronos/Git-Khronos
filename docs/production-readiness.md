@@ -3605,6 +3605,19 @@ The exact focused verification is in
 This test-publisher installer was built without copied Cargo release outputs;
 it does not qualify the subsequent package-task fix or the later stash changes.
 
+The warm-cache `4c0c69a` build removed only workspace release artifacts,
+recompiled both workspace Rust crates, and passed the exact Linux matrix:
+**37 of 37 required checks**, 53 passing installed reports across Ubuntu
+22.04/24.04/26.04 and Debian 12/13, and test-publisher verification. The
+Ubuntu 22.04 runner originally failed before launch with an invalid container
+name; the corrected lane used the same source, package and test data.
+Only the Debian 12 GitLab lane used the screenshot harness fix described
+above. The APT simulation and verified handoff are retained at
+`target/local-review/qualified-0.1.6-4c0c69a/` (SHA-256
+`72ed2623e0f112fe0e936a7cdc0f8af7997020fc0dc92885e9107e2de5377f85`).
+This is not production-key signing, publication, or verification of later
+source edits.
+
 ### Stash restore collision preflight
 
 Git can return an untracked-file collision after it has already restored
@@ -3621,6 +3634,9 @@ not predict other merge effects, such as tracked-file conflicts or path
 relocation during the native merge. The CLI reproduction, failing older
 installer and source validation are retained in
 `target/local-review/stash-untracked-preflight.R3M4lu0F/`.
+The matching `b592e12` package passed all five focused installed scenarios
+on Ubuntu 24.04 with stock Git 2.43, including the three-command obstruction
+test. The exact result is `verified-installed.json` in the same directory.
 
 A separate failure affected tracked additions: Git could report successful
 Apply while silently replacing ignored local bytes. The same preflight now
@@ -3631,6 +3647,18 @@ the index, HEAD, stash and original bytes; moving the ignored file permits
 a retry with the chosen index behavior. The new installed gate checks the
 same refusal and retry on all three commands. The guard does not predict
 paths an arbitrary divergent merge might create by relocating changes.
+
+### Bisect start verifies the displayed range and checkout
+
+The old confirmation substituted the newest HEAD when a checkout changed
+after review. All three renderer negative controls submitted an unexpected
+mutation (changed HEAD, same-tip branch, and an away-and-back tab visit).
+The new confirmation refuses those stale controls and sends both displayed
+commit IDs and branch through the generated IPC contract. Native tests
+verify branch and tip refusals with no bisect marker, index or ref changes.
+Fresh requests still start and Reset returns to the original checkout.
+Focused renderer, core and contract evidence is retained under
+`target/local-review/bisect-reviewed-start.tvOGLrHc/`.
 
 ### Manual and automatic Fetch recovery
 

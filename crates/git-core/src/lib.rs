@@ -6484,7 +6484,28 @@ pub fn reset_to_commit(path: &Path, oid: &str, mode: &str) -> Result<(), AppErro
     execute_reset(path, &prepare_reset(path, oid, mode)?).map(|_| ())
 }
 
+#[derive(Debug, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BisectStartReview {
+    pub bad_oid: String,
+    pub good_oid: String,
+    pub branch: Option<String>,
+}
+
 pub fn start_bisect(path: &Path, bad_oid: &str, good_oid: &str) -> Result<(), AppError> {
+    start_bisect_at(path, bad_oid, good_oid, None)
+}
+
+pub fn start_reviewed_bisect(path: &Path, review: &BisectStartReview) -> Result<(), AppError> {
+    start_bisect_at(path, &review.bad_oid, &review.good_oid, Some(review.branch.as_deref()))
+}
+
+fn start_bisect_at(
+    path: &Path,
+    bad_oid: &str,
+    good_oid: &str,
+    reviewed_branch: Option<Option<&str>>,
+) -> Result<(), AppError> {
     validate_commit_oid(bad_oid)?;
     validate_commit_oid(good_oid)?;
     if bad_oid == good_oid {
@@ -6515,6 +6536,19 @@ pub fn start_bisect(path: &Path, bad_oid: &str, good_oid: &str) -> Result<(), Ap
             "Commit or stash working directory changes before starting bisect.",
             None,
         ));
+    }
+    if let Some(branch) = reviewed_branch {
+        reviewed_commit_head(path, bad_oid, branch).map_err(|error| {
+            if error.kind == "staleCommit" {
+                AppError::new(
+                    "staleBisectStart",
+                    "The branch or HEAD changed after the bisect range was reviewed.",
+                    Some("Refresh the repository and choose the bisect range again."),
+                )
+            } else {
+                error
+            }
+        })?;
     }
     run_mutation(
         path,
@@ -18306,6 +18340,47 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         let reset = snapshot(&repository.path).expect("snapshot reset bisect");
         assert!(!reset.status.bisect_in_progress);
         assert_eq!(reset.head_oid.as_deref(), Some(bad_oid.as_str()));
+    }
+
+    #[test]
+    fn bisect_start_review_rechecks_both_branch_identity_and_bad_tip() {
+        let repo = TestRepository::new();
+        let path = &repo.path;
+        repo.write("test.txt", "known good\n");
+        stage_all(path).unwrap();
+        commit(path, "Known good").unwrap();
+        let good_oid = reference_tip(path, "HEAD").unwrap();
+        for number in 0..4 {
+            repo.write("test.txt", &format!("step {number}\n"));
+            stage_all(path).unwrap();
+            commit(path, "Step").unwrap();
+        }
+        let mut review = BisectStartReview {
+            bad_oid: reference_tip(path, "HEAD").unwrap(),
+            good_oid,
+            branch: Some("main".into()),
+        };
+        repo.git(&["switch", "-c", "same-tip"]);
+        for moved_head in [false, true] {
+            if moved_head {
+                repo.git(&["switch", "main"]);
+                repo.git(&["commit", "--allow-empty", "-m", "Moved HEAD"]);
+            }
+            let actual = reference_tip(path, "HEAD");
+            let index = fs::read(path.join(".git/index")).unwrap();
+            let error = start_reviewed_bisect(path, &review).unwrap_err();
+            assert_eq!(error.kind, "staleBisectStart");
+            assert_eq!(reference_tip(path, "HEAD"), actual);
+            assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+            assert!(!path.join(".git/BISECT_START").exists());
+            assert!(run_git(path, &["for-each-ref", "refs/bisect"]).unwrap().stdout.is_empty());
+        }
+        review.bad_oid = reference_tip(path, "HEAD").unwrap();
+        start_reviewed_bisect(path, &review).unwrap();
+        assert!(repository_operation_state(path).unwrap().bisect);
+        reset_bisect(path).unwrap();
+        assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(review.bad_oid.as_str()));
+        assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("main"));
     }
 
     #[test]

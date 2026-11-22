@@ -11,6 +11,7 @@ import { ipc, type BranchComparison } from '@git-khronos/contracts';
 import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationOptions, type CommandArgs } from '@git-khronos/contracts';
 import { open } from '@tauri-apps/plugin-dialog';
 import type {
+  BisectStartReview,
   BranchIntegrationReview,
   CommitAuthorInput,
   CommitComparison,
@@ -2677,10 +2678,10 @@ export class GitKhronosService implements OnDestroy {
     return false;
   }
 
-  async startBisect(goodOid: string): Promise<void> {
+  async startBisect(review: BisectStartReview): Promise<void> {
     const repository = this.repository();
-    const badOid = repository?.headOid;
-    if (!repository || !badOid || goodOid === badOid) return;
+    const { badOid, goodOid, branch } = review;
+    if (!repository || repository.headOid !== badOid || repository.status.branch !== branch || goodOid === badOid) return;
     if (this.browserPreview()) {
       this.previewBisectOriginalHeads.set(repository.id, badOid);
       const goodIndex = repository.commits.findIndex((commit) => commit.oid === goodOid);
@@ -2692,7 +2693,7 @@ export class GitKhronosService implements OnDestroy {
       this.activity.set('Bisect started');
       return;
     }
-    await this.mutate('start_bisect', 'Starting bisect…', 'Bisect started', { badOid, goodOid });
+    await this.mutate('start_bisect', 'Starting bisect…', 'Bisect started', { review });
   }
 
   async markBisect(verdict: 'good' | 'bad' | 'skip'): Promise<void> {

@@ -337,6 +337,32 @@ def bisect_reset_preserves_ignored_files(driver, fixtures, report):
     report['scenarios'].append('native-bisect-reset-preserves-ignored-file-and-allows-safe-retry')
 
 
+def bisect_start_rejects_a_stale_checkout(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-start-review', commits=6)
+    repo_id = open_ui(driver, repository)
+    bad = fixtures.git(repository, 'rev-parse', 'HEAD')
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~5')
+    review = {'badOid': bad, 'goodOid': good, 'branch': 'main'}
+    fixtures.git(repository, 'switch', '-qc', 'same-tip')
+    before = checkout_footprint(fixtures, repository)
+    marker = repository / '.git/BISECT_START'
+    try:
+        driver.invoke('start_bisect', repoId=repo_id, review=review)
+    except RuntimeError as error:
+        details = json.loads(str(error))
+        assert details['kind'] == 'staleBisectStart', details
+    else:
+        raise AssertionError('A stale bisect review moved the other checkout')
+    assert not marker.exists() and not fixtures.git(repository, 'for-each-ref', 'refs/bisect')
+    assert checkout_footprint(fixtures, repository) == before
+    driver.invoke('start_bisect', repoId=repo_id, review={**review, 'branch': 'same-tip'})
+    assert marker.is_file() and fixtures.git(repository, 'rev-parse', 'HEAD') != bad
+    driver.invoke('reset_bisect', repoId=repo_id)
+    assert not marker.exists() and fixtures.git(repository, 'rev-parse', 'HEAD') == bad
+    assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/same-tip'
+    report['scenarios'].append('native-bisect-start-refuses-a-stale-branch-at-the-same-tip')
+
+
 def replay_recovery_preserves_ignored_files(driver, fixtures, report):
     for operation, action in [('revert', 'skip'), ('cherry-pick', 'abort')]:
         multi = operation == 'cherry-pick'
@@ -399,6 +425,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     recovery_reset_preserves_ignored_files(driver, fixtures, report)
     mail_recovery_preserves_ignored_files(driver, fixtures, report)
     bisect_reset_preserves_ignored_files(driver, fixtures, report)
+    bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
     replay_recovery_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')

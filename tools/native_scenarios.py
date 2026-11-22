@@ -3113,7 +3113,8 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     assert call("search_repository_history", query=query, cursor=None, operationId=str(uuid.uuid4()))["entries"]
     assert call("inspect_file_blame", revision=head(), path="fixture.txt")
     assert call("load_reflog")["entries"]
-    call("start_bisect", badOid=head(), goodOid=fixtures.git(repository, "rev-parse", "HEAD~5"))
+    call("start_bisect", review={"badOid": head(), "goodOid": fixtures.git(repository, "rev-parse", "HEAD~5"),
+                                "branch": fixtures.git(repository, "symbolic-ref", "HEAD").removeprefix("refs/heads/")})
     assert call("refresh_repository_status")["bisectInProgress"]
     call("reset_bisect")
     assert not call("refresh_repository_status")["bisectInProgress"]

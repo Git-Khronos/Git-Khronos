@@ -440,6 +440,10 @@ export interface CommandAction {
 }
 
 interface PendingBisectStart {
+  checkoutScope: string;
+  repositoryId: string;
+  repositoryPath: string;
+  branch: string | null;
   goodOid: string;
   goodLabel: string;
   badOid: string;
@@ -14050,6 +14054,10 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!repository?.headOid) return;
     const head = repository.commits.find((commit) => commit.oid === repository.headOid);
     this.pendingBisectStart.set({
+      checkoutScope: this.git.activeRepositoryReadScope(),
+      repositoryId: repository.id,
+      repositoryPath: repository.path,
+      branch: repository.status.branch,
       goodOid,
       goodLabel,
       badOid: repository.headOid,
@@ -14057,11 +14065,21 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected async confirmBisectStart(): Promise<void> {
-    const pending = this.pendingBisectStart();
-    if (!pending) return;
-    this.pendingBisectStart.set(null);
-    await this.git.startBisect(pending.goodOid);
+  protected bisectStartReviewCurrent(review: PendingBisectStart): boolean {
+    const repository = this.git.repository();
+    return !!repository && this.git.activeRepositoryReadScope() === review.checkoutScope
+      && repository.id === review.repositoryId && repository.path === review.repositoryPath
+      && repository.headOid === review.badOid && repository.status.branch === review.branch;
+  }
+
+  protected dismissBisectStart(review: PendingBisectStart): void {
+    if (this.pendingBisectStart() === review) this.pendingBisectStart.set(null);
+  }
+
+  protected async confirmBisectStart(review: PendingBisectStart): Promise<void> {
+    if (this.pendingBisectStart() !== review || this.git.busy() || !this.bisectStartReviewCurrent(review)) return;
+    this.dismissBisectStart(review);
+    await this.git.startBisect({ badOid: review.badOid, goodOid: review.goodOid, branch: review.branch });
   }
 
   protected async markBisect(verdict: 'good' | 'bad' | 'skip'): Promise<void> {

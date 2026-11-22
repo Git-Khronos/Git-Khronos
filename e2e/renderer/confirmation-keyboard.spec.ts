@@ -35,7 +35,9 @@ async function openReview(page: Page, review: Review, gap = false) {
         kind: 'delete', branch: 'owned-review', expectedOid: oid }],
       'stored-reference': ['pendingStoredReferenceDelete', { kind: 'original', repoId: repository.id, repositoryPath: repository.path,
         repositoryVisit: app.git.activeRepositoryReadScope(), reference: 'refs/original/owned-review', oid, returnFocus: null }],
-      bisect: ['pendingBisectStart', { goodOid: repository.commits[1].oid, goodLabel: 'Known good', badOid: oid, badLabel: 'Known bad' }],
+      bisect: ['pendingBisectStart', { checkoutScope: app.git.activeRepositoryReadScope(), repositoryId: repository.id,
+        repositoryPath: repository.path, branch: repository.status.branch, goodOid: repository.commits[1].oid,
+        goodLabel: 'Known good', badOid: repository.headOid, badLabel: 'Known bad' }],
       history: ['pendingHistoryAction', { kind: 'cherry-pick', oid, oids: [oid], label: 'Owned commit' }],
     };
     app.publishRemote.set('origin');

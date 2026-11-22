@@ -781,6 +781,11 @@ Bisect Reset checks the recorded start against the live local branch or
 detached commit and leaves the session active on an ignored-file collision.
 A Git-managed `--no-checkout` session requires no restore and keeps its
 native reset behavior. Starting or advancing a bisect is separate.
+Starting a bisect binds both displayed commit IDs and the original checkout
+visit, path and branch to the confirmation. A stale review cannot substitute
+the latest HEAD for the displayed bad commit. Native start validates the
+actual branch and HEAD again before Git can record its initial state. This
+does not change Git's candidate selection or how ongoing sessions are marked.
 Cherry-pick and Revert Skip check the current HEAD reset, while Abort
 checks the native sequencer's original commit for a multi-commit replay.
 Single-step and app-owned no-commit Abort check the current, original HEAD.
