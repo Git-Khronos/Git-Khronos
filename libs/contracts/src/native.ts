@@ -852,7 +852,7 @@ export const drop_stash: (args: { repoId: string; reference: string; expectedOid
 export const rename_stash: (args: { repoId: string; reference: string; expectedOid: string; message: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("rename_stash");
 export const create_tag: (args: { repoId: string; name: string; oid: string; message?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_tag");
 export const cherry_pick_commits: (args: { repoId: string; oids: string[]; mainline?: number | null; noCommit?: boolean | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("cherry_pick_commits");
-export const revert_commit: (args: { repoId: string; oid: string; mainline?: number | null; oids?: string[] | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("revert_commit");
+export const revert_commit: (args: { repoId: string; oid: string; mainline?: number | null; oids?: string[] | null; noCommit?: boolean | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("revert_commit");
 export const control_history_operation: (args: { repoId: string; operation: string; action: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("control_history_operation");
 export const reset_to_commit: (args: { repoId: string; oid: string; mode: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("reset_to_commit");
 export const preview_reset: (args: { repoId: string; oid: string; mode: string }) => Promise<PreparedReset> = /* @__PURE__ */ __bindCommand__("preview_reset");

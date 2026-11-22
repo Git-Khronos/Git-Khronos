@@ -206,8 +206,9 @@ describe('Git feature documentation', () => {
     expect(topic?.hint).toContain('newest-to-oldest order');
     expect(topic?.hint).toContain('without revision traversal');
     expect(topic?.caution).toContain('review each merge individually');
-    expect(topic?.caution).toContain('Abort restores the original sequence tip');
+    expect(topic?.caution).toContain('Abort restores the original tracked state');
     expect(topic?.caution).toContain('explicitly commit that step before continuing');
-    expect(topic?.caution).toContain('No-commit revert remains unsupported');
+    expect(topic?.commands).toContain('--no-commit');
+    expect(topic?.caution).toContain('no-commit replay deliberately has no Skip');
   });
 });

@@ -14588,8 +14588,8 @@ export class AppComponent implements OnInit, OnDestroy {
       await this.git.cherryPick(action.oids, mainline, noCommit);
     }
     else if (action.kind === 'revert') {
-      if (action.oids.length > 1) await this.git.revertCommits(action.oids);
-      else await this.git.revertCommit(action.oid, mainline);
+      if (action.oids.length > 1) await this.git.revertCommits(action.oids, noCommit);
+      else await this.git.revertCommit(action.oid, mainline, noCommit);
     }
     else if (action.kind === 'split') {
       await this.git.beginRebaseSplit(action.oid);

@@ -2678,18 +2678,19 @@ export class GitKhronosService implements OnDestroy {
     );
   }
 
-  async revertCommit(oid: string, mainline: number | null = null): Promise<void> {
+  async revertCommit(oid: string, mainline: number | null = null, noCommit = false): Promise<void> {
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    const outcome = await this.mutate('revert_commit', 'Reverting commit…', 'Revert commit created', { oid, mainline });
+    const outcome = await this.mutate('revert_commit', noCommit ? 'Applying inverse changes…' : 'Reverting commit…', noCommit ? 'Inverse changes applied without a commit' : 'Revert commit created', { oid, mainline, ...(noCommit ? { noCommit: true } : {}) });
     if (outcome === 'success') this.recordHeadChange(repository?.id, beforeOid, 'Revert Commit');
   }
 
-  async revertCommits(oids: string[]): Promise<void> {
+  async revertCommits(oids: string[], noCommit = false): Promise<void> {
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    const outcome = await this.mutate('revert_commit', `Reverting ${oids.length} commits…`,
-      `${oids.length} revert commits created`, { oid: oids[0], oids, mainline: null });
+    const outcome = await this.mutate('revert_commit', noCommit ? `Applying inverse changes for ${oids.length} commits…` : `Reverting ${oids.length} commits…`,
+      noCommit ? 'Inverse changes applied without commits' : `${oids.length} revert commits created`,
+      { oid: oids[0], oids, mainline: null, ...(noCommit ? { noCommit: true } : {}) });
     if (outcome === 'success') this.recordHeadChange(repository?.id, beforeOid, `Revert ${oids.length} Commits`);
   }
 

@@ -1571,14 +1571,20 @@ legacy projection, concurrent observations and serialized camelCase fields;
 `repository-operation.spec.ts` exercises every enum variant and compatibility;
 renderer characterization exercises both typed and legacy producers.
 
-The existing replay detector's precedence is deliberately unchanged:
-no-commit replay / `CHERRY_PICK_HEAD`, then `REVERT_HEAD`, then the sequencer.
-If both head markers exist, the typed collection contains the detected
-cherry-pick, not both raw marker files. This is **not lossless raw-marker
-forensics**, nor evidence that two marker files are two valid Git operations.
-The focused `repository_operation_replay_markers_keep_legacy_precedence` fixture
-pins this compatibility limitation. Expanding forensic observations or adding
-controls for ambiguous replay markers requires separate native semantics/review.
+The replay detector gives the application-owned no-commit journal precedence;
+its persisted kind determines whether the typed operation is `cherryPick` or
+`revert`. Older journals without a kind default to cherry-pick. The active
+no-commit step's matching `CHERRY_PICK_HEAD` or `REVERT_HEAD` is owned by that
+journal and is removed only after the corresponding step is resolved; an
+unexpected marker is preserved and reported as stale state. Without an owned
+journal, native marker precedence remains `CHERRY_PICK_HEAD`, then
+`REVERT_HEAD`, then the sequencer. If both head markers exist, the typed
+collection contains the detected cherry-pick, not both raw marker files. This
+is **not lossless raw-marker forensics**, nor evidence that two marker files
+are two valid Git operations. The focused
+`repository_operation_replay_markers_keep_legacy_precedence` fixture pins this
+compatibility limitation. Expanding forensic observations or adding controls
+for ambiguous replay markers requires separate native semantics/review.
 
 ### Inbox async reads (F45)
 
@@ -1688,8 +1694,9 @@ Coverage: `operation-tracker.spec.ts`, `operation-tracker-characterization.spec.
 - **Observed:** merge plus bisect, rebase plus bisect, replay plus bisect, and
   multiple externally supplied operation markers remain separately visible.
   Any operation representation must preserve these combinations.
-- **Observed:** no-commit replay has different Continue/Skip/Finish-manually
-  guards in the banner and command palette.
+- **Observed:** no-commit cherry-pick and revert share the durable review
+  journal, but Continue/Skip/Finish-manually guards remain distinct in the
+  banner and command palette; no-commit sequences deliberately have no Skip.
 - **Observed and corrected:** acknowledgement superseding an in-flight inbox
   read invalidated its cleanup without clearing `loading`, leaving the spinner
   stuck. A deferred-response unit test failed before migration and now requires

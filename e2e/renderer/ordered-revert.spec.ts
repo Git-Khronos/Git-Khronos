@@ -35,6 +35,12 @@ test.beforeEach(async ({ page }) => {
               entries: [{ path: 'file', oldPath: null, indexStatus: 'U', worktreeStatus: 'U', conflicted: true }] } };
             return Promise.reject({ kind: 'gitFailure', message: 'A later inverse conflicted; earlier inverse commits remain in the paused sequence.' });
           }
+          if (args.noCommit) {
+            fixture.snapshot = { ...original, status: { ...original.status, staged: 1, unstaged: 0,
+              historyOperation: null, historyNoCommit: false, entryCount: 1,
+              entries: [{ path: 'file', oldPath: null, indexStatus: 'M', worktreeStatus: '.', conflicted: false }] } };
+            return Promise.resolve(fixture.snapshot);
+          }
           fixture.snapshot = { ...original, headOid: 'f'.repeat(40) };
           return Promise.resolve(fixture.snapshot);
         }
@@ -86,6 +92,28 @@ test('multi-selection reviews every inverse newest-first and sends the exact lis
       oids: fixture.commits.map((commit: any) => commit.oid), mainline: null });
   expect(result.draft).toBe('Retained draft for later work');
   expect(result.activity).toBe('3 revert commits created');
+});
+
+test('no-commit ordered revert applies the exact reviewed order without moving HEAD', async ({ page }) => {
+  await openSelection(page);
+  const dialog = page.getByRole('alertdialog');
+  await dialog.getByRole('checkbox', { name: 'Apply inverse changes without creating commits' }).check();
+  await expect(dialog).toContainText('HEAD stays unchanged');
+  await dialog.getByRole('button', { name: 'Apply inverse changes', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const result = await page.evaluate(() => {
+    const fixture = (window as any).__orderedRevert;
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    return { original: fixture.original, commits: fixture.commits,
+      revertArgs: fixture.calls.find((call: any) => call.command === 'revert_commit').args,
+      head: app.git.repository().headOid, staged: app.git.repository().status.staged, activity: app.git.activity() };
+  });
+  expect(result.revertArgs)
+    .toEqual({ repoId: result.original.id, oid: result.commits[0].oid,
+      oids: result.commits.map((commit: any) => commit.oid), mainline: null, noCommit: true });
+  expect(result.head).toBe(result.original.headOid);
+  expect(result.staged).toBe(1);
+  expect(result.activity).toBe('Inverse changes applied without commits');
 });
 
 test('compact keyboard cancellation and contextual official help preserve the reviewed order without execution', async ({ page }) => {

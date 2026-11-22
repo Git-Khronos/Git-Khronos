@@ -258,6 +258,54 @@ fn no_commit_replay_restart_continues_staged_resolution_and_remaining_rows_witho
 }
 
 #[test]
+fn no_commit_revert_conflicts_resume_without_committing_and_abort_restores_original_state() {
+    let (repository, oids, _, original) = fixture(true);
+    let path = &repository.0;
+    let mut newest_first = oids.clone();
+    newest_first.reverse();
+    assert!(revert_commits_with_options(path, &newest_first, true).is_err());
+    assert_eq!(
+        read_status(path).unwrap().history_operation.as_deref(),
+        Some("revert")
+    );
+    assert!(read_status(path).unwrap().history_no_commit);
+    assert!(path.join(".git/REVERT_HEAD").exists());
+    fs::write(path.join("file"), b"base\n").unwrap();
+    stage_path(path, "file").unwrap();
+    control_history_operation(path, "revert", "continue").unwrap();
+    assert_eq!(repository.oid(), original);
+    assert_eq!(read_status(path).unwrap().history_operation, None);
+    assert!(!read_status(path).unwrap().history_no_commit);
+    assert!(!path.join(".git/REVERT_HEAD").exists());
+
+    let (aborted, oids, _, original) = fixture(true);
+    let path = &aborted.0;
+    let mut newest_first = oids;
+    newest_first.reverse();
+    assert!(revert_commits_with_options(path, &newest_first, true).is_err());
+    let marker = path.join(".git/REVERT_HEAD");
+    let expected_marker = fs::read(&marker).unwrap();
+    fs::write(&marker, format!("{}\n", "0".repeat(40))).unwrap();
+    assert_eq!(
+        control_history_operation(path, "revert", "abort")
+            .unwrap_err()
+            .kind,
+        "staleNoCommitReplay"
+    );
+    assert_eq!(
+        fs::read(&marker).unwrap(),
+        format!("{}\n", "0".repeat(40)).as_bytes()
+    );
+    assert!(read_status(path).unwrap().history_no_commit);
+    fs::write(&marker, expected_marker).unwrap();
+    control_history_operation(path, "revert", "abort").unwrap();
+    assert_eq!(aborted.oid(), original);
+    assert_eq!(read_status(path).unwrap().history_operation, None);
+    assert!(!path.join(".git/REVERT_HEAD").exists());
+    assert_eq!(fs::read(path.join("file")).unwrap(), b"destination\n");
+}
+
+#[test]
 fn no_commit_replay_abort_restores_original_tracked_state_and_keeps_untracked_files() {
     for resolve in [false, true] {
         let (repository, oids, _, original) = fixture(true);

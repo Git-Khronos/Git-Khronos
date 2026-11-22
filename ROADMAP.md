@@ -135,7 +135,9 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Ordered multi-commit revert with newest-first review, exact nontraversing
   input order, complete preflight and protected original tip
   (native conflict/Continue/Skip/Abort and retained hook-failure sequencer;
-  merge mainline remains individually reviewed, no-commit revert unsupported)
+  merge mainline remains individually reviewed; optional no-commit mode keeps
+  HEAD fixed, stages the reviewed inverse changes and supports restart-safe
+  Continue/Abort/Finish-manually conflict recovery)
 - [x] Explicit no-commit cherry-pick with unchanged HEAD, staged reviewed order,
   worktree-local restart recovery, no-commit Continue, guarded Abort and
   preserve-files manual finish

@@ -20,8 +20,8 @@
       }
       @if (review.kind === 'cherry-pick') { <p>@if (review.targetBranch) { Switch to <strong>{{ review.targetBranch }}</strong>, then apply this commit's changes there{{ noCommit() ? ' without committing' : ' as a new commit' }}. } @else { Apply {{ review.oids.length === 1 ? "this commit's changes" : 'these commits in oldest-to-newest order' }} onto the current branch{{ noCommit() ? ' without committing' : review.oids.length === 1 ? ' as a new commit' : ' as new commits' }}. }</p> }
       @if (review.kind === 'revert') {
-        @if (review.oids.length === 1) { <p>Create a new commit that safely reverses this commit.</p> } @else {
-          <p>Create one new inverse commit per selected commit, in the reviewed newest-to-oldest order below. Original history stays intact. Requires a clean working tree; the current tip is saved first. Conflicts pause Git's sequence: resolve and stage, then Continue, Skip the conflicted step, or Abort the whole sequence.</p>
+        @if (review.oids.length === 1) { <p>{{ noCommit() ? 'Apply this commit’s inverse changes to the index and working tree without creating a commit.' : 'Create a new commit that safely reverses this commit.' }}</p> } @else {
+          <p>{{ noCommit() ? 'Apply inverse changes for selected commits in the reviewed newest-to-oldest order below without creating commits.' : 'Create one new inverse commit per selected commit, in the reviewed newest-to-oldest order below.' }} Original history stays intact. Requires a clean working tree; the current tip is saved first. Conflicts pause the sequence: resolve and stage, then Continue{{ noCommit() ? ' without committing' : ', Skip the conflicted step,' }} or Abort the whole sequence.</p>
           <ol class="revert-sequence" aria-label="Reviewed revert order">
             @for (step of revertSteps(); track step.oid) { <li><code [title]="step.oid">{{ shortOid(step.oid) }}</code> {{ step.subject }}</li> }
           </ol>
@@ -31,6 +31,10 @@
       @if (review.kind === 'cherry-pick') {
         <label class="commit-option"><input type="checkbox" [ngModel]="noCommit()" (ngModelChange)="noCommitChanged.emit($event)" [disabled]="git.busy()" />Apply changes without creating commits</label>
         @if (noCommit()) { <p>Apply in reviewed order to the index and working tree. HEAD stays unchanged. Review the staged result and commit explicitly with your own message and identity. Requires a clean working tree; the original tip is saved. Conflicts pause a restart-safe sequence; stage resolutions and Continue without committing.</p> }
+      }
+      @if (review.kind === 'revert') {
+        <label class="commit-option"><input type="checkbox" [ngModel]="noCommit()" (ngModelChange)="noCommitChanged.emit($event)" [disabled]="git.busy()" />Apply inverse changes without creating commits</label>
+        @if (noCommit()) { <p>Apply inverse changes in the reviewed newest-to-oldest order. HEAD stays unchanged; review and commit the staged result explicitly. Requires a clean working tree and saves the original tip. Conflicts pause a restart-safe sequence; resolve and stage before Continue. Abort restores the original tracked state.</p> }
       }
       @if (parents().length) {
         @if (review.oids.length > 1) {
@@ -79,7 +83,7 @@
     <footer>
       <button type="button" data-history-dialog-cancel (click)="closed.emit()">Cancel</button>
       <button class="confirm-action" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'" type="button" [disabled]="git.busy() || (review.kind === 'checkout-commit' && !checkoutReady()) || (review.kind === 'reset' && !preview()) || (parents().length > 0 && (review.oids.length !== 1 || !mainline()))" (click)="execute.emit()">
-        {{ review.kind === 'checkout-commit' ? 'Check out detached HEAD' : review.kind === 'split' ? 'Begin split' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits')) : review.kind === 'revert' ? 'Revert' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits') : 'Reset ' + resetMode() }}
+        {{ review.kind === 'checkout-commit' ? 'Check out detached HEAD' : review.kind === 'split' ? 'Begin split' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits')) : review.kind === 'revert' ? (noCommit() ? 'Apply inverse changes' : 'Revert' + (review.oids.length === 1 ? '' : ' ' + review.oids.length + ' commits')) : 'Reset ' + resetMode() }}
       </button>
     </footer>
   </section>

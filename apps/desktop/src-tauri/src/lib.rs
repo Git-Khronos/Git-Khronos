@@ -54,7 +54,8 @@ use git_khronos_git_core::{
     reset_bisect as git_reset_bisect, reset_to_commit as git_reset_to_commit,
     resolve_conflict_with_preview as git_resolve_conflict, resolve_repository,
     restore_files_from_commit as git_restore_files_from_commit,
-    revert_commit_with_mainline as git_revert_commit, revert_commits as git_revert_commits,
+    revert_commit_with_options as git_revert_commit,
+    revert_commits_with_options as git_revert_commits,
     search_tracked_files as git_search_tracked_files,
     set_branch_upstream as git_set_branch_upstream, set_remote_url as git_set_remote_url,
     set_repository_identity as git_set_repository_identity,
@@ -2764,6 +2765,7 @@ fn revert_commit(
     oid: String,
     mainline: Option<u32>,
     oids: Option<Vec<String>>,
+    no_commit: Option<bool>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |path| {
@@ -2775,9 +2777,9 @@ fn revert_commit(
                     hint: None,
                 });
             }
-            git_revert_commits(path, oids)
+            git_revert_commits(path, oids, no_commit.unwrap_or(false))
         } else {
-            git_revert_commit(path, &oid, mainline)
+            git_revert_commit(path, &oid, mainline, no_commit.unwrap_or(false))
         }
     })
 }

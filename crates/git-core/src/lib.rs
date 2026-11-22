@@ -6240,7 +6240,7 @@ pub fn cherry_pick_commits_with_options(
     no_commit: bool,
 ) -> Result<(), AppError> {
     if no_commit {
-        return no_commit_replay::start(path, oids, mainline);
+        return no_commit_replay::start(path, no_commit_replay::Kind::CherryPick, oids, mainline);
     }
     if oids.is_empty() {
         return Err(AppError::new(
@@ -6273,6 +6273,23 @@ pub fn revert_commit_with_mainline(
     oid: &str,
     mainline: Option<u32>,
 ) -> Result<(), AppError> {
+    revert_commit_with_options(path, oid, mainline, false)
+}
+
+pub fn revert_commit_with_options(
+    path: &Path,
+    oid: &str,
+    mainline: Option<u32>,
+    no_commit: bool,
+) -> Result<(), AppError> {
+    if no_commit {
+        return no_commit_replay::start(
+            path,
+            no_commit_replay::Kind::Revert,
+            &[oid.to_owned()],
+            mainline,
+        );
+    }
     validate_commit_oid(oid)?;
     validate_replay_mainline(path, &[oid.to_owned()], mainline)?;
     let parent = mainline.map(|value| value.to_string());
@@ -6286,6 +6303,14 @@ pub fn revert_commit_with_mainline(
 }
 
 pub fn revert_commits(path: &Path, oids: &[String]) -> Result<(), AppError> {
+    revert_commits_with_options(path, oids, false)
+}
+
+pub fn revert_commits_with_options(
+    path: &Path,
+    oids: &[String],
+    no_commit: bool,
+) -> Result<(), AppError> {
     if oids.is_empty() || oids.len() > 500 {
         return Err(AppError::new(
             "invalidRevertRange",
@@ -6305,6 +6330,9 @@ pub fn revert_commits(path: &Path, oids: &[String]) -> Result<(), AppError> {
         }
     }
     validate_replay_mainline(path, oids, None)?;
+    if no_commit {
+        return no_commit_replay::start(path, no_commit_replay::Kind::Revert, oids, None);
+    }
     require_no_git_sequence(path)?;
     require_visible_replay_index(path)?;
     preserve_replay_tip(path)?;
@@ -10280,10 +10308,11 @@ fn repository_operation_state(path: &Path) -> Result<RepositoryOperationState, A
             None,
         ));
     }
-    let history_no_commit =
-        no_commit_replay::active(&directory.join("git-khronos-no-commit.json"))?;
+    let no_commit_operation =
+        no_commit_replay::operation(&directory.join("git-khronos-no-commit.json"))?;
+    let history_no_commit = no_commit_operation.is_some();
     let sequence = if history_no_commit {
-        None
+        no_commit_operation.map(str::to_owned)
     } else {
         native_history_sequence(directory)?
     };
@@ -10292,7 +10321,9 @@ fn repository_operation_state(path: &Path) -> Result<RepositoryOperationState, A
     let rebase_edit = merge_rebase && directory.join("rebase-merge/amend").is_file();
     Ok(RepositoryOperationState {
         merge: directory.join("MERGE_HEAD").is_file(),
-        history: if history_no_commit || directory.join("CHERRY_PICK_HEAD").is_file() {
+        history: if history_no_commit {
+            sequence.clone()
+        } else if directory.join("CHERRY_PICK_HEAD").is_file() {
             Some("cherry-pick".into())
         } else if directory.join("REVERT_HEAD").is_file() {
             Some("revert".into())

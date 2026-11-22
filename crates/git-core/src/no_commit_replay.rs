@@ -7,12 +7,38 @@ const MAX_COMMITS: usize = 500;
 #[derive(Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Plan {
+    #[serde(default)]
+    kind: Kind,
     head_oid: String,
     head_reference: String,
     oids: Vec<String>,
     next: usize,
     mainline: Option<u32>,
     phase: Phase,
+}
+
+#[derive(Clone, Copy, Default, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum Kind {
+    #[default]
+    CherryPick,
+    Revert,
+}
+
+impl Kind {
+    pub(super) fn operation(self) -> &'static str {
+        match self {
+            Self::CherryPick => "cherry-pick",
+            Self::Revert => "revert",
+        }
+    }
+
+    fn marker(self) -> &'static str {
+        match self {
+            Self::CherryPick => "CHERRY_PICK_HEAD",
+            Self::Revert => "REVERT_HEAD",
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, specta::Type)]
@@ -80,8 +106,8 @@ fn read(file: &Path) -> Result<Option<Plan>, AppError> {
     Ok(Some(plan))
 }
 
-pub(super) fn active(file: &Path) -> Result<bool, AppError> {
-    Ok(read(file)?.is_some())
+pub(super) fn operation(file: &Path) -> Result<Option<&'static str>, AppError> {
+    Ok(read(file)?.map(|plan| plan.kind.operation()))
 }
 
 fn write(file: &Path, plan: &Plan) -> Result<(), AppError> {
@@ -149,7 +175,38 @@ fn require_original_head(path: &Path, plan: &Plan) -> Result<(), AppError> {
     Ok(())
 }
 
-pub(super) fn start(path: &Path, oids: &[String], mainline: Option<u32>) -> Result<(), AppError> {
+fn clear_step_marker(path: &Path, plan: &Plan, oid: &str) -> Result<(), AppError> {
+    let storage = storage(path)?;
+    let directory = storage.parent().ok_or_else(invalid_state)?;
+    let marker = directory.join(plan.kind.marker());
+    let Some(bytes) =
+        operation_storage::read_bounded(directory, plan.kind.marker(), 256, invalid_state)?
+    else {
+        return Ok(());
+    };
+    let observed = std::str::from_utf8(&bytes)
+        .map_err(|_| invalid_state())?
+        .trim();
+    if observed != oid {
+        return Err(AppError::new(
+            "staleNoCommitReplay",
+            "Git's replay marker changed during no-commit replay.",
+            Some(
+                "The saved sequence was not allowed to remove an unexpected Git marker. Inspect the current operation and preserve changes before recovery.",
+            ),
+        ));
+    }
+    operation_storage::file(&marker)?;
+    fs::remove_file(&marker).map_err(io_error)?;
+    Ok(())
+}
+
+pub(super) fn start(
+    path: &Path,
+    kind: Kind,
+    oids: &[String],
+    mainline: Option<u32>,
+) -> Result<(), AppError> {
     if oids.is_empty() || oids.len() > MAX_COMMITS {
         return Err(AppError::new(
             "invalidNoCommitRange",
@@ -176,6 +233,7 @@ pub(super) fn start(path: &Path, oids: &[String], mainline: Option<u32>) -> Resu
     }
     let file = storage(path)?;
     let mut plan = Plan {
+        kind,
         head_oid,
         head_reference,
         oids: oids.to_vec(),
@@ -195,18 +253,23 @@ fn apply_remaining(path: &Path, file: &Path, plan: &mut Plan) -> Result<(), AppE
         // A crash during Git must require manual review, not repeat an uncertain step.
         write(file, plan)?;
         let parent = plan.mainline.map(|value| value.to_string());
-        let mut args = vec!["cherry-pick", "--no-commit"];
+        let mut args = vec![plan.kind.operation(), "--no-commit"];
         if let Some(parent) = &parent {
             args.extend(["--mainline", parent.as_str()]);
         }
         args.push(&oid);
-        if let Err(error) = run_mutation(path, &args, "apply selected changes without committing") {
+        if let Err(error) = run_mutation(
+            path,
+            &args,
+            "apply selected history changes without committing",
+        ) {
             if read_status(path)?.conflicted > 0 {
                 plan.phase = Phase::Conflicted;
                 write(file, plan)?;
             }
             return Err(error);
         }
+        clear_step_marker(path, plan, &oid)?;
         require_original_head(path, plan)?;
     }
     remove(file)
@@ -232,7 +295,15 @@ pub(super) fn control(path: &Path, action: &str) -> Result<(), AppError> {
         )
     })?;
     if action == "quit" {
+        if plan.next > 0 {
+            clear_step_marker(path, &plan, &plan.oids[plan.next - 1])?;
+        }
         return remove(&file);
+    }
+    if plan.next > 0
+        && (action == "abort" || (action == "continue" && plan.phase == Phase::Conflicted))
+    {
+        clear_step_marker(path, &plan, &plan.oids[plan.next - 1])?;
     }
     require_no_git_sequence(path)?;
     require_original_head(path, &plan)?;

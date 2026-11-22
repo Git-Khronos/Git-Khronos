@@ -124,6 +124,66 @@ fn ordered_revert_dependent_changes_reverse_newest_first_preserve_unselected_wor
 }
 
 #[test]
+fn no_commit_ordered_revert_keeps_head_fixed_and_leaves_reviewed_inverse_changes_staged() {
+    let repository = Repository::new();
+    let first = repository.edit("file", b"one\n", "One");
+    let second = repository.edit("file", b"two\n", "Two");
+    let original = repository.edit("unselected", b"keep\n", "Keep");
+    revert_commits_with_options(&repository.0, &[second, first], true).unwrap();
+
+    assert_eq!(repository.oid(), original);
+    assert_eq!(repository.recovery(), original);
+    assert_eq!(fs::read(repository.0.join("file")).unwrap(), b"base\n");
+    assert_eq!(
+        fs::read(repository.0.join("unselected")).unwrap(),
+        b"keep\n"
+    );
+    assert_eq!(read_status(&repository.0).unwrap().staged, 1);
+    assert_eq!(read_status(&repository.0).unwrap().history_operation, None);
+    assert!(!read_status(&repository.0).unwrap().history_no_commit);
+    assert_eq!(
+        String::from_utf8(
+            run_git(&repository.0, &["diff", "--cached", "--name-only"])
+                .unwrap()
+                .stdout
+        )
+        .unwrap()
+        .trim(),
+        "file"
+    );
+}
+
+#[test]
+fn no_commit_revert_of_merge_uses_only_the_explicit_mainline_and_keeps_head_fixed() {
+    let repository = Repository::new();
+    run_mutation(
+        &repository.0,
+        &["checkout", "-b", "side"],
+        "create side branch",
+    )
+    .unwrap();
+    repository.edit("side", b"side\n", "Side change");
+    run_mutation(&repository.0, &["checkout", "main"], "return to main").unwrap();
+    repository.edit("main", b"main\n", "Main change");
+    run_mutation(
+        &repository.0,
+        &["merge", "--no-ff", "--no-edit", "side"],
+        "merge side",
+    )
+    .unwrap();
+    let merge = repository.oid();
+
+    revert_commit_with_options(&repository.0, &merge, Some(1), true).unwrap();
+
+    assert_eq!(repository.oid(), merge);
+    assert!(repository.0.join("main").exists());
+    assert!(!repository.0.join("side").exists());
+    assert_eq!(read_status(&repository.0).unwrap().staged, 1);
+    assert_eq!(read_status(&repository.0).unwrap().history_operation, None);
+    assert!(!repository.0.join(".git/REVERT_HEAD").exists());
+}
+
+#[test]
 fn ordered_revert_uses_exact_argument_order_without_date_sorting_or_revision_traversal() {
     let repository = Repository::new();
     let a = repository.edit("a", b"a\n", "A");
