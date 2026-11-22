@@ -33,7 +33,9 @@ def _toolbar_pull_refuses_local_fetch_mapping(driver, fixtures, publisher, repor
     fixtures.git(checkout, 'config', '--add', 'remote.origin.fetch', mapping)
     incoming = _write_commit(fixtures, publisher, 'refspec.txt', 'New owned upstream content\n')
     open_ui(driver, checkout)
-    files = ('fixture.txt', 'refspec.txt')
+    # The incoming file does not exist in the receiver until Pull succeeds.
+    # Hash existing checkout contents, then check the new path's absence separately.
+    files = ('fixture.txt',)
     before = checkout_footprint(fixtures, checkout, files)
     fetch_head = checkout / '.git/FETCH_HEAD'
     assert not fetch_head.exists()
