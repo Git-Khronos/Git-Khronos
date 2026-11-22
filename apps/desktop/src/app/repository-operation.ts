@@ -5,6 +5,8 @@ type OperationFields = 'mergeInProgress' | 'historyOperation' | 'historyNoCommit
 
 export type RepositoryOperationView = Pick<RepositoryStatus, OperationFields>;
 
+export const PREPARED_MERGE_LABEL = 'Merge prepared, not committed';
+
 /** Project native observations without choosing one operation over its siblings. */
 export function repositoryOperationState(status: RepositoryStatus | null | undefined): RepositoryOperationView {
   const view: RepositoryOperationView = {

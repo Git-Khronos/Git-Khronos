@@ -1,5 +1,5 @@
 import type { PushDestinationReview } from '@git-khronos/contracts';
-import { repositoryOperationState } from './repository-operation';
+import { PREPARED_MERGE_LABEL, repositoryOperationState } from './repository-operation';
 import { AsyncStateController } from './async-state';
 import { OperationTracker } from './operation-tracker';
 import type { IncomingLinksController } from './incoming-links-controller';
@@ -251,6 +251,8 @@ interface MutationResult {
   refreshError?: string | null;
   /** HEAD reported by this command, not by a later reconciliation read. */
   responseHeadOid: string | null;
+  /** A successful integration command left a new merge open in its own checkout. */
+  preparedMerge: boolean;
 }
 
 export type OpenRepositoryResult =
@@ -3472,6 +3474,7 @@ export class GitKhronosService implements OnDestroy {
     let failureKind: string | null = null;
     let ignoreFailure: string | null = null;
     let responseHeadOid: string | null = null;
+    let preparedMerge = false;
     let fetchRecoveryGeneration: number | null = null;
     const expectedBranchRefusal = () => command === 'delete_branch' && failureKind === 'branchNotMerged'
       && 'force' in extra && extra.force === false;
@@ -3517,7 +3520,13 @@ export class GitKhronosService implements OnDestroy {
           throw error;
         }
         const matchingSnapshot = snapshot.id === repo.id && snapshot.path === repo.path;
-        if (matchingSnapshot) responseHeadOid = snapshot.headOid;
+        if (matchingSnapshot) {
+          responseHeadOid = snapshot.headOid;
+          preparedMerge = (command === 'pull_repository' || command === 'integrate_branch')
+            && snapshot.headOid === repo.headOid && snapshot.status.branch === repo.status.branch
+            && !repositoryOperationState(repo.status).mergeInProgress
+            && repositoryOperationState(snapshot.status).mergeInProgress;
+        }
         if (!ownsRepository()) {
           this.deferMetadataRefresh(repo.id, { workspaceId });
         } else if (!matchingSnapshot) {
@@ -3547,7 +3556,8 @@ export class GitKhronosService implements OnDestroy {
           ignoreFailure = this.formatError(error);
           throw error;
         }
-        report(typeof done === 'function' ? done(snapshot, checkoutOutcome) : done);
+        report(preparedMerge ? `${PREPARED_MERGE_LABEL} · ${this.pathLabel(repo.path)}`
+          : typeof done === 'function' ? done(snapshot, checkoutOutcome) : done);
       }, repo.id, operationId, true, true, { announceFailure: () => !expectedBranchRefusal() });
       let failure = result === 'success' ? null : command === 'ignore_path' ? ignoreFailure ?? this.error() : this.error();
       if (result === 'error' && ownsRepository()) {
@@ -3571,7 +3581,7 @@ export class GitKhronosService implements OnDestroy {
       if (ownsRepository()) {
         void this.refreshStatusInBackground(repo.id, true);
       }
-      return { status: result, error: failure, failureKind, refreshError,
+      return { status: result, error: failure, failureKind, refreshError, preparedMerge: result === 'success' && preparedMerge,
         responseHeadOid: result === 'success' ? responseHeadOid : null };
     } finally {
       finishHistoryBarrier();

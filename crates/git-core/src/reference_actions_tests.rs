@@ -1901,6 +1901,44 @@ fn pull_respects_chosen_strategy_instead_of_implicitly_squashing() {
 }
 
 #[test]
+fn pull_reports_a_prepared_merge_when_the_receiving_branch_requests_no_commit() {
+    let (repository, _, local, incoming) = pull_fixture(true, false);
+    let path = &repository.0;
+    run_mutation(
+        path,
+        &["config", "branch.main.mergeOptions", "--no-commit"],
+        "configure a merge that stops before committing",
+    )
+    .unwrap();
+    let config = fs::read(path.join(".git/config")).unwrap();
+
+    pull_with_strategy(path, "merge").unwrap();
+
+    let status = read_status(path).unwrap();
+    assert!(status.merge_in_progress);
+    assert!(
+        status
+            .operations
+            .unwrap()
+            .iter()
+            .any(|operation| matches!(operation, RepositoryOperation::Merge))
+    );
+    assert_eq!(status.conflicted, 0);
+    assert_eq!(repository.oid(), local);
+    assert_eq!(rev(path, "MERGE_HEAD"), incoming);
+    assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+
+    continue_merge(path).unwrap();
+
+    assert!(!read_status(path).unwrap().merge_in_progress);
+    let parents = run_git(path, &["show", "-s", "--format=%P", "HEAD"]).unwrap();
+    assert_eq!(
+        parents.stdout.trim_ascii(),
+        format!("{local} {incoming}").as_bytes()
+    );
+}
+
+#[test]
 fn pull_strategy_conflicts_offer_the_selected_operation_and_abort_restores_local_work() {
     for strategy in ["merge", "rebase"] {
         let (repository, _, local, remote) = pull_fixture(true, true);

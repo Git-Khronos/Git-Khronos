@@ -14,7 +14,7 @@ export interface WorkspaceCenterRequest { workspaceId: string; panel: 'overview'
 export interface WorkspaceTabsCloseRequest { workspaceId: string; scope: string; tabs: readonly Pick<RepositorySnapshot, 'id' | 'path'>[] }
 interface SavedPathsRemoval { workspaceId: string; scope: string; paths: readonly string[] }
 interface FileDeletionReview { file: RepositoryFiles['files'][number]; repositoryId: string; path: string; scope: string }
-interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close' | 'remove' | 'locate'; status: 'pending' | 'running' | 'success' | 'error' | 'cancelled'; detail: string | null }
+interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close' | 'remove' | 'locate'; status: 'pending' | 'running' | 'success' | 'review needed' | 'error' | 'cancelled'; detail: string | null }
 
 @Component({
   selector: 'gc-workspace-center',
@@ -731,7 +731,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
         this.setBulkResult(repository.id, action, 'running', null);
         const result = await runWorkspaceRemote(this.git, repository, operation);
         if (this.destroyed) return;
-        this.setBulkResult(repository.id, action, result.status, result.error);
+        this.setBulkResult(repository.id, action, result.status, result.detail);
         if (result.status === 'cancelled') {
           this.retireQueuedRemoteActions('Not started because the current operation was cancelled.');
           break;

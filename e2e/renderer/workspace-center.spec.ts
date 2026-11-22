@@ -751,6 +751,32 @@ for (const replacement of ['original', 'matching newer failure']) {
   });
 }
 
+test('workspace Pull distinguishes a prepared merge and still processes the next repository', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    const first = { ...fixture.first, status: { ...fixture.first.status, operations: [], conflicted: 0 } };
+    const prepared = { ...first, status: { ...first.status, operations: [{ kind: 'merge' }], staged: 1 } };
+    git.repositories.update((repos: any[]) => repos.map(repo => repo.id === first.id ? first : repo));
+    let merged = false;
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+      if (command === 'pull_repository' && args.repoId === first.id) merged = true;
+      const next = args?.repoId === first.id ? (merged ? prepared : first) : fixture.second;
+      if (command === 'pull_repository' || command === 'refresh_repository') return next;
+      if (command === 'refresh_repository_status') return next.status;
+      return null;
+    } };
+  });
+  const dialog = await open(page);
+  await dialog.getByLabel('Select alpha').check();
+  await dialog.getByLabel('Select beta').check();
+  await dialog.getByRole('button', { name: 'Pull selected (2)', exact: true }).click();
+  const results = dialog.getByLabel('Repository action results');
+  await expect(results).toContainText('alpha — review needed: Merge prepared, not committed');
+  await expect(results).toContainText('beta — success');
+});
+
 test('workspace Pull explains an ambiguous upstream and continues to the next repository', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;

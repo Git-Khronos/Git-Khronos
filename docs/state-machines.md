@@ -308,6 +308,11 @@ overwriting ignored working files during Pull.
 None of the three Pull strategies stages a squash. The app overrides
 `--squash` in receiving-branch merge options for those invocations,
 including the fast-forward path of Pull with Rebase.
+A clean divergent merge may still stop before committing when the receiving
+branch has `--no-commit` configured. The app preserves that review boundary:
+Pull and local Merge call it a prepared, uncommitted merge when their own
+matching native result introduces an active merge. Workspace Pull marks
+that repository as needing review and continues processing the batch.
 Pull with Rebase replays only the selected receiving branch. It suppresses
 `rebase.updateRefs` for the operation without changing repository settings.
 A conflict and later Continue Rebase do not add sibling branches to the replay.

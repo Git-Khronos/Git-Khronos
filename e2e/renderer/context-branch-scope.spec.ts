@@ -13,6 +13,11 @@ test.beforeEach(async ({ page }) => {
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       state.calls.push({ command, args });
       if (command === 'create_branch_at' && state.hold) return new Promise(resolve => { state.finish = () => resolve(repository); });
+      if (command === 'integrate_branch' && state.prepareMerge) {
+        state.authoritative = {
+          ...state.authoritative, status: { ...state.authoritative.status, operations: [{ kind: 'merge' }], staged: 1, conflicted: 0 },
+        };
+      }
       if (command === 'refresh_repository_status') return Promise.resolve(state.authoritative.status);
       return Promise.resolve(state.authoritative);
     } };
@@ -80,6 +85,16 @@ test('context menu integration sends the exact source and receiving checkout to 
   await action.click();
   await expect.poll(() => page.evaluate(() => (window as any).__contextBranchScope.calls.filter((call: any) => call.command === 'integrate_branch')))
     .toMatchObject([{ args: expected }]);
+});
+
+test('context Merge reports a prepared merge instead of claiming completion', async ({ page }) => {
+  const action = await openIntegrationMenu(page);
+  await page.evaluate(() => {
+    const state = (window as any).__contextBranchScope;
+    state.prepareMerge = true;
+  });
+  await action.click();
+  await expect(page.locator('.activity-status')).toContainText('Merge prepared, not committed');
 });
 
 async function openRebaseReview(page: Page) {

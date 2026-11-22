@@ -27,6 +27,12 @@ test.beforeEach(async ({ page }) => {
         if (command === 'refresh_repository') return Promise.resolve((window as any).__pullSnapshot);
         if (command === 'pull_repository') {
           if ((window as any).__pullFailure) return Promise.reject((window as any).__pullFailure);
+          if ((window as any).__pullPrepareMerge) {
+            const fixture = (window as any).__pullSnapshot;
+            (window as any).__pullSnapshot = {
+              ...fixture, status: { ...fixture.status, operations: [{ kind: 'merge' }], staged: 1, conflicted: 0 },
+            };
+          }
           return Promise.resolve((window as any).__pullSnapshot);
         }
         if (command === 'push_repository') return Promise.resolve((window as any).__pullSnapshot);
@@ -42,6 +48,14 @@ test.beforeEach(async ({ page }) => {
       },
     };
   });
+});
+
+test('Pull identifies a clean merge left uncommitted by Git configuration', async ({ page }) => {
+  await page.evaluate(() => { (window as any).__pullPrepareMerge = true; });
+  await page.getByRole('button', { name: 'Pull from origin/main', exact: true }).click();
+  await expect(page.locator('.activity-status')).toContainText('Merge prepared, not committed');
+  const progress = page.getByRole('status', { name: 'Git merge in progress' });
+  await expect(progress.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
 });
 
 test('status badges sync with the configured upstream, not the selected toolbar remote', async ({ page }) => {
