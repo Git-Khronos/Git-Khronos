@@ -144,6 +144,11 @@ replayed after an uncertain reply. The full/environment suites include these
 checks too. Renderer coverage separately exercises editing, Tab, Escape,
 replacement DOM and the pre-render focus gap.
 
+The worktree check also narrows the actual window while the Branch name field
+has focus. Escape must return focus to the visible references launcher, not
+the now-hidden opener. The window returns to its usual size for the remaining
+checks. The resize and dismissal must not change the checkout or commit draft.
+
 The same suite opens the workspace editor on demand, checks input and Cancel
 focus, creates and renames an empty workspace, and cancels then confirms
 deleting that layout. The original checkout's staged and untracked data,

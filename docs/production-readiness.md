@@ -4402,3 +4402,13 @@ attribute test uses nonoverlapping file edits that conflict under the
 target's committed rule but would merge under the dirty checkout's rule.
 Source-test receipts: `target/local-review/merge-preview-old-git.wZcprnoD/`.
 The updated installed merge-preview check is separate from this result.
+
+### Worktree setup resize focus
+
+The new installed resize scenario reproduced the missing focus return
+on the unchanged test-publisher `86900ea` installer (Debian 12, Git
+2.39.5). The Branch name field kept focus at the narrower native window
+size and Escape closed the dialog, but the visible references launcher
+did not receive focus. This is a negative control, not a qualification
+report for the correction. Receipt:
+`target/local-review/updater/jammy-builder/worktree-focus-negative.vT7QlqTm/lane/results/`.

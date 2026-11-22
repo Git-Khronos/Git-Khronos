@@ -97,7 +97,12 @@ for (const outcome of ['loaded', 'failed', 'closed'] as const) {
         await page.setViewportSize({ width: 450, height: 720 });
         await expect.poll(() => dialog.locator('.worktree-dialog-fields').evaluate(el =>
           getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(1);
+        await expect(page.locator('.history-panel')).toHaveAttribute('inert', '');
+        // Flush the render and the resize focus callback while still narrow.
+        await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve))));
+        await expect(dialog.getByLabel('Branch name')).toBeFocused();
         await page.setViewportSize(viewport);
+        await expect(page.locator('.history-panel')).not.toHaveAttribute('inert', '');
         await page.keyboard.press('Escape');
       } else if (outcome === 'failed') {
         const error = page.getByRole('dialog', { name: 'Repository setup unavailable' });
@@ -111,6 +116,19 @@ for (const outcome of ['loaded', 'failed', 'closed'] as const) {
     } finally { layout.release(); }
   });
 }
+
+test('closing Create Worktree after narrowing the window focuses the references launcher', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create worktree', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create Worktree', exact: true });
+  await expect(dialog.getByLabel('Branch name')).toBeFocused();
+  await page.setViewportSize({ width: 450, height: 720 });
+  const launcher = page.getByRole('button', { name: 'Open left panel', exact: true });
+  await expect(launcher).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(launcher).toBeFocused();
+});
 
 for (const outcome of ['ready', 'failed'] as const) {
   test(`preferences styles stay off the startup path when the dialog chunk is ${outcome}`, async ({ page }) => {

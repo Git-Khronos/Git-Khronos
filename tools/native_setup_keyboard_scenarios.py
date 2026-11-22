@@ -81,6 +81,37 @@ def setup_keyboard_isolation(driver, fixtures, report):
         driver.wait('return !document.querySelector(' + json.dumps(modal) + ')')
         report['scenarios'].append('native-' + kind + '-setup-shortcuts-preserve-staged-state-and-commit-draft')
 
+    worktree_opener = '[aria-label="Create worktree"]'
+    references_launcher = 'button[aria-label="Open left panel"]'
+    driver.click_visible(worktree_opener)
+    driver.wait("return document.activeElement?.name === 'worktreeBranch'")
+    # Keep the resize inside the native window's minimum; this still hides
+    # the sidebar that owns the opener. Do not activate controls via script.
+    try:
+        driver.request('POST', driver.path('window/rect'), {'width': 900, 'height': 720})
+        driver.wait('return !!document.querySelector(' + json.dumps(references_launcher) + ')?.getClientRects().length')
+        driver.request('POST', driver.path('execute/async'), {'script': '''
+          const done = arguments[arguments.length - 1];
+          requestAnimationFrame(() => setTimeout(() => done(true)));
+        ''', 'args': []})
+        focus_retained = driver.script("return document.activeElement?.name === 'worktreeBranch'")
+        assert focus_retained, 'Resizing moved focus outside the worktree form'
+        driver.key('\ue00c')
+        driver.wait("return !document.querySelector('.worktree-dialog')")
+        driver.wait('return document.activeElement === document.querySelector(' + json.dumps(references_launcher) + ')')
+        resized = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
+        assert resized == before, 'Resizing and dismissing worktree setup changed the checkout'
+        assert driver.script('return document.querySelector(\'[aria-label="Commit summary"]\').value') == draft
+        assert not marker.exists()
+        report['setupKeyboardIsolation']['resizedWorktree'] = {
+            'innerWidth': driver.script('return window.innerWidth'),
+            'focusRetained': focus_retained, 'returnedToReferencesLauncher': True, 'checkout': resized,
+        }
+        report['scenarios'].append('native-worktree-setup-resize-preserves-focus-and-returns-to-references-launcher')
+    finally:
+        driver.request('POST', driver.path('window/rect'), {'width': 1440, 'height': 900})
+    driver.wait('return !!document.querySelector(' + json.dumps(worktree_opener) + ')?.getClientRects().length')
+
     # The scoped review must still support an explicit valid native action;
     # simply refusing every confirmation would not satisfy the requirement.
     heads_before = fixtures.git(repository, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads').splitlines()

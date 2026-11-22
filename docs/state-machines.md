@@ -1344,6 +1344,10 @@ terminal and palette shortcuts cannot run behind the review. Modified Enter is
 consumed so it cannot implicitly activate a focused button or submit the form;
 plain Enter, native text editing, the local Tab cycle and Escape remain usable.
 After dismissal the retired DOM does not retain this keyboard ownership.
+Responsive inspector focus cannot supersede an active modal, even if the
+viewport becomes narrow while that modal is open. Dismissing Create Worktree
+restores its opener after layout renders. When a narrower layout hides the
+references sidebar, its launcher receives focus instead.
 
 Coverage: `repository-setup-scope.spec.ts` exercises pre-effect repository/path
 changes, outgoing rendered controls, valid native payloads, closed reviews,
@@ -1353,7 +1357,9 @@ remain part of the local targeted gate.
 `setup-dialog-keyboard.spec.ts` additionally covers real control key presses,
 pre-render focus gaps and events from outgoing controls after dismissal.
 `deferred-overlay-styles.spec.ts` holds, fails and cancels the setup import,
-and checks its narrow layout after the deferred CSS loads. The
+and checks narrow layout and focus after the deferred CSS loads.
+`working-directory-navigation.spec.ts` checks the normal inspector focus
+handoff when the window narrows without an open modal. The
 packaged `setup-keyboard` suite checks actual staged/untracked fixture data,
 HEAD, refs, per-worktree index/config bytes and a commit-hook attempt marker;
 it does not replace Git operations with renderer mocks.

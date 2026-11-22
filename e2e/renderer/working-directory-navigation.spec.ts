@@ -84,6 +84,18 @@ test('reopens and focuses the full-width working directory inspector from the gr
   await expect(inspector.getByRole('button', { name: 'Close commit panel', exact: true })).toBeFocused();
 });
 
+test('narrowing the window without a modal focuses the full-width inspector', async ({ page }) => {
+  await page.goto('/');
+  const row = page.locator('.wip-row').first();
+  await row.focus();
+  await expect(row).toBeFocused();
+
+  await page.setViewportSize({ width: 700, height: 720 });
+
+  await expect(page.locator('.history-panel')).toHaveAttribute('inert', '');
+  await expect(page.getByRole('button', { name: 'Close commit panel', exact: true })).toBeFocused();
+});
+
 test('selects the linked worktree when its graph column handle is clicked', async ({ page }) => {
   await page.goto('/');
   const inspector = page.locator('.commit-panel');

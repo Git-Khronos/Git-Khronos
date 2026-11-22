@@ -6788,7 +6788,19 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = this.worktreeDialogOpener;
     this.worktreeDialogOpen.set(false);
     this.worktreeDialogOpener = null;
-    if (restoreFocus) this.restoreDialogFocus(opener);
+    if (restoreFocus && opener) {
+      const visit = this.git.activeRepositoryReadScope();
+      const previousFocus = document.activeElement;
+      afterNextRender(() => {
+        if (this.git.activeRepositoryReadScope() !== visit || this.repositorySetupRequest()
+          || this.hasVisibleModal() || !this.focusStillUnclaimed(previousFocus)) return;
+        const target = opener.closest('#repository-reference-panel') && !this.sidebarVisible()
+          ? this.responsiveSidebarToggle()?.nativeElement : opener;
+        if (target?.isConnected && target.getClientRects().length && !target.closest('[inert]')) {
+          target.focus({ preventScroll: true });
+        }
+      }, { injector: this.injector });
+    }
   }
 
   protected async chooseWorktreeParent(expectedOwner = this.worktreeEditorOwner()): Promise<void> {
@@ -7185,6 +7197,15 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  private hasVisibleModal(): boolean {
+    return [...document.querySelectorAll<HTMLElement>('[aria-modal="true"], [role="alertdialog"]')]
+      .some(dialog => dialog.getClientRects().length > 0 && getComputedStyle(dialog).visibility === 'visible');
+  }
+
+  private focusStillUnclaimed(previous: Element | null): boolean {
+    return document.activeElement === previous || document.activeElement === document.body;
+  }
+
   protected toggleSubmoduleMenu(event: MouseEvent, path: string): void {
     event.stopPropagation();
     const opening = this.submoduleMenuPath() !== path;
@@ -7353,10 +7374,17 @@ export class AppComponent implements OnInit, OnDestroy {
       && !this.fullWidthInspectorMode()
       && this.detailsVisible();
     this.fullWidthInspectorMode.set(fullWidthInspector);
-    if (enteringFullWidthInspector && !this.pendingHistoryAction() && !this.pendingStoredReferenceDelete()) {
-      setTimeout(() => {
-        if (!this.pendingHistoryAction() && !this.pendingStoredReferenceDelete()) this.commitPanelClose()?.nativeElement.focus({ preventScroll: true });
-      });
+    const canFocusInspector = () => !this.repositorySetupRequest()
+      && !this.pendingHistoryAction() && !this.pendingStoredReferenceDelete() && !this.hasVisibleModal();
+    if (enteringFullWidthInspector && canFocusInspector()) {
+      const previousFocus = document.activeElement;
+      const visit = this.git.activeRepositoryReadScope();
+      afterNextRender(() => {
+        // Resizing does not supersede an open dialog, a newer layout or user focus.
+        if (window.innerWidth <= FULL_WIDTH_INSPECTOR_BREAKPOINT && this.historyInert()
+          && this.git.activeRepositoryReadScope() === visit && this.focusStillUnclaimed(previousFocus)
+          && canFocusInspector()) this.commitPanelClose()?.nativeElement.focus({ preventScroll: true });
+      }, { injector: this.injector });
     }
     const activeRepositoryId = this.git.activeRepositoryId();
     if (activeRepositoryId) this.revealRepositoryTab(activeRepositoryId);
