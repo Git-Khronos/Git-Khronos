@@ -115,6 +115,23 @@ class CommitDraftReadinessTests(unittest.TestCase):
         driver.script.assert_not_called()
 
 
+class DialogCaptureReadinessTests(unittest.TestCase):
+    def test_capture_scrolls_once_and_polls_read_only_layout_predicates(self):
+        driver = MagicMock()
+        selector = 'gc-owned-dialog [aria-label="Owned"]'
+        text = 'row with "quotes"'
+        Driver.wait_for_dialog_capture(driver, selector, text, edge='end', require_action=True)
+        self.assertEqual([entry[0] for entry in driver.mock_calls], ['script', 'wait'])
+        self.assertEqual(driver.script.call_args.args[1:], (selector, text, 'end'))
+        predicate = driver.wait.call_args.args[0]
+        self.assertIn(json.dumps([selector, text, True]), predicate)
+        self.assertIn('dialog.scrollWidth', predicate)
+        self.assertIn('bounds.bottom <= frame.bottom', predicate)
+        self.assertNotIn('scrollIntoView', predicate)
+        self.assertNotIn('Promise', predicate)
+        self.assertEqual(driver.wait.call_args.kwargs, {'timeout': 10})
+
+
 class LinuxDistributionTests(unittest.TestCase):
     @patch("native_acceptance.platform.freedesktop_os_release")
     def test_uses_userspace_not_kernel_and_handles_missing_fields(self, release):

@@ -87,9 +87,7 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         driver.wait('return !!document.querySelector(' + json.dumps(selector) + ')')
         for width, height, name in [(1440, 900, 'normal'), (780, 560, 'compact')]:
             driver.request('POST', driver.path('window/rect'), {'width': width, 'height': height})
-            driver.script("const e=document.querySelector(arguments[0]);if(!e)throw Error('Owned review disappeared');e.scrollIntoView({block:'start'});", selector)
-            driver.script("return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
-            assert driver.script("const e=document.querySelector(arguments[0]);const d=e.closest('[role=dialog]');return !!e && !!d && d.scrollWidth <= d.clientWidth+1 && d.getBoundingClientRect().left >= 0 && d.getBoundingClientRect().right <= innerWidth+1", selector)
+            driver.wait_for_dialog_capture(selector)
             driver.screenshot(Path(report['artifactsDirectory']) / (label + '-' + name + '.png'))
         driver.request('POST', driver.path('window/rect'), {'width': 1440, 'height': 900})
 

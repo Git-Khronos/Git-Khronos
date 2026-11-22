@@ -2235,6 +2235,14 @@ paths and reasons are separate diagnostics, and the command still exits
 nonzero. Strict acceptance and publisher verification still refuse any
 unverified report.
 
+Debian 12 exposed a second GitLab harness failure after the catalogue had
+already loaded and the fork checks began: WebDriver could not serialize
+the two-animation-frame Promise used before an outcome screenshot. The
+GitLab and file-tool captures now scroll once and poll their actual
+dialog geometry synchronously with a bounded wait. The end capture still
+requires the action to fit inside the dialog. No click, provider request,
+or operation is retried by the screenshot helper.
+
 Readiness-wait follow-up, 2026-10-24: a controlled four-second browser-reply
 delivery delay reproduces the old client-polling timeout on valid geometry.
 The corrected browser-side wait keeps the same three-second readiness deadline

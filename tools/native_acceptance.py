@@ -342,6 +342,33 @@ class Driver:
         note = f" (WebKit could not parse {unavailable} script results)" if unavailable else ""
         raise TimeoutError(f"UI condition did not become true{note}: {script}") from last_refusal
 
+    def wait_for_dialog_capture(self, selector, text=None, *, edge="start", require_action=False):
+        self.script("""
+            const target = [...document.querySelectorAll(arguments[0])]
+                .find(node => !arguments[1] || node.textContent.includes(arguments[1]));
+            if (!target) throw Error('Owned dialog capture target absent');
+            target.scrollIntoView({block: arguments[2]});
+            return true;
+        """, selector, text, edge)
+        # Older native WebDriver sessions can fail to serialize a Promise
+        # returned by execute/sync. Poll the actual screenshot preconditions
+        # using read-only, primitives-only script results instead.
+        self.wait("""
+            const [selector, text, requireAction] = """ + json.dumps([selector, text, require_action]) + """;
+            const target = [...document.querySelectorAll(selector)]
+                .find(node => !text || node.textContent.includes(text));
+            const dialog = target?.closest('[role=dialog]');
+            if (!target?.getClientRects().length || !dialog?.getClientRects().length) return false;
+            const frame = dialog.getBoundingClientRect();
+            if (dialog.scrollWidth > dialog.clientWidth + 1 || frame.left < 0 || frame.right > innerWidth + 1) {
+                return false;
+            }
+            if (!requireAction) return true;
+            const action = target.querySelector('button:last-of-type');
+            const bounds = action?.getBoundingClientRect();
+            return !!action?.getClientRects().length && bounds.top >= frame.top && bounds.bottom <= frame.bottom + 1;
+        """, timeout=10)
+
     def reload(self):
         origin = self.script("return performance.timeOrigin")
         self.request("POST", self.path("refresh"), {})

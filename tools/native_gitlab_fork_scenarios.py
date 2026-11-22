@@ -86,11 +86,7 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         for width, height, suffix in [(1440, 900, 'normal'), (780, 560, 'compact')]:
             driver.request('POST', driver.path('window/rect'), {'width': width, 'height': height})
             for edge in ['start', 'end']:
-                driver.script("const e=[...document.querySelectorAll(arguments[0])].find(e=>!arguments[1] || e.textContent.includes(arguments[1]));if(!e)throw Error('Owned capture target absent');e.scrollIntoView({block:arguments[2]});", selector, text, edge)
-                driver.script("return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
-                assert driver.script("const e=[...document.querySelectorAll(arguments[0])].find(e=>!arguments[1] || e.textContent.includes(arguments[1]));const d=e?.closest('[role=dialog]');if(!e||!d)return false;const r=d.getBoundingClientRect();return d.scrollWidth<=d.clientWidth+1 && r.left>=0 && r.right<=innerWidth+1", selector, text)
-                if edge == 'end':
-                    assert driver.script("const e=[...document.querySelectorAll(arguments[0])].find(e=>!arguments[1] || e.textContent.includes(arguments[1]));const d=e.closest('[role=dialog]');const button=e.querySelector('button:last-of-type');const r=button?.getBoundingClientRect();const frame=d.getBoundingClientRect();return !!r && r.top>=frame.top && r.bottom<=frame.bottom+1", selector, text), 'Owned capture action is outside its dialog'
+                driver.wait_for_dialog_capture(selector, text, edge=edge, require_action=edge == 'end')
                 driver.screenshot(Path(report['artifactsDirectory']) / (label + '-' + suffix + '-' + edge + '.png'))
         driver.request('POST', driver.path('window/rect'), {'width': 1440, 'height': 900})
 
