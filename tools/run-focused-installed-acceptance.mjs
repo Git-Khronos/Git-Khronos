@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { mkdir, rename, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkPackage } from './check-linux-abi.mjs';
 import {
@@ -9,17 +9,20 @@ import {
 } from './report-installed-acceptance.mjs';
 
 const harness = fileURLToPath(new URL('./native_acceptance.py', import.meta.url));
+const pythonOverride = 'GIT_KHRONOS_ACCEPTANCE_PYTHON';
 
-function describeRunner() {
-  const result = spawnSync('python3', [harness, '--describe-runner'], { encoding: 'utf8' });
+function describeRunner(python) {
+  const result = spawnSync(python, [harness, '--describe-runner'], { encoding: 'utf8' });
   if (result.error || result.status !== 0) {
-    throw new Error(`Cannot describe the native acceptance runner: ${result.error?.message ?? result.stderr.trim()}`);
+    const hint = result.error?.code === 'ENOENT'
+      ? ` Put python3 on PATH or set ${pythonOverride} to an absolute interpreter path.` : '';
+    throw new Error(`Cannot describe the native acceptance runner: ${result.error?.message ?? result.stderr.trim()}.${hint}`);
   }
   return JSON.parse(result.stdout);
 }
 
-function runHarness(args) {
-  const result = spawnSync('python3', [harness, ...args], { stdio: 'inherit' });
+function runHarness(python, args) {
+  const result = spawnSync(python, [harness, ...args], { stdio: 'inherit' });
   return { exitCode: result.status, signal: result.signal, error: result.error?.message ?? null };
 }
 
@@ -37,8 +40,13 @@ function checkRunner(plan, { distribution, suites, forcedInheritedGitEnvironment
 }
 
 export async function runFocusedInstalledAcceptance(planPath, packagePath, outputPath, {
-  describe = describeRunner, verifyPackage = checkPackage, run = runHarness, verify = reportInstalledAcceptance,
+  python = process.env[pythonOverride],
+  describe = () => describeRunner(python ?? 'python3'), verifyPackage = checkPackage,
+  run = args => runHarness(python ?? 'python3', args), verify = reportInstalledAcceptance,
 } = {}) {
+  if (python !== undefined && (typeof python !== 'string' || !isAbsolute(python))) {
+    throw new Error(`${pythonOverride} must be an absolute Python interpreter path.`);
+  }
   const plan = await readFocusedAcceptancePlan(planPath);
   checkRunner(plan, describe());
   const installer = resolve(packagePath);

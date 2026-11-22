@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { runFocusedInstalledAcceptance } from './run-focused-installed-acceptance.mjs';
 
@@ -52,6 +52,33 @@ test('runs exactly the reviewed suites and Git environments, and retains the fro
   assert.equal(JSON.parse(await readFile(receipt)).sha256, sha);
   await assert.rejects(f.launch(), { code: 'EEXIST' });
   assert.equal(f.calls.length, 3);
+});
+
+test('uses the same explicit interpreter for capability discovery and suite dispatch', async t => {
+  const f = await fixture(t, [lane('smoke')]);
+  const executable = join(dirname(f.output), 'python with spaces');
+  await writeFile(executable, `#!/bin/sh
+case "$2" in
+  --describe-runner) printf '%s\\n' '{"suites":["smoke"],"distribution":{"id":"ubuntu","versionId":"24.04"},"forcedInheritedGitEnvironment":[]}' ;;
+  --suite) test "$3" = smoke && test "$4" = --installed ;;
+  *) exit 17 ;;
+esac
+`, { mode: 0o700 });
+  f.options.python = executable;
+  delete f.options.describe;
+  delete f.options.run;
+  assert.equal((await f.launch()).complete, true);
+});
+
+test('rejects relative or missing Python overrides before starting any suite', async t => {
+  const f = await fixture(t, [lane('smoke')]);
+  f.options.python = 'python3.11';
+  delete f.options.describe;
+  await assert.rejects(f.launch(), /GIT_KHRONOS_ACCEPTANCE_PYTHON must be an absolute/);
+  f.options.python = join(dirname(f.output), 'missing python3.11');
+  await assert.rejects(f.launch(), /ENOENT.*GIT_KHRONOS_ACCEPTANCE_PYTHON/);
+  assert.deepEqual(f.calls, []);
+  await assert.rejects(readFile(join(f.output, 'run.json')), { code: 'ENOENT' });
 });
 
 test('refuses wrong userspace, unknown suite, and impossible Git environment before any lane starts', async t => {

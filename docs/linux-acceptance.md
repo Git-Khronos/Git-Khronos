@@ -595,6 +595,11 @@ python3 tools/native_acceptance.py --describe-runner
 node tools/run-focused-installed-acceptance.mjs focused-plan.json "$PACKAGE" "$NEW_RESULTS"
 ```
 
+If the prepared image provides a versioned Python executable but no
+`python3` on PATH, set `GIT_KHRONOS_ACCEPTANCE_PYTHON` to its absolute path
+(for example, `/usr/bin/python3.11`). The runner uses that same interpreter
+for capability discovery and every suite.
+
 Use one distribution per plan. Before starting any suite, the runner refuses
 an unknown suite, a different distribution, or an impossible Git environment.
 It never installs or publishes a package. It requires a new output directory,
