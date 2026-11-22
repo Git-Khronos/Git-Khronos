@@ -1084,21 +1084,35 @@ fn untracked_statistics_use_attributes_inside_sparse_index_directories() {
     let index = fs::read(repository.0.join(".git/index")).unwrap();
     fs::create_dir_all(repository.0.join("excluded")).unwrap();
     repository.write("excluded/selected.owned", b"one\ntwo\n");
-    let expected = git_new_file_counts(&repository, "excluded/selected.owned");
-    assert_eq!(expected, (None, None));
     let comparison = compare_commit_with_working_tree(&repository.0, &base).unwrap();
     let entry = comparison
         .files
         .iter()
         .find(|entry| entry.path == "excluded/selected.owned")
         .unwrap();
-    assert_eq!((entry.additions, entry.deletions), expected);
+    let recap = working_tree_summaries(&repository.0).unwrap().unstaged.unwrap();
+    assert_eq!(
+        (recap.additions, recap.deletions, recap.uncounted_files),
+        (0, 0, 1)
+    );
+    assert!(!recap.partial);
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     assert!(!repository.0.join("excluded/.gitattributes").exists());
     assert_eq!(
         fs::read(repository.0.join("excluded/selected.owned")).unwrap(),
         b"one\ntwo\n"
     );
+    // Older Git can miss the indexed attribute in its own sparse diff.
+    // Expand only the owned fixture, after checking the application's two
+    // readers against the original sparse index and unchanged checkout.
+    repository.git(&["sparse-checkout", "disable"]);
+    assert_eq!(
+        fs::read(repository.0.join("excluded/.gitattributes")).unwrap(),
+        b"*.owned -diff\n"
+    );
+    let expected = git_new_file_counts(&repository, "excluded/selected.owned");
+    assert_eq!(expected, (None, None));
+    assert_eq!((entry.additions, entry.deletions), expected);
 }
 
 #[test]

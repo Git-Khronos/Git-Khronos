@@ -4361,3 +4361,11 @@ has an explicit Git 2.43 minimum. These remain distinct from bisect
 coverage; do not treat the full minimum-version Git-core suite as green.
 Initial audit receipt:
 `target/local-review/bisect-release-git-minimum.vFqqgCUv/test.log`.
+
+The sparse-index discrepancy came from the test oracle: Git 2.39
+counted the file as text while the fixture was sparse. The unchanged app
+readers correctly honored the indexed binary rule. The revised test
+checks comparison and unstaged totals with the sparse checkout intact,
+verifies no index or file changes, and only then expands the owned
+fixture to run the independent Git diff oracle. Both complete Git
+runtimes passed the revised test.
