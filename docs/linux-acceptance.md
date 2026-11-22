@@ -780,6 +780,12 @@ to the owned executable's PID before closing it. They wait for both process exit
 bus-name release before launching one new WebDriver session. A timeout or different
 bus owner fails the check without retrying a session creation whose outcome is unknown.
 
+Read-only WebDriver readiness polls cap each HTTP request by the time
+remaining and reject a late positive reply. Opening repository management
+from the restored toolbar uses the same deadline for readiness and click.
+Only a structured stale-element refusal permits a fresh lookup and click;
+a timed-out or lost click reply is never replayed.
+
 Linux bundling also prepares `rust-dependency-notices.json.gz` from locked,
 offline Cargo metadata for Tauri's explicit target triple. It includes the
 conservative normal/build dependency closure, upstream notice text/hashes and

@@ -299,8 +299,9 @@ class Driver:
     def path(self, suffix):
         return f"/session/{self.session}/{suffix}"
 
-    def script(self, script, *args):
-        return self.request("POST", self.path("execute/sync"), {"script": script, "args": args})
+    def script(self, script, *args, timeout=90):
+        return self.request("POST", self.path("execute/sync"), {"script": script, "args": args},
+                            timeout=timeout)
 
     def invoke(self, command, **args):
         result = self.request("POST", self.path("execute/async"), {"script": """
@@ -317,12 +318,14 @@ class Driver:
         end = time.monotonic() + timeout
         unavailable = 0
         last_refusal = None
-        while time.monotonic() < end:
+        while (remaining := end - time.monotonic()) > 0:
+            value = None
             try:
-                value = self.script(script)
-            except (RemoteDisconnected, URLError, ConnectionError):
-                time.sleep(0.1)
-                continue
+                # A stalled HTTP read must not receive the usual script
+                # timeout, or it can outlive the entire readiness budget.
+                value = self.script(script, timeout=min(90, remaining))
+            except (RemoteDisconnected, URLError, ConnectionError, TimeoutError) as error:
+                last_refusal = error
             except RuntimeError as error:
                 if not script_result_unavailable(error):
                     raise
@@ -330,11 +333,12 @@ class Driver:
                 # read-only predicate is retried, never script() or a click.
                 unavailable += 1
                 last_refusal = error
-                time.sleep(0.1)
-                continue
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
             if value:
                 return value
-            time.sleep(0.1)
+            time.sleep(min(0.1, remaining))
         note = f" (WebKit could not parse {unavailable} script results)" if unavailable else ""
         raise TimeoutError(f"UI condition did not become true{note}: {script}") from last_refusal
 

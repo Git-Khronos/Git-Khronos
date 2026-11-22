@@ -20,12 +20,15 @@ def open_repository_dialog(driver, timeout=30):
     # The welcome Clone button can disappear between pointer press and release
     # when restoration finishes. WebDriver can acknowledge the click anyway.
     deadline = time.monotonic() + timeout
-    remaining = timeout
-    while remaining > 0:
+    while (remaining := deadline - time.monotonic()) > 0:
         element = driver.wait(_RESTORED_REPOSITORY_ENTRY, remaining)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         identifier = element['element-6066-11e4-a52e-4f735466cecf']
         try:
-            driver.request('POST', driver.path('element/' + identifier + '/click'), {})
+            driver.request('POST', driver.path('element/' + identifier + '/click'), {},
+                           timeout=min(90, remaining))
             return
         except RuntimeError as error:
             # Read-only readiness polling is safe. Only an explicit stale
@@ -35,5 +38,4 @@ def open_repository_dialog(driver, timeout=30):
         remaining = deadline - time.monotonic()
         if remaining > 0:
             time.sleep(min(0.1, remaining))
-            remaining = deadline - time.monotonic()
     raise TimeoutError('Restored repository dialog entry control did not remain available for a click')

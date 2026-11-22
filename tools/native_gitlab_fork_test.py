@@ -2,7 +2,7 @@
 from http.client import RemoteDisconnected
 import json
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, call, patch
 from urllib.error import URLError
 
 from native_acceptance import Driver
@@ -23,7 +23,7 @@ class CatalogueEntryTests(unittest.TestCase):
     def test_success_clicks_painted_toolbar_control_once_with_a_real_webdriver_request(self):
         driver = self.driver({ELEMENT: 'tab'})
         open_repository_dialog(driver)
-        driver.request.assert_called_once_with('POST', '/session/owned/element/tab/click', {})
+        driver.request.assert_called_once_with('POST', '/session/owned/element/tab/click', {}, timeout=ANY)
         driver.script.assert_called_once()
         script = driver.script.call_args.args[0]
         self.assertIn('.tabbar [aria-label="New repository tab"]', script)
@@ -43,8 +43,8 @@ class CatalogueEntryTests(unittest.TestCase):
                     open_repository_dialog(driver)
                 self.assertEqual(driver.script.call_count, 3)
                 self.assertEqual(driver.request.call_args_list, [
-                    call('POST', '/session/owned/element/outgoing/click', {}),
-                    call('POST', '/session/owned/element/current-tab/click', {}),
+                    call('POST', '/session/owned/element/outgoing/click', {}, timeout=ANY),
+                    call('POST', '/session/owned/element/current-tab/click', {}, timeout=ANY),
                 ])
 
     def test_temporarily_missing_control_is_polled_without_a_click(self):
@@ -55,7 +55,7 @@ class CatalogueEntryTests(unittest.TestCase):
         driver.request.assert_called_once()
 
     def test_uncertain_or_non_stale_failures_are_never_replayed(self):
-        errors = [RemoteDisconnected('lost click reply'), URLError('lost connection'),
+        errors = [RemoteDisconnected('lost click reply'), TimeoutError('lost click reply'), URLError('lost connection'),
                   RuntimeError('stale element reference'),
                   RuntimeError(json.dumps({'error': 'element click intercepted'})),
                   RuntimeError(json.dumps({'value': {'error': 'unknown error'}})),
@@ -84,11 +84,30 @@ class CatalogueEntryTests(unittest.TestCase):
         driver.wait.side_effect = None
         driver.wait.return_value = {ELEMENT: 'outgoing'}
         driver.request.side_effect = RuntimeError(json.dumps({'error': 'stale element reference'}))
-        with patch('native_repository_navigation.time.monotonic', side_effect=[0, 30]), \
+        with patch('native_repository_navigation.time.monotonic', side_effect=[0, 0, 0.1, 30, 30]), \
                 patch('native_repository_navigation.time.sleep'):
             with self.assertRaises(TimeoutError):
                 open_repository_dialog(driver)
         driver.request.assert_called_once()
+
+    def test_wait_and_click_share_one_deadline(self):
+        driver = self.driver()
+        driver.wait.side_effect = None
+        driver.wait.return_value = {ELEMENT: 'ready'}
+        with patch('native_repository_navigation.time.monotonic', side_effect=[0, 2, 5]):
+            open_repository_dialog(driver)
+        self.assertEqual(driver.wait.call_args.args[1], 28)
+        driver.request.assert_called_once_with('POST', '/session/owned/element/ready/click', {}, timeout=25)
+
+    def test_late_readiness_does_not_dispatch_a_click(self):
+        driver = self.driver()
+        driver.wait.side_effect = None
+        driver.wait.return_value = {ELEMENT: 'late'}
+        with patch('native_repository_navigation.time.monotonic', side_effect=[0, 0.1, 30]):
+            with self.assertRaises(TimeoutError):
+                open_repository_dialog(driver)
+        driver.wait.assert_called_once()
+        driver.request.assert_not_called()
 
     def test_missing_control_stops_at_the_deadline_without_clicking(self):
         driver = self.driver(None)

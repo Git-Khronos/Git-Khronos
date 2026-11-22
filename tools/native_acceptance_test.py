@@ -9,13 +9,15 @@ import subprocess
 import sys
 from contextlib import ExitStack
 from http.client import RemoteDisconnected
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tempfile
 import time
 import unittest
 from io import BytesIO
+from threading import Event, Thread
 from types import SimpleNamespace
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, call, patch
 from urllib.error import HTTPError, URLError
 
 from native_acceptance import (
@@ -232,6 +234,42 @@ class PackageIdentityTests(unittest.TestCase):
 
 
 class ReadOnlyWebDriverPollTests(unittest.TestCase):
+    def test_ui_wait_refuses_a_late_positive_loopback_reply(self):
+        seen = Event()
+        released = Event()
+
+        class LateReply(BaseHTTPRequestHandler):
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                if self.path == '/session/owned/execute/sync':
+                    seen.set()
+                released.wait(.45)
+                try:
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b'{"value": true}')
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, *_):
+                pass
+
+        with ThreadingHTTPServer(('127.0.0.1', 0), LateReply) as server:
+            server.daemon_threads = False
+            thread = Thread(target=server.serve_forever, kwargs={'poll_interval': .01}, daemon=True)
+            thread.start()
+            try:
+                driver = Driver(f'http://127.0.0.1:{server.server_port}')
+                driver.session = 'owned'
+                with self.assertRaisesRegex(TimeoutError, 'UI condition did not become true') as raised:
+                    driver.wait('return true', timeout=.2)
+                self.assertTrue(seen.is_set(), 'The wait must actually dispatch its predicate')
+                self.assertIsInstance(raised.exception.__cause__, TimeoutError)
+            finally:
+                released.set()
+                server.shutdown()
+                thread.join()
+
     def test_result_parse_refusal_can_repoll_the_predicate_but_not_direct_scripts(self):
         error = RuntimeError(json.dumps({'value': {
             'error': 'unknown error', 'message': 'Could not parse script result', 'stacktrace': '',
@@ -240,7 +278,8 @@ class ReadOnlyWebDriverPollTests(unittest.TestCase):
         expression = 'return !!document.querySelector("#repository-tab-clone")'
         with patch.object(driver, 'script', side_effect=[error, True]) as read, patch('native_acceptance.time.sleep'):
             self.assertTrue(driver.wait(expression))
-            self.assertEqual(read.call_args_list, [call(expression), call(expression)])
+            self.assertEqual(read.call_args_list, [call(expression, timeout=ANY)] * 2)
+            self.assertTrue(all(0 < request.kwargs['timeout'] <= 30 for request in read.call_args_list))
         with patch.object(driver, 'request', side_effect=error) as request:
             with self.assertRaises(RuntimeError):
                 driver.script('document.querySelector("button").click()')
@@ -266,7 +305,7 @@ class ReadOnlyWebDriverPollTests(unittest.TestCase):
         driver = Driver(1)
         error = RuntimeError(json.dumps({'error': 'unknown error', 'message': 'Could not parse script result'}))
         with patch.object(driver, 'script', side_effect=error), patch('native_acceptance.time.sleep'), \
-                patch('native_acceptance.time.monotonic', side_effect=[0, 0.1, 0.2, 1.0]):
+                patch('native_acceptance.time.monotonic', side_effect=[0, 0.1, 0.2, 0.3, 1.0]):
             with self.assertRaisesRegex(TimeoutError, '2 script results') as raised:
                 driver.wait('return true', timeout=1)
         self.assertIs(raised.exception.__cause__, error)
