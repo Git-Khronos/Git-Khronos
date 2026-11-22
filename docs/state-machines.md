@@ -970,6 +970,13 @@ returning to the working directory leaves the draft and focus with its
 owner. A failed inspector can be closed or left for the working directory.
 The reference strip and commit editor retain their own loading lifecycles.
 
+Reference navigation uses the graph and scrolls to the commit when its row
+is loaded. Otherwise it reads the exact local object and opens its inspector
+without paging the graph or clearing filters. A late read cannot replace a
+newer selection or a different checkout visit. Palette tags are distinguished
+by full reference name, including aliases that share a target; activation
+checks that the named tag still points to the captured object.
+
 ### Toolbar split menus
 
 The primary toolbar buttons and their split toggles are always available.

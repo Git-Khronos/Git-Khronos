@@ -449,6 +449,7 @@ export interface CommandAction {
   icon: IconName;
   stashTarget?: { repositoryId: string; stash: StashEntry };
   stashReview?: { scope: string } & ({ action: 'save' } | { action: 'apply' | 'branch'; stash: StashEntry });
+  tagTarget?: { scope: string; ref: string; oid: string };
   bisectTarget?: BisectVoteTarget | null;
   exactFileHistory?: { path: string; scope: string; revision: string };
 }
@@ -8812,24 +8813,38 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async jumpToCommit(oid: string): Promise<void> {
-    let repository = this.git.repository();
+    const repository = this.git.repository();
     if (!repository) return;
-    const repositoryId = repository.id;
-    if (!repository.commits.some((commit) => commit.oid === oid)
-      && !repository.stashes.some((stash) => stash.oid === oid) && repository.historyTruncated) {
-      await this.git.loadMoreHistory();
-      repository = this.git.repository();
+    const intent = this.beginHistoryNavigation();
+    const selection = this.selectedCommit();
+    const workingTree = this.changesOpen();
+    const worktree = this.selectedWorktreePath();
+    const current = () => this.ownsHistoryNavigation(intent) && this.selectedCommit() === selection
+      && this.changesOpen() === workingTree && this.selectedWorktreePath() === worktree;
+    let summary: CommitSummary | undefined;
+    if (!this.graphCommitByOid().has(oid) && !repository.stashes.some(stash => stash.oid === oid)) {
+      // A ref can point beyond the graph cursor (or outside its current refs).
+      // Resolve the exact object instead of advancing an arbitrary history page.
+      try {
+        summary = await this.git.inspectHistoryCommit(oid);
+      } catch (error) {
+        if (current()) this.git.error.set(String((error as { message?: unknown })?.message ?? error));
+        return;
+      }
+      if (!current()) return;
+      oid = summary.oid;
     }
-    if (!repository || repository.id !== repositoryId
-      || (!repository.commits.some((commit) => commit.oid === oid)
-        && !repository.stashes.some((stash) => stash.oid === oid))) return;
-    this.updateCommitSearch('');
-    this.authorFilter.set(null);
-    this.authorFilterOpen.set(false);
-    if (!this.visibleGraphRows().some((row) => row.commit.oid === oid)) this.clearReferenceFilters();
-    this.selectCommit(oid);
-    this.setPanelVisibility('commit-panel', true);
-    queueMicrotask(() => this.scrollGraphCommitIntoView(oid, 'center', 'smooth'));
+    const inGraph = this.graphCommitByOid().has(oid);
+    if (inGraph) {
+      this.updateCommitSearch('');
+      this.authorFilter.set(null);
+      this.authorFilterOpen.set(false);
+      if (!this.visibleGraphRows().some((row) => row.commit.oid === oid)) this.clearReferenceFilters();
+    }
+    this.selectCommit(oid, summary);
+    if (inGraph) {
+      queueMicrotask(() => this.scrollGraphCommitIntoView(oid, 'center', 'smooth'));
+    }
   }
 
   /**
@@ -9716,7 +9731,7 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.checkoutBranch(branch.name);
   }
 
-  protected selectCommit(oid: string): void {
+  protected selectCommit(oid: string, summary?: CommitSummary): void {
     const intent = this.beginHistoryNavigation();
     if (this.commitMessageEditing()) this.cancelCommitMessageEdit();
     this.clearPanelFileSelection();
@@ -9724,7 +9739,9 @@ export class AppComponent implements OnInit, OnDestroy {
     this.selectedCommits.set([oid]);
     this.commitSelectionAnchor.set(oid);
     this.selectedCommit.set(oid);
-    if (!this.graphCommitByOid().has(oid)) {
+    if (summary?.oid === oid) {
+      this.externalHistoryCommit.set(summary);
+    } else if (!this.graphCommitByOid().has(oid)) {
       this.externalHistoryCommit.set(null);
       const current = () => this.ownsHistoryNavigation(intent) && this.selectedCommit() === oid;
       void this.git.inspectHistoryCommit(oid).then(summary => {
@@ -9905,6 +9922,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected selectWip(): void {
+    this.beginHistoryNavigation();
     if (this.commitMessageEditing()) this.cancelCommitMessageEdit();
     this.clearPanelFileSelection();
     this.selectedWorktreePath.set(null);
@@ -11824,6 +11842,9 @@ export class AppComponent implements OnInit, OnDestroy {
     if (previous && (previous.hideActions || !this.ownsPreviousBranchLookup(previous))) return;
     const stashReview = action.stashReview;
     if (stashReview && !this.canOpenPaletteStashReview(stashReview)) return;
+    const tagTarget = action.tagTarget;
+    if (tagTarget && (tagTarget.scope !== this.git.activeRepositoryReadScope()
+      || !this.git.repository()?.tags.some(tag => tag.fullName === tagTarget.ref && tag.oid === tagTarget.oid))) return;
     this.previousBranchLookup.set(null);
     this.rememberCommand(action.id);
     const paletteReturnFocus = this.commandPaletteOpener;
@@ -11869,8 +11890,8 @@ export class AppComponent implements OnInit, OnDestroy {
       );
       return;
     }
-    if (action.id.startsWith('tag:')) {
-      await this.jumpToCommit(action.id.slice('tag:'.length));
+    if (tagTarget) {
+      await this.jumpToCommit(tagTarget.oid);
       return;
     }
     if (action.id.startsWith('stash-reference:')) {

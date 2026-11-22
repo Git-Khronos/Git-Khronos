@@ -30,7 +30,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 export function buildCommandActions(source: CommandPaletteActionSources, search: string, scope: CommandPaletteScope): CommandAction[] {
   const repository = source.git.repository();
   const busy = source.git.busy();
-  const stashReviewScope = source.git.activeRepositoryReadScope();
+  const repositoryReadScope = source.git.activeRepositoryReadScope();
   const canReviewStash = !!repository?.headOid && !repository.bare && !repository.status.conflicted && !busy;
   const bisectTarget = source.bisectVoteTarget();
   const bisectOid = bisectTarget ? bisectTarget.candidate.oid.slice(0, 7) : 'unavailable';
@@ -95,7 +95,7 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
     { id: 'stage-all', group: 'Working Tree', label: 'Stage All Changes', detail: repository?.status.conflicted ? 'Resolve conflicts before staging all files' : 'Add every current working-tree change to the index', enabled: !!source.unstagedEntries().length && !repository?.status.conflicted && !busy, icon: 'check' },
     { id: 'unstage-all', group: 'Working Tree', label: 'Unstage All Changes', detail: repository?.status.conflicted ? 'Resolve conflicts before unstaging all files' : 'Move every staged change back to the working tree', enabled: !!source.stagedEntries().length && !repository?.status.conflicted && !busy, icon: 'reset' },
     { id: 'stash', group: 'Working Tree', label: 'Stash Changes', detail: 'Stash tracked and untracked changes', enabled: !!repository?.status.entryCount && !busy, icon: 'archive' },
-    { id: 'stash-review', group: 'Working Tree', label: 'Stash with options…', detail: 'Review files, untracked changes, and staged-only or keep-index mode', enabled: canReviewStash && !!repository?.status.entryCount, icon: 'archive', stashReview: { scope: stashReviewScope, action: 'save' } },
+    { id: 'stash-review', group: 'Working Tree', label: 'Stash with options…', detail: 'Review files, untracked changes, and staged-only or keep-index mode', enabled: canReviewStash && !!repository?.status.entryCount, icon: 'archive', stashReview: { scope: repositoryReadScope, action: 'save' } },
     { id: 'apply-stash', group: 'Working Tree', label: 'Apply Latest Stash', detail: 'Apply the newest stash without removing it', enabled: !!repository?.stashes.length && !busy, icon: 'archive-restore', stashTarget: repository?.stashes[0] ? { repositoryId: repository.id, stash: repository.stashes[0] } : undefined },
     { id: 'pop', group: 'Working Tree', label: 'Pop Latest Stash', detail: 'Apply and remove the newest stash', enabled: !!repository?.stashes.length && !busy, icon: 'archive-restore', stashTarget: repository?.stashes[0] ? { repositoryId: repository.id, stash: repository.stashes[0] } : undefined },
     { id: 'working-tree', group: 'Working Tree', label: 'View Working Directory Changes', detail: 'Return to staging and commit preparation', enabled: !!repository, icon: 'file' },
@@ -232,12 +232,13 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
   }
   for (const tag of repository.tags) {
     append({
-      id: `tag:${tag.oid}`,
+      id: `tag:${tag.fullName}`,
       group: 'Reference',
       label: `View tag ${tag.name}`,
-      detail: `Jump to ${source.shortLabel(tag.oid)}`,
+      detail: `Inspect ${source.shortLabel(tag.oid)}`,
       enabled: true,
       icon: 'tag',
+      tagTarget: { scope: repositoryReadScope, ref: tag.fullName, oid: tag.oid },
     });
   }
   for (const stash of repository.stashes) {
@@ -275,7 +276,7 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
       detail: `${stash.message} · Apply with options: restore staged changes if selected; keep the stash`,
       enabled: canReviewStash,
       icon: 'archive-restore',
-      stashReview: { scope: stashReviewScope, action: 'apply', stash },
+      stashReview: { scope: repositoryReadScope, action: 'apply', stash },
     });
     append({
       id: `stash-review-branch:${encodedReference}`,
@@ -284,7 +285,7 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
       detail: `${stash.message} · Restore on a new branch from the stash base; keep the stash${repository.status.entryCount ? ' · Requires a clean working directory' : ''}`,
       enabled: canReviewStash && !repository.status.entryCount,
       icon: 'branch',
-      stashReview: { scope: stashReviewScope, action: 'branch', stash },
+      stashReview: { scope: repositoryReadScope, action: 'branch', stash },
     });
   }
   for (const entry of repository.status.entries) {
