@@ -11,7 +11,8 @@ def workspace_clone(driver, fixtures, report):
     active = fixtures.repository('batch-clone-active', commits=2)
     sources = [fixtures.repository('batch-source-' + name, commits=2)
                for name in ('first', 'blocked', 'last')]
-    destination = fixtures.root / 'batch-clones'
+    # The owned GTK picker uses Alt+Home and requires exactly one visible row.
+    destination = fixtures.root / 'home' / 'batch-clones'
     destination.mkdir()
     blocked = destination / sources[1].name
     blocked.mkdir()
