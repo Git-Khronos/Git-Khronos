@@ -375,6 +375,7 @@ interface ContextMenuState {
   kind: 'commit' | 'branch' | 'remote' | 'tag' | 'checkpoint' | 'original';
   repositoryId?: string | null;
   repositoryPath?: string;
+  repositoryVisit?: string;
   x: number;
   y: number;
   oid: string;
@@ -396,10 +397,13 @@ interface ContextBranchCreation extends RepositoryEditorOwner {
 }
 
 interface PendingStoredReferenceDelete {
-  kind: 'checkpoint' | 'original';
-  repoId: string;
-  reference: string;
-  oid: string;
+  readonly kind: 'checkpoint' | 'original';
+  readonly repoId: string;
+  readonly repositoryPath: string;
+  readonly repositoryVisit: string;
+  readonly reference: string;
+  readonly oid: string;
+  readonly returnFocus: HTMLElement | null;
 }
 
 interface TagPreviewPopover {
@@ -912,7 +916,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private repositoryTabMenuReturnFocus: HTMLElement | null = null;
   private terminalOpener: HTMLElement | null = null;
   private historyActionReturnFocus: HTMLElement | null = null;
-  private storedReferenceActionReturnFocus: HTMLElement | null = null;
   private fileActionReturnFocus: HTMLElement | null = null;
   private readonly graphCommitChildrenByOid = computed(() => {
     const children = new Map<string, CommitSummary[]>();
@@ -13879,62 +13882,75 @@ export class AppComponent implements OnInit, OnDestroy {
     return false;
   }
 
-  protected requestStoredReferenceDelete(): void {
+  protected requestStoredReferenceDelete(expected: ContextMenuState): void {
     const menu = this.contextMenu();
-    const repoId = this.git.activeRepositoryId();
-    if (!menu || (menu.kind !== 'checkpoint' && menu.kind !== 'original') || !repoId) return;
-    if (menu.kind === 'original' && menu.repositoryId !== repoId) {
+    const repository = this.git.repository();
+    const repositoryVisit = this.git.activeRepositoryReadScope();
+    if (!menu || menu !== expected || (menu.kind !== 'checkpoint' && menu.kind !== 'original') || !repository
+      || this.git.busy() || this.git.historyLoading() || this.git.checkpointVisibilityUpdating()) return;
+    if (menu.repositoryId !== repository.id || menu.repositoryPath !== repository.path
+      || menu.repositoryVisit !== repositoryVisit) {
       this.dismissGraphActionMenu();
-      this.git.error.set('The active repository changed. Open the original reference again before deleting it.');
+      this.git.error.set('The active repository changed. Open the reference again before deleting it.');
       return;
     }
-    const action = { kind: menu.kind, repoId, reference: menu.label, oid: menu.oid };
-    this.storedReferenceActionReturnFocus = this.contextMenuReturnFocus;
+    const action: PendingStoredReferenceDelete = {
+      kind: menu.kind, repoId: repository.id, repositoryPath: repository.path, repositoryVisit,
+      reference: menu.label, oid: menu.oid, returnFocus: this.contextMenuReturnFocus,
+    };
     this.dismissGraphActionMenu();
     this.pendingStoredReferenceDelete.set(action);
     queueMicrotask(() => requestAnimationFrame(() => {
-      if (this.pendingStoredReferenceDelete() !== action) return;
+      if (this.pendingStoredReferenceDelete() !== action || !this.ownsStoredReferenceDelete(action)) return;
       this.storedReferenceConfirmationDialog()?.nativeElement
         .querySelector<HTMLElement>('[data-checkpoint-dialog-cancel]')
         ?.focus();
     }));
   }
 
-  protected dismissStoredReferenceConfirmation(restoreFocus = true): void {
-    const target = restoreFocus ? this.storedReferenceActionReturnFocus : null;
+  protected dismissStoredReferenceConfirmation(restoreFocus = true, expected = this.pendingStoredReferenceDelete()): void {
+    if (!expected || this.pendingStoredReferenceDelete() !== expected) return;
     this.pendingStoredReferenceDelete.set(null);
-    this.storedReferenceActionReturnFocus = null;
-    if (restoreFocus) this.restoreStoredReferenceActionFocus(target);
+    if (restoreFocus) this.restoreStoredReferenceActionFocus(expected);
   }
 
-  protected handleStoredReferenceConfirmationKeydown(event: KeyboardEvent): void {
+  protected handleStoredReferenceConfirmationKeydown(event: KeyboardEvent, expected: PendingStoredReferenceDelete): void {
+    const active = this.pendingStoredReferenceDelete();
+    if (!active) return;
+    event.stopPropagation();
+    if (active !== expected) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      event.stopPropagation();
-      this.dismissStoredReferenceConfirmation(true);
+      this.dismissStoredReferenceConfirmation(true, expected);
       return;
     }
     this.cycleDialogFocus(this.storedReferenceConfirmationDialog()?.nativeElement, event);
   }
 
-  protected async confirmStoredReferenceDelete(): Promise<void> {
-    const action = this.pendingStoredReferenceDelete();
-    if (!action || this.git.busy() || this.git.historyLoading() || this.git.checkpointVisibilityUpdating()) return;
-    const returnFocus = this.storedReferenceActionReturnFocus;
-    this.dismissStoredReferenceConfirmation(false);
-    if (this.git.activeRepositoryId() !== action.repoId) {
+  protected async confirmStoredReferenceDelete(action: PendingStoredReferenceDelete): Promise<void> {
+    if (this.pendingStoredReferenceDelete() !== action || this.git.busy()
+      || this.git.historyLoading() || this.git.checkpointVisibilityUpdating()) return;
+    this.dismissStoredReferenceConfirmation(false, action);
+    if (!this.ownsStoredReferenceDelete(action)) {
       this.git.error.set('The active repository changed. Open the reference again before deleting it.');
-      this.restoreStoredReferenceActionFocus(returnFocus);
       return;
     }
     if (action.kind === 'original') await this.git.deleteOriginalReference(action.repoId, action.reference, action.oid);
     else await this.git.deleteCheckpointReference(action.reference, action.oid);
-    this.reconcileCheckpointSelection(action.repoId);
-    this.restoreStoredReferenceActionFocus(returnFocus);
+    if (this.ownsStoredReferenceDelete(action)) this.reconcileCheckpointSelection(action.repoId);
+    this.restoreStoredReferenceActionFocus(action);
   }
 
-  private restoreStoredReferenceActionFocus(target: HTMLElement | null): void {
+  private ownsStoredReferenceDelete(action: PendingStoredReferenceDelete): boolean {
+    const repository = this.git.repository();
+    return repository?.id === action.repoId && repository.path === action.repositoryPath
+      && this.git.activeRepositoryReadScope() === action.repositoryVisit;
+  }
+
+  private restoreStoredReferenceActionFocus(action: PendingStoredReferenceDelete): void {
     queueMicrotask(() => {
+      if (this.pendingStoredReferenceDelete() || !this.ownsStoredReferenceDelete(action)) return;
+      const target = action.returnFocus;
       const available = (element: HTMLElement | null | undefined) => element?.isConnected
         && element.getClientRects().length && !element.closest('[inert]')
         && getComputedStyle(element).visibility !== 'hidden';
@@ -14366,6 +14382,7 @@ export class AppComponent implements OnInit, OnDestroy {
       kind,
       repositoryId: this.git.activeRepositoryId(),
       repositoryPath: this.git.repository()?.path,
+      repositoryVisit: this.git.activeRepositoryReadScope(),
       oid,
       oids,
       label,

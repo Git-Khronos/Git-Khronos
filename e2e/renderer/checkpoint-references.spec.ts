@@ -397,6 +397,44 @@ test('restores the checkbox if changing checkpoint visibility fails', async ({ p
   await expect(checkbox).toBeEnabled();
 });
 
+test('refuses to delete a checkpoint when the same repository id now points at another checkout', async ({ page }) => {
+  await showCheckpoints(page);
+  await page.locator('.commit-row').getByRole('button', { name: `Copilot checkpoint ${privateRef}` }).click();
+  await page.getByRole('menuitem', { name: 'Delete checkpoint reference…' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Delete checkpoint reference?' });
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => {
+    const { git, base } = (window as any).__checkpointTest;
+    git.repositories.update((repositories: any[]) => repositories.map(repository =>
+      repository.id === base.id ? { ...repository, path: '/owned/replacement-checkout' } : repository));
+  });
+  await dialog.getByRole('button', { name: 'Delete checkpoint reference' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__checkpointTest.git.error())).toContain('active repository changed');
+  expect(await page.evaluate(() => (window as any).__checkpointTest.calls
+    .filter((call: { command: string }) => call.command === 'delete_checkpoint_reference'))).toEqual([]);
+});
+
+for (const action of ['confirm', 'cancel']) {
+  test(`an outgoing checkpoint ${action} cannot consume a newer reference review`, async ({ page }) => {
+    await showCheckpoints(page);
+    await page.locator('.commit-row').getByRole('button', { name: `Copilot checkpoint ${privateRef}` }).click();
+    await page.getByRole('menuitem', { name: 'Delete checkpoint reference…' }).click();
+    const dialog = page.getByRole('alertdialog', { name: 'Delete checkpoint reference?' });
+    await expect(dialog).toBeVisible();
+    await page.evaluate(({ action, sharedRef }) => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const outgoing = document.querySelector<HTMLButtonElement>(action === 'confirm'
+        ? '.checkpoint-confirmation-dialog .confirm-action' : '[data-checkpoint-dialog-cancel]')!;
+      app.pendingStoredReferenceDelete.set({ ...app.pendingStoredReferenceDelete(),
+        reference: sharedRef, oid: app.git.repository().headOid });
+      outgoing.click();
+    }, { action, sharedRef });
+    await expect(dialog).toContainText(sharedRef);
+    expect(await page.evaluate(() => (window as any).__checkpointTest.calls
+      .filter((call: { command: string }) => call.command === 'delete_checkpoint_reference'))).toEqual([]);
+  });
+}
+
 test('resumes a requested history page after failed visibility recovery', async ({ page }) => {
   await page.evaluate(() => {
     const state = (window as any).__checkpointTest;

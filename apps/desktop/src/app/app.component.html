@@ -2260,13 +2260,14 @@
     }
   }
   @if (pendingStoredReferenceDelete(); as action) {
-    <div class="confirmation-backdrop" (click)="dismissStoredReferenceConfirmation(true)">
-      <section #storedReferenceConfirmationDialog class="confirmation-dialog checkpoint-confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="checkpoint-confirmation-title" aria-describedby="checkpoint-confirmation-warning" (click)="$event.stopPropagation()" (keydown)="handleStoredReferenceConfirmationKeydown($event)">
+    <div class="confirmation-backdrop" (click)="dismissStoredReferenceConfirmation(true, action)">
+      <section #storedReferenceConfirmationDialog class="confirmation-dialog checkpoint-confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="checkpoint-confirmation-title" aria-describedby="checkpoint-confirmation-warning" (click)="$event.stopPropagation()" (keydown)="handleStoredReferenceConfirmationKeydown($event, action)">
         <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>{{ action.kind === 'original' ? 'Delete saved original reference' : 'Delete Copilot checkpoint' }}</span>
           <h2 id="checkpoint-confirmation-title">{{ action.kind === 'original' ? 'Delete original reference?' : 'Delete checkpoint reference?' }}</h2>
           <p><code class="checkpoint-reference-name">{{ action.reference }}</code></p>
+          <p>Checkout: <code class="checkpoint-reference-name">{{ action.repositoryPath }}</code></p>
           <p>Points to commit <code class="checkpoint-reference-name">{{ action.kind === 'original' ? action.oid : shortOid(action.oid) }}</code>.</p>
           @if (action.kind === 'original') {
             <p id="checkpoint-confirmation-warning">Delete only this saved reference name under refs/original/. Deleting it may make history unreachable and Git may eventually prune those objects. This does not itself erase objects or rewrite branches. No replacement recovery reference will be created. This action cannot be undone here.</p>
@@ -2274,7 +2275,7 @@
             <p id="checkpoint-confirmation-warning">Deleting this reference may prevent Copilot from recovering this session or checkpoint. Git may eventually remove commits that are no longer reachable. This action cannot be undone here.</p>
           }
         </div>
-        <footer><button type="button" data-checkpoint-dialog-cancel (click)="dismissStoredReferenceConfirmation(true)">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="confirmStoredReferenceDelete()">{{ action.kind === 'original' ? 'Delete original reference' : 'Delete checkpoint reference' }}</button></footer>
+        <footer><button type="button" data-checkpoint-dialog-cancel (click)="dismissStoredReferenceConfirmation(true, action)">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy() || git.historyLoading() || git.checkpointVisibilityUpdating()" (click)="confirmStoredReferenceDelete(action)">{{ action.kind === 'original' ? 'Delete original reference' : 'Delete checkpoint reference' }}</button></footer>
       </section>
     </div>
   }

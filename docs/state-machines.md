@@ -951,6 +951,14 @@ modified Enter cannot submit or activate it implicitly. Existing text editing,
 Tab and Escape handling remain local. Bisect startup uses the common modal Tab
 trap. A retired history review stops intercepting keys before its DOM disappears.
 
+Checkpoint and original-reference deletion also bind the selected ref and
+commit to the repository path and active visit. Both the menu and the
+confirmation check ownership before dispatch. Confirm and Cancel retain the
+rendered request: an outgoing button cannot delete or dismiss a replacement
+review. Late completion restores focus or clears selection only while the
+original repository visit still owns the response. Native continues to
+compare the expected ref tip against Git when actually deleting it.
+
 Coverage: `confirmation-keyboard.spec.ts` checks all eleven request families,
 focus gaps, retired DOM, Tab/Escape and explicit Enter. The packaged
 `setup-keyboard` suite additionally opens a real branch-deletion review and
