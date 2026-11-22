@@ -1,7 +1,7 @@
 @let view = model();
 <div class="column-settings-scroll">
   <strong>Layout</strong>
-  <button class="fit-graph-column" type="button" (click)="view.fitGraphColumnToBranches($event)"><gc-icon name="maximize" [size]="12" /><span>Fit all {{ view.graphRequiredLaneCount() }} branch {{ view.graphRequiredLaneCount() === 1 ? 'path' : 'paths' }}<small>{{ view.graphMaximumWidth() }} px</small></span></button>
+  <button class="fit-graph-column" type="button" aria-label="Fit graph column to all branch paths" (click)="view.fitGraphColumnToBranches($event)"><gc-icon name="maximize" [size]="12" /><span>Fit all {{ view.graphRequiredLaneCount() }} branch {{ view.graphRequiredLaneCount() === 1 ? 'path' : 'paths' }}<small>{{ view.graphMaximumWidth() }} px</small></span></button>
   <label><input type="checkbox" [checked]="view.compactGraphColumn()" (change)="view.setCompactGraphColumn($any($event.target).checked)" /> Compact Graph Column</label>
   <label><input type="checkbox" [checked]="view.showGraphScrollMarkers()" (change)="view.setGraphScrollMarkers($any($event.target).checked)" /> Scroll Markers</label>
   <label title="When off, widening a column narrows the others so the history always fits the panel"><input type="checkbox" [checked]="view.graphHorizontalScroll()" (change)="view.setGraphHorizontalScroll($any($event.target).checked)" /> Horizontal Scrolling</label>
