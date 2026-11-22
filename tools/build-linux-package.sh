@@ -26,6 +26,10 @@ fi
 
 node tools/check-linux-package-watcher.mjs apps/desktop/src-tauri/Cargo.toml
 node tools/package-build-receipt.mjs begin "$checksum"
+# Task saw changed inputs (or requested a rebuild). Cargo's timestamp check
+# can still accept an older workspace executable after a checkout or archive
+# restore. Invalidate just workspace release artifacts, not dependency caches.
+cargo clean --release --workspace --locked
 export TMPDIR="${TMPDIR:-$PWD/target/package-tmp}"
 mkdir -p -- "$TMPDIR"
 pnpm exec tauri build --bundles deb --config "$tauri_config" "${extra_config[@]}"

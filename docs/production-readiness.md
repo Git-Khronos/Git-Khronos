@@ -3532,6 +3532,24 @@ failed on the prior source; the first is also required in the next
 installed recap qualification. Evidence:
 `target/local-review/independent-unstaged-recap.6woZdGil/`.
 
+### Rebuilding native code after restoring a source archive
+
+An Ubuntu 24.04 installed check caught the Bisect Reset safeguard missing
+from a freshly stamped package. The archived Rust source was correct, but
+the build inherited Cargo fingerprints newer than the archive's file
+timestamps. The resulting executable matched the preceding package's
+build receipt byte for byte. That failed check is preserved under
+`target/local-review/updater/jammy-builder/bisect-reset-release.0MXRBWcX/`;
+its package and the dependent qualification queue are not release evidence.
+
+When the package task must rebuild, both Linux build flavours now clear
+workspace release artifacts under the package lock and pending receipt,
+before invoking Tauri. Cargo can still reuse third-party dependencies,
+and a matching completed receipt still skips the package build entirely.
+The regression uses real Cargo and proves the packaged build sees a
+changed workspace dependency with an older timestamp. It also verifies
+that failed invalidation never creates a completed receipt for new inputs.
+
 ### Manual and automatic Fetch recovery
 
 Successful manual Fetch options now re-enable an automatic Fetch paused

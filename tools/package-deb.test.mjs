@@ -313,6 +313,11 @@ if (process.argv[2] === '--version') {
   if (lock.status !== 73) throw new Error('Package writes started without the workspace lock');
   writeFileSync('build-tmpdir', process.env.TMPDIR);
   appendFileSync('calls', 'build\\n');
+  if (process.env.PACKAGE_REAL_CARGO) {
+    const probe = spawnSync('cargo', ['run', '--release', '--locked', '--offline', '--quiet'], { encoding: 'utf8' });
+    if (probe.status !== 0) throw new Error(probe.error ?? probe.stderr);
+    writeFileSync('native-probe', probe.stdout);
+  }
   if (process.env.HARD_STOP_BUILD) {
     // Kill only this fixture's direct writer; never a caller or host job.
     const parent = '/proc/' + process.ppid;
@@ -336,13 +341,21 @@ if (process.argv[2] === '--version') {
 }
 `);
   await put('bin/rustc', '#!/bin/sh\nprintf "rustc fixture\\n"\n');
+  await put('bin/cargo', `#!/bin/sh
+if [ -n "$PACKAGE_REAL_CARGO" ]; then
+  unset RUSTC
+  if [ -z "$CARGO_TARGET_DIR" ]; then unset CARGO_TARGET_DIR; fi
+  PATH="$PACKAGE_REAL_PATH" exec "$PACKAGE_REAL_CARGO" "$@"
+fi
+test -z "$FAIL_CARGO_CLEAN"
+`);
   await put('tools/manage-linux-package.sh', `#!/bin/sh
 [ "$1" = name ] && exit 0
 [ "$1" = print-package ] && { package="\${CARGO_TARGET_DIR:-target}/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb"; grep -qx built "$package" || exit $?; case "$package" in /*) printf '%s\\n' "$package" ;; *) printf '%s\\n' "$PWD/$package" ;; esac; exit 0; }
 printf '%s\\n' "$1" >> calls
 test -z "$FAIL_VERIFY"
 `);
-  for (const executable of ['bin/pnpm', 'bin/rustc', 'tools/manage-linux-package.sh']) {
+  for (const executable of ['bin/pnpm', 'bin/rustc', 'bin/cargo', 'tools/manage-linux-package.sh']) {
     await chmod(join(root, executable), 0o755);
   }
   const run = (args = ['package:deb'], extraEnv = {}) => spawnSync('task', args, {
@@ -432,6 +445,46 @@ test('input edits, additions, renames and deletions invalidate the build', async
   await rm(join(f.root, 'apps/desktop/src/renamed.ts'));
   f.ok();
   assert.equal(await f.builds(), previous + 2);
+});
+
+test('a changed Rust workspace member is compiled even when its file is older than the Cargo cache', async (t) => {
+  const cargo = spawnSync('which', ['cargo'], { encoding: 'utf8' });
+  assert.equal(cargo.status, 0, 'this Linux package regression requires Cargo');
+  const f = await fixture(t);
+  await f.put('Cargo.toml', '[workspace]\nmembers = ["crates/git-core", "apps/desktop/src-tauri"]\nresolver = "2"\n');
+  await f.put('crates/git-core/Cargo.toml', '[package]\nname = "probe-core"\nversion = "0.1.0"\nedition = "2021"\n');
+  await f.put('apps/desktop/src-tauri/Cargo.toml', '[package]\nname = "probe-app"\nversion = "0.1.0"\nedition = "2021"\n[dependencies]\nprobe-core = { path = "../../../crates/git-core" }\n');
+  await f.put('apps/desktop/src-tauri/src/main.rs', 'fn main() { println!("{}", probe_core::value()); }\n');
+  const core = 'crates/git-core/src/lib.rs';
+  await f.put(core, 'pub fn value() -> u8 { 1 }\n');
+  const lock = spawnSync(cargo.stdout.trim(), ['generate-lockfile', '--offline'], { cwd: f.root, encoding: 'utf8' });
+  assert.equal(lock.status, 0, lock.stderr);
+  const env = { PACKAGE_REAL_CARGO: cargo.stdout.trim(), PACKAGE_REAL_PATH: process.env.PATH };
+  const value = () => readFile(join(f.root, 'native-probe'), 'utf8');
+  f.ok(undefined, env);
+  assert.equal(await value(), '1\n');
+  await f.put(core, 'pub fn value() -> u8 { 2 }\n');
+  await utimes(join(f.root, core), new Date(0), new Date(0));
+  f.ok(undefined, env);
+  assert.equal(await f.builds(), 2, 'Task noticed the changed bytes and invoked the package build');
+  assert.equal(await value(), '2\n', 'the new package build must not reuse old native code');
+  f.ok(undefined, env);
+  assert.equal(await f.builds(), 2, 'an unchanged receipt still skips the build entirely');
+});
+
+test('failure to invalidate Cargo workspace outputs cannot qualify a package under a new source checksum', async (t) => {
+  const f = await fixture(t);
+  f.ok();
+  const receipt = join(f.root, 'target/release/.git-khronos-package-build.v1.json');
+  const oldReceipt = await readFile(receipt, 'utf8');
+  await f.put('crates/git-core/src/lib.rs', 'new input');
+  assert.notEqual(f.run(undefined, { FAIL_CARGO_CLEAN: '1' }).status, 0);
+  assert.equal(await f.builds(), 1, 'Tauri did not start after the invalidation failure');
+  assert.equal(await readFile(receipt, 'utf8'), oldReceipt);
+  await stat(`${receipt}.pending`);
+  f.ok();
+  assert.equal(await f.builds(), 2);
+  assert.notEqual(JSON.parse(await readFile(receipt, 'utf8')).checksum, JSON.parse(oldReceipt).checksum);
 });
 
 test('missing required outputs rebuild and --force rebuilds unchanged inputs', async (t) => {
