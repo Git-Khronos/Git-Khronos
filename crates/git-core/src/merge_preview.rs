@@ -2,6 +2,9 @@ use super::*;
 use isolated_git::IsolatedGit;
 
 const OUTPUT_LIMIT: usize = 1024 * 1024;
+const ATTRIBUTE_TREE_LIMIT: usize = 8 * 1024 * 1024;
+const ATTRIBUTE_BYTES_LIMIT: usize = 4 * 1024 * 1024;
+const ATTRIBUTE_FILE_LIMIT: usize = 512;
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -122,16 +125,139 @@ impl Scratch {
             .map_err(io_error)
     }
     fn run(&self, args: &[&str], cancellation: &CancellationToken) -> Result<Output, AppError> {
-        let (output, truncated) = run_cancellable_command_with_stdout_limit(
-            self.0.command(args),
-            cancellation,
-            Some(OUTPUT_LIMIT),
-        )?;
+        self.run_command(self.0.command(args), cancellation, OUTPUT_LIMIT)
+    }
+    fn run_command(
+        &self,
+        command: Command,
+        cancellation: &CancellationToken,
+        limit: usize,
+    ) -> Result<Output, AppError> {
+        let (output, truncated) =
+            run_cancellable_command_with_stdout_limit(command, cancellation, Some(limit))?;
         if truncated {
             return Err(incomplete());
         }
         Ok(output)
     }
+
+    fn legacy_attributes(
+        &self,
+        format: &str,
+        alternate: &str,
+        target: &str,
+        cancellation: &CancellationToken,
+    ) -> Result<PathBuf, AppError> {
+        // Legacy merge-tree reads worktree attributes, not a preloaded index.
+        // A separate non-bare scratch checkout holds rules only, not project
+        // files. The source object database remains an alternate for reads.
+        let root = self.0.path();
+        let workdir = root.join("rules");
+        fs::write(root.join("empty-config"), b"").map_err(io_error)?;
+        fs::create_dir(root.join("empty-template")).map_err(io_error)?;
+        let init = self.run(
+            &["init", "-q", "--template=empty-template", format, "rules"],
+            cancellation,
+        )?;
+        ensure_success("initialize isolated merge attribute storage", &init)?;
+        fs::write(
+            workdir.join(".git/objects/info/alternates"),
+            format!("{alternate}\n"),
+        )
+        .map_err(io_error)?;
+        let command = self.in_workdir(&workdir, &["ls-tree", "-r", "-z", "--full-tree", target]);
+        let tree = self.run_command(command, cancellation, ATTRIBUTE_TREE_LIMIT)?;
+        ensure_success("list committed merge attributes", &tree)?;
+        let mut rules = Vec::new();
+        for record in tree
+            .stdout
+            .split(|byte| *byte == 0)
+            .filter(|row| !row.is_empty())
+        {
+            let tab = record
+                .iter()
+                .position(|byte| *byte == b'\t')
+                .ok_or_else(incomplete)?;
+            let path = &record[tab + 1..];
+            if path.rsplit(|byte| *byte == b'/').next() != Some(b".gitattributes") {
+                continue;
+            }
+            let header = std::str::from_utf8(&record[..tab]).map_err(|_| incomplete())?;
+            let fields: Vec<_> = header.split(' ').collect();
+            let [mode, object, oid] = fields.as_slice() else {
+                return Err(incomplete());
+            };
+            if !matches!(*mode, "100644" | "100755") || *object != "blob" {
+                continue; // Git does not follow a symbolic link for an attribute file.
+            }
+            validate_commit_oid(oid).map_err(|_| incomplete())?;
+            if rules.len() == ATTRIBUTE_FILE_LIMIT {
+                return Err(refused(
+                    "There are too many committed attribute files for a bounded preview on this Git version.",
+                ));
+            }
+            rules.push((path, *oid));
+        }
+        let mut directories = HashSet::new();
+        let mut bytes = 0;
+        for (path, oid) in rules {
+            let parent = create_attribute_parent(&workdir, path, &mut directories)?;
+            let command = self.in_workdir(&workdir, &["cat-file", "blob", oid]);
+            let attribute = self.run_command(command, cancellation, OUTPUT_LIMIT)?;
+            ensure_success("read committed merge attributes", &attribute)?;
+            bytes += attribute.stdout.len();
+            if bytes > ATTRIBUTE_BYTES_LIMIT {
+                return Err(refused(
+                    "Committed merge attributes exceed the preview's inspection limit.",
+                ));
+            }
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(parent.join(".gitattributes"))
+                .and_then(|mut file| file.write_all(&attribute.stdout))
+                .map_err(io_error)?;
+        }
+        Ok(workdir)
+    }
+
+    fn in_workdir(&self, workdir: &Path, args: &[&str]) -> Command {
+        let mut command = self.0.command(&[]);
+        command.arg("-C").arg(workdir).args(args);
+        command
+    }
+}
+
+fn create_attribute_parent(
+    root: &Path,
+    path: &[u8],
+    created: &mut HashSet<PathBuf>,
+) -> Result<PathBuf, AppError> {
+    let unsafe_path =
+        || refused("A committed attribute path cannot be represented safely in preview storage.");
+    let path = std::str::from_utf8(path).map_err(|_| unsafe_path())?;
+    let mut components = path.split('/');
+    if components.next_back() != Some(".gitattributes") {
+        return Err(unsafe_path());
+    }
+    let mut parent = root.to_path_buf();
+    for part in components {
+        if part.is_empty() || matches!(part, "." | "..") || part.eq_ignore_ascii_case(".git") {
+            return Err(unsafe_path());
+        }
+        #[cfg(windows)]
+        if part.contains(['\\', ':']) || part.ends_with(['.', ' ']) {
+            return Err(unsafe_path());
+        }
+        parent.push(part);
+        if !created.contains(&parent) {
+            // Refuse aliases (including case folds) or another entry already
+            // at this path, rather than reusing an unverified directory.
+            fs::create_dir(&parent).map_err(|_| unsafe_path())?;
+            created.insert(parent.clone());
+        }
+    }
+    Ok(parent)
 }
 
 fn io_error(error: std::io::Error) -> AppError {
@@ -160,13 +286,9 @@ fn preview_merge_before_publish(
 ) -> Result<MergePreview, AppError> {
     let version = inspect(path, &["--version"], cancellation)?;
     ensure_success("inspect Git preview support", &version)?;
-    if !parse_git_version(&version.stdout)
-        .is_some_and(|version| version_at_least(&version, "2.43.0"))
-    {
-        return Err(refused(
-            "Merge preview requires Git 2.43 or newer for explicit committed-attribute lookup.",
-        ));
-    }
+    let version = parse_git_version(&version.stdout)
+        .filter(|version| version_at_least(version, "2.39.0"))
+        .ok_or_else(|| refused("Merge preview requires Git 2.39 or newer."))?;
     let shallow = inspect(
         path,
         &["rev-parse", "--is-shallow-repository"],
@@ -245,22 +367,33 @@ fn preview_merge_before_publish(
     };
     let scratch = Scratch::new()?;
     let result = (|| {
-        scratch
-            .0
-            .init_with_alternate(object_format, object_path, cancellation)?;
-        let output = scratch.run(
-            &[
-                &format!("--attr-source={}", request.target_oid),
-                "merge-tree",
-                "--write-tree",
-                "--name-only",
-                "-z",
-                "--no-messages",
+        let merge = [
+            "merge-tree",
+            "--write-tree",
+            "--name-only",
+            "-z",
+            "--no-messages",
+            &request.target_oid,
+            &request.source_oid,
+        ];
+        let output = if version_at_least(&version, "2.43.0") {
+            scratch
+                .0
+                .init_with_alternate(object_format, object_path, cancellation)?;
+            let attribute_source = format!("--attr-source={}", request.target_oid);
+            let mut args = vec![attribute_source.as_str()];
+            args.extend(merge);
+            scratch.run(&args, cancellation)?
+        } else {
+            let workdir = scratch.legacy_attributes(
+                object_format,
+                object_path,
                 &request.target_oid,
-                &request.source_oid,
-            ],
-            cancellation,
-        )?;
+                cancellation,
+            )?;
+            let command = scratch.in_workdir(&workdir, &merge);
+            scratch.run_command(command, cancellation, OUTPUT_LIMIT)?
+        };
         if !matches!(output.status.code(), Some(0 | 1)) {
             ensure_success("preview committed merge", &output)?;
         }
@@ -561,6 +694,79 @@ mod tests {
             "Committed binary-merge attributes must prevent a text auto-merge"
         );
         assert_eq!(before, f.state());
+    }
+
+    #[test]
+    fn merge_preview_uses_nested_target_attributes_not_dirty_worktree_rules() {
+        let f = Fixture::new();
+        fs::create_dir(f.path().join("nested rules")).unwrap();
+        let path = "nested rules/text";
+        let attributes = "nested rules/.gitattributes";
+        f.write(path, "first\nmiddle\nlast\n");
+        f.write(attributes, "text merge\n");
+        f.commit();
+        f.git(&["branch", "-f", "topic"]);
+        f.git(&["checkout", "-q", "topic"]);
+        f.write(path, "changed first\nmiddle\nlast\n");
+        f.commit();
+        f.git(&["checkout", "-q", "main"]);
+        f.write(path, "first\nmiddle\nchanged last\n");
+        f.write(attributes, "text -merge\n");
+        f.commit();
+        f.write(attributes, "text merge\n");
+        let before = f.state();
+        let result = f.preview();
+        assert!(!result.clean);
+        assert_eq!(result.conflicted_paths, [path]);
+        assert_eq!(before, f.state());
+    }
+
+    #[test]
+    fn legacy_attribute_storage_does_not_follow_existing_directories_or_metadata_aliases() {
+        let scratch = Scratch::new().unwrap();
+        fs::create_dir(scratch.0.path().join("existing")).unwrap();
+        let mut created = HashSet::new();
+        for path in [
+            b"../.gitattributes".as_slice(),
+            b".gIt/.gitattributes",
+            b"existing/.gitattributes",
+        ] {
+            assert!(create_attribute_parent(scratch.0.path(), path, &mut created).is_err());
+        }
+        let written =
+            create_attribute_parent(scratch.0.path(), b"new/.gitattributes", &mut created).unwrap();
+        assert_eq!(written, scratch.0.path().join("new"));
+    }
+
+    #[test]
+    fn legacy_merge_attributes_refuse_over_limit_before_materializing_rules() {
+        let f = Fixture::new();
+        for number in 0..=ATTRIBUTE_FILE_LIMIT {
+            let directory = format!("rules-{number}");
+            fs::create_dir(f.path().join(&directory)).unwrap();
+            f.write(&format!("{directory}/.gitattributes"), "* -merge\n");
+        }
+        f.commit();
+        let cancellation = CancellationToken::default();
+        let oid = tip(f.path(), "HEAD", &cancellation).unwrap();
+        let alternate = f.path().join(".git/objects");
+        let scratch = Scratch::new().unwrap();
+        let error = scratch
+            .legacy_attributes(
+                "--object-format=sha1",
+                alternate.to_str().unwrap(),
+                &oid,
+                &cancellation,
+            )
+            .unwrap_err();
+        assert_eq!(error.kind, "mergePreviewUnsupported");
+        assert!(error.message.contains("too many committed attribute files"));
+        assert_eq!(
+            fs::read_dir(scratch.0.path().join("rules"))
+                .unwrap()
+                .count(),
+            1
+        );
     }
 
     #[test]

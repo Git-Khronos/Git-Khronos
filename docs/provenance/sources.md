@@ -1606,8 +1606,14 @@ Source: [Git merge-tree manual](https://git-scm.com/docs/git-merge-tree), consul
 2026-10-31. Used for default merge behavior, NUL-delimited conflict paths,
 exit-status interpretation, rename handling, unrelated-history refusal, and the
 fact that merge-tree writes merge objects while leaving index/working files alone.
-The implementation uses an isolated bare object database and reads the selected
-repository through Git alternates. No upstream implementation was copied.
+The implementation reads the selected repository through Git alternates
+and writes only private temporary data. The [Git 2.39 merge-tree manual](https://git-scm.com/docs/git-merge-tree/2.39.0)
+and [attributes documentation](https://git-scm.com/docs/gitattributes)
+define the earlier invocation and relative-path rules. An owned fixture
+showed that supplying only a scratch index did not activate the old
+command's nested rules, but providing only the committed regular
+`.gitattributes` files in an isolated working directory did.
+No upstream implementation was copied.
 
 The local-merge ignored-file safeguard also used the
 [Git merge](https://git-scm.com/docs/git-merge),

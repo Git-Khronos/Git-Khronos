@@ -50,6 +50,7 @@ test.beforeEach(async ({ page }) => {
 test('explicit preview sends exact direction and commit IDs without starting a merge', async ({ page }) => {
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'Preview merge conflicts', exact: true });
+  await expect(dialog).toContainText('Requires Git 2.39 or newer');
   await expect(dialog.getByLabel('Merge source branch')).toHaveValue('refs/heads/preview-target');
   await expect(dialog.getByLabel('Into target branch')).toHaveValue('refs/heads/preview-source');
   expect(await page.evaluate(() => (window as any).__mergePreview.calls.filter((x: any) => x.command === 'preview_merge'))).toHaveLength(0);

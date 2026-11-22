@@ -1822,15 +1822,25 @@ def shared_parent_avatar_attachments(driver, fixtures, original_repository, repo
 
 def committed_merge_preview(driver, fixtures, original_repository, report):
     repository = fixtures.repository("committed-merge-preview", commits=1)
+    rules = repository / "nested rules"
+    rules.mkdir()
+    nested = rules / "preview.txt"
+    attributes = rules / ".gitattributes"
+    path = nested.relative_to(repository).as_posix()
+    nested.write_text("first\nmiddle\nlast\n")
+    attributes.write_text("preview.txt -merge\n")
+    fixtures.git(repository, "add", "--", str(rules.relative_to(repository)))
+    fixtures.git(repository, "commit", "-qm", "Commit nested merge rules")
     fixtures.git(repository, "checkout", "-q", "-b", "preview-source")
-    (repository / "fixture.txt").write_text("source version\n")
+    nested.write_text("source version\nmiddle\nlast\n")
     fixtures.git(repository, "commit", "-qam", "Source change")
     source = fixtures.git(repository, "rev-parse", "HEAD")
     fixtures.git(repository, "checkout", "-q", "main")
-    (repository / "fixture.txt").write_text("target version\n")
+    nested.write_text("first\nmiddle\ntarget version\n")
     fixtures.git(repository, "commit", "-qam", "Target change")
     target = fixtures.git(repository, "rev-parse", "HEAD")
     (repository / "fixture.txt").write_text("unstaged local work\n")
+    attributes.write_text("preview.txt merge\n")
     (repository / "untracked.txt").write_text("preserved untracked work\n")
     before_refs = fixtures.git(repository, "show-ref")
     before_index = (repository / ".git/index").read_bytes()
@@ -1839,7 +1849,7 @@ def committed_merge_preview(driver, fixtures, original_repository, report):
         request = {"source": "refs/heads/preview-source", "target": "refs/heads/main",
                    "sourceOid": source, "targetOid": target}
         result = driver.invoke("preview_merge", repoId=repo_id, request=request, operationId=str(uuid.uuid4()))
-        assert not result["clean"] and result["conflictedPaths"] == ["fixture.txt"], result
+        assert not result["clean"] and result["conflictedPaths"] == [path], result
         assert result["request"] == request
         report["scenarios"].append("native-committed-merge-preview-exact-refs-and-conflict-paths")
         driver.click('[aria-label="Main menu"]')
@@ -1862,13 +1872,15 @@ def committed_merge_preview(driver, fixtures, original_repository, report):
         assert driver.script("return document.querySelector('gc-merge-preview-dialog #preview-target').value") == "refs/heads/preview-source"
         driver.click_text('gc-merge-preview-dialog button', 'Preview conflicts')
         driver.wait("return document.querySelector('gc-merge-preview-dialog')?.textContent.includes('Git reports merge conflicts')")
-        assert driver.script("return [...document.querySelectorAll('gc-merge-preview-dialog li')].map(x => x.textContent)") == ["fixture.txt"]
+        assert driver.script("return [...document.querySelectorAll('gc-merge-preview-dialog li')].map(x => x.textContent)") == [path]
         driver.click_text('gc-merge-preview-dialog button', 'Close')
         assert fixtures.git(repository, "show-ref") == before_refs
         assert (repository / ".git/index").read_bytes() == before_index
         assert (repository / "fixture.txt").read_text() == "unstaged local work\n"
+        assert attributes.read_text() == "preview.txt merge\n"
         assert (repository / "untracked.txt").read_text() == "preserved untracked work\n"
         report["scenarios"].append("native-merge-preview-dialog-default-direction-and-dirty-state-preservation")
+        report["scenarios"].append("native-merge-preview-uses-nested-committed-rules-without-working-tree-attributes")
     finally:
         open_ui(driver, original_repository)
 

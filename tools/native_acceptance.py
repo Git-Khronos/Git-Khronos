@@ -1193,7 +1193,7 @@ def main():
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
-        "workspace-pull-upstreams", "pull-submodule-scope",
+        "workspace-pull-upstreams", "pull-submodule-scope", "merge-preview",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
@@ -1547,6 +1547,9 @@ def main():
             if args.suite == "file-tools":
                 from native_file_tool_scenarios import file_tools
                 file_tools(driver, fixtures, repository, report)
+            if args.suite == "merge-preview":
+                from native_scenarios import committed_merge_preview
+                committed_merge_preview(driver, fixtures, repository, report)
             if args.suite == "file-media":
                 from native_media_scenarios import file_media_comparisons
                 file_media_comparisons(driver, fixtures, repository, report)

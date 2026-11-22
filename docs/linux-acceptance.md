@@ -613,6 +613,9 @@ inconclusive-result scenarios as the detached-checkout gate, without
 running unrelated checkout and recovery scenarios. Use the complete Git
 runtime for the target distribution, including the scripted helper on Git
 2.39; a copied executable alone is not equivalent.
+The `merge-preview` suite checks a conflict that depends on nested
+committed attributes, not the dirty checkout's rules; it also verifies
+direction, conflict paths, and unchanged working files and index.
 
 To check whether the retained reports cover every required Linux runtime
 suite for one release candidate, add `--release-matrix` before the package

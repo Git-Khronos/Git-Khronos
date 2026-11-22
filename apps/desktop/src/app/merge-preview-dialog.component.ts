@@ -32,7 +32,7 @@ export interface MergePreviewDialogRequest {
             <option [value]="branch.reference" [selected]="target() === branch.reference">{{ branch.label }}</option>
           }
         </select>
-        <p>Requires Git 2.43 or newer. Uses default Git merge settings and committed attributes. Custom merge drivers, shallow histories and partial clones require a separate review.</p>
+        <p>Requires Git 2.39 or newer. Uses default Git merge settings and committed attributes. Custom merge drivers, shallow histories and partial clones require a separate review.</p>
         @if (error()) { <p role="alert" tabindex="-1">{{ error() }}</p> }
         @if (stale()) { <p role="status">References changed; this preview is invalid. Refresh the repository and request a new preview.</p> }
         @if (visibleResult(); as result) {

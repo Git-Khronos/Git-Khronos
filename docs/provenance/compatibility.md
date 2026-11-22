@@ -2094,15 +2094,18 @@ the result; late replies after cancellation or repository switching are discarde
 
 Implementation specification: Git's public merge-tree manual, not proprietary
 implementation material. The native command runs default merge semantics in a
-private bare repository with read-only object alternates. It uses NUL-delimited
+private repository with read-only object alternates. It uses NUL-delimited
 path output and exit status, including status 1 with no individual path records.
 Temporary merge objects are removed on success, failure and cancellation.
 No merge or automatic follow-up mutation is offered by the preview dialog.
 
-Scope: Git 2.43+ with explicit target-commit attribute lookup; committed tips only,
-no fetch, no custom merge drivers, partial/shallow
+Scope: Git 2.39+; committed tips only, no fetch, no custom merge drivers, partial/shallow
 history or replacement refs. Repository-specific merge options and external
-attributes are not copied. A clean preview does not guarantee a subsequent merge
+attributes are not copied. Git 2.43+ reads target attributes directly. On
+Git 2.39–2.42, a private directory holds only regular committed
+`.gitattributes` files from the target, at their original relative paths.
+Unsupported paths or an over-limit listing or ruleset refuse to predict a
+merge. A clean preview does not guarantee a subsequent merge
 with other settings or dirty working contents. Behavioral fixtures cover text,
 binary, rename and modify/delete conflicts, SHA-256, stale references,
 cancellation, and byte-preserving operation on a dirty repository.
