@@ -24,7 +24,17 @@ async function setup(page: Page): Promise<void> {
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
       if (command === 'plugin:dialog|open') return Promise.resolve(fixture.selectedFile);
-      if (command === 'plugin:dialog|save') return Promise.resolve(fixture.destination);
+      if (command === 'plugin:dialog|save') {
+        if ((fixture as any).holdSave) return new Promise(resolve => {
+          (fixture as any).finishSave = () => resolve(fixture.destination);
+        });
+        return Promise.resolve(fixture.destination);
+      }
+      if (command === 'review_git_bundle_export_range') {
+        if ((fixture as any).rangeRefused) return Promise.reject({ kind: 'bundleExchangeRefused',
+          message: 'The prerequisite must be an ancestor of the selected branch tip.' });
+        return Promise.resolve({ branch: args.branch, tipOid: args.expectedOid, baseOid: args.baseOid, commitCount: 3 });
+      }
       if (command === 'export_git_bundle') {
         if (fixture.refused) return Promise.reject({ kind: 'bundleExchangeRefused', message: 'The source branch changed. Refresh before exporting.' });
         return Promise.resolve(4200);
@@ -66,9 +76,83 @@ test('complete branch export passes captured tip and original branch name withou
   await expect(panel.getByRole('status')).toContainText('Saved 4200 bytes');
   const fixture = await page.evaluate(() => (window as any).__bundle);
   expect(fixture.calls.find((call: any) => call.command === 'export_git_bundle').args)
-    .toEqual({ repoId: fixture.repository.id, branch: branch.name, expectedOid: branch.oid, destination: '/owned/export.bundle' });
+    .toEqual({ repoId: fixture.repository.id, branch: branch.name, expectedOid: branch.oid, baseOid: null, destination: '/owned/export.bundle' });
   await page.getByRole('button', { name: 'Close preferences' }).click();
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('Keep the unrelated draft');
+});
+
+async function prepareIncremental(page: Page) {
+  await setup(page);
+  const panel = page.locator('gc-bundle-exchange-panel');
+  const branch = await page.evaluate(() => (window as any).__bundle.repository.branches.find((branch: any) => !branch.remote));
+  await panel.getByLabel('Source branch', { exact: true }).selectOption(branch.name);
+  await panel.getByRole('checkbox', { name: 'Export incrementally from a commit the recipient already has' }).check();
+  return { panel, branch, base: panel.getByLabel('Prerequisite commit ID') };
+}
+
+test('incremental bundle export requires a reviewed exact base and exports only after choosing a file', async ({ page }) => {
+  const { panel, branch, base } = await prepareIncremental(page);
+  const reviewButton = panel.getByRole('button', { name: 'Review incremental range' });
+  const save = panel.getByRole('button', { name: 'Save incremental bundle…' });
+  await base.fill('refs/tags/released');
+  await expect(reviewButton).toBeDisabled();
+  const baseOid = 'b'.repeat(40);
+  await base.fill(baseOid.toUpperCase());
+  await expect(save).toBeDisabled();
+  await reviewButton.click();
+  const review = panel.getByRole('region', { name: 'Incremental bundle export review' });
+  await expect(review).toBeFocused();
+  await expect(review).toContainText('3 commits to export');
+  await expect(review).toContainText(baseOid);
+  await expect(review).toContainText(branch.oid);
+  let fixture = await page.evaluate(() => (window as any).__bundle);
+  expect(fixture.calls.filter((call: any) => call.command === 'review_git_bundle_export_range').map((call: any) => call.args))
+    .toEqual([{ repoId: fixture.repository.id, branch: branch.name, expectedOid: branch.oid, baseOid }]);
+  expect(fixture.calls.some((call: any) => call.command === 'plugin:dialog|save' || call.command === 'export_git_bundle')).toBe(false);
+  await base.fill('c'.repeat(40));
+  await expect(review).toHaveCount(0);
+  await expect(save).toBeDisabled();
+  await reviewButton.click();
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(panel.getByRole('status')).toContainText('Saved 4200 bytes');
+  fixture = await page.evaluate(() => (window as any).__bundle);
+  expect(fixture.calls.find((call: any) => call.command === 'export_git_bundle').args).toEqual({
+    repoId: fixture.repository.id, branch: branch.name, expectedOid: branch.oid, baseOid: 'c'.repeat(40), destination: '/owned/export.bundle',
+  });
+});
+
+test('a non-ancestor prerequisite never opens the incremental bundle save picker', async ({ page }) => {
+  const { panel, base } = await prepareIncremental(page);
+  await page.evaluate(() => (window as any).__bundle.rangeRefused = true);
+  await base.fill('b'.repeat(40));
+  await panel.getByRole('button', { name: 'Review incremental range' }).click();
+  await expect(panel.getByRole('alert')).toContainText('must be an ancestor');
+  await expect(panel.getByRole('button', { name: 'Save incremental bundle…' })).toBeDisabled();
+  expect(await page.evaluate(() => (window as any).__bundle.calls.some((call: any) => call.command === 'plugin:dialog|save'
+    || call.command === 'export_git_bundle'))).toBe(false);
+});
+
+test('moving the reviewed source while the save picker is open prevents incremental export', async ({ page }) => {
+  const { panel, branch, base } = await prepareIncremental(page);
+  await base.fill('b'.repeat(40));
+  await panel.getByRole('button', { name: 'Review incremental range' }).click();
+  const save = panel.getByRole('button', { name: 'Save incremental bundle…' });
+  await expect(save).toBeEnabled();
+  await page.evaluate(() => (window as any).__bundle.holdSave = true);
+  await save.click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__bundle.finishSave)).toBe('function');
+  await page.evaluate(name => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.repositories.update((rows: any[]) => rows.map(row => row.id === git.activeRepositoryId() ? {
+      ...row, branches: row.branches.map((item: any) => item.name === name && !item.remote ? { ...item, oid: 'e'.repeat(40) } : item),
+    } : row));
+    (window as any).__bundle.finishSave();
+  }, branch.name);
+  await expect(panel.getByRole('alert')).toContainText('reviewed export range changed');
+  await expect(panel.getByRole('region', { name: 'Incremental bundle export review' })).toHaveCount(0);
+  await expect(save).toBeDisabled();
+  expect(await page.evaluate(() => (window as any).__bundle.calls.some((call: any) => call.command === 'export_git_bundle'))).toBe(false);
 });
 
 test('bundle review exposes all tips but requires explicit branch-only choice before exact recovery import', async ({ page }) => {

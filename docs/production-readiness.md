@@ -4054,6 +4054,30 @@ The 317 desktop unit tests and 115 focused Chromium cases passed. Tests
 cover a recipe round trip, selected fetch URLs, an unchanged active checkout,
 stale-remote and clipboard refusal, and no dispatch before clone confirmation.
 Receipts: `target/local-review/workspace-clone-recipe.LDXZBXJy/`.
+
+The Ubuntu 24.04 package from `9521698` passed six focused installed
+scenarios covering batch clone and recipe round-trip. The recipe review
+included the fetch URL and suggested folder but did not clone or modify the
+workspace. The first run waited for a virtualized sidebar row unrelated to
+the recipe; the corrected harness refreshed the overview and reran against
+the unchanged package.
+SHA-256: `f6bc5549f7c72fc423bad9fb6422c09f52eca7803da6e4bd87ef0d66eab3a090`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/workspace-clone-recipe-recheck.MMw761oc/reports.json`.
+
+### Reviewed incremental offline bundle export
+
+The export review pins one local branch tip and an exact ancestor commit.
+The recipient must already have that prerequisite and its history. Native
+export revalidates the range, checks the emitted header and advertised tip,
+and publishes only a new destination file. Complete export remains the
+default. No remote access is involved.
+
+All 14 Git bundle tests passed on Git 2.53.0 and Git 2.39.5. They cover
+refusals, missing prerequisites, binary history, and merge topology with a
+local replace ref. The production build and 33 focused Chromium cases
+passed, including stale-range refusal while the save picker is held.
+Receipts: `target/local-review/incremental-bundle.4BCqljtf/`.
 This check does not include the later external-fetch watcher regression.
 
 ### Deferred Worktree and Submodule sidebar actions

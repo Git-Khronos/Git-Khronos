@@ -1933,21 +1933,39 @@ fn import_diff_patch(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn export_git_bundle(
+async fn review_git_bundle_export_range(
     repo_id: String,
     branch: String,
     expected_oid: String,
+    base_oid: String,
+    app: AppHandle,
+) -> Result<git_khronos_git_core::BundleExportRange, AppError> {
+    with_repository_background(repo_id, app, move |path| {
+        git_khronos_git_core::review_bundle_export_range(path, &branch, &expected_oid, &base_oid)
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
+async fn export_git_bundle(
+    repo_id: String,
+    branch: String,
+    expected_oid: String,
+    base_oid: Option<String>,
     destination: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<usize, AppError> {
-    with_repository(&repo_id, &state, |path| {
-        git_khronos_git_core::export_bundle(
+    with_repository_background(repo_id, app, move |path| {
+        git_khronos_git_core::export_bundle_with_base(
             path,
             &branch,
             &expected_oid,
+            base_oid.as_deref(),
             std::path::Path::new(&destination),
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -4423,6 +4441,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             export_diff_patch,
             review_diff_patch,
             import_diff_patch,
+            review_git_bundle_export_range,
             export_git_bundle,
             review_git_bundle,
             import_git_bundle,

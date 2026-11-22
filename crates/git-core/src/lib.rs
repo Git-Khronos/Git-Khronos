@@ -204,7 +204,8 @@ pub use patch_exchange::{
 };
 mod bundle_exchange;
 pub use bundle_exchange::{
-    BundleRequest, BundleReview, BundleTip, export_bundle, import_bundle, review_bundle,
+    BundleExportRange, BundleRequest, BundleReview, BundleTip, export_bundle,
+    export_bundle_with_base, import_bundle, review_bundle, review_bundle_export_range,
 };
 mod exchange_files;
 mod mail_patch;

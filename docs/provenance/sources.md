@@ -239,10 +239,11 @@ code, assets or documentation prose copied.
 Sources:
 
 - https://git-scm.com/docs/git-bundle
+- https://git-scm.com/docs/gitformat-bundle
 - https://git-scm.com/docs/git-fetch
 - https://git-scm.com/docs/git-update-ref
 
-Used for independently implemented complete branch export, prerequisite/header
+Used for independently implemented complete and ancestor-based branch export, prerequisite/header
 review, advertised tips, object-only fetch scope and atomic recovery-ref creation.
 Verification is not source authentication; pack objects are checked during fetch.
 Owned real-Git fixtures define safety and refusal behavior. No external source

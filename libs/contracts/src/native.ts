@@ -79,6 +79,7 @@ export type BranchWorkflowState = { settings: BranchWorkflowSettings | null; pro
 export type BranchWorkflowTagRequest = { message: string; sign: boolean | null }
 export type BranchWorkflowTopic = { kind: BranchWorkflowKind; branch: string; suffix: string; oid: string; worktree: string | null }
 export type BranchWorkflowView = { state: BranchWorkflowState; finish: BranchWorkflowFinishStatus | null }
+export type BundleExportRange = { branch: string; tipOid: string; baseOid: string; commitCount: number }
 export type BundleRequest = { file: string; fingerprint: string; bytes: number; tips: BundleTip[] }
 export type BundleReview = { request: BundleRequest; verification: string }
 export type BundleTip = { reference: string; oid: string }
@@ -795,7 +796,8 @@ export const execute_merge_rebase: (args: { repoId: string; request: MergeRebase
 export const export_diff_patch: (args: { repoId: string; staged: boolean; paths: string[]; destination: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_diff_patch");
 export const review_diff_patch: (args: { repoId: string; file: string; target: PatchTarget }) => Promise<PatchReview> = /* @__PURE__ */ __bindCommand__("review_diff_patch");
 export const import_diff_patch: (args: { repoId: string; request: PatchRequest }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("import_diff_patch");
-export const export_git_bundle: (args: { repoId: string; branch: string; expectedOid: string; destination: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_git_bundle");
+export const review_git_bundle_export_range: (args: { repoId: string; branch: string; expectedOid: string; baseOid: string }) => Promise<BundleExportRange> = /* @__PURE__ */ __bindCommand__("review_git_bundle_export_range");
+export const export_git_bundle: (args: { repoId: string; branch: string; expectedOid: string; baseOid?: string | null; destination: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_git_bundle");
 export const review_git_bundle: (args: { repoId: string; file: string }) => Promise<BundleReview> = /* @__PURE__ */ __bindCommand__("review_git_bundle");
 export const import_git_bundle: (args: { repoId: string; request: BundleRequest; tip: BundleTip }) => Promise<string> = /* @__PURE__ */ __bindCommand__("import_git_bundle");
 export const review_mail_patch_export: (args: { repoId: string; oids: string[] }) => Promise<MailPatchReview> = /* @__PURE__ */ __bindCommand__("review_mail_patch_export");
@@ -1078,6 +1080,7 @@ export type CommandMap = {
   export_diff_patch: typeof export_diff_patch;
   review_diff_patch: typeof review_diff_patch;
   import_diff_patch: typeof import_diff_patch;
+  review_git_bundle_export_range: typeof review_git_bundle_export_range;
   export_git_bundle: typeof export_git_bundle;
   review_git_bundle: typeof review_git_bundle;
   import_git_bundle: typeof import_git_bundle;

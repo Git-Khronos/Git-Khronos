@@ -28,6 +28,15 @@ pub struct BundleReview {
     pub verification: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleExportRange {
+    pub branch: String,
+    pub tip_oid: String,
+    pub base_oid: String,
+    pub commit_count: u32,
+}
+
 fn refused(message: impl Into<String>) -> AppError {
     AppError::new(
         "bundleExchangeRefused",
@@ -291,50 +300,192 @@ pub fn export_bundle(
     expected_oid: &str,
     destination: &Path,
 ) -> Result<usize, AppError> {
+    export_bundle_with_base(path, branch, expected_oid, None, destination)
+}
+
+fn export_source(path: &Path, branch: &str, expected_oid: &str) -> Result<String, AppError> {
     idle(path)?;
     let shallow = run_git(path, &["rev-parse", "--is-shallow-repository"])?;
     ensure_success("inspect complete bundle history", &shallow)?;
     if shallow.stdout != b"false\n" {
         return Err(refused(
-            "Self-contained bundle export requires complete, non-shallow history. Unshallow through local Git before exporting.",
+            "Bundle export requires complete, non-shallow history. Download the full history before exporting.",
+        ));
+    }
+    let grafts = run_git(
+        path,
+        &[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "info/grafts",
+        ],
+    )?;
+    ensure_success("locate legacy history grafts", &grafts)?;
+    let graft_file = std::str::from_utf8(&grafts.stdout)
+        .ok()
+        .and_then(|text| text.strip_suffix('\n'))
+        .filter(|text| !text.is_empty())
+        .ok_or_else(|| refused("Could not validate legacy history grafts."))?;
+    if std::env::var_os("GIT_GRAFT_FILE").is_some()
+        || Path::new(graft_file).try_exists().map_err(io_error)?
+    {
+        return Err(refused(
+            "Bundle export does not use history with legacy Git grafts.",
         ));
     }
     validate_branch_name(path, branch)?;
     validate_commit_oid(expected_oid)?;
     let reference = format!("refs/heads/{branch}");
-    let tip = run_git(path, &["rev-parse", "--verify", &reference])?;
-    ensure_success("read the bundle source branch", &tip)?;
+    let commit = format!("{reference}^{{commit}}");
+    let tip = run_git(
+        path,
+        &["--no-replace-objects", "rev-parse", "--verify", &commit],
+    )?;
+    ensure_success("read the bundle source commit", &tip)?;
     if tip.stdout != format!("{expected_oid}\n").as_bytes() {
         return Err(refused(
             "The source branch changed. Refresh before exporting.",
         ));
     }
-    let (bundle, truncated) = run_git_with_stdout_limit(
+    Ok(reference)
+}
+
+fn check_export_base(path: &Path, expected_oid: &str, base_oid: &str) -> Result<String, AppError> {
+    validate_commit_oid(base_oid)?;
+    let base = base_oid.to_ascii_lowercase();
+    let expression = format!("{base}^{{commit}}");
+    let commit = run_git(
         path,
-        &["bundle", "create", "-", &reference],
-        MAX_BUNDLE_BYTES,
+        &[
+            "--no-replace-objects",
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &expression,
+        ],
     )?;
-    ensure_success("create a self-contained branch bundle", &bundle)?;
-    if truncated {
+    if !commit.status.success() || commit.stdout != format!("{base}\n").as_bytes() {
         return Err(refused(
-            "The complete bundle exceeds 16 MiB; use local Git for larger exports.",
+            "The prerequisite is not an existing commit with that exact ID.",
         ));
     }
-    captured(path, &bundle.stdout, |capture| {
-        let (tips, _) = inspect(path, capture)?;
-        if tips
-            != vec![BundleTip {
-                reference: reference.clone(),
-                oid: expected_oid.into(),
-            }]
-        {
+    if base == expected_oid {
+        return Err(refused(
+            "The prerequisite is already the source tip; there is nothing to export.",
+        ));
+    }
+    let ancestor = run_git(
+        path,
+        &[
+            "--no-replace-objects",
+            "merge-base",
+            "--is-ancestor",
+            &base,
+            expected_oid,
+        ],
+    )?;
+    if ancestor.status.code() == Some(1) {
+        return Err(refused(
+            "The prerequisite must be an ancestor of the selected branch tip.",
+        ));
+    }
+    ensure_success("check the bundle prerequisite ancestry", &ancestor)?;
+    Ok(base)
+}
+
+pub fn review_bundle_export_range(
+    path: &Path,
+    branch: &str,
+    expected_oid: &str,
+    base_oid: &str,
+) -> Result<BundleExportRange, AppError> {
+    without_lazy_fetch(|| {
+        export_source(path, branch, expected_oid)?;
+        let base_oid = check_export_base(path, expected_oid, base_oid)?;
+        let revision = format!("{base_oid}..{expected_oid}");
+        let args = ["--no-replace-objects", "rev-list", "--count", &revision].map(str::to_owned);
+        let count = history_search::bounded_git_with_limit(
+            path,
+            &args,
+            &CancellationToken::default(),
+            4096,
+        )?;
+        let commit_count = std::str::from_utf8(&count.stdout)
+            .ok()
+            .and_then(|text| text.trim().parse::<u32>().ok())
+            .filter(|count| *count > 0)
+            .ok_or_else(|| refused("Could not count the commits in the reviewed bundle range."))?;
+        Ok(BundleExportRange {
+            branch: branch.into(),
+            tip_oid: expected_oid.into(),
+            base_oid,
+            commit_count,
+        })
+    })
+}
+
+pub fn export_bundle_with_base(
+    path: &Path,
+    branch: &str,
+    expected_oid: &str,
+    base_oid: Option<&str>,
+    destination: &Path,
+) -> Result<usize, AppError> {
+    without_lazy_fetch(|| {
+        let reference = export_source(path, branch, expected_oid)?;
+        let prerequisite = base_oid
+            .map(|base| check_export_base(path, expected_oid, base))
+            .transpose()?;
+        let revision = prerequisite
+            .as_ref()
+            .map_or_else(|| reference.clone(), |base| format!("{base}..{reference}"));
+        let (bundle, truncated) = run_git_with_stdout_limit(
+            path,
+            &["--no-replace-objects", "bundle", "create", "-", &revision],
+            MAX_BUNDLE_BYTES,
+        )?;
+        ensure_success("create the reviewed branch bundle", &bundle)?;
+        if truncated {
             return Err(refused(
-                "The exported branch changed during bundle creation. No destination written.",
+                "The complete bundle exceeds 16 MiB; use local Git for larger exports.",
             ));
         }
-        Ok(())
-    })?;
-    exchange_files::write_new_exchange_file(path, destination, &bundle.stdout)
+        // Check the Git-generated header, not localized verification prose. A
+        // merge may advertise additional boundaries reachable from the base.
+        if let Some(base) = prerequisite {
+            let found = bundle
+                .stdout
+                .split(|byte| *byte == b'\n')
+                .skip(1)
+                .take_while(|line| !line.is_empty())
+                .filter_map(|line| line.strip_prefix(b"-"))
+                .any(|line| {
+                    line.strip_prefix(base.as_bytes())
+                        .is_some_and(|remainder| remainder.starts_with(b" "))
+                });
+            if !found {
+                return Err(refused(
+                    "The generated bundle did not advertise the reviewed prerequisite. No destination written.",
+                ));
+            }
+        }
+        captured(path, &bundle.stdout, |capture| {
+            let (tips, _) = inspect(path, capture)?;
+            if tips
+                != vec![BundleTip {
+                    reference: reference.clone(),
+                    oid: expected_oid.into(),
+                }]
+            {
+                return Err(refused(
+                    "The exported branch changed during bundle creation. No destination written.",
+                ));
+            }
+            Ok(())
+        })?;
+        exchange_files::write_new_exchange_file(path, destination, &bundle.stdout)
+    })
 }
 
 #[cfg(test)]
@@ -781,15 +932,39 @@ mod tests {
         let base = Fixture::oid(&fixture.source);
         let file = fixture.directory.join("incremental.bundle");
         let imported = fixture.append();
-        Fixture::git(
-            &fixture.source,
-            &[
-                "bundle",
-                "create",
-                file.to_str().unwrap(),
-                &format!("{base}..refs/heads/main"),
-            ],
+        let reviewed =
+            review_bundle_export_range(&fixture.source, "main", &imported, &base).unwrap();
+        assert_eq!(
+            reviewed,
+            BundleExportRange {
+                branch: "main".into(),
+                tip_oid: imported.clone(),
+                base_oid: base.clone(),
+                commit_count: 1,
+            }
         );
+        let refs = Fixture::output(&fixture.source, &["for-each-ref"]);
+        assert_eq!(
+            export_bundle_with_base(&fixture.source, "main", &imported, Some(&base), &file)
+                .unwrap(),
+            fs::metadata(&file).unwrap().len() as usize
+        );
+        assert_eq!(
+            Fixture::output(
+                &fixture.source,
+                &["bundle", "list-heads", file.to_str().unwrap()]
+            ),
+            format!("{imported} refs/heads/main\n").as_bytes()
+        );
+        let bytes = fs::read(&file).unwrap();
+        assert!(
+            bytes
+                .split(|byte| *byte == b'\n')
+                .take_while(|line| !line.is_empty())
+                .any(|line| line.starts_with(format!("-{base} ").as_bytes()))
+        );
+        assert_eq!(Fixture::output(&fixture.source, &["for-each-ref"]), refs);
+        fixture.no_captures(&fixture.source);
         let empty = fixture.directory.join("empty");
         fs::create_dir(&empty).unwrap();
         Fixture::git(&empty, &["init", "-b", "main"]);
@@ -813,6 +988,118 @@ mod tests {
             Fixture::output(&fixture.target, &["rev-parse", &reference]),
             format!("{imported}\n").as_bytes()
         );
+    }
+
+    #[test]
+    fn incremental_bundle_refuses_invalid_bases_and_moved_tips_without_writing() {
+        let fixture = Fixture::new();
+        let base = Fixture::oid(&fixture.source);
+        Fixture::git(&fixture.source, &["switch", "-c", "unrelated"]);
+        Fixture::git(
+            &fixture.source,
+            &["commit", "--allow-empty", "-m", "Different side"],
+        );
+        let side = Fixture::oid(&fixture.source);
+        Fixture::git(&fixture.source, &["switch", "main"]);
+        let tip = fixture.append();
+        Fixture::git(
+            &fixture.source,
+            &["tag", "-a", "base", &base, "-m", "Annotated"],
+        );
+        let annotated = String::from_utf8(Fixture::output(
+            &fixture.source,
+            &["rev-parse", "refs/tags/base"],
+        ))
+        .unwrap();
+        let file = fixture.directory.join("should-not-exist.bundle");
+        for (oid, message) in [
+            (side.as_str(), "must be an ancestor"),
+            (tip.as_str(), "nothing to export"),
+            (annotated.trim(), "not an existing commit"),
+            (
+                "0000000000000000000000000000000000000000",
+                "not an existing commit",
+            ),
+        ] {
+            let review =
+                review_bundle_export_range(&fixture.source, "main", &tip, oid).unwrap_err();
+            assert!(review.message.contains(message), "{review:?}");
+            let export = export_bundle_with_base(&fixture.source, "main", &tip, Some(oid), &file)
+                .unwrap_err();
+            assert!(export.message.contains(message), "{export:?}");
+            assert!(!file.exists());
+        }
+        assert!(review_bundle_export_range(&fixture.source, "main", &tip, &base).is_ok());
+        Fixture::git(
+            &fixture.source,
+            &["commit", "--allow-empty", "-m", "Moved tip"],
+        );
+        let error =
+            export_bundle_with_base(&fixture.source, "main", &tip, Some(&base), &file).unwrap_err();
+        assert!(error.message.contains("source branch changed"));
+        assert!(!file.exists());
+        fixture.no_captures(&fixture.source);
+    }
+
+    #[test]
+    fn incremental_bundle_preserves_merges_and_uses_original_objects() {
+        let fixture = Fixture::new();
+        let base = Fixture::oid(&fixture.source);
+        Fixture::git(&fixture.source, &["switch", "-c", "side"]);
+        Fixture::git(&fixture.source, &["commit", "--allow-empty", "-m", "Side"]);
+        let side = Fixture::oid(&fixture.source);
+        Fixture::git(&fixture.source, &["switch", "main"]);
+        let main = fixture.append();
+        Fixture::git(
+            &fixture.source,
+            &["merge", "--no-ff", "-m", "Merge", "side"],
+        );
+        let tip = Fixture::oid(&fixture.source);
+        // A local replace ref hides the merge in normal display, but does
+        // not change what the recipient can import from original objects.
+        Fixture::git(&fixture.source, &["replace", &tip, &main]);
+        let plan = review_bundle_export_range(&fixture.source, "main", &tip, &base).unwrap();
+        assert_eq!(plan.commit_count, 3);
+        let file = fixture.directory.join("merge.bundle");
+        export_bundle_with_base(&fixture.source, "main", &tip, Some(&base), &file).unwrap();
+        Fixture::git(
+            &fixture.target,
+            &[
+                "fetch",
+                "--no-tags",
+                fixture.source.to_str().unwrap(),
+                &base,
+            ],
+        );
+        let review = review_bundle(&fixture.target, &file).unwrap();
+        let recovery =
+            import_bundle(&fixture.target, &review.request, &review.request.tips[0]).unwrap();
+        assert_eq!(
+            Fixture::output(&fixture.target, &["show", "-s", "--format=%P", &recovery]),
+            format!("{main} {side}\n").as_bytes()
+        );
+    }
+
+    #[test]
+    fn bundle_export_refuses_legacy_history_grafts() {
+        let fixture = Fixture::new();
+        let base = Fixture::oid(&fixture.source);
+        let tip = fixture.append();
+        fs::write(fixture.source.join(".git/info/grafts"), format!("{tip}\n")).unwrap();
+        let file = fixture.directory.join("grafted.bundle");
+        assert!(
+            review_bundle_export_range(&fixture.source, "main", &tip, &base)
+                .unwrap_err()
+                .message
+                .contains("legacy Git grafts")
+        );
+        assert!(
+            export_bundle(&fixture.source, "main", &tip, &file)
+                .unwrap_err()
+                .message
+                .contains("legacy Git grafts")
+        );
+        assert!(!file.exists());
     }
 
     #[cfg(unix)]

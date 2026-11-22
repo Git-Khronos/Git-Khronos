@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, effect, inject, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ipc } from '@git-khronos/contracts';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import type { BundleReview, BundleTip } from '@git-khronos/contracts';
+import type { BundleExportRange, BundleReview, BundleTip } from '@git-khronos/contracts';
 import { GitKhronosService, type ActivityReporter } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 
@@ -24,14 +24,33 @@ import { GitHelpComponent } from './git-help.component';
       <fieldset [disabled]="disabled() || pending()">
         <legend>Export one local branch</legend>
         <label for="bundle-export-branch">Source branch</label>
-        <select id="bundle-export-branch" [ngModel]="branch()" (ngModelChange)="branch.set($event)">
+        <select id="bundle-export-branch" [ngModel]="branch()" (ngModelChange)="setBranch($event)">
           <option value="">Choose a local branch</option>
           @for (candidate of localBranches(); track candidate.name) { <option [value]="candidate.name">{{ candidate.name }}</option> }
         </select>
-        <p>Includes all committed history reachable from this branch, with no prerequisite cutoff.
-          Review the source before exporting: committed secrets remain in history.
-          Save a new file outside the repository. Existing files are never overwritten.</p>
-        <button type="button" [disabled]="!branch()" (click)="exportBundle()">Save branch bundle…</button>
+        <label><input type="checkbox" [ngModel]="incremental()" (ngModelChange)="setIncremental($event)" />
+          Export incrementally from a commit the recipient already has</label>
+        @if (incremental()) {
+          <label for="bundle-export-base">Prerequisite commit ID</label>
+          <input id="bundle-export-base" type="text" [ngModel]="baseInput()" (ngModelChange)="setBase($event)"
+            maxlength="64" autocomplete="off" spellcheck="false" aria-describedby="bundle-base-help" />
+          <p id="bundle-base-help">Paste the full commit ID (40 or 64 hex characters) of a shared ancestor, not a branch or tag name.
+            The recipient must already have the prerequisite and its history. They should verify the bundle before importing it.</p>
+          <button type="button" [disabled]="!exportBranch() || !baseValid()" (click)="reviewExportRange()">Review incremental range</button>
+          @if (currentExportRange(); as range) {
+            <section #rangeRegion aria-label="Incremental bundle export review" role="region" tabindex="-1">
+              <p><strong>{{ range.commitCount }} {{ range.commitCount === 1 ? 'commit' : 'commits' }} to export</strong> on {{ range.branch }}.</p>
+              <p>Excluded prerequisite: <code>{{ range.baseOid }}</code></p>
+              <p>Advertised branch tip: <code>{{ range.tipOid }}</code></p>
+            </section>
+          }
+        } @else {
+          <p>Includes all committed history reachable from this branch, without a prerequisite cutoff.</p>
+        }
+        <p>Committed secrets may be included. Save a new file outside the repository; existing files are never overwritten.</p>
+        <button type="button" [disabled]="!exportBranch() || (incremental() && !currentExportRange())" (click)="exportBundle()">
+          {{ incremental() ? 'Save incremental bundle…' : 'Save branch bundle…' }}
+        </button>
       </fieldset>
       <button #verifyButton type="button" [disabled]="disabled() || pending()" (click)="verify()">Choose and verify bundle…</button>
       @if (review(); as checked) {
@@ -67,10 +86,10 @@ import { GitHelpComponent } from './git-help.component';
           </div>
         </section>
       }
-      <p>Complete bundles up to 16 MiB and 500 advertised references. Missing incremental prerequisites,
+      <p>Bundle files up to 16 MiB and 500 advertised references. Missing incremental prerequisites,
         tag-only bundles, special/symlink source files, partial/promisor repositories and active Git operations refuse.
-        Full-history export also refuses shallow repositories. Larger exports,
-        custom revision cutoffs, bare repositories and tag import require local Git. Git may retain
+        Export also refuses shallow repositories and legacy grafted history. Larger exports,
+        bare repositories and tag import require local Git. Git may retain
         imported objects after a failure; disk errors and outside processes are not transactional.</p>
       <gc-git-help topic="bundle" label="Learn about offline bundles…" [disabled]="disabled() || pending()" />
     </details>
@@ -79,12 +98,12 @@ import { GitHelpComponent } from './git-help.component';
     :host { display: block; margin-top: 16px; } p, label, li { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
     fieldset, section { min-width: 0; margin: 12px 0; padding: 10px; border: 1px solid var(--inspector-divider); }
     label { display: block; margin: 8px 0; } code { display: block; overflow-wrap: anywhere; }
-    select { width: 100%; box-sizing: border-box; min-height: 32px; background: var(--inspector-row); color: var(--text); }
+    select, input[type=text] { width: 100%; box-sizing: border-box; min-height: 32px; background: var(--inspector-row); color: var(--text); }
     pre { max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
     ul { max-height: 200px; overflow: auto; padding-left: 20px; }
     button { min-height: 28px; padding: 6px 8px; background: var(--inspector-row); color: var(--text); cursor: pointer; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; } button:disabled, fieldset:disabled { opacity: .5; cursor: default; }
-    button:focus-visible, select:focus-visible, summary:focus-visible, section:focus-visible, pre:focus-visible, ul:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, section:focus-visible, pre:focus-visible, ul:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     [role=alert] { color: var(--danger); }
   `],
 })
@@ -94,21 +113,36 @@ export class BundleExchangePanelComponent {
   readonly disabled = input(false);
   readonly pending = signal(false);
   readonly branch = signal('');
+  readonly incremental = signal(false);
+  readonly baseInput = signal('');
+  readonly baseOid = computed(() => this.baseInput().trim().toLowerCase());
+  readonly baseValid = computed(() => /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(this.baseOid()));
+  readonly exportBranch = computed(() => this.localBranches().find(branch => branch.name === this.branch()));
+  private readonly exportRange = signal<BundleExportRange | null>(null);
+  readonly currentExportRange = computed(() => {
+    const range = this.exportRange(), branch = this.exportBranch();
+    return this.incremental() && range && branch?.name === range.branch
+      && branch.oid === range.tipOid && this.baseOid() === range.baseOid ? range : null;
+  });
   readonly selected = signal('');
   readonly review = signal<BundleReview | null>(null);
   readonly error = signal('');
   readonly notice = signal('');
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
   private readonly reviewRegion = viewChild<ElementRef<HTMLElement>>('reviewRegion');
+  private readonly rangeRegion = viewChild<ElementRef<HTMLElement>>('rangeRegion');
   private readonly verifyButton = viewChild<ElementRef<HTMLButtonElement>>('verifyButton');
   private generation = 0;
+  private viewedScope = '';
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.generation++);
     effect(() => {
       this.repositoryId();
+      this.viewedScope = this.git.activeRepositoryReadScope();
       this.generation++;
       this.review.set(null); this.branch.set(''); this.selected.set('');
+      this.incremental.set(false); this.baseInput.set(''); this.exportRange.set(null);
       this.error.set(''); this.notice.set('');
     });
   }
@@ -117,7 +151,8 @@ export class BundleExchangePanelComponent {
     return this.review()?.request.tips.find(tip => tip.reference === this.selected() && tip.reference.startsWith('refs/heads/')) ?? null;
   }
   private current(repositoryId: string, generation: number): boolean {
-    return generation === this.generation && repositoryId === this.repositoryId() && repositoryId === this.git.activeRepositoryId();
+    return generation === this.generation && repositoryId === this.repositoryId() && repositoryId === this.git.activeRepositoryId()
+      && this.viewedScope === this.git.activeRepositoryReadScope();
   }
   private async run(label: string, action: (repositoryId: string, generation: number, report: ActivityReporter) => Promise<void>): Promise<void> {
     if (this.pending() || this.disabled() || !this.git.requireRecoveryRepository(this.repositoryId())) return;
@@ -135,11 +170,34 @@ export class BundleExchangePanelComponent {
     this.review.set(null); this.selected.set('');
     this.verifyButton()?.nativeElement.focus();
   }
+  setBranch(branch: string): void { this.branch.set(branch); this.exportRange.set(null); }
+  setIncremental(incremental: boolean): void { this.incremental.set(incremental); this.exportRange.set(null); }
+  setBase(base: string): void { this.baseInput.set(base); this.exportRange.set(null); }
+
+  async reviewExportRange(): Promise<void> {
+    const branch = this.exportBranch(), baseOid = this.baseOid();
+    if (!this.incremental() || !branch || !this.baseValid() || this.pending()) return;
+    this.exportRange.set(null);
+    const matches = (range: BundleExportRange) => this.incremental() && this.baseOid() === baseOid
+      && range.baseOid === baseOid && range.branch === branch.name && range.tipOid === branch.oid
+      && this.exportBranch()?.name === branch.name && this.exportBranch()?.oid === branch.oid;
+    await this.run('Checking the offline bundle range…', async (repositoryId, generation, report) => {
+      const range = await ipc.review_git_bundle_export_range({ repoId: repositoryId, branch: branch.name, expectedOid: branch.oid, baseOid });
+      if (!this.current(repositoryId, generation)) return;
+      if (!matches(range)) throw new Error('The export range changed. Review it again before saving.');
+      this.exportRange.set(range);
+      report('Incremental range reviewed; no file written');
+      setTimeout(() => {
+        if (this.current(repositoryId, generation) && this.currentExportRange() === range) this.rangeRegion()?.nativeElement.focus();
+      });
+    });
+  }
+
   async exportBundle(): Promise<void> {
-    const branch = this.localBranches().find(branch => branch.name === this.branch());
-    if (!branch) return;
+    const branch = this.exportBranch(), range = this.currentExportRange(), incremental = this.incremental();
+    if (!branch || (incremental && !range)) return;
     await this.run('Exporting offline branch bundle…', async (repositoryId, generation, report) => {
-      const destination = await save({ title: 'Save a new branch bundle outside the repository',
+      const destination = await save({ title: incremental ? 'Save a new incremental bundle outside the repository' : 'Save a new branch bundle outside the repository',
         filters: [{ name: 'Git bundle', extensions: ['bundle'] }] });
       if (!destination) {
         if (this.current(repositoryId, generation)) this.notice.set('Bundle export cancelled. No file written.');
@@ -147,8 +205,10 @@ export class BundleExchangePanelComponent {
         return;
       }
       if (!this.current(repositoryId, generation)) throw new Error('Repository changed while choosing a bundle destination. No export started.');
-      const bytes = await ipc.export_git_bundle({ repoId: repositoryId, branch: branch.name, expectedOid: branch.oid, destination });
-      report('Self-contained branch bundle exported');
+      if (incremental && this.currentExportRange() !== range) throw new Error('The reviewed export range changed. No export started.');
+      const bytes = await ipc.export_git_bundle({ repoId: repositoryId, branch: branch.name, expectedOid: branch.oid,
+        baseOid: range?.baseOid ?? null, destination });
+      report(incremental ? 'Incremental branch bundle exported' : 'Self-contained branch bundle exported');
       if (this.current(repositoryId, generation)) this.notice.set(`Saved ${bytes} bytes to ${destination}. Existing repository state is unchanged.`);
     });
   }
