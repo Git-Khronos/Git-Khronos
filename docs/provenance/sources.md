@@ -1584,6 +1584,9 @@ autostash restore. Independent fixtures observed what the reset and stash
 restore actually wrote against an index that excluded the ignored path.
 For Rebase Abort the same experiments established the stash's original
 base and the distinct metadata under the merge and apply backends.
+The [Git am manual](https://git-scm.com/docs/git-am) and owned mail-patch
+fixtures established standalone Skip and Abort semantics and confirmed
+that Abort consults `ORIG_HEAD`, unlike Abort Rebase.
 No upstream code was copied.
 
 ## Fast-forward Pull and ignored files

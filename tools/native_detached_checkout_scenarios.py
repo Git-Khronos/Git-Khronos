@@ -255,11 +255,59 @@ def recovery_reset_preserves_ignored_files(driver, fixtures, report):
         report['scenarios'].append(scenario)
 
 
+def mail_recovery_preserves_ignored_files(driver, fixtures, report):
+    for action in ('skip', 'abort'):
+        repository = fixtures.repository(f'owned-mail-recovery-{action}', commits=2)
+        path = repository / 'fixture.txt'
+        fixtures.git(repository, 'switch', '-qc', 'mail-source')
+        path.write_text('Mailed change.\n')
+        fixtures.git(repository, 'commit', '-qam', 'Owned mail patch')
+        series = fixtures.root / f'owned-{action}.mbox'
+        series.write_text(fixtures.git(repository, 'format-patch', '-1', '--stdout') + '\n')
+        fixtures.git(repository, 'switch', 'main')
+        path.write_text('Existing receiver change.\n')
+        fixtures.git(repository, 'commit', '-qam', 'Change the recipient')
+        receiver = fixtures.git(repository, 'rev-parse', 'HEAD')
+        stopped = subprocess.run(
+            ['git', '-C', str(repository), 'am', '--3way', '--', str(series)],
+            env=fixtures.env, capture_output=True, timeout=20,
+        )
+        marker = repository / '.git/rebase-apply/applying'
+        assert stopped.returncode != 0 and marker.is_file(), stopped.stderr
+        assert fixtures.git(repository, 'ls-files', '-u', '--', path.name)
+        fixtures.git(repository, 'rm', '-f', '--', path.name)
+        saved = repository / 'saved-local'
+        (repository / '.git/info/exclude').write_text(f'/{path.name}\n/{saved.name}\n')
+        original = b'The only ignored copy.\n'
+        path.write_bytes(original)
+        repo_id = open_ui(driver, repository)
+        before = checkout_footprint(fixtures, repository, (path.name,))
+        kind = f'mailPatch{action.title()}LocalPathObstruction'
+        try:
+            driver.invoke('control_mail_patch', repoId=repo_id, action=action)
+        except RuntimeError as refusal:
+            error = json.loads(str(refusal))
+            assert error['kind'] == kind and path.name in error['message'], error
+        else:
+            raise AssertionError(f'Mail-patch {action} accepted an ignored-file collision')
+        assert marker.is_file()
+        assert checkout_footprint(fixtures, repository, (path.name,)) == before
+        assert path.read_bytes() == original
+        path.rename(saved)
+        result = driver.invoke('control_mail_patch', repoId=repo_id, action=action)
+        assert not result['stopped'] and not marker.exists(), result
+        assert fixtures.git(repository, 'rev-parse', 'HEAD') == receiver
+        assert path.read_text() == 'Existing receiver change.\n'
+        assert saved.read_bytes() == original
+        report['scenarios'].append(f'native-mail-patch-{action}-preserves-ignored-reset-file')
+
+
 def reviewed_detached_checkout(driver, fixtures, report):
     guarded_checkout_targets(driver, fixtures, report)
     context_rebase_preserves_sibling(driver, fixtures, report)
     abort_apply_rebase_preserves_ignored_settings(driver, fixtures, report)
     recovery_reset_preserves_ignored_files(driver, fixtures, report)
+    mail_recovery_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')
     head = fixtures.git(repository, 'rev-parse', 'HEAD')

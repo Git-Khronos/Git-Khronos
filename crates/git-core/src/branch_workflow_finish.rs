@@ -1498,9 +1498,9 @@ pub fn abort_branch_workflow_finish(
             }
             Integration::Conflicted | Integration::CanContinue => {
                 cancellable_read(cancellation, || {
-                    merge_checkout_guard::ensure_head_reset_preserves_ignored_files(
+                    merge_checkout_guard::ensure_recovery_reset_preserves_ignored_files(
                         path,
-                        merge_checkout_guard::HeadReset::MergeAbort,
+                        merge_checkout_guard::RecoveryReset::MergeAbort,
                     )
                 })?;
                 let output = run_finish_git(path, &["merge", "--abort"], cancellation)?;

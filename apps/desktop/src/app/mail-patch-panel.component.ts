@@ -20,6 +20,7 @@ const MAX_SERIES = 500;
       @if (error()) { <p role="alert" tabindex="-1">{{ error() }}</p> }
       @if (pending()) { <p role="status">{{ git.activity() }}</p> }
       @if (notice()) { <p role="status">{{ notice() }}</p> }
+      @if (completedReport()) { <pre tabindex="0" aria-label="Git am report">{{ completedReport() }}</pre> }
       @if (active()) {
         <section #stopRegion role="region" aria-label="Mail-patch application paused" tabindex="-1">
           <strong>Patch application paused</strong>
@@ -28,8 +29,9 @@ const MAX_SERIES = 500;
             @if (state.message) { <pre tabindex="0" aria-label="Git am report">{{ state.message }}</pre> }
           }
           <p>Resolve conflicts or fix the reported problem, stage the result, then Continue.
-            Skip discards only the current patch. Abort returns the branch, index and files to the
-            state before applying. Ordinary commits are refused until this finishes.</p>
+            Skip discards the current patch and resumes the series. Abort asks Git to restore the
+            pre-application state; Git may decline to rewind if HEAD moved. Ordinary commits are
+            refused until this finishes.</p>
           <div class="actions">
             <button type="button" [disabled]="disabled() || pending()" (click)="control('continue')">Continue</button>
             <button type="button" [disabled]="disabled() || pending()" (click)="control('skip')">Skip this patch</button>
@@ -110,6 +112,7 @@ export class MailPatchPanelComponent {
   readonly exportReview = signal<MailPatchReview | null>(null);
   readonly importReview = signal<MailPatchImportReview | null>(null);
   readonly progress = signal<MailPatchProgress | null>(null);
+  readonly completedReport = signal('');
   readonly error = signal('');
   readonly notice = signal('');
   readonly active = computed(() => repositoryOperationState(this.git.repository()?.status).mailPatchInProgress);
@@ -140,7 +143,7 @@ export class MailPatchPanelComponent {
       this.repositoryId();
       this.generation++;
       this.exportReview.set(null); this.importReview.set(null); this.progress.set(null);
-      this.count.set(1); this.error.set(''); this.notice.set('');
+      this.count.set(1); this.error.set(''); this.notice.set(''); this.completedReport.set('');
     });
     effect(() => {
       const panel = this.panel()?.nativeElement as HTMLDetailsElement | undefined;
@@ -162,7 +165,7 @@ export class MailPatchPanelComponent {
   private async run(label: string, action: (repositoryId: string, generation: number, report: ActivityReporter) => Promise<void>, refresh = false): Promise<void> {
     if (this.pending() || this.disabled() || !this.git.requireRecoveryRepository(this.repositoryId())) return;
     const repositoryId = this.repositoryId(), generation = this.generation;
-    this.pending.set(true); this.error.set(''); this.notice.set('');
+    this.pending.set(true); this.error.set(''); this.notice.set(''); this.completedReport.set('');
     try {
       const result = await this.git.run(label, report => action(repositoryId, generation, report), repositoryId);
       if (refresh && !await this.git.refreshRepositoryInBackground(repositoryId) && this.current(repositoryId, generation) && result === 'success') {
@@ -245,13 +248,17 @@ export class MailPatchPanelComponent {
     await this.run(action === 'abort' ? 'Aborting mail-patch application…' : action === 'skip' ? 'Skipping current patch…' : 'Continuing mail-patch application…',
       async (repositoryId, generation, report) => {
         const progress = await ipc.control_mail_patch({ repoId: repositoryId, action });
-        this.report(progress, repositoryId, generation, action === 'abort' ? 'Application aborted; the branch is back at its original tip.' : 'All remaining patches applied.', report);
+        const done = action === 'abort' ? 'Mail-patch application ended. Review the branch and working files.'
+          : action === 'skip' ? 'Skipped the current patch. Mail-patch application finished.'
+            : 'All remaining patches applied.';
+        this.report(progress, repositoryId, generation, done, report);
       }, true);
   }
   private report(progress: MailPatchProgress, repositoryId: string, generation: number, done: string, reportActivity: ActivityReporter): void {
     reportActivity(progress.stopped ? 'Mail-patch application paused' : 'Mail-patch application finished');
     if (!this.current(repositoryId, generation)) return;
     this.progress.set(progress.stopped ? progress : null);
+    this.completedReport.set(progress.stopped ? '' : progress.message.trim());
     const recovery = progress.recoveryRef ? ` Original tip saved at ${progress.recoveryRef}.` : '';
     this.notice.set(progress.stopped ? `Paused at patch ${progress.current ?? '?'} of ${progress.total ?? '?'}.${recovery}` : done + recovery);
     if (progress.stopped) this.focusLater(repositoryId, generation, () => this.stopRegion()?.nativeElement);

@@ -738,11 +738,15 @@ pub fn control_mail_patch(
             "No mail-patch application is waiting for a decision.",
         ));
     }
-    let flag = match action {
-        MailPatchAction::Continue => "--continue",
-        MailPatchAction::Skip => "--skip",
-        MailPatchAction::Abort => "--abort",
+    use merge_checkout_guard::RecoveryReset;
+    let (flag, reset) = match action {
+        MailPatchAction::Continue => ("--continue", None),
+        MailPatchAction::Skip => ("--skip", Some(RecoveryReset::MailPatchSkip)),
+        MailPatchAction::Abort => ("--abort", Some(RecoveryReset::MailPatchAbort)),
     };
+    if let Some(reset) = reset {
+        merge_checkout_guard::ensure_recovery_reset_preserves_ignored_files(path, reset)?;
+    }
     let output = run_git(path, &["am", flag])?;
     let state = progress(path, report(&output), None)?;
     if output.status.success() || state.stopped {
@@ -1172,6 +1176,94 @@ mod tests {
             format!("{base}\n").into_bytes()
         );
         assert!(!Fixture::in_progress(&target));
+    }
+
+    #[test]
+    fn skip_and_abort_mail_patch_do_not_replace_ignored_local_files() {
+        for (action, blocked, kind) in [
+            (MailPatchAction::Skip, "text", "mailPatchSkipLocalPathObstruction"),
+            (MailPatchAction::Abort, "restore", "mailPatchAbortLocalPathObstruction"),
+        ] {
+            let fixture = Fixture::new();
+            fixture.commit("text", b"base\n", "Base");
+            let base = fixture.commit("restore", b"Only in abort target\n", "Original file");
+            let patch = fixture.commit("text", b"source\n", "Conflicting change");
+            let series = fixture.export(&[patch], "collision.mbox");
+            let target = fixture.target(&base);
+            Fixture::git(&target, &["rm", "--", "restore"]);
+            fs::write(target.join("text"), b"receiver\n").unwrap();
+            Fixture::git(&target, &["commit", "-qam", "Receiving changes"]);
+            let head = Fixture::head(&target);
+            let review = review_mail_patch_import(&target, &series).unwrap();
+            let stopped = import_mail_patch(&target, &review.request).unwrap();
+            assert!(stopped.stopped);
+            assert_eq!(stopped.current, Some(1));
+            if action == MailPatchAction::Abort {
+                // Standalone git am actually consults ORIG_HEAD; the
+                // selected restore file is absent from the stopped HEAD.
+                Fixture::git(&target, &["update-ref", "ORIG_HEAD", &base]);
+            } else {
+                Fixture::git(&target, &["rm", "-f", "--", blocked]);
+            }
+            fs::write(
+                target.join(".git/info/exclude"),
+                format!("/{blocked}\n/saved.local\n"),
+            )
+            .unwrap();
+            let local_copy = target.join(blocked);
+            fs::write(&local_copy, b"Only ignored copy\n").unwrap();
+            assert_eq!(
+                Fixture::output(&target, &["check-ignore", "--", blocked]),
+                format!("{blocked}\n").as_bytes()
+            );
+            let index = fs::read(target.join(".git/index")).unwrap();
+            let refs = Fixture::output(&target, &["show-ref"]);
+
+            let error = control_mail_patch(&target, action).unwrap_err();
+            assert_eq!(error.kind, kind, "{error:?}");
+            assert!(error.message.contains(blocked));
+            assert!(Fixture::in_progress(&target));
+            let after = progress(&target, String::new(), None).unwrap();
+            assert_eq!((after.current, after.total), (stopped.current, stopped.total));
+            assert_eq!(Fixture::head(&target), head);
+            assert_eq!(fs::read(target.join(".git/index")).unwrap(), index);
+            assert_eq!(Fixture::output(&target, &["show-ref"]), refs);
+            assert_eq!(fs::read(&local_copy).unwrap(), b"Only ignored copy\n");
+
+            let saved = target.join("saved.local");
+            fs::rename(&local_copy, &saved).unwrap();
+            assert!(!control_mail_patch(&target, action).unwrap().stopped);
+            assert_eq!(fs::read(saved).unwrap(), b"Only ignored copy\n");
+            if action == MailPatchAction::Abort {
+                assert_eq!(Fixture::head(&target), base);
+                assert_eq!(fs::read(local_copy).unwrap(), b"Only in abort target\n");
+            } else {
+                assert_eq!(Fixture::head(&target), head);
+                assert_eq!(fs::read(local_copy).unwrap(), b"receiver\n");
+            }
+        }
+    }
+
+    #[test]
+    fn abort_reports_when_git_ends_the_series_without_rewinding_moved_head() {
+        let fixture = Fixture::new();
+        let base = fixture.commit("text", b"base\n", "Base");
+        let patch = fixture.commit("text", b"source\n", "Mailed change");
+        let series = fixture.export(&[patch], "moved-head.mbox");
+        let target = fixture.target(&base);
+        fs::write(target.join("text"), b"receiver\n").unwrap();
+        Fixture::git(&target, &["commit", "-qam", "Change the recipient"]);
+        let review = review_mail_patch_import(&target, &series).unwrap();
+        assert!(import_mail_patch(&target, &review.request).unwrap().stopped);
+        Fixture::git(&target, &["update-ref", "HEAD", &base]);
+        let index = fs::read(target.join(".git/index")).unwrap();
+
+        let result = control_mail_patch(&target, MailPatchAction::Abort).unwrap();
+        assert!(!result.stopped, "{}", result.message);
+        assert!(result.message.contains("Not rewinding"), "{}", result.message);
+        assert_eq!(Fixture::head(&target), base);
+        assert_eq!(fs::read(target.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(target.join("text")).unwrap(), b"receiver\n");
     }
 
     #[test]

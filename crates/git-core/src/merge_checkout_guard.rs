@@ -33,9 +33,11 @@ fn rebase_abort_unavailable() -> AppError {
 
 type Unavailable = fn() -> AppError;
 
-pub(super) enum HeadReset {
+pub(super) enum RecoveryReset {
     MergeAbort,
     RebaseSkip,
+    MailPatchSkip,
+    MailPatchAbort,
 }
 
 fn merge_abort_unavailable() -> AppError {
@@ -51,6 +53,14 @@ fn rebase_skip_unavailable() -> AppError {
         "rebaseSkipIgnoredPathsUnverified",
         "Could not check which ignored local files the Skip reset might replace. The rebase was not advanced.",
         Some("Move or back up ignored local files, then retry Skip."),
+    )
+}
+
+fn mail_patch_reset_unavailable() -> AppError {
+    AppError::new(
+        "mailPatchResetIgnoredPathsUnverified",
+        "Could not check which ignored local files the mail-patch reset might replace. The operation remains stopped.",
+        Some("Move or back up ignored local files, then retry."),
     )
 }
 
@@ -442,22 +452,34 @@ pub(super) fn ensure_stash_branch_preserves_ignored_files(
     })
 }
 
-pub(super) fn ensure_head_reset_preserves_ignored_files(
+pub(super) fn ensure_recovery_reset_preserves_ignored_files(
     path: &Path,
-    action: HeadReset,
+    action: RecoveryReset,
 ) -> Result<(), AppError> {
     let (unavailable, kind, title, hint): (Unavailable, _, _, _) = match action {
-        HeadReset::MergeAbort => (
+        RecoveryReset::MergeAbort => (
             merge_abort_unavailable,
             "mergeAbortLocalPathObstruction",
             "Abort Merge",
             "Move the ignored file or directory out of the way, then retry Abort.",
         ),
-        HeadReset::RebaseSkip => (
+        RecoveryReset::RebaseSkip => (
             rebase_skip_unavailable,
             "rebaseSkipLocalPathObstruction",
             "Skip Rebase Commit",
             "Move the ignored file or directory out of the way, then retry Skip.",
+        ),
+        RecoveryReset::MailPatchSkip => (
+            mail_patch_reset_unavailable,
+            "mailPatchSkipLocalPathObstruction",
+            "Skip Mail Patch",
+            "Move the ignored file or directory out of the way, then retry Skip.",
+        ),
+        RecoveryReset::MailPatchAbort => (
+            mail_patch_reset_unavailable,
+            "mailPatchAbortLocalPathObstruction",
+            "Abort Mail Patches",
+            "Move the ignored file or directory out of the way, then retry Abort.",
         ),
     };
     let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
@@ -465,6 +487,12 @@ pub(super) fn ensure_head_reset_preserves_ignored_files(
     };
     without_lazy_fetch(|| {
         let head = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
+        // Standalone git am uses ORIG_HEAD for Abort. Unlike Rebase Abort
+        // it does not restore an orig-head written inside its state folder.
+        let mail_original = matches!(action, RecoveryReset::MailPatchAbort)
+            .then(|| reference_tip(path, "ORIG_HEAD^{commit}").ok_or_else(unavailable))
+            .transpose()?;
+        let target = mail_original.as_deref().unwrap_or(&head);
         let obstruction = |blocked: String| {
             AppError::new(
                 kind,
@@ -472,10 +500,10 @@ pub(super) fn ensure_head_reset_preserves_ignored_files(
                 Some(hint),
             )
         };
-        if let Some(blocked) = restore_obstruction(path, &ignored, &head, unavailable)? {
+        if let Some(blocked) = restore_obstruction(path, &ignored, target, unavailable)? {
             return Err(obstruction(blocked));
         }
-        if matches!(action, HeadReset::MergeAbort) {
+        if matches!(action, RecoveryReset::MergeAbort) {
             // Merge Abort reapplies its autostash after resetting. The stash
             // can add paths which the receiving commit does not contain.
             let stash = merge_autostash_tip(path, unavailable)?;
@@ -489,7 +517,9 @@ pub(super) fn ensure_head_reset_preserves_ignored_files(
                 return Err(unavailable());
             }
         }
-        if reference_tip(path, "HEAD").as_ref() != Some(&head) {
+        if reference_tip(path, "HEAD").as_ref() != Some(&head)
+            || (mail_original.is_some() && reference_tip(path, "ORIG_HEAD^{commit}") != mail_original)
+        {
             return Err(unavailable());
         }
         Ok(())

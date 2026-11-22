@@ -3399,6 +3399,23 @@ file to a path not named in the stash. Those separate paths are not covered
 by the Abort check. Reproductions:
 `target/local-review/rebase-autostash-ignored.crXvbXV3/`.
 
+The exact `a222079` test-key installer passed **37 focused scenarios** on
+Ubuntu 24.04 with inherited Git setup: 16 detached-checkout (including
+Apply-backend Rebase Abort with an obstructed autostash) and 21
+application-updates. This is not the full Linux distribution matrix.
+Package and receipts:
+`target/local-review/updater/jammy-builder/rebase-abort-autostash-release.y6lY9WnB/`
+(SHA-256 `34b7d0791072cb04d7c9945a0bd7d816313f0ca35ba9a539e639473ef570b15d`).
+
+Standalone mail-patch Skip and Abort now preserve ignored local copies
+when their initial reset would otherwise overwrite them; Abort checks
+the effective `ORIG_HEAD` used by Git. The source cases verify refusal
+and safe retry, and installed qualification requires both native routes.
+The mail-patch panel distinguishes Skip from successful application and
+shows the Git report when Abort ends without rewinding a separately
+moved HEAD. Owned CLI reproductions are in
+`target/local-review/mail-recovery-ignored.vG001cPn/`.
+
 The exact `fa3e152` package passed 36 focused Ubuntu 24.04 installed
 scenarios: 19 application-updates, ten detached-checkout and seven
 workspace-Pull. These ran without the inherited-Git launcher checks.

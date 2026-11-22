@@ -3820,9 +3820,9 @@ pub fn abort_merge(path: &Path) -> Result<(), AppError> {
             None,
         ));
     }
-    merge_checkout_guard::ensure_head_reset_preserves_ignored_files(
+    merge_checkout_guard::ensure_recovery_reset_preserves_ignored_files(
         path,
-        merge_checkout_guard::HeadReset::MergeAbort,
+        merge_checkout_guard::RecoveryReset::MergeAbort,
     )?;
     run_mutation(path, &["merge", "--abort"], "abort the merge")
 }
@@ -9617,9 +9617,9 @@ fn run_rebase_control(path: &Path, action: &str, operation: &str) -> Result<(), 
                 ),
             ));
         }
-        merge_checkout_guard::ensure_head_reset_preserves_ignored_files(
+        merge_checkout_guard::ensure_recovery_reset_preserves_ignored_files(
             path,
-            merge_checkout_guard::HeadReset::RebaseSkip,
+            merge_checkout_guard::RecoveryReset::RebaseSkip,
         )?;
     }
     let output = git_in(path)

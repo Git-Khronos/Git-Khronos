@@ -768,6 +768,10 @@ keeps the native operation active; a branch workflow still consumes its
 command revision as before. These checks do not predict subsequent rebase
 replay or where Git could apply a rebase autostash on a different base
 after Continue or Skip.
+Standalone mail-patch Skip and Abort also check the reset against the
+current index. Skip checks HEAD; Abort checks Git's effective `ORIG_HEAD`,
+not the separate metadata used by Rebase Abort. Refusals keep the series
+paused. The check does not predict subsequent patches after Skip.
 Merge, squash, fast-forward, and rebase from the branch context menu carry a
 separate review tied to that menu opening, the repository visit, and both
 branch tips. Their labels retain the selected receiver instead of mutating

@@ -52,7 +52,7 @@ async function setup(page: Page): Promise<void> {
       }
       if (command === 'control_mail_patch') {
         fixture.setActive(false);
-        return Promise.resolve({ stopped: false, current: null, total: null, message: '', recoveryRef: null });
+        return Promise.resolve({ stopped: false, current: null, total: null, message: fixture.controlMessage ?? '', recoveryRef: null });
       }
       if (['refresh_repository', 'refresh_repository_metadata', 'refresh_repository_status'].includes(command)) {
         const repo = git.repositories().find((item: any) => item.id === args.repoId);
@@ -150,13 +150,15 @@ test('a paused application exposes Continue, Skip and Abort and clears after con
   await expect(stop).toHaveCount(0);
   const [control] = await calls(page, 'control_mail_patch');
   expect(control.args.action).toBe('skip');
-  await expect(panel.getByRole('status')).toContainText('All remaining patches applied');
+  await expect(panel.getByRole('status')).toContainText('Skipped the current patch');
+  await expect(panel.getByRole('status')).not.toContainText('All remaining patches applied');
 });
 
 test('an existing paused application found after reload offers Abort without prior review', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
     const fixture = (window as any).__mail;
+    fixture.controlMessage = 'You seem to have moved HEAD since the last am failure.\nNot rewinding to ORIG_HEAD';
     fixture.setActive(true);
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     return app.git.refreshRepositoryInBackground(fixture.repository.id);
@@ -165,7 +167,9 @@ test('an existing paused application found after reload offers Abort without pri
   const stop = panel.getByRole('region', { name: 'Mail-patch application paused' });
   await expect(stop).toBeVisible();
   await stop.getByRole('button', { name: 'Abort' }).click();
-  await expect(panel.getByRole('status')).toContainText('back at its original tip');
+  await expect(panel.getByRole('status')).toContainText('Mail-patch application ended');
+  await expect(panel.getByLabel('Git am report')).toContainText('Not rewinding to ORIG_HEAD');
+  await expect(panel.getByRole('status')).not.toContainText('back at its original tip');
   expect((await calls(page, 'control_mail_patch'))[0].args.action).toBe('abort');
 });
 
