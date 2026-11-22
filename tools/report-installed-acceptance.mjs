@@ -33,6 +33,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-pull-with-rebase-preserves-unreviewed-sibling-branches',
     'native-pull-honors-selected-strategy-over-implicit-squash',
     'native-pull-refuses-local-branch-fetch-mapping-before-fetch',
+    'native-pull-fast-forward-refuses-to-overwrite-ignored-local-data',
   ]],
   ['pull-submodule-scope', [
     'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule',

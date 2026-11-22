@@ -1570,6 +1570,15 @@ initial checkout and raw tree-path inspection. Separate, owned Git fixtures
 demonstrated overwrite during local rebase and verified the new refusal.
 No upstream code was copied.
 
+## Fast-forward Pull and ignored files
+
+The public [Git merge](https://git-scm.com/docs/git-merge),
+[git-config](https://git-scm.com/docs/git-config) and
+[Git command](https://git-scm.com/docs/git) manuals defined merge options,
+checkout refusal and the command-only configuration override. Owned
+repositories on Git 2.39.5 and 2.53.0 verified the fast-forward behavior.
+No upstream code was copied.
+
 ## Workspace, identity, hosted collaboration and agent capabilities
 
 Public workflow references (capability discovery only):

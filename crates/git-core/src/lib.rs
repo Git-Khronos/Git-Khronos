@@ -215,6 +215,7 @@ pub use mail_patch::{
     review_mail_patch_import,
 };
 mod fetch_options;
+mod pull_merge_guard;
 mod remote_checkout;
 pub use remote_checkout::{RemoteCheckoutOutcome, sync_checkout_remote_branch};
 mod worktree_actions;
@@ -5093,8 +5094,21 @@ fn pull_from_remote_with_strategy_and_cancellation(
         checkout,
         cancellation,
     )?;
+    let ignore_protection = pull_merge_guard::for_checkout(path, cancellation)?;
     if let Some(checkout) = checkout {
         require_pull_checkout(path, checkout)?;
+    }
+    if let Some((argument, options)) = ignore_protection.as_ref() {
+        args.insert(0, argument);
+        let (output, _) = run_transport_with_stdout_limit(
+            path,
+            &args,
+            cancellation,
+            None,
+            None,
+            &[(pull_merge_guard::OPTIONS_ENV, options)],
+        )?;
+        return ensure_success("pull from the remote", &output);
     }
     run_mutation_with_cancellation(path, &args, "pull from the remote", cancellation)
 }
@@ -9925,7 +9939,7 @@ fn run_transport(
     cancellation: Option<&CancellationToken>,
     clone_url: Option<(&str, &Path)>,
 ) -> Result<Output, AppError> {
-    run_transport_with_stdout_limit(path, args, cancellation, clone_url, None)
+    run_transport_with_stdout_limit(path, args, cancellation, clone_url, None, &[])
         .map(|(output, _)| output)
 }
 
@@ -9935,6 +9949,7 @@ fn run_transport_with_stdout_limit(
     cancellation: Option<&CancellationToken>,
     clone_url: Option<(&str, &Path)>,
     stdout_limit: Option<usize>,
+    environment: &[(&str, &str)],
 ) -> Result<(Output, bool), AppError> {
     authentication::validate_arguments(args)?;
     let mut command = git_command_for(path, true);
@@ -9951,6 +9966,7 @@ fn run_transport_with_stdout_limit(
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("LC_ALL", "C")
+        .envs(environment.iter().copied())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let scoped_cancellation = authentication::configure(&mut command);
@@ -10271,7 +10287,7 @@ fn run_git_with_stdout_limit_and_cancellation(
     // transport-only configuration would make an unchanged review look stale.
     let local_lfs_metadata = matches!(args, ["lfs", "env" | "ls-files", ..]);
     if authentication::is_transport(args) && !local_lfs_metadata {
-        return run_transport_with_stdout_limit(path, args, cancellation, None, Some(limit));
+        return run_transport_with_stdout_limit(path, args, cancellation, None, Some(limit), &[]);
     }
     let mut command = git_in(path);
     command

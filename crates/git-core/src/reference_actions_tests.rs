@@ -1861,6 +1861,113 @@ fn pull_strategy_fast_forwards_each_explicit_mode_despite_configured_no_ff() {
 }
 
 #[test]
+fn pull_preserves_ignored_working_files_on_each_fast_forward_path() {
+    for strategy in ["merge", "ff-only", "rebase"] {
+        let (repository, _, local, incoming) = pull_fixture(false, false);
+        let path = &repository.0;
+        let branch = "release=reviewed";
+        run_mutation(path, &["switch", "-c", branch], "select owned receiver").unwrap();
+        run_mutation(
+            path,
+            &[
+                "config",
+                &format!("branch.{branch}.mergeOptions"),
+                "--no-commit --overwrite-ignore",
+            ],
+            "configure branch merge defaults",
+        )
+        .unwrap();
+        let config = fs::read(path.join(".git/config")).unwrap();
+        let ignored = path.join("remote-file");
+        fs::write(path.join(".git/info/exclude"), "/remote-file\n").unwrap();
+        fs::write(&ignored, b"only local copy\n").unwrap();
+        let index = fs::read(path.join(".git/index")).unwrap();
+        let checkout = PullCheckout {
+            head_oid: Some(local.clone()),
+            branch: Some(branch.into()),
+        };
+
+        pull_for_checkout_cancellable(
+            path,
+            strategy,
+            Some("origin"),
+            Some("main"),
+            &checkout,
+            &CancellationToken::default(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            fs::read(&ignored).unwrap(),
+            b"only local copy\n",
+            "{strategy}"
+        );
+        assert_eq!(repository.oid(), local);
+        assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+        assert_eq!(rev(path, "refs/remotes/origin/main"), incoming);
+
+        fs::rename(&ignored, path.join("kept-local-copy")).unwrap();
+        pull_for_checkout_cancellable(
+            path,
+            strategy,
+            Some("origin"),
+            Some("main"),
+            &checkout,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        assert_eq!(repository.oid(), incoming);
+        assert_eq!(
+            fs::read(path.join("kept-local-copy")).unwrap(),
+            b"only local copy\n"
+        );
+        assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+    }
+}
+
+#[test]
+fn pull_refuses_when_a_detached_head_or_complex_options_cannot_carry_the_ignore_guard() {
+    for mode in ["detached", "option-terminator", "missing-option-value"] {
+        let (repository, _, local, incoming) = pull_fixture(false, false);
+        let path = &repository.0;
+        if mode == "detached" {
+            run_mutation(path, &["switch", "--detach"], "detach owned receiver").unwrap();
+        } else {
+            run_mutation(
+                path,
+                &[
+                    "config",
+                    "branch.main.mergeOptions",
+                    if mode == "option-terminator" {
+                        "--overwrite-ignore \"--\""
+                    } else {
+                        "--overwrite-ignore -m"
+                    },
+                ],
+                "configure merge options that cannot be extended safely",
+            )
+            .unwrap();
+        }
+        fs::write(path.join(".git/info/exclude"), "/remote-file\n").unwrap();
+        let ignored = path.join("remote-file");
+        fs::write(&ignored, b"ignored local data\n").unwrap();
+        let previous_tip = rev(path, "refs/remotes/origin/main");
+        let error = pull_from_remote_with_strategy(path, "ff-only", Some("origin"), Some("main"))
+            .unwrap_err();
+        assert_eq!(error.kind, "pullIgnoreProtectionUnavailable", "{mode}");
+        assert_eq!(rev(path, "refs/remotes/origin/main"), previous_tip);
+        assert_eq!(repository.oid(), local);
+        assert_eq!(fs::read(&ignored).unwrap(), b"ignored local data\n");
+        fs::remove_file(&ignored).unwrap();
+        if mode != "missing-option-value" {
+            pull_from_remote_with_strategy(path, "ff-only", Some("origin"), Some("main"))
+                .unwrap();
+            assert_eq!(repository.oid(), incoming);
+        }
+    }
+}
+
+#[test]
 fn pull_respects_chosen_strategy_instead_of_implicitly_squashing() {
     for (strategy, divergent) in [
         ("merge", false),

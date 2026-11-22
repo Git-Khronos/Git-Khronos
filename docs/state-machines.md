@@ -303,8 +303,16 @@ mapping. Normal remote-tracking, fully qualified custom tracking refs,
 and a configured local branch upstream remain supported. Legacy remote
 files are refused because normal config queries do not describe their
 mappings. A checked-out branch and commit are rechecked after this
-preflight. It is not a lock against other Git clients or a guard against
-overwriting ignored working files during Pull.
+preflight. It is not a lock against other Git clients.
+For a named receiving branch, all three modes protect ignored files when
+Git takes its fast-forward path, including the fast path of Pull with Rebase.
+Pull passes Git's no-overwrite option using the receiving branch's
+invocation-scoped merge options; it does not save settings. If a detached
+checkout or complex merge defaults prevent safely enabling the guard, Pull
+refuses before transport when ignored paths are present. On an actual
+checkout collision, transport may already have refreshed tracking refs,
+but the current branch, index and file are preserved. This is not
+ignored-file protection during a divergent Pull merge or rebase.
 None of the three Pull strategies stages a squash. The app overrides
 `--squash` in receiving-branch merge options for those invocations,
 including the fast-forward path of Pull with Rebase.
@@ -743,7 +751,8 @@ Git clients or file edits between the preflight and Git startup. Local
 Rebase and interactive Rebase with an explicit or known base separately
 check the initial checkout against ignored paths, including a source-branch
 checkout if needed. This check does not predict paths created during replay,
-cover whole-history replay without a destination, or protect Pull integration.
+or cover whole-history replay without a destination. Pull's separate guard
+applies only to the fast-forward path.
 Merge, squash, fast-forward, and rebase from the branch context menu carry a
 separate review tied to that menu opening, the repository visit, and both
 branch tips. Their labels retain the selected receiver instead of mutating

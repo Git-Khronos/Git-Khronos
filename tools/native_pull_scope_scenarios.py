@@ -147,6 +147,44 @@ def pull_submodule_scope(driver, fixtures, report):
     return checkout, repo_id
 
 
+def _pull_fast_forward_preserves_ignored_file(driver, fixtures, report):
+    publisher = fixtures.repository('pull-ignored-publisher', commits=2)
+    checkout = _local_clone(fixtures, publisher, 'pull-ignored-receiver')
+    base = fixtures.git(checkout, 'rev-parse', 'HEAD')
+    branch = 'receiver=reviewed'
+    fixtures.git(checkout, 'switch', '-qc', branch)
+    fixtures.git(checkout, 'config', f'branch.{branch}.mergeOptions', '--overwrite-ignore --no-commit')
+    name = 'settings.local'
+    (checkout / '.git/info/exclude').write_text(f'/{name}\n')
+    local = checkout / name
+    local.write_text('Owned ignored settings.\n')
+    expected = _write_commit(fixtures, publisher, name, 'Incoming tracked settings.\n')
+    repo_id = driver.invoke('open_repository', path=str(checkout))['id']
+    before = checkout_footprint(fixtures, checkout, ('fixture.txt', name))
+    receiver = {'headOid': base, 'branch': branch}
+    for strategy in ('merge', 'ff-only', 'rebase'):
+        try:
+            driver.invoke('pull_repository', repoId=repo_id, strategy=strategy, remote='origin',
+                          branch='main', checkout=receiver, operationId=f'owned-ignored-{strategy}')
+        except RuntimeError as refusal:
+            assert json.loads(str(refusal))['kind'] == 'gitFailure', str(refusal)
+        else:
+            raise AssertionError(f'Pull {strategy} accepted an ignored-file collision on fast-forward')
+        after = checkout_footprint(fixtures, checkout, ('fixture.txt', name))
+        for key in ('head', 'branch', 'status', 'indexSha256', 'configSha256', 'files'):
+            assert after[key] == before[key], (strategy, key, before[key], after[key])
+        assert fixtures.git(checkout, 'rev-parse', 'refs/remotes/origin/main') == expected
+
+    saved = checkout / 'retained-settings'
+    local.rename(saved)
+    snapshot = driver.invoke('pull_repository', repoId=repo_id, strategy='ff-only', remote='origin',
+                             branch='main', checkout=receiver, operationId='owned-ignored-retried')
+    assert snapshot['headOid'] == expected
+    assert local.read_text() == 'Incoming tracked settings.\n'
+    assert saved.read_text() == 'Owned ignored settings.\n'
+    report['scenarios'].append('native-pull-fast-forward-refuses-to-overwrite-ignored-local-data')
+
+
 def workspace_pull_upstreams(driver, fixtures, report):
     publisher = fixtures.repository('pull-upstreams-publisher', commits=2)
     base = fixtures.git(publisher, 'rev-parse', 'HEAD')
@@ -234,5 +272,6 @@ def workspace_pull_upstreams(driver, fixtures, report):
     report['scenarios'].append('native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config')
     report['scenarios'].append('native-pull-honors-selected-strategy-over-implicit-squash')
     _toolbar_pull_refuses_local_fetch_mapping(driver, fixtures, publisher, report)
+    _pull_fast_forward_preserves_ignored_file(driver, fixtures, report)
     rebase = _toolbar_pull_rebase_preserves_sibling(driver, fixtures, report)
     return rebase, driver.invoke('open_repository', path=str(rebase))['id']

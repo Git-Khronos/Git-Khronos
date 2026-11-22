@@ -339,6 +339,8 @@ test('installed Pull requires both repository-scope and explicit single-branch e
       scenario: 'native-pull-honors-selected-strategy-over-implicit-squash' },
     { suite: 'workspace-pull-upstreams',
       scenario: 'native-pull-refuses-local-branch-fetch-mapping-before-fetch' },
+    { suite: 'workspace-pull-upstreams',
+      scenario: 'native-pull-fast-forward-refuses-to-overwrite-ignored-local-data' },
     { suite: 'pull-submodule-scope',
       scenario: 'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule' },
   ]) {
