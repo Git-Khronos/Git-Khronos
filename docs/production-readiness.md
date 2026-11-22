@@ -3383,6 +3383,11 @@ paths. CLI evidence is in `target/local-review/abort-skip-ignored-probe.a1SmfFYd
 The full Git-core run passed 1,158 tests (37 existing ignored tests), and
 strict library/test Clippy passed. Subsequent installed qualification
 requires both Skip backends and the Merge Abort reset/autostash retry.
+The exact `4ae1ca9` fixture-key installer passed all 15 detached-checkout
+scenarios on Ubuntu 24.04 with inherited Git setup, including both Skip
+backends and the Merge Abort reset/autostash retries. Evidence:
+`target/local-review/updater/jammy-builder/recovery-reset-release.YptFaxUy/`
+(SHA-256 `beff43a16559b811d0eb15863ecbd8f9b65efbc325b283c28368b8e0b06ebb07`).
 
 Abort Rebase now checks its native autostash against its recorded original
 tip as well as checking the reset. Both backends are exercised with a
@@ -3404,6 +3409,15 @@ Package and reports:
 `target/local-review/updater/jammy-builder/update-receipt-focused-release.Z8oD0kCB/`
 (SHA-256 `544e8d35b8bf1ba8fb72bfad1e4a200bb73c0fc64c3f1a9e412334ceb3ababa5`).
 This is not a full-matrix qualification or a public release.
+
+Creating a branch from a stash now checks for ignored bytes that would
+be replaced or block restoration, before creating the branch. Both the
+tracked/staged and saved untracked cases have real-Git refusal and retry
+tests. A checkout hook that creates an ignored obstruction is detected
+before the stash is applied; the app reports the already-created branch
+and keeps the stash. This safeguard is specific to the fixed-base
+branch-from-stash action, not Apply or Pop on an arbitrary checkout.
+Evidence: `target/local-review/stash-ignored-restore.2jOb0q9F/`.
 
 ### Packaged GitLab TLS fixture readiness
 

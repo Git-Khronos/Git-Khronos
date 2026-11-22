@@ -127,7 +127,7 @@ impl Drop for ScratchPatch {
     }
 }
 
-fn stash_parents(path: &Path, oid: &str) -> Result<Vec<String>, AppError> {
+pub(super) fn stash_parents(path: &Path, oid: &str) -> Result<Vec<String>, AppError> {
     let output = run_git(path, &["rev-list", "--parents", "-n", "1", oid, "--"])?;
     ensure_success("inspect the selected stash parents", &output)?;
     let line = std::str::from_utf8(&output.stdout)

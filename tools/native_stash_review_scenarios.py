@@ -198,12 +198,30 @@ def stash_review_workflows(driver, fixtures, report):
     ready()
     driver.script('''const field = document.querySelector('[name=stashBranchName]');
       field.value = 'owned-stash-recovery'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
+    ignored_copy = b'Only copy of later ignored local contents.\n'
+    saved_note = repository / 'saved-ignored-note.txt'
+    (repository / '.git/info/exclude').write_text(f'/{note.name}\n/{saved_note.name}\n')
+    note.write_bytes(ignored_copy)
+    assert fixtures.git(repository, 'check-ignore', '--', note.name) == note.name
+    before = checkout_footprint(fixtures, repository, (file.name, note.name))
+    driver.click_visible(modal + ' footer .primary', 'Create branch and restore')
+    expected = f"Ignored local contents at '{note.name}' obstruct restoring the selected stash."
+    driver.wait(
+        'return document.querySelector(' + json.dumps(modal + ' .error') + ')?.textContent.includes('
+        + json.dumps(expected) + ')'
+    )
+    assert checkout_footprint(fixtures, repository, (file.name, note.name)) == before
+    assert note.read_bytes() == ignored_copy
+    note.rename(saved_note)
     confirm('Create branch and restore')
     assert fixtures.git(repository, 'write-tree') == index_tree
     assert file.read_bytes() == working and note.read_bytes() == untracked
+    assert saved_note.read_bytes() == ignored_copy
     assert fixtures.git(repository, 'rev-parse', 'refs/stash') == stash
+    report['scenarios'].append('native-stash-branch-refuses-ignored-obstruction-before-creating-branch')
     safe('branch', 'owned-stash-recovery')
 
+    (repository / '.git/info/exclude').write_text(f'/{saved_note.name}\n')
     driver.context_click('[aria-label="Local branch main"]')
     driver.click_scrolled_text('.graph-action-menu button', 'Stash changes and checkout…', wait_for_ready=True)
     ready()

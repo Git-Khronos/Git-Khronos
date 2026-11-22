@@ -1315,6 +1315,12 @@ merge-driver fixtures renumber the stash stack during application to check that
 the applied contents remain those selected and neither entry is removed on the
 changed-stack path. No upstream source code was copied.
 
+The branch-from-stash check uses the documented stash base, working tree and
+index layout and [checkout's ignored-file refusal](https://git-scm.com/docs/git-checkout).
+Owned repositories verified the separate saved-untracked tree, Git's
+overwrite behavior for an indexed addition, and a late obstruction created
+by a checkout hook. The app retains the stash even after restoring it.
+
 ## Immutable stash preview transport
 
 Sources: [Git show documentation](https://git-scm.com/docs/git-show) for explicit

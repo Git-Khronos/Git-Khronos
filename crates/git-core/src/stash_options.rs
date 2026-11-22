@@ -616,16 +616,49 @@ pub fn create_branch_from_stash(
     )?;
     ensure_success("read the stash base", &base)?;
     let base = String::from_utf8_lossy(&base.stdout).trim().to_owned();
+    merge_checkout_guard::ensure_stash_branch_preserves_ignored_files(path, &base, expected_oid)?;
     run_mutation(
         path,
         &["checkout", "--no-overwrite-ignore", "-b", name, &base],
         "create the stash recovery branch",
     )?;
-    run_mutation(
-        path,
-        &["stash", "apply", "--index", expected_oid],
-        "restore the stash on its original base",
-    )
+    let restore = || {
+        // Checkout can run a repository hook. Do not restore on an unexpected
+        // receiver or overwrite ignored data created by that hook.
+        require_stash_checkout_ready(path)?;
+        let expected_ref = format!("refs/heads/{name}");
+        let head = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
+        let index = run_git(
+            path,
+            &[
+                "diff-index", "--cached", "--quiet", "--ignore-submodules=none", &base, "--",
+            ],
+        )?;
+        if !head.status.success()
+            || head.stdout.trim_ascii_end() != expected_ref.as_bytes()
+            || reference_tip(path, "HEAD").as_deref() != Some(base.as_str())
+            || !index.status.success()
+        {
+            return Err(AppError::new(
+                "stashBranchCheckoutChanged",
+                "The checkout or index changed before restoring the stash.",
+                None,
+            ));
+        }
+        merge_checkout_guard::ensure_stash_branch_preserves_ignored_files(path, &base, expected_oid)?;
+        run_mutation(
+            path,
+            &["stash", "apply", "--index", expected_oid],
+            "restore the stash on its original base",
+        )
+    };
+    restore().map_err(|error| {
+        AppError::new(
+            "stashBranchPartiallyRestored",
+            error.message,
+            Some("A new branch was created and the app did not remove the stash. Inspect the current branch, files and index before retrying any restore."),
+        )
+    })
 }
 
 pub fn stash_and_checkout(

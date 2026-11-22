@@ -10675,6 +10675,85 @@ fn stash_options_branch_uses_original_base_and_preserves_stash() {
 }
 
 #[test]
+fn branch_from_stash_preserves_ignored_files_before_creating_a_branch() {
+    for stage in [true, false] {
+        let repository = Repository::new();
+        let base = repository.oid();
+        let path = &repository.0;
+        let settings = path.join("settings.local");
+        fs::write(&settings, b"Saved data\n").unwrap();
+        if stage {
+            run_mutation(path, &["add", "--", "settings.local"], "stage fixture").unwrap();
+        }
+        stash_with_options(path, &stash_options("all", !stage, None)).unwrap();
+        let stash = read_stashes(path).unwrap().remove(0);
+        fs::write(path.join("file"), b"New head content\n").unwrap();
+        stage_all(path).unwrap();
+        commit(path, "Advance after creating stash").unwrap();
+        let head = repository.oid();
+
+        fs::write(path.join(".git/info/exclude"), "/settings.local\n/saved.settings\n").unwrap();
+        fs::write(&settings, b"Only local copy\n").unwrap();
+        assert!(run_git(path, &["check-ignore", "--", "settings.local"]).unwrap().status.success());
+        let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+        let index = fs::read(path.join(".git/index")).unwrap();
+
+        let error = create_branch_from_stash(path, &stash.reference, &stash.oid, "recovered").unwrap_err();
+        assert_eq!(error.kind, "stashBranchLocalPathObstruction", "{error:?}");
+        assert!(error.message.contains("settings.local"));
+        assert_eq!(repository.oid(), head);
+        assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+        assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(&settings).unwrap(), b"Only local copy\n");
+        assert_eq!(read_stashes(path).unwrap()[0].oid, stash.oid);
+
+        let saved = path.join("saved.settings");
+        fs::rename(&settings, &saved).unwrap();
+        create_branch_from_stash(path, &stash.reference, &stash.oid, "recovered").unwrap();
+        assert_eq!(repository.oid(), base);
+        assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("recovered"));
+        assert_eq!(fs::read(settings).unwrap(), b"Saved data\n");
+        assert_eq!(fs::read(saved).unwrap(), b"Only local copy\n");
+        assert_eq!(
+            run_git(path, &["ls-files", "--", "settings.local"]).unwrap().stdout,
+            if stage { b"settings.local\n".as_slice() } else { b"".as_slice() }
+        );
+        assert_eq!(read_stashes(path).unwrap()[0].oid, stash.oid);
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn branch_from_stash_checks_ignored_files_again_after_checkout_hooks() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repository = Repository::new();
+    let path = &repository.0;
+    let base = repository.oid();
+    let settings = path.join("settings.local");
+    fs::write(&settings, b"Saved data\n").unwrap();
+    stage_all(path).unwrap();
+    stash_with_options(path, &stash_options("all", false, None)).unwrap();
+    let stash = read_stashes(path).unwrap().remove(0);
+    fs::write(path.join(".git/info/exclude"), "/settings.local\n").unwrap();
+    let hooks = path.join(".git/owned-hooks");
+    fs::create_dir(&hooks).unwrap();
+    run_mutation(path, &["config", "core.hooksPath", ".git/owned-hooks"], "set fixture hook").unwrap();
+    let hook = hooks.join("post-checkout");
+    fs::write(&hook, "#!/bin/sh\nprintf 'Created by checkout hook\\n' > settings.local\n").unwrap();
+    fs::set_permissions(hook, fs::Permissions::from_mode(0o700)).unwrap();
+
+    let error = create_branch_from_stash(path, &stash.reference, &stash.oid, "recovered").unwrap_err();
+    assert_eq!(error.kind, "stashBranchPartiallyRestored");
+    assert!(error.message.contains("settings.local"));
+    assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("recovered"));
+    assert_eq!(repository.oid(), base);
+    assert_eq!(fs::read(settings).unwrap(), b"Created by checkout hook\n");
+    assert_eq!(read_stashes(path).unwrap()[0].oid, stash.oid);
+    assert!(run_git(path, &["diff-index", "--cached", "--quiet", &base]).unwrap().status.success());
+}
+
+#[test]
 fn stash_options_checkout_refuses_stale_target_before_saving_and_keeps_saved_work() {
     let repository = Repository::new();
     let base = repository.oid();

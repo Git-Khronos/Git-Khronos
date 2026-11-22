@@ -398,6 +398,50 @@ fn same_base_autostash_obstruction(
     checkout_obstruction(path, ignored, base, stash, unavailable)
 }
 
+pub(super) fn ensure_stash_branch_preserves_ignored_files(
+    path: &Path,
+    base: &str,
+    stash: &str,
+) -> Result<(), AppError> {
+    let unavailable = || {
+        AppError::new(
+            "stashBranchIgnoredPathsUnverified",
+            "Could not check which ignored local files the stash branch might replace.",
+            Some("Move or back up ignored local files, then review the stash again."),
+        )
+    };
+    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+        return Ok(());
+    };
+    without_lazy_fetch(|| {
+        let parents = stash_file_restore::stash_parents(path, stash).map_err(|_| unavailable())?;
+        if parents[0] != base {
+            return Err(unavailable());
+        }
+        // Checkout already protects the destination tree. Restore on this
+        // exact base has no receiving-side rename, so inspect only the
+        // indexed and working changes and the stash's untracked tree.
+        let blocked = |name: String| {
+            AppError::new(
+                "stashBranchLocalPathObstruction",
+                format!("Ignored local contents at '{name}' obstruct restoring the selected stash."),
+                Some("Move the ignored file or directory out of the way, then retry."),
+            )
+        };
+        for tree in [stash, parents[1].as_str()] {
+            if let Some(name) = checkout_obstruction(path, &ignored, base, tree, unavailable)? {
+                return Err(blocked(name));
+            }
+        }
+        if let Some(tree) = parents.get(2)
+            && let Some(name) = restore_obstruction(path, &ignored, tree, unavailable)?
+        {
+            return Err(blocked(name));
+        }
+        Ok(())
+    })
+}
+
 pub(super) fn ensure_head_reset_preserves_ignored_files(
     path: &Path,
     action: HeadReset,
