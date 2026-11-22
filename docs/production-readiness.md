@@ -3205,6 +3205,15 @@ Neither receipt qualifies the combined `02ff4a7` package; that revision
 passed all source and package-tool tests, but its own installed matrix and
 full browser suite are separate, unfinished validations.
 
+The frozen browser run recorded a context-rebase test failure. An
+isolated replay on the same renderer forced a status read and reproduced
+the extra mock dispatch: the test changed the renderer to another branch,
+but its mock native status still returned the original branch. The fixed
+test changes both to the same branch and explicitly checks a status read
+before confirming. This is a fixture fix, not a retroactive pass for the
+archived full run. The exact `02ff4a7` installer separately passed all
+four Ubuntu 24.04 Pull scope scenarios, including sibling preservation.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds

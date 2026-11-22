@@ -7,14 +7,14 @@ test.beforeEach(async ({ page }) => {
     const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
     const git = app.git;
     const repository = git.repository();
-    const state: any = { app, git, repository, calls: [] };
+    const state: any = { app, git, repository, authoritative: repository, calls: [] };
     (window as any).__contextBranchScope = state;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       state.calls.push({ command, args });
       if (command === 'create_branch_at' && state.hold) return new Promise(resolve => { state.finish = () => resolve(repository); });
-      if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
-      return Promise.resolve(repository);
+      if (command === 'refresh_repository_status') return Promise.resolve(state.authoritative.status);
+      return Promise.resolve(state.authoritative);
     } };
     state.replace = () => {
       app.openBranchMenu(new MouseEvent('contextmenu', { clientX: 600, clientY: 250 }), 'owned-replacement', repository.headOid);
@@ -93,16 +93,24 @@ async function openRebaseReview(page: Page) {
 for (const side of ['source', 'checkout']) {
   test(`context rebase review refuses a changed ${side} before dispatch`, async ({ page }) => {
     const dialog = await openRebaseReview(page);
-    await page.evaluate(side => {
+    await page.evaluate(async side => {
       const s = (window as any).__contextBranchScope;
-      s.git.repositories.update((items: any[]) => items.map(item => {
-        if (item.id !== s.repository.id) return item;
-        return side === 'checkout' ? { ...item, status: { ...item.status, branch: 'release' } }
-          : { ...item, branches: item.branches.map((branch: any) =>
+      const current = s.git.repository();
+      // The native fixture must agree with the simulated external move:
+      // a background status poll can legitimately run before the final click.
+      s.authoritative = side === 'checkout' ? { ...current, status: { ...current.status, branch: 'release' } }
+          : { ...current, branches: current.branches.map((branch: any) =>
             branch.name === 'feature/partial-staging' ? { ...branch, oid: 'd'.repeat(40) } : branch) };
-      }));
+      s.git.repositories.update((items: any[]) => items.map(item =>
+        item.id === current.id ? s.authoritative : item));
+      await s.git.refreshStatusInBackground(current.id, true);
     }, side);
     await expect(dialog).toContainText('rebasing main onto feature/partial-staging');
+    await expect.poll(() => page.evaluate(side => {
+      const current = (window as any).__contextBranchScope.git.repository();
+      return side === 'checkout' ? current.status.branch
+        : current.branches.find((branch: any) => branch.name === 'feature/partial-staging').oid;
+    }, side)).toBe(side === 'checkout' ? 'release' : 'd'.repeat(40));
     await dialog.getByRole('button', { name: 'Rebase', exact: true }).click();
     expect(await page.evaluate(() => (window as any).__contextBranchScope.calls.filter((call: any) => call.command === 'integrate_branch'))).toEqual([]);
     await expect.poll(() => page.evaluate(() => (window as any).__contextBranchScope.git.error())).toContain('Open the branch menu again');
