@@ -3670,6 +3670,11 @@ verify branch and tip refusals with no bisect marker, index or ref changes.
 Fresh requests still start and Reset returns to the original checkout.
 Focused renderer, core and contract evidence is retained under
 `target/local-review/bisect-reviewed-start.tvOGLrHc/`.
+The exact `b76a68c` package later passed 40 focused installed scenarios
+on Ubuntu 24.04: 22 checkout and recovery, 12 recap and six stash. This
+verified the same-tip branch refusal and fresh bisect start/retry using
+the actual native app. The package digest and scope are in
+`target/local-review/updater/jammy-builder/bisect-reviewed-start-release.TYLZmjq3/reports.json`.
 
 Bisect voting also pins the displayed candidate and rejects a retired
 banner or palette action. In an external no-checkout session, the
@@ -3697,6 +3702,11 @@ renderer regression failed on the old banner and passed in the 16-case
 focused run. The installed detached-checkout gate now checks result
 display, native vote refusal and Reset on the packaged app. Evidence:
 `target/local-review/bisect-found.IKznkr7r/`.
+The first broad Rust run stopped on a separate rebase fixture:
+rewriting its executable hook between the refusal and retry left Git
+unable to execute it (`Text file busy`). The hook now stays unchanged
+while a separate marker controls refusal. The fixture still checks
+preserved HEAD, index and rebase support files before an explicit retry.
 
 ### Manual and automatic Fetch recovery
 

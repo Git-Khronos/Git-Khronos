@@ -885,6 +885,14 @@ fn interactive_rebase_edit_hook_refusal_preserves_pause_index_and_support_for_ex
         "use owned edit fixture hooks",
     )
     .unwrap();
+    let hook = path.join(".git/hooks/pre-commit");
+    let refuse = path.join(".git/reject-edit-amendment");
+    fs::write(
+        &hook,
+        b"#!/bin/sh\ntest -e .git/reject-edit-amendment || exit 0\nprintf '%s\\n' 'Edit amendment hook refusal' >&2\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
     execute_interactive_rebase(path, "feature", "main", &steps).unwrap();
     let stopped = repository.oid();
     let support = rebase_support_dir(path).unwrap();
@@ -895,13 +903,7 @@ fn interactive_rebase_edit_hook_refusal_preserves_pause_index_and_support_for_ex
     let index = run_git(path, &["ls-files", "--stage", "-z"])
         .unwrap()
         .stdout;
-    let hook = path.join(".git/hooks/pre-commit");
-    fs::write(
-        &hook,
-        b"#!/bin/sh\nprintf '%s\\n' 'Edit amendment hook refusal' >&2\nexit 1\n",
-    )
-    .unwrap();
-    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(&refuse, b"reject").unwrap();
     let error =
         commit_with_options(path, "Reviewed amendment", true, false, Some(false)).unwrap_err();
     assert!(error.message.contains("Edit amendment hook refusal"));
@@ -926,7 +928,9 @@ fn interactive_rebase_edit_hook_refusal_preserves_pause_index_and_support_for_ex
         continue_rebase(path).unwrap_err().kind,
         "rebaseEditNeedsAmend"
     );
-    fs::write(&hook, b"#!/bin/sh\nexit 0\n").unwrap();
+    // Switch the policy without rewriting an executable that another
+    // parallel test process could transiently still hold open.
+    fs::remove_file(refuse).unwrap();
     commit_with_options(path, "Reviewed amendment", true, false, Some(false)).unwrap();
     continue_rebase(path).unwrap();
     assert_eq!(
