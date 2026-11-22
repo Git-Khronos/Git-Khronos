@@ -417,6 +417,15 @@ explains why equal tips can be omitted. It was consulted for diagnosis
 only. Git Khronos verifies its local shallow-boundary read and uses only
 the documented Git command to perform any follow-up.
 
+## Bisect CLI compatibility
+
+[Git 2.40 release notes](https://raw.githubusercontent.com/git/git/v2.40.0/Documentation/RelNotes/2.40.0.txt)
+document the transition from a scripted bisect command to a built-in.
+Owned Git 2.39.5 and 2.56.1 fixtures verified that ordinary terms must
+remain positional for the older implementation and that option-shaped
+terms require the explicit separator on the newer implementation. No
+source code was copied.
+
 ## Repository states on open
 
 Sources: [git-rev-parse](https://git-scm.com/docs/git-rev-parse),

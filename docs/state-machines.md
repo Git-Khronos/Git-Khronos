@@ -846,7 +846,11 @@ The banner and palette use the native session's terms, including old/new
 or custom terms from a session started outside the application.
 Native validation compares the current candidate, checkout mode,
 first-parent setting and terms before voting for an explicit OID. Invalid or ambiguous terms do not
-authorize a native vote.
+authorize a native vote. A term cannot be a built-in bisect operation.
+Ordinary terms work in both scripted Git 2.39 and later implementations.
+An option-shaped custom term is only sent with the explicit separator
+supported by newer Git, never where it could be interpreted as an option.
+The scripted version refuses that special term without recording a vote.
 An unavailable candidate disables votes but does not disable Reset.
 When Git records a unique result, the banner shows that exact commit
 instead of presenting another test candidate. Only View result and Reset
