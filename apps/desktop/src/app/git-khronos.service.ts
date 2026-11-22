@@ -2263,6 +2263,10 @@ export class GitKhronosService implements OnDestroy {
 
   async fetchBranches(options: FetchOptions, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
     if (!this.requireRecoveryRepository(repositoryId)) return;
+    if (options.branch && options.remote) {
+      const tracking = `${options.remote}/${options.branch}`;
+      return this.mutate('fetch_branches', `Fetching ${tracking}…`, `Fetched ${tracking}; local tags unchanged`, { options });
+    }
     return this.mutate('fetch_branches', `Fetching from ${options.remote ?? 'all remotes'}…`,
       `Fetch complete${options.prune ? '; stale remote-tracking branches pruned' : ''}; local tags unchanged`,
       { options });
@@ -3497,7 +3501,7 @@ export class GitKhronosService implements OnDestroy {
     const [extra = {}, preserveConflictOnFailure = false] = options;
     const fetchRecovery = command === 'fetch_repository'
       ? this.captureFetchRecovery(repo, 'remote' in extra && typeof extra.remote === 'string' ? extra.remote : null, false)
-      : command === 'fetch_branches' && 'options' in extra
+      : command === 'fetch_branches' && 'options' in extra && (extra.options as FetchOptions).branch == null
         ? this.captureFetchRecovery(repo, (extra.options as FetchOptions).remote, true)
         : null;
     const finishHistoryBarrier = this.beginHistoryBarrier();

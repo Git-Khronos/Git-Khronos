@@ -6,6 +6,8 @@ pub struct FetchOptions {
     pub remote: Option<String>,
     pub prune: bool,
     #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
     pub history: Option<FetchHistory>,
 }
 
@@ -96,6 +98,32 @@ pub fn fetch_with_options(
     options: &FetchOptions,
     cancellation: &CancellationToken,
 ) -> Result<(), AppError> {
+    if let Some(branch) = options.branch.as_deref() {
+        if options.remote.is_none() || options.prune || options.history.is_some() {
+            return Err(AppError::new(
+                "singleBranchFetchScope",
+                "Fetching one branch requires one remote, with pruning off and no depth change.",
+                None,
+            ));
+        }
+        // Validate the literal name, not Git's checkout shorthand or a supplied refspec.
+        if branch == "HEAD"
+            || branch.starts_with("refs/")
+            || branch.trim() != branch
+            || branch.is_empty()
+            || branch.starts_with('-')
+            || branch.contains('\0')
+            || !run_git(path, &["check-ref-format", &format!("refs/heads/{branch}")])?
+                .status
+                .success()
+        {
+            return Err(AppError::new(
+                "invalidBranchName",
+                "Enter the exact remote branch name, without a refs/ prefix.",
+                Some("For example: main or release/1.0. HEAD is reserved."),
+            ));
+        }
+    }
     let history = validate_history(path, options)?;
     let output = run_git(path, &["remote"])?;
     ensure_success("list fetch destinations", &output)?;
@@ -173,7 +201,25 @@ pub fn fetch_with_options(
     }
 
     for (index, remote) in selected.iter().enumerate() {
-        let refspec = format!("+refs/heads/*:refs/remotes/{remote}/*");
+        let branch = options.branch.as_deref().unwrap_or("*");
+        let destination = format!("refs/remotes/{remote}/{branch}");
+        if options.branch.is_some() {
+            let symbolic = run_git(
+                path,
+                &["symbolic-ref", "--quiet", "--no-recurse", &destination],
+            )?;
+            if symbolic.status.success() {
+                return Err(AppError::new(
+                    "symbolicFetchDestination",
+                    "That remote-tracking branch is an alias. No fetch was started.",
+                    Some("Select the actual branch instead of an alias."),
+                ));
+            }
+            if symbolic.status.code() != Some(1) {
+                ensure_success("inspect the selected tracking reference", &symbolic)?;
+            }
+        }
+        let refspec = format!("+refs/heads/{branch}:{destination}");
         let mut args = vec![
             "-c",
             "fetch.parallel=1",
@@ -329,6 +375,11 @@ mod tests {
             serde_json::from_str(r#"{"remote":null,"prune":false}"#).unwrap();
         assert!(options.remote.is_none());
         assert!(!options.prune);
+        assert!(options.branch.is_none());
+        let one: FetchOptions =
+            serde_json::from_str(r#"{"remote":"origin","prune":false,"branch":"release/1.0"}"#)
+                .unwrap();
+        assert_eq!(one.branch.as_deref(), Some("release/1.0"));
         assert!(serde_json::from_str::<FetchOptions>(r#"{"remote":"origin"}"#).is_err());
         assert!(
             serde_json::from_str::<FetchOptions>(r#"{"remote":"origin","prune":true,"tags":true}"#)

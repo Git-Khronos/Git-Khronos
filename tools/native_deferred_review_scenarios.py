@@ -55,9 +55,26 @@ def deferred_review_workflows(driver, fixtures, report):
     fixtures.git(source, 'update-ref', 'refs/remotes/origin/obsolete', base)
     before = checkout_footprint(fixtures, source, ('fixture.txt', 'untracked-note.txt'))
     local_refs = fixtures.git(source, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/tags')
-    remote_refs = fixtures.git(remote, 'show-ref')
     old_tracking = fixtures.git(source, 'for-each-ref', '--format=%(objectname)', 'refs/remotes/origin/main')
     assert old_tracking != remote_head
+    branch = 'release/only'
+    fixtures.git(remote, 'update-ref', 'refs/heads/' + branch, remote_head)
+    remote_refs = fixtures.git(remote, 'show-ref')
+    open_fetch(source)
+    driver.script('''const scope = document.querySelector('#fetch-branch-scope');
+      scope.value = 'one'; scope.dispatchEvent(new Event('change', { bubbles: true }));''')
+    driver.wait("return !!document.querySelector('#fetch-branch-name')")
+    driver.script('''const name = document.querySelector('#fetch-branch-name');
+      name.value = arguments[0]; name.dispatchEvent(new Event('input', { bubbles: true }));''', branch)
+    confirm_fetch('Fetch this branch')
+    assert fixtures.git(source, 'rev-parse', 'refs/remotes/origin/' + branch) == remote_head
+    assert fixtures.git(source, 'for-each-ref', '--format=%(objectname)', 'refs/remotes/origin/main') == old_tracking
+    assert fixtures.git(source, 'rev-parse', 'refs/remotes/origin/obsolete') == base
+    assert fixtures.git(source, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/tags') == local_refs
+    assert fixtures.git(remote, 'show-ref') == remote_refs
+    preserved(before, checkout_footprint(fixtures, source, ('fixture.txt', 'untracked-note.txt')))
+    report['scenarios'].append('native-reviewed-fetch-creates-only-the-explicit-remote-tracking-branch')
+
     open_fetch(source)
     confirm_fetch('Fetch branches')
     assert fixtures.git(source, 'rev-parse', 'refs/remotes/origin/main') == remote_head

@@ -300,7 +300,7 @@ run must wait until this one finishes.
 | G10 | Commit identity, amend, sign-off, empty-commit policy, templates and hook refusals | Complete metadata and hook combinations through the packaged UI |
 | G11 | Real OpenPGP, SSH and X.509 signing round trips and diagnostic failures | Tag-signing coverage and platform-specific signer configurations |
 | G12 | Branch creation, rename, delete, tracking and occupied-worktree refusals | All detached/remote publishing and destructive precondition combinations |
-| G13 | Scoped fetch, pull strategies, cancellation and pinned force-push leases | Live authentication, every remote topology and partial network outcomes |
+| G13 | Exact one-branch or all-branch fetch, pull strategies, cancellation and pinned force-push leases | Installed single-branch fetch, live authentication, every remote topology and partial network outcomes |
 | G14 | Read-only merge previews, fast-forward, conflicts and pull merge/rebase strategies | Complete preview-versus-actual outcome and recovery matrix |
 | G15 | Rebase edit, fixup, split, merge-preserving review and stale-state refusals | Every instruction, root/merge topology and recovery combination |
 | G16 | Ordered revert, cherry-pick/revert mainline selection, no-commit replay and conflict recovery | Full renderer and platform coverage for multi-step failures |

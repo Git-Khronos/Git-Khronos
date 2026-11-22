@@ -42,10 +42,27 @@ export interface FetchDialogRequest {
           } @else {
             <p>Each remote is fetched separately. If a later remote fails or you cancel, earlier remotes may already be updated.</p>
           }
-          <label class="checkbox"><input type="checkbox" name="pruneRemoteBranches" [disabled]="git.busy()"
-            [ngModel]="prune()" (ngModelChange)="changePrune($event, target)" />Remove stale remote-tracking branches</label>
-          <p>Pruning removes local tracking references that the selected remotes no longer advertise. Branches on the server stay unchanged.</p>
-          @if (shallow(); as state) {
+          <label for="fetch-branch-scope">Branches to fetch</label>
+          <select id="fetch-branch-scope" name="fetchBranchScope" [disabled]="git.busy()"
+            [ngModel]="branchScope()" (ngModelChange)="changeBranchScope($event, target)">
+            <option value="all">All branches</option>
+            <option value="one">One branch</option>
+          </select>
+          @if (branchScope() === 'one') {
+            <label for="fetch-branch-name">Remote branch name</label>
+            <input id="fetch-branch-name" type="text" name="fetchBranchName" placeholder="e.g. release/1.0" spellcheck="false" autocomplete="off"
+              aria-describedby="fetch-branch-hint" [disabled]="git.busy()" [ngModel]="branch()" (ngModelChange)="changeBranch($event, target)" />
+            <p id="fetch-branch-hint">Enter the exact name without the remote or <code>refs/heads/</code> prefix. New branches are supported. Pruning and depth changes are not included.</p>
+            @if (!remote()) { <p role="alert">Choose one remote to fetch a single branch.</p> }
+            @else if (branch().trim()) {
+              <p class="destination">Only this tracking branch is updated: <code>{{ remote() }}/{{ branch().trim() }}</code></p>
+            }
+          } @else {
+            <label class="checkbox"><input type="checkbox" name="pruneRemoteBranches" [disabled]="git.busy()"
+              [ngModel]="prune()" (ngModelChange)="changePrune($event, target)" />Remove stale remote-tracking branches</label>
+            <p>Pruning removes local tracking references that the selected remotes no longer advertise. Branches on the server stay unchanged.</p>
+          }
+          @if (branchScope() === 'all' && shallow(); as state) {
             <fieldset [disabled]="git.busy()">
               <legend>History depth</legend>
               <p id="fetch-history-scope">This repository has shallow history: older commits are missing behind {{ state.boundaryCommits }} boundary commit{{ state.boundaryCommits === 1 ? '' : 's' }}. Extending it downloads more commits from one remote; files and branches are unchanged.</p>
@@ -73,7 +90,7 @@ export interface FetchDialogRequest {
           <footer>
             @if (git.busy() && git.activeActivity()?.operationId) { <button type="button" [disabled]="git.activeOperationCancelling()" (click)="cancelOperation(target)">Cancel operation</button> }
             <button type="button" data-fetch-cancel [disabled]="git.busy()" (click)="close(target)">Cancel</button>
-            <button type="submit" [disabled]="!canConfirm(target)">{{ history() === 'keep' ? 'Fetch branches' : 'Fetch and extend history' }}</button>
+            <button type="submit" [disabled]="!canConfirm(target)">{{ branchScope() === 'one' ? 'Fetch this branch' : history() === 'keep' ? 'Fetch branches' : 'Fetch and extend history' }}</button>
           </footer>
         </form>
       </div>
@@ -92,7 +109,7 @@ export interface FetchDialogRequest {
     fieldset { margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--inspector-divider); border-radius: 5px; }
     legend { font-size: 13px; font-weight: 600; }
     input[type=number] { width: 9ch; padding: 4px 6px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
-    select { width: 100%; padding: 8px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
+    select, input[type=text] { box-sizing: border-box; width: 100%; padding: 8px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
     footer { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--inspector-divider); }
     button { padding: 8px 12px; border-radius: 4px; background: var(--inspector-row); color: var(--text); font-size: 13px; }
     button:disabled, select:disabled, input:disabled { opacity: .5; cursor: not-allowed; }
@@ -108,6 +125,8 @@ export class FetchOptionsDialogComponent {
   readonly closed = output<FetchDialogRequest>();
   readonly remote = signal('');
   readonly prune = signal(false);
+  readonly branchScope = signal<'all' | 'one'>('all');
+  readonly branch = signal('');
   readonly cancelled = signal(false);
   readonly shallow = signal<ShallowHistoryState | null>(null);
   readonly history = signal<'keep' | 'deepen' | 'complete'>('keep');
@@ -122,6 +141,8 @@ export class FetchOptionsDialogComponent {
       if (!request) return;
       this.remote.set(untracked(() => this.git.repository()?.remotes[0]?.name ?? ''));
       this.prune.set(false);
+      this.branchScope.set('all');
+      this.branch.set('');
       this.cancelled.set(false);
       this.shallow.set(null);
       this.history.set('keep');
@@ -163,11 +184,24 @@ export class FetchOptionsDialogComponent {
   }
 
   changePrune(value: boolean, target: FetchDialogRequest): void {
-    if (this.owns(target) && !this.git.busy()) this.prune.set(value);
+    if (this.owns(target) && !this.git.busy() && this.branchScope() === 'all') this.prune.set(value);
+  }
+
+  changeBranchScope(value: 'all' | 'one', target: FetchDialogRequest): void {
+    if (!this.owns(target) || this.git.busy()) return;
+    this.branchScope.set(value);
+    if (value === 'one') {
+      this.prune.set(false);
+      this.history.set('keep');
+    }
+  }
+
+  changeBranch(value: string, target: FetchDialogRequest): void {
+    if (this.owns(target) && !this.git.busy() && this.branchScope() === 'one') this.branch.set(value);
   }
 
   changeHistory(value: 'keep' | 'deepen' | 'complete', target: FetchDialogRequest): void {
-    if (this.owns(target) && !this.git.busy()) this.history.set(value);
+    if (this.owns(target) && !this.git.busy() && this.branchScope() === 'all') this.history.set(value);
   }
 
   changeCommits(value: number | null, target: FetchDialogRequest): void {
@@ -175,13 +209,18 @@ export class FetchOptionsDialogComponent {
   }
 
   canConfirm(target = this.request()): boolean {
-    return this.owns(target) && !this.git.busy() && !!this.git.repository()?.remotes.length && this.historyReady();
+    if (!this.owns(target) || this.git.busy()) return false;
+    const remotes = this.git.repository()?.remotes ?? [];
+    const remote = this.remote();
+    if (!remotes.length || (remote && !remotes.some(candidate => candidate.name === remote))) return false;
+    return this.branchScope() === 'one' ? !!remote && !!this.branch().trim() : this.historyReady();
   }
 
   async confirm(target = this.request()): Promise<void> {
     if (!this.owns(target) || !this.canConfirm(target)) return;
     this.cancelled.set(false);
     const options: FetchOptions = { remote: this.remote() || null, prune: this.prune() };
+    if (this.branchScope() === 'one') options.branch = this.branch().trim();
     const history = this.shallow() ? this.history() : 'keep';
     if (history === 'deepen') options.history = { mode: 'deepen', commits: Number(this.commits()) };
     if (history === 'complete') options.history = { mode: 'complete' };

@@ -62,6 +62,43 @@ test('scoped fetch defaults to one remote without pruning and sends cancellable 
     options: { remote: 'upstream', prune: false } });
 });
 
+test('fetches one named branch without pruning, changing depth, or clearing a whole-remote failure', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const repo = git.repository();
+    git.repositories.set([{ ...repo, remotes: repo.remotes.filter((remote: any) => remote.name === 'origin') }]);
+    git.backgroundFetchFailures.set({ [repo.id]: { message: 'Previous fetch failed', requiresFetchAll: false } });
+    (window as any).__fetchFixture.shallow = { shallow: true, boundaryCommits: 1 };
+  });
+  await openOptions(page);
+  const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
+  await dialog.getByRole('checkbox', { name: 'Remove stale remote-tracking branches' }).check();
+  await dialog.getByRole('radio', { name: 'Download complete history' }).check();
+  const scope = dialog.getByLabel('Branches to fetch');
+  await scope.selectOption('one');
+  await expect(dialog.getByRole('group', { name: 'History depth' })).toHaveCount(0);
+  await expect(dialog.getByRole('checkbox')).toHaveCount(0);
+  const submit = dialog.getByRole('button', { name: 'Fetch this branch' });
+  await expect(submit).toBeDisabled();
+  await dialog.getByLabel('Remote branch name').fill('release/1.0');
+  await expect(dialog).toContainText('origin/release/1.0');
+  await dialog.getByLabel('Fetch from').selectOption('');
+  await expect(dialog.getByRole('alert')).toContainText('Choose one remote');
+  await expect(submit).toBeDisabled();
+  await scope.selectOption('all');
+  await expect(dialog.getByRole('checkbox')).not.toBeChecked();
+  await expect(dialog.getByRole('radio', { name: 'Keep the current depth' })).toBeChecked();
+  await scope.selectOption('one');
+  await dialog.getByLabel('Fetch from').selectOption('origin');
+  await submit.click();
+  await expect(dialog).toHaveCount(0);
+  const calls = await page.evaluate(() => (window as any).__fetchFixture.calls.filter((call: any) => call.command.startsWith('fetch_')));
+  expect(calls).toHaveLength(1);
+  expect(calls[0].args.options).toEqual({ remote: 'origin', prune: false, branch: 'release/1.0' });
+  await expect(page.locator('.auto-fetch-status')).toHaveText('Fetch failed');
+});
+
 test('all-remotes pruning requires opt-in and discloses branch-only and partial completion scope', async ({ page }) => {
   await setup(page);
   await openOptions(page);

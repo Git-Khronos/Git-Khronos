@@ -2464,6 +2464,7 @@ fn pull_strategy_deleted_upstream_retains_configuration_and_local_commits_after_
         path,
         &FetchOptions {
             remote: Some("origin".into()),
+            branch: None,
             prune: true,
             history: None,
         },
@@ -7085,6 +7086,7 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     let token = CancellationToken::default();
     let options = |remote: Option<&str>, history| FetchOptions {
         remote: remote.map(str::to_owned),
+        branch: None,
         prune: false,
         history: Some(history),
     };
@@ -7342,6 +7344,121 @@ fn remote_fixture_ref(repository: &Repository, remote: &str, reference: &str, oi
 }
 
 #[test]
+fn scoped_fetch_one_branch_creates_only_the_requested_tracking_reference() {
+    let repository = fetch_fixture();
+    let base = repository.oid();
+    remote_fixture_ref(&repository, "origin", "refs/heads/release/1.0", Some(&base));
+    remote_fixture_ref(&repository, "origin", "refs/heads/other", Some(&base));
+    remote_fixture_ref(&repository, "origin", "refs/tags/release/1.0", Some(&base));
+    for args in [
+        vec!["update-ref", "refs/remotes/origin/stale", &base],
+        vec![
+            "config",
+            "--replace-all",
+            "remote.origin.fetch",
+            "+refs/*:refs/*",
+        ],
+        vec!["config", "fetch.prune", "true"],
+        vec!["config", "fetch.pruneTags", "true"],
+        vec!["config", "remote.origin.tagOpt", "--tags"],
+    ] {
+        run_mutation(&repository.0, &args, "configure fixture fetch").unwrap();
+    }
+    fs::write(repository.0.join("file"), b"local changes\n").unwrap();
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+    let refs = || {
+        let output = run_git(
+            &repository.0,
+            &["for-each-ref", "--format=%(refname) %(objectname)"],
+        )
+        .unwrap();
+        ensure_success("read fixture refs", &output).unwrap();
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let before = refs();
+    let mut options = FetchOptions {
+        remote: Some("origin".into()),
+        branch: Some("release/1.0".into()),
+        prune: false,
+        history: None,
+    };
+    let token = CancellationToken::default();
+    fetch_with_options(&repository.0, &options, &token).unwrap();
+    let mut expected = before;
+    expected.insert(format!("refs/remotes/origin/release/1.0 {base}"));
+    assert_eq!(refs(), expected);
+    assert_eq!(repository.oid(), base);
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    assert_eq!(
+        fs::read(repository.0.join("file")).unwrap(),
+        b"local changes\n"
+    );
+
+    // An alias inside the same remote namespace could move *another* tracker.
+    remote_fixture_ref(&repository, "origin", "refs/heads/alias", Some(&base));
+    run_mutation(
+        &repository.0,
+        &[
+            "symbolic-ref",
+            "refs/remotes/origin/alias",
+            "refs/remotes/origin/main",
+        ],
+        "make same-remote alias",
+    )
+    .unwrap();
+    options.branch = Some("alias".into());
+    let before_alias = refs();
+    assert_eq!(
+        fetch_with_options(&repository.0, &options, &token)
+            .unwrap_err()
+            .kind,
+        "symbolicFetchDestination"
+    );
+    for input in [
+        "*",
+        "HEAD",
+        "refs/heads/main",
+        "a:b",
+        "@{-1}",
+        "a//b",
+        "-branch",
+    ] {
+        options.branch = Some(input.into());
+        assert_eq!(
+            fetch_with_options(&repository.0, &options, &token)
+                .unwrap_err()
+                .kind,
+            "invalidBranchName"
+        );
+    }
+    options.branch = Some("branch-not-on-remote".into());
+    assert!(fetch_with_options(&repository.0, &options, &token).is_err());
+    for (remote, prune, history) in [
+        (None, false, None),
+        (Some("origin".into()), true, None),
+        (Some("origin".into()), false, Some(FetchHistory::Complete)),
+    ] {
+        let request = FetchOptions {
+            remote,
+            prune,
+            history,
+            branch: Some("main".into()),
+        };
+        assert_eq!(
+            fetch_with_options(&repository.0, &request, &token)
+                .unwrap_err()
+                .kind,
+            "singleBranchFetchScope"
+        );
+    }
+    assert_eq!(refs(), before_alias);
+}
+
+#[test]
 fn scoped_fetch_prunes_only_selected_remote_branches_despite_tag_and_mirror_config() {
     let repository = fetch_fixture();
     let base = repository.oid();
@@ -7351,6 +7468,7 @@ fn scoped_fetch_prunes_only_selected_remote_branches_despite_tag_and_mirror_conf
             &repository.0,
             &FetchOptions {
                 remote: Some(remote.into()),
+                branch: None,
                 prune: false,
                 history: None,
             },
@@ -7407,6 +7525,7 @@ fn scoped_fetch_prunes_only_selected_remote_branches_despite_tag_and_mirror_conf
         &repository.0,
         &FetchOptions {
             remote: Some("origin".into()),
+            branch: None,
             prune: false,
             history: None,
         },
@@ -7421,6 +7540,7 @@ fn scoped_fetch_prunes_only_selected_remote_branches_despite_tag_and_mirror_conf
         &repository.0,
         &FetchOptions {
             remote: Some("origin".into()),
+            branch: None,
             prune: true,
             history: None,
         },
@@ -7480,6 +7600,7 @@ fn scoped_fetch_all_remote_prune_is_explicit_and_uses_fetch_not_push_url() {
         &repository.0,
         &FetchOptions {
             remote: None,
+            branch: None,
             prune: false,
             history: None,
         },
@@ -7497,6 +7618,7 @@ fn scoped_fetch_all_remote_prune_is_explicit_and_uses_fetch_not_push_url() {
         &repository.0,
         &FetchOptions {
             remote: None,
+            branch: None,
             prune: true,
             history: None,
         },
@@ -7523,6 +7645,7 @@ fn scoped_fetch_refuses_missing_and_overlapping_remotes_before_updates() {
             &repository.0,
             &FetchOptions {
                 remote: None,
+                branch: None,
                 prune: true,
                 history: None
             },
@@ -7549,6 +7672,7 @@ fn scoped_fetch_refuses_missing_and_overlapping_remotes_before_updates() {
             &repository.0,
             &FetchOptions {
                 remote: Some("origin".into()),
+                branch: None,
                 prune: true,
                 history: None
             },
@@ -7563,6 +7687,7 @@ fn scoped_fetch_refuses_missing_and_overlapping_remotes_before_updates() {
             &repository.0,
             &FetchOptions {
                 remote: Some("missing".into()),
+                branch: None,
                 prune: false,
                 history: None
             },
@@ -7583,6 +7708,7 @@ fn scoped_fetch_cancel_and_failure_leave_actual_updates_visible() {
             &repository.0,
             &FetchOptions {
                 remote: None,
+                branch: None,
                 prune: true,
                 history: None
             },
@@ -7612,6 +7738,7 @@ fn scoped_fetch_cancel_and_failure_leave_actual_updates_visible() {
         &repository.0,
         &FetchOptions {
             remote: None,
+            branch: None,
             prune: true,
             history: None,
         },
@@ -7651,6 +7778,7 @@ fn scoped_fetch_refuses_shared_custom_tracking_destinations_without_changes() {
             &repository.0,
             &FetchOptions {
                 remote: Some("origin".into()),
+                branch: None,
                 prune: true,
                 history: None,
             },
@@ -7684,6 +7812,7 @@ fn scoped_fetch_refuses_tracking_aliases_that_redirect_to_local_branches() {
         &repository.0,
         &FetchOptions {
             remote: Some("origin".into()),
+            branch: None,
             prune: true,
             history: None,
         },
@@ -7711,6 +7840,7 @@ fn scoped_fetch_does_not_create_local_branches_through_dangling_tracking_aliases
         &repository.0,
         &FetchOptions {
             remote: Some("origin".into()),
+            branch: None,
             prune: false,
             history: None,
         },
@@ -7740,6 +7870,7 @@ fn scoped_fetch_refuses_unresolved_aliases_inside_its_tracking_namespace() {
         &repository.0,
         &FetchOptions {
             remote: Some("origin".into()),
+            branch: None,
             prune: false,
             history: None,
         },

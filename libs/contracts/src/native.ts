@@ -111,7 +111,7 @@ export type ExecuteFileToolReviewRequest = { contextId: string; token: string; o
  * Optional history extension for shallow repositories.
  */
 export type FetchHistory = { mode: "deepen"; commits: number } | { mode: "complete" }
-export type FetchOptions = { remote: string | null; prune: boolean; history?: FetchHistory | null }
+export type FetchOptions = { remote: string | null; prune: boolean; branch?: string | null; history?: FetchHistory | null }
 export type FileBlameLine = { lineNumber: number; oid: string; authorName: string; authorEmail: string; authoredAt: number; summary: string; text: string; path: string | null }
 export type FileBlamePage = { lines: FileBlameLine[]; nextLine: number | null }
 export type FileComparisonContext = { kind: "commit"; oid: string } | { kind: "revisions"; baseOid: string; targetOid: string } | { kind: "revisionWorktree"; baseOid: string } | { kind: "workingTree"; staged: boolean } | { kind: "stash"; oid: string; layer?: StashContentLayer }

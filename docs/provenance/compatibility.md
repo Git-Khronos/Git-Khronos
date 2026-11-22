@@ -885,6 +885,11 @@ its standard tracking-branch namespace. Explicit refspecs, empty `--refmap`,
 `--no-all`, `--no-tags` and `--no-prune-tags` isolate the action from configured
 mirror/custom/tag mappings. Pruning is an explicit opt-in and overrides ordinary
 configured pruning defaults. It uses fetch URLs, not separate push destinations.
+The **One branch** option selects one configured remote and one literal branch
+name. It fetches into the matching remote-tracking branch, even if that branch
+has never been fetched locally. It cannot prune or change shallow depth.
+The selected tracking destination must not itself be a symbolic alias, even
+to another reference in that remote's namespace.
 Nested/overlapping remote names, potentially shared custom tracking mappings
 from other remotes, and resolved symbolic aliases pointing outside the chosen
 namespace are rejected before any update. Loose references are inspected because

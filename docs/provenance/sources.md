@@ -423,7 +423,7 @@ Sources:
 - [Git fetch manual](https://git-scm.com/docs/git-fetch)
 - [Git repository layout](https://git-scm.com/docs/gitrepository-layout)
 
-Used for explicit branch refspec destinations, empty `--refmap` isolation,
+Used for explicit literal and wildcard branch refspec destinations, empty `--refmap` isolation,
 disabled tag following/tag pruning, per-remote transactions and cancellation
 scope. The interface and local bare-remote behavioral fixtures are original.
 No source code, assets or proprietary text copied.
