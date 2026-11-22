@@ -4461,6 +4461,17 @@ three-span limit. This is negative-control evidence; the positive
 installed run uses the newer package. Receipt:
 `target/local-review/updater/jammy-builder/native-wrapped-diff-negative.uwmDIEOp/lane/results/`.
 
+The unchanged `1bf1c03` installer passed the three-case installed
+`diff-rendering` suite on Debian 12 with Git 2.39.5. Its real Git context
+line used three spans per displayed column in split, hunk and inline
+views, with exact text, source line numbers and changed-word highlights.
+The same installer passed 90 installed checks across setup/keyboard (62),
+bisect (5) and merge preview (23) on Debian 12. Both reports match
+SHA-256 `76765188d90a8f1e1ff6f2f33e31348ba0c5c055060c1cb906ac8e913e943c17`.
+Receipts are in `target/local-review/updater/jammy-builder/wrapped-diff-release.hvnGKoRj/reports.json`
+and `target/local-review/updater/jammy-builder/native-wrapped-diff-positive.r8ilq8q7/reports.json`.
+This is focused evidence, not the full Linux matrix or a production signature.
+
 ### Load graph settings controls on demand
 
 Compared with `8cefd96`, the same production build command reduced
