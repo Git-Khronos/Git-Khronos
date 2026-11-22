@@ -503,6 +503,10 @@ renderer next runs its reset effect. `history-search-lifecycle.spec.ts`
 exercises same-checkout workspace switches and in-place snapshot refreshes.
 Repository history search keeps focus on its Search or Continue/Retry action
 while a page is pending. The actions ignore activation while unavailable.
+Closing the search dialog or its deferred loader restores focus only for the
+current checkout and only if another control has not taken it. If compact
+layout hides the advanced-search button, focus returns to the visible compact
+search toggle instead of the hidden button.
 After a cancelled continuation settles, focus returns to Retry only if it
 would otherwise be lost with the Cancel button and the original search view
 still owns it. The same paging control reports when all matches are loaded.

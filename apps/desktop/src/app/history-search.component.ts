@@ -5,6 +5,7 @@ import type { HistoryQuery } from '@git-khronos/contracts';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { GitKhronosService } from './git-khronos.service';
 import { HistorySearchService, emptyHistoryQuery } from './history-search.service';
+import { restoreHistorySearchFocus } from './history-search-focus';
 import { IconComponent } from './icon.component';
 
 export interface HistorySearchOpenOptions {
@@ -401,19 +402,21 @@ export class HistorySearchComponent {
 
   close(): void { this.dialog().nativeElement.close(); }
   closed(): void {
-    if (this.dialog().nativeElement.open) return;
+    const surface = this.dialog().nativeElement;
+    if (surface.open) return;
     const scope = this.scope;
+    const opener = this.opener;
     this.scope = null;
+    this.opener = null;
     this.opened.set(false);
     this.comparisonRequest++;
     this.comparing.set(false);
     this.history.cancelComparison();
     void this.history.cancel();
-    const target = this.opener?.isConnected && this.opener !== document.body && this.opener !== document.documentElement
-      ? this.opener
-      : this.returnFocusFallback();
     setTimeout(() => {
-      if (!this.opened() && scope === this.git.activeRepositoryReadScope() && target?.isConnected) target.focus();
+      if (!this.opened() && scope === this.git.activeRepositoryReadScope()) {
+        restoreHistorySearchFocus(surface, opener, this.returnFocusFallback());
+      }
     });
   }
   selectCommit(oid: string): void { this.commitSelected.emit(oid); this.close(); }

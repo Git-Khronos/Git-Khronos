@@ -189,6 +189,62 @@ test('deferred history preserves entered filters across closing and restores the
   await expect(dialog.getByLabel('Message contains')).toBeFocused();
 });
 
+test('closing advanced history search focuses the compact opener when the original button is hidden', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 720 });
+  const compact = page.locator('.graph-search-toggle');
+  const advanced = page.locator('.graph-search-advanced');
+  await compact.click();
+  await advanced.click();
+  const dialog = page.getByRole('dialog', { name: 'Search repository history', exact: true });
+  await expect(dialog.getByLabel('Message contains')).toBeFocused();
+  await expect(compact).toHaveAttribute('aria-expanded', 'false');
+  await expect(advanced).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(compact).toBeFocused();
+  await compact.press('Enter');
+  await expect(page.getByLabel('Search loaded commits by message, SHA, or author')).toBeFocused();
+});
+
+test('closing history search does not take focus back from another control', async ({ page }) => {
+  await page.getByRole('button', { name: 'Search all repository history', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Search repository history', exact: true });
+  await expect(dialog.getByLabel('Message contains')).toBeFocused();
+  const other = page.locator('.toolbar-panel-button[aria-label="Hide Commit Panel"]');
+  await other.evaluate(button => {
+    document.querySelector<HTMLDialogElement>('#repository-history-dialog')!.close();
+    (button as HTMLButtonElement).focus();
+  });
+  await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve))));
+  await expect(other).toBeFocused();
+});
+
+test('cancelling the delayed history loader restores the compact opener', async ({ page }) => {
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/chunk-*.js', async route => {
+    const response = await route.fetch();
+    const body = await response.text();
+    if (body.includes('Search repository history') && body.includes('Compare two revisions')) await held;
+    await route.fulfill({ response, body });
+  });
+  try {
+    await page.setViewportSize({ width: 700, height: 720 });
+    const compact = page.locator('.graph-search-toggle');
+    await compact.click();
+    await page.locator('.graph-search-advanced').click();
+    const loading = page.getByRole('dialog', { name: 'Loading history search', exact: true });
+    await expect(loading.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+    await expect(compact).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Escape');
+    await expect(loading).toHaveCount(0);
+    await expect(compact).toBeFocused();
+    release();
+    await expect(page.getByRole('dialog', { name: 'Search repository history', exact: true })).toHaveCount(0);
+  } finally { release(); }
+});
+
 test('cancelled history chunk loading does not open late or issue a search', async ({ page }) => {
   let finished!: () => void;
   const chunkFinished = new Promise<void>(resolve => { finished = resolve; });

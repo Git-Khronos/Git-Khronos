@@ -96,6 +96,7 @@ import { WorktreeGraphRowComponent } from './worktree-graph-row.component';
 import { ReferenceActionDialogComponent, type ReferenceActionRequest, type ReferenceRenamed } from './reference-action-dialog.component';
 import { StashOptionsDialogComponent, type StashDialogRequest } from './stash-options-dialog.component';
 import { HistorySearchComponent, type HistorySearchOpenOptions } from './history-search.component';
+import { restoreHistorySearchFocus } from './history-search-focus';
 import type { HistorySearchService } from './history-search.service';
 import { FetchOptionsDialogComponent, type FetchDialogRequest } from './fetch-options-dialog.component';
 import { PreferencesDialogComponent } from './preferences-dialog.component';
@@ -8734,10 +8735,16 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected closeHistorySearchLoader(): void {
     const request = this.historySearchRequested();
+    const surface = this.historyLoaderClose()?.nativeElement.closest<HTMLElement>('[role="dialog"]');
     this.historySearchRequested.set(null);
     if (!request || request.scope !== this.git.activeRepositoryReadScope()) return;
-    if (request.returnFocus?.isConnected) request.returnFocus.focus();
-    else this.historySearchToggle()?.nativeElement.focus();
+    setTimeout(() => {
+      if (request.scope === this.git.activeRepositoryReadScope()
+        && !this.historySearchRequested() && !this.repositoryHistorySearch()?.opened()) {
+        restoreHistorySearchFocus(surface, request.returnFocus,
+          this.historySearchToggle()?.nativeElement, this.commitSearchToggle()?.nativeElement);
+      }
+    });
   }
 
   protected handleCommitSearchFocusOut(event: FocusEvent): void {
