@@ -4336,3 +4336,10 @@ Receipt:
 `target/local-review/updater/jammy-builder/shallow-depth-recheck.TSdoTcex/reports.json`.
 This package predates the Fetch dialog's retry-status update. The full
 release matrix and production signing are separate.
+
+The same installer passed all 26 Debian 12 incoming-link scenarios using
+the diagnostic harness from `9966d03`. All four recorded secondary
+processes exited zero and retained their original private-bus owner.
+Receipt: `target/local-review/updater/jammy-builder/activation-evidence-bookworm.JmQD5EI4/results/`.
+This confirms that the harness records the ownership and exits without
+changing the gate. It does not explain the earlier intermittent crash.
