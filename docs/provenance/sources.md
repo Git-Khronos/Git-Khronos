@@ -2252,6 +2252,11 @@ real-Git behavioral tests. No source code copied.
 
 Used for CI scheduling and the required aggregate check. No source code copied.
 
+The installed package workflow also uses GitHub's documented
+[status functions](https://docs.github.com/en/actions/reference/workflows-and-actions/expressions#status-check-functions)
+and [step outcomes](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#steps-context)
+to collect independent diagnostics without relaxing publisher gating.
+
 
 ## Staged and unstaged line recaps
 

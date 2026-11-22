@@ -73,6 +73,7 @@ jobs:
           fi
           cargo install tauri-driver --locked --version 2.0.6
       - name: Check Jammy ABI and install the unchanged Debian package
+        id: package_install
         run: |
           set -euo pipefail
           packages=(ubuntu-package/Git-Khronos_*_amd64.deb)
@@ -84,40 +85,22 @@ jobs:
           sudo apt-get check
           printf 'PACKAGE=%s\n' "$package" >> "$GITHUB_ENV"
       - name: Exercise the installed executable with isolated repositories and profile
-        run: |
-          python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
+        run: bash tools/run-native-suites.sh "$PACKAGE" smoke gitlab
       - name: Verify installed workspace and Git workflow reviews
-        if: matrix.ubuntu == '24.04'
-        run: |
-          python3 tools/native_acceptance.py --suite workspace-batch --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite workspace-pull-upstreams --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite pull-submodule-scope --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite workspace-saved-removal --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite workspace-locate --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite workspace-bulk-locate --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite workspace-locate-nearby --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite workspace-reopen --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite discard-subset --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite submodule-initialize --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite submodule-update --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite stash-selection --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite patch-export --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite tracked-file-search --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite feature-rebase --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite commit-rewrite --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite file-review-scope --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite repository-creation-scope --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite first-status --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite working-tree-recaps --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite repository-open-scope --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite detached-checkout --headless --installed --package "$PACKAGE"
-          python3 tools/native_acceptance.py --suite checkout-snapshot --headless --installed --package "$PACKAGE"
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '24.04' }}
+        run: >-
+          bash tools/run-native-suites.sh "$PACKAGE"
+          workspace-batch workspace-pull-upstreams pull-submodule-scope
+          workspace-saved-removal workspace-locate workspace-bulk-locate workspace-locate-nearby workspace-reopen
+          discard-subset submodule-initialize submodule-update stash-selection patch-export
+          tracked-file-search feature-rebase commit-rewrite file-review-scope repository-creation-scope
+          first-status working-tree-recaps repository-open-scope detached-checkout checkout-snapshot
       - name: Verify installed packed-ref refresh under contention
-        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && inputs.expect-update-trust && matrix.ubuntu == '22.04' }}
         run: python3 tools/native_acceptance.py --suite watcher-refresh --headless --installed --package "$PACKAGE"
       - name: Provision JSON-capable Git LFS for full Jammy qualification
-        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        id: qualification_lfs
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && inputs.expect-update-trust && matrix.ubuntu == '22.04' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -141,15 +124,11 @@ jobs:
           [[ "$installed_version" == "git-lfs/$version "* ]]
           printf '%s\n' "$bin" >> "$GITHUB_PATH"
       - name: Exercise Git LFS snapshots on the exact installed Jammy candidate
-        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        if: ${{ !cancelled() && steps.qualification_lfs.outcome == 'success' }}
         shell: bash
-        run: |
-          set -euo pipefail
-          for suite in lfs-counts lfs-snapshot-timeout; do
-            python3 tools/native_acceptance.py --suite "$suite" --headless --installed --package "$PACKAGE"
-          done
+        run: bash tools/run-native-suites.sh "$PACKAGE" lfs-counts lfs-snapshot-timeout
       - name: Qualify publisher trust on the exact installed Jammy candidate
-        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        if: ${{ !cancelled() && steps.qualification_lfs.outcome == 'success' }}
         env:
           GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST: "1"
         run: |
@@ -159,7 +138,8 @@ jobs:
           test "${#reports[@]}" -eq 1
           cp -- "${reports[0]}" test-results/native/release-qualification/report.json
       - uses: actions/upload-artifact@v4
-        if: inputs.expect-update-trust && matrix.ubuntu == '22.04'
+        # Keep publisher evidence gated on the entire job's success.
+        if: ${{ success() && inputs.expect-update-trust && matrix.ubuntu == '22.04' }}
         with:
           name: debian-candidate-evidence-${{ github.run_attempt }}
           path: test-results/native/release-qualification/report.json
@@ -181,7 +161,7 @@ jobs:
     container:
       image: debian:${{ matrix.debian }}-slim
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         debian: ["12", "13"]
     timeout-minutes: 45
@@ -244,6 +224,7 @@ jobs:
           done
           cargo install tauri-driver --locked --version 2.0.6
       - name: Check Jammy ABI and install the unchanged Debian package
+        id: package_install
         shell: bash
         run: |
           set -euo pipefail
@@ -268,7 +249,10 @@ jobs:
           else
             python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
           fi
-          python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
+      - name: Verify installed GitLab workflows independently of smoke
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' }}
+        shell: bash
+        run: python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

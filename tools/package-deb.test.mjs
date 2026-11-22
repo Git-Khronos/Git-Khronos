@@ -74,6 +74,19 @@ test('checks the installed launcher and executable bytes even when the package v
   assert.throws(check, /is not installed/);
 });
 
+test('installed review diagnostics continue after a sibling failure without publishing qualification evidence', async () => {
+  const workflow = (await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
+  const [ubuntu, debian] = workflow.split('\n  debian-runtime:\n');
+  assert.ok(debian);
+  assert.match(ubuntu, /id: package_install/);
+  assert.match(ubuntu, /run: bash tools\/run-native-suites\.sh "\$PACKAGE" smoke gitlab/);
+  assert.match(ubuntu, /Verify installed workspace and Git workflow reviews\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '24\.04' \}\}/);
+  assert.match(ubuntu, /if: \$\{\{ success\(\) && inputs\.expect-update-trust && matrix\.ubuntu == '22\.04' \}\}[\s\S]*?name: debian-candidate-evidence-/);
+  assert.match(debian, /fail-fast: false/);
+  assert.match(debian, /Verify installed GitLab workflows independently of smoke\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' \}\}/);
+  assert.doesNotMatch(workflow, /\bcontinue-on-error:/);
+});
+
 test('Linux runtime CI provisions discoverable D-Bus and version-matched WebDriver packages', async (t) => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const step = workflow.match(/      - name: Install runtime acceptance prerequisites\n([\s\S]*?)(?=      - name:)/)?.[1];
@@ -186,7 +199,7 @@ esac
   assert.match(workflow, /sha256sum --check SHA256SUMS/);
   const debianWorkflow = workflow.split('  debian-runtime:\n')[1];
   assert.ok(debianWorkflow, 'Missing Debian runtime job');
-  assert.match(debianWorkflow, /strategy:\n      fail-fast: true\n      matrix:\n        debian:/);
+  assert.match(debianWorkflow, /strategy:\n      fail-fast: false\n      matrix:\n        debian:/);
   const bootstrap = debianWorkflow.match(/      - name: Bootstrap tools for Debian container actions\n([\s\S]*?)(?=      - (?:name:|uses:))/)?.[1];
   assert.ok(bootstrap, 'Missing Debian container action prerequisites');
   assert.match(bootstrap, /apt-get install --yes ca-certificates curl gcc git libc6-dev tar xz-utils/);

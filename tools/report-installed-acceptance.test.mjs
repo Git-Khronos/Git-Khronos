@@ -171,8 +171,10 @@ test('local release checks include every installed Ubuntu 24.04 workflow review 
   const workflow = readFileSync(new URL('../.github/workflows/linux-package-acceptance.yml', import.meta.url), 'utf8');
   const step = workflow.match(/- name: Verify installed workspace and Git workflow reviews\r?\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(step, 'Missing CI workflow review step');
-  assert.match(step, /if: matrix\.ubuntu == '24\.04'/);
-  const ciSuites = [...step.matchAll(/--suite ([a-z-]+) --headless --installed --package "\$PACKAGE"/g)].map(match => match[1]);
+  assert.match(step, /matrix\.ubuntu == '24\.04'/);
+  const plan = step.match(/run: >-\r?\n\s+bash tools\/run-native-suites\.sh "\$PACKAGE"\s+([\s\S]+)$/)?.[1];
+  assert.ok(plan, 'Missing the installed suite batch plan');
+  const ciSuites = plan.trim().split(/\s+/);
   const localSuites = summarizeReleaseMatrix([]).checks.filter(check =>
     check.distribution.id === 'ubuntu' && check.distribution.versionId === '24.04' &&
     !['smoke', 'gitlab'].includes(check.suite)).map(check => check.suite);

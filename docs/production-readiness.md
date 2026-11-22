@@ -3270,6 +3270,16 @@ fixture-key package and successful APT simulation are in
 `2098043f28c3b9a066adaf846e48d060c44922a079c70fd3ac28dbc6264d1745`).
 This handoff supersedes the earlier local package, not the public release.
 
+Installed native suites run independently after the package installation
+gate. An ordinary suite failure does not prevent later independent suites
+from retaining their reports, but it still fails the step and job. The
+suite runner stops after an interrupted child rather than starting more
+work. Diagnostic artifacts remain available; publisher qualification
+evidence is uploaded only on a successful job path. The Ubuntu and Debian
+matrices both keep testing the other distributions when a sibling fails.
+For local runs from a read-only checkout, set
+`GIT_KHRONOS_NATIVE_OUTPUT` to a writable evidence directory.
+
 The subsequent `c4f6610` package passed the 20-case installed smoke suite
 on Ubuntu 24.04. Its Repository Files scenario verified that Linux keeps
 the nested entry browsable without a Delete action and that an eligible

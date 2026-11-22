@@ -26,6 +26,73 @@ from native_acceptance import (
 )
 
 
+class InstalledSuiteBatchTests(unittest.TestCase):
+    def run_batch(self, suites, *, have_package=True, separate_output=False):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / 'owned fixture.deb'
+            if have_package:
+                package.touch()
+            log = root / 'calls'
+            python = root / 'python3'
+            python.write_text(
+                '#!/bin/sh\n'
+                'test "${1##*/}" = native_acceptance.py && test "$2" = --suite && '
+                'test "$4" = --headless && test "$5" = --installed && test "$6" = --package && '
+                'test "$7" = "$OWNED_PACKAGE" || exit 99\n'
+                'if [ -n "$GIT_KHRONOS_NATIVE_OUTPUT" ]; then\n'
+                '  test "$#" = 9 && test "$8" = --output && test "$9" = "$GIT_KHRONOS_NATIVE_OUTPUT" || exit 99\n'
+                'else\n'
+                '  test "$#" = 7 || exit 99\n'
+                'fi\n'
+                'printf "%s\\n" "$3" >> "$OWNED_CALLS"\n'
+                'case "$3" in broken) exit 7;; interrupted) exit 130;; esac\n'
+                'exit 0\n'
+            )
+            python.chmod(0o700)
+            runner = Path(__file__).with_name('run-native-suites.sh')
+            result = subprocess.run(
+                ['bash', str(runner), str(package), *suites],
+                env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
+                     'OWNED_PACKAGE': str(package), 'OWNED_CALLS': str(log),
+                     'GIT_KHRONOS_NATIVE_OUTPUT': str(root / 'separate results') if separate_output else ''},
+                capture_output=True, text=True, timeout=10,
+            )
+            return result, log.read_text().splitlines() if log.exists() else []
+
+    def test_ordinary_failure_keeps_later_suite_evidence_but_fails_the_batch(self):
+        result, calls = self.run_batch(['smoke', 'broken', 'gitlab'])
+        self.assertEqual(result.returncode, 1, result)
+        self.assertEqual(calls, ['smoke', 'broken', 'gitlab'])
+        self.assertIn('Installed native suite passed: gitlab', result.stdout)
+        self.assertIn('Failed installed native suites (suite:exit): broken:7', result.stderr)
+
+    def test_interrupted_harness_does_not_start_the_next_suite(self):
+        result, calls = self.run_batch(['interrupted', 'gitlab'])
+        self.assertEqual(result.returncode, 130, result)
+        self.assertEqual(calls, ['interrupted'])
+
+    def test_all_suites_can_pass(self):
+        result, calls = self.run_batch(['smoke', 'gitlab'])
+        self.assertEqual(result.returncode, 0, result)
+        self.assertEqual(calls, ['smoke', 'gitlab'])
+
+    def test_read_only_source_can_use_a_separate_output_directory(self):
+        result, calls = self.run_batch(['smoke', 'gitlab'], separate_output=True)
+        self.assertEqual(result.returncode, 0, result)
+        self.assertEqual(calls, ['smoke', 'gitlab'])
+
+    def test_bad_batch_never_runs_a_partial_plan(self):
+        for suites in ([], ['smoke', 'smoke'], ['smoke', '--installed']):
+            with self.subTest(suites=suites):
+                result, calls = self.run_batch(suites)
+                self.assertEqual(result.returncode, 2, result)
+                self.assertEqual(calls, [])
+        result, calls = self.run_batch(['smoke'], have_package=False)
+        self.assertEqual(result.returncode, 2, result)
+        self.assertEqual(calls, [])
+
+
 class CommitDraftReadinessTests(unittest.TestCase):
     def test_draft_is_seeded_once_after_the_active_checkout_form_is_ready(self):
         driver = MagicMock()
