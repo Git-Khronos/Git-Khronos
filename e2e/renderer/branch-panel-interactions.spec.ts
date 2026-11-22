@@ -1232,3 +1232,103 @@ test('fetches and updates an existing local branch from the selected remote', as
     return [repository.status.branch, repository.headOid === repository.branches.find(branch => branch.name === 'origin/main')?.oid];
   })).toEqual(['main', true]);
 });
+
+test('an exact branch is reachable beyond the row cap and partial Enter does not guess a checkout', async ({ page }) => {
+  await page.evaluate(() => {
+    const { git } = window.ng.getComponent(document.querySelector('gc-root'));
+    const source = git.repository();
+    const base = source.branches.find(branch => branch.current)!;
+    const decoys = Array.from({ length: 90 }, (_, i): Branch => ({
+      ...base, current: false, name: `a${i}/release-candidate`, fullName: `refs/heads/a${i}/release-candidate`,
+      upstream: null, upstreamTarget: null, tracking: null,
+    }));
+    git.repositories.update(items => items.map(repo => repo.id === source.id
+      ? { ...repo, branches: [...repo.branches, ...decoys, { ...decoys[0], name: 'release-candidate', fullName: 'refs/heads/release-candidate' }] }
+      : repo));
+  });
+  await installBackend(page);
+  const opener = page.getByRole('button', { name: /Switch branch, current/ });
+  await opener.click();
+  const picker = page.getByRole('dialog', { name: 'Switch branch', exact: true });
+  const search = picker.getByRole('searchbox');
+  await search.fill('release-cand');
+  await expect(picker.locator('#branch-picker-result-count')).toHaveText('80 of 91 branch choices shown');
+  await expect(picker.getByText('Several branches match.', { exact: false })).toBeVisible();
+  await search.press('Enter');
+  await expect(search).toBeFocused();
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await search.fill('release-candidate');
+  await expect(picker.locator('#branch-picker-result-count')).toHaveText('1 of 1 branch choices shown');
+  await expect(picker.getByRole('button', { name: /^release-candidate Local branch/ })).toBeVisible();
+  await search.press('Enter');
+  await expect(opener).toHaveAccessibleName(/^Switch branch, current release-candidate,/);
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([{ command: 'checkout_branch', name: 'release-candidate' }]);
+});
+
+for (const input of ['upstream/docs', 'refs/remotes/upstream/docs']) {
+  test(`picker displays and dispatches the explicitly selected remote for ${input}`, async ({ page }) => {
+    await installBackend(page);
+    await page.getByRole('button', { name: /Switch branch, current/ }).click();
+    const picker = page.getByRole('dialog', { name: 'Switch branch', exact: true });
+    const search = picker.getByRole('searchbox');
+    await search.fill(input);
+    await expect(picker.getByRole('button', { name: /Remote branch docs, fetch and check out local branch from upstream\/docs/ })).toBeVisible();
+    await expect(picker.getByText('Track origin/docs', { exact: false })).toHaveCount(0);
+    await search.press('Enter');
+    await expect(picker).toHaveCount(0);
+    expect(await page.evaluate(() => window.__branchCalls)).toEqual([{ command: 'sync_checkout_remote_branch', name: 'upstream/docs' }]);
+  });
+}
+
+test('an unavailable qualified branch neither switches nor prefills a new branch name', async ({ page }) => {
+  await installBackend(page);
+  await page.getByRole('button', { name: /Switch branch, current/ }).click();
+  const picker = page.getByRole('dialog', { name: 'Switch branch', exact: true });
+  const search = picker.getByRole('searchbox');
+  await search.fill('refs/heads/not-available');
+  await expect(picker.getByText('No branches found')).toBeVisible();
+  await search.press('Enter');
+  await expect(search).toBeFocused();
+  await expect(page.getByRole('form', { name: 'Create branch' })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+});
+
+test('the compact branch switcher accepts qualified refs and shows the real target', async ({ page }) => {
+  await page.setViewportSize({ width: 550, height: 720 });
+  await installBackend(page);
+  await page.getByRole('button', { name: 'More repository actions' }).click();
+  await page.getByRole('menuitem', { name: /Switch branch/ }).click();
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const search = palette.getByRole('combobox', { name: 'Search branches' });
+  await search.fill('refs/heads/main');
+  await expect(palette.getByRole('option')).toHaveCount(1);
+  await expect(palette.getByRole('option', { name: /^main/ })).toBeDisabled();
+  await search.press('Enter');
+  await expect(palette).toBeVisible();
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await search.fill('refs/remotes/upstream/docs');
+  const result = palette.getByRole('option', { name: /docs.*Track upstream\/docs/ });
+  await expect(result).toBeVisible();
+  await search.press('Enter');
+  await expect(palette).toHaveCount(0);
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([{ command: 'sync_checkout_remote_branch', name: 'upstream/docs' }]);
+});
+
+test('a branch row cannot switch the new repository before the old picker is removed', async ({ page }) => {
+  await installBackend(page);
+  const opener = page.getByRole('button', { name: /Switch branch, current/ });
+  await opener.click();
+  const picker = page.getByRole('dialog', { name: 'Switch branch', exact: true });
+  await picker.getByRole('searchbox').fill('refs/heads/release');
+  const row = picker.getByRole('button', { name: /^release Local branch/ });
+  await row.evaluate(button => {
+    const { git } = window.ng.getComponent(document.querySelector('gc-root'));
+    const next = { ...git.repository(), id: 'other-branch-picker-visit', path: '/owned/other-picker-visit' };
+    git.repositories.update(repos => [...repos, next]);
+    git.activeRepositoryId.set(next.id);
+    (button as HTMLButtonElement).click();
+  });
+  await expect(picker).toHaveCount(0);
+  await expect(opener).toHaveAttribute('aria-expanded', 'false');
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+});

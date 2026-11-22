@@ -173,6 +173,7 @@ import {
   type CompactReferenceSummary,
   type ReferenceGroup,
 } from './reference-summary';
+import { indexBranchPicker, isQualifiedBranchSearch, searchBranchPicker, type BranchPickerMatches } from './branch-picker';
 import { orderBranchesCurrentFirst } from './branch-order';
 import { describeWorkingTreeStatus } from './working-tree-status';
 import { buildRemoteNameOrder, compareRemoteNames } from './remote-order';
@@ -344,12 +345,6 @@ type VirtualRemoteBranchRow =
 
 interface RemoteBranchLocationGroup {
   key: string;
-  label: string;
-  primary: Branch;
-  locations: Branch[];
-}
-
-interface ToolbarRemoteBranchGroup {
   label: string;
   primary: Branch;
   locations: Branch[];
@@ -694,7 +689,6 @@ const RELATED_COMMIT_VISIT_LIMIT = 8_192;
 const COMMIT_FILE_ROW_HEIGHT = 36;
 const COMMIT_FILE_VIEWPORT_HEIGHT = 190;
 const COMMIT_FILE_OVERSCAN_ROWS = 4;
-const BRANCH_PICKER_RESULT_LIMIT = 80;
 const EMPTY_COMMITS: CommitSummary[] = [];
 
 
@@ -1131,7 +1125,13 @@ export class AppComponent implements OnInit, OnDestroy {
   }));
   protected readonly toolbarRemoteMenuOpen = signal(false);
   protected readonly selectedRemoteName = signal('');
-  protected readonly toolbarCheckoutMenuOpen = signal(false);
+  private readonly toolbarCheckoutRequest = signal<{ readonly scope: string } | null>(null);
+  protected readonly toolbarCheckoutMenuOpen = computed(() =>
+    this.toolbarCheckoutRequest()?.scope === this.git.activeRepositoryReadScope());
+  private readonly retireToolbarCheckoutPicker = effect(() => {
+    const request = this.toolbarCheckoutRequest();
+    if (request && request.scope !== this.git.activeRepositoryReadScope()) this.closeToolbarCheckoutMenu();
+  });
   protected readonly toolbarBranchQuery = signal('');
   protected readonly repositoryTabMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
@@ -2887,63 +2887,21 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly toolbarBranchMatches = computed(() =>
     this.branchPickerMatches(this.toolbarBranchQuery()));
 
-  private branchPickerMatches(queryValue: string): {
-    local: Branch[];
-    remote: ToolbarRemoteBranchGroup[];
-    total: number;
-    shown: number;
-  } {
-    const query = queryValue.trim().toLocaleLowerCase();
+  private readonly branchPickerIndex = computed(() => {
     const branches = this.git.repository()?.branches ?? [];
-    const locals = branches.filter((branch) => !branch.remote);
-    const localNames = new Set(locals.map((branch) => branch.name));
-    const localMatches = orderBranchesCurrentFirst(locals.filter((branch) => !query
-      || branch.name.toLocaleLowerCase().includes(query)
-      || this.remoteLocationsForLocalBranch(branch).some((location) =>
-        location.name.toLocaleLowerCase().includes(query))));
-    const remoteGroups = new Map<string, Branch[]>();
-    for (const branch of branches) {
-      if (!branch.remote) continue;
-      const label = this.remoteBranchLabel(branch.name);
-      if (localNames.has(label)) continue;
-      const locations = remoteGroups.get(label) ?? [];
-      locations.push(branch);
-      remoteGroups.set(label, locations);
-    }
-    const remoteOrder = this.remoteNameOrder(
-      locals.find((branch) => branch.current)?.upstream ?? null,
-    );
-    const groupedRemoteMatches = [...remoteGroups.entries()]
-      .map(([label, locations]): ToolbarRemoteBranchGroup => {
-        locations.sort((left, right) => this.compareRemoteBranches(left, right, remoteOrder));
-        return { label, primary: locations[0], locations };
-      })
-      .filter((group) => !query
-        || group.label.toLocaleLowerCase().includes(query)
-        || group.locations.some((location) => location.name.toLocaleLowerCase().includes(query)))
-      .sort((left, right) => left.label.localeCompare(
-        right.label,
-        undefined,
-        { numeric: true, sensitivity: 'base' },
-      ));
-    const local = localMatches.slice(0, BRANCH_PICKER_RESULT_LIMIT);
-    const remote = groupedRemoteMatches.slice(0, BRANCH_PICKER_RESULT_LIMIT);
-    return {
-      local,
-      remote,
-      total: localMatches.length + groupedRemoteMatches.length,
-      shown: local.length + remote.length,
-    };
+    const remoteOrder = this.remoteNameOrder(branches.find(branch => branch.current && !branch.remote)?.upstream ?? null);
+    return indexBranchPicker(branches, name => this.remoteBranchLabel(name),
+      (left, right) => this.compareRemoteBranches(left, right, remoteOrder));
+  });
+
+  private branchPickerMatches(query: string): BranchPickerMatches {
+    return searchBranchPicker(this.branchPickerIndex(), query);
   }
 
   protected readonly toolbarBranchCreationName = computed(() => {
     const name = this.toolbarBranchQuery().trim();
-    if (!name) return '';
-    const normalized = name.toLocaleLowerCase();
-    const exists = (this.git.repository()?.branches ?? []).some((branch) =>
-      branch.name.toLocaleLowerCase() === normalized
-      || (branch.remote && this.remoteBranchLabel(branch.name).toLocaleLowerCase() === normalized));
-    return exists ? '' : name;
+    // A fully qualified ref asks for an existing ref, not a new branch name.
+    return !name || isQualifiedBranchSearch(name) || this.toolbarBranchMatches().exact ? '' : name;
   });
 
   protected branchPickerDescription(branch: Branch): string {
@@ -4859,7 +4817,7 @@ export class AppComponent implements OnInit, OnDestroy {
       event.preventDefault();
       this.repositoryTabsOpen.set(false);
       this.toolbarRemoteMenuOpen.set(false);
-      this.toolbarCheckoutMenuOpen.set(false);
+      this.closeToolbarCheckoutMenu();
       return;
     }
     if (event.key === 'Escape' && this.preferencesOpen()) {
@@ -5204,7 +5162,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.workspaceMenuOpen.set(false);
     this.repositoryTabsOpen.set(false);
     this.toolbarRemoteMenuOpen.set(false);
-    this.toolbarCheckoutMenuOpen.set(false);
+    this.closeToolbarCheckoutMenu();
     this.repositoryTabMenuReturnFocus = null;
     this.preferencesOpen.set(false);
     this.identityPopoverOpen.set(false);
@@ -6035,7 +5993,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected toggleToolbarRemoteMenu(event: MouseEvent): void {
     event.stopPropagation();
-    this.toolbarCheckoutMenuOpen.set(false);
+    this.closeToolbarCheckoutMenu();
     const open = !this.toolbarRemoteMenuOpen();
     this.toolbarRemoteMenuOpen.set(open);
     if (open) window.setTimeout(() => document.querySelector<HTMLButtonElement>(
@@ -6103,12 +6061,18 @@ export class AppComponent implements OnInit, OnDestroy {
     event.stopPropagation();
     if (this.git.busy()) return;
     this.toolbarRemoteMenuOpen.set(false);
-    const open = !this.toolbarCheckoutMenuOpen();
-    this.toolbarCheckoutMenuOpen.set(open);
-    if (open) {
-      this.toolbarBranchQuery.set('');
-      window.setTimeout(() => this.toolbarBranchSearch()?.nativeElement.focus(), 0);
-    }
+    if (this.toolbarCheckoutMenuOpen()) { this.closeToolbarCheckoutMenu(); return; }
+    const request = { scope: this.git.activeRepositoryReadScope() };
+    const focusAtOpen = document.activeElement;
+    this.toolbarBranchQuery.set('');
+    this.toolbarCheckoutRequest.set(request);
+    window.setTimeout(() => {
+      const opener = this.toolbarBranchToggle()?.nativeElement;
+      if (this.toolbarCheckoutRequest() === request && this.toolbarCheckoutMenuOpen()
+        && (document.activeElement === focusAtOpen || document.activeElement === opener || document.activeElement === document.body)) {
+        this.toolbarBranchSearch()?.nativeElement.focus();
+      }
+    }, 0);
   }
 
   protected handleToolbarBranchSearchKeydown(event: KeyboardEvent): void {
@@ -6123,12 +6087,8 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     const matches = this.toolbarBranchMatches();
-    const query = this.toolbarBranchQuery().trim().toLocaleLowerCase();
-    const remoteLocations = matches.remote.flatMap((group) => group.locations);
-    const branch = matches.local.find((candidate) => candidate.name.toLocaleLowerCase() === query)
-      ?? remoteLocations.find((candidate) => candidate.name.toLocaleLowerCase() === query)
-      ?? matches.local[0]
-      ?? matches.remote[0]?.primary;
+    if (event.repeat || matches.total > 1) return; // Never switch to a guessed match.
+    const branch = matches.local[0] ?? matches.remote[0]?.primary;
     if (branch) void this.checkoutFromBranchPicker(branch);
     else if (this.toolbarBranchCreationName()) this.createBranchFromPicker();
   }
@@ -6163,9 +6123,14 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private closeToolbarCheckoutMenu(restoreFocus = false): void {
-    this.toolbarCheckoutMenuOpen.set(false);
+    const request = this.toolbarCheckoutRequest();
+    this.toolbarCheckoutRequest.set(null);
     this.toolbarBranchQuery.set('');
-    if (restoreFocus) queueMicrotask(() => this.toolbarBranchToggle()?.nativeElement.focus());
+    if (restoreFocus && request) queueMicrotask(() => {
+      if (!this.toolbarCheckoutRequest() && request.scope === this.git.activeRepositoryReadScope()) {
+        this.toolbarBranchToggle()?.nativeElement.focus();
+      }
+    });
   }
 
   protected clearToolbarBranchSearch(event: Event): void {
@@ -6176,17 +6141,18 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected createBranchFromPicker(): void {
+    if (!this.toolbarCheckoutMenuOpen() || this.git.busy()) return;
     const suggestedName = this.toolbarBranchCreationName();
     this.closeToolbarCheckoutMenu();
     this.openBranchCreator(suggestedName || undefined, this.toolbarBranchToggle()?.nativeElement ?? null);
   }
 
   protected async checkoutFromBranchPicker(branch: Branch): Promise<void> {
-    if (this.git.busy()) return;
+    if (!this.toolbarCheckoutMenuOpen() || this.git.busy()) return;
     const picker = document.getElementById('branch-picker');
-    const repositoryId = this.git.repository()?.id;
+    const scope = this.git.activeRepositoryReadScope();
     const restoreFocus = () => queueMicrotask(() => {
-      if (this.git.repository()?.id === repositoryId && this.canRestoreFocusFrom(picker)) {
+      if (!this.toolbarCheckoutRequest() && scope === this.git.activeRepositoryReadScope() && this.canRestoreFocusFrom(picker)) {
         this.toolbarBranchToggle()?.nativeElement.focus({ preventScroll: true });
       }
     });
@@ -10920,7 +10886,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.repositoryTabsOpen.set(false);
     this.actionOverlays.close('repositoryTab');
     this.toolbarRemoteMenuOpen.set(false);
-    this.toolbarCheckoutMenuOpen.set(false);
+    this.closeToolbarCheckoutMenu();
     this.preferencesOpen.set(false);
     this.identityPopoverOpen.set(false);
     const open = !this.appMenuOpen();
@@ -10984,7 +10950,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.appMenuOpen.set(false);
     this.repositoryTabsOpen.set(false);
     this.toolbarRemoteMenuOpen.set(false);
-    this.toolbarCheckoutMenuOpen.set(false);
+    this.closeToolbarCheckoutMenu();
     const open = !this.workspaceMenuOpen();
     this.workspaceMenuOpen.set(open);
     if (open) {

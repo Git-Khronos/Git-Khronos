@@ -660,6 +660,7 @@ code, kbd { font-family: var(--font-mono); }
 .toolbar-nav-section.remote { color: var(--overlay-remote); }
 .toolbar-nav-section b { font-size: 12px; }
 .toolbar-nav-empty, .toolbar-nav-overflow { padding: 14px 9px; color: var(--overlay-muted); font-size: 12px; text-align: center; }
+.branch-picker-choice-help { margin: 4px 8px; color: var(--overlay-muted); font-size: var(--font-size-caption); line-height: 1.4; }
 .toolbar-nav-overflow { padding: 8px; border-top: 1px solid var(--overlay-overflow-border); }
 .branch-picker-footer { position: sticky; z-index: 3; bottom: -5px; margin: 4px -5px -5px; padding: 6px 5px; border-top: 1px solid var(--overlay-divider); background: var(--overlay-surface); box-shadow: 0 -5px 12px color-mix(in srgb, var(--overlay-surface) 72%, transparent); }
 .branch-picker-footer > button { width: 100%; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 3px; background: transparent; color: var(--overlay-text); text-align: left; }

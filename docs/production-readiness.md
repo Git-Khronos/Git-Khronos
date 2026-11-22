@@ -4193,3 +4193,27 @@ launch latency. Evidence: `target/local-review/toolbar-options.29EAtUGS/`.
 All 113 focused Chromium tests passed, including delayed or failed menu
 loading, checkout retirement, no enabled actions, default Pull selection,
 primary split-menu navigation and sparse checkout confirmation.
+
+The Ubuntu 24.04 installer from `6fea510` passed 37 focused installed
+scenarios in the Pull/submodule and remote-review suites, including
+the separately scoped submodule note, force-push lease refusal and LFS
+cleanup through the newly deferred menus. All remote operations used
+owned local fixtures.
+SHA-256: `b80e7f59edd013dedc856a9f7cc01d36d94e4498b32291f91477a9b5c783f9e9`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/toolbar-options-release.TkQxrTxa/reports.json`.
+
+### Exact branch picker search
+
+Exact names and fully qualified local or remote-tracking refs are resolved
+against the loaded branch catalog before row limits. A search for a
+specific remote peer shows the same destination that its action will use.
+Ambiguous toolbar searches do not initiate checkout on Enter, and a stale
+row cannot dispatch after a checkout visit changes. The compact branch
+switcher uses the same catalog and accepts the same ref spellings.
+
+Validation: nine matcher/ordering unit tests, 143 Chromium regressions
+before the final focus guard, 11 targeted Chromium tests on the final
+renderer, and 162 native-harness unit tests. The production build passed
+at 1,305,070 raw initial bytes (+2,571 versus `6fea510`); the 900 kB
+warning remains. Receipts: `target/local-review/branch-picker-exact.kJQhONlZ/`.

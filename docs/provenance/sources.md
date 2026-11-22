@@ -2324,6 +2324,12 @@ No source code copied.
 Used for local-branch resolution, pinning the reviewed source commit, and
 real-Git behavioral tests. No source code copied.
 
+The toolbar and compact branch pickers use Git's documented
+`refs/heads/` and `refs/remotes/` namespaces for exact lookup against
+the loaded repository catalog. Grouping, matching and keyboard behavior
+are application choices; the picker does not implement Git's general
+revision parser or copy its implementation.
+
 
 ## Parallel renderer validation in GitHub Actions
 

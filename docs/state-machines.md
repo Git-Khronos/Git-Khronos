@@ -914,6 +914,20 @@ arrives, it can focus the first enabled action only if focus still belongs
 to that menu or its opener. If no action is enabled, focus stays on the
 opener. Native review and confirmation ownership do not move into the menu.
 
+### Toolbar and compact branch search
+
+Both branch pickers search the same catalog of local branches and grouped
+remote-tracking branches. Exact names and qualified refs are resolved before
+the display cap is applied. For a specific remote-only peer, the row and its
+action identify the same remote. A short remote name with an existing local
+counterpart keeps the local checkout action; a qualified remote ref explicitly
+selects the fetch-and-checkout action. A missing qualified ref cannot become
+a new branch draft. In the toolbar search field, Enter can use a single
+match, but does not guess between multiple choices. A checkout visit owns
+the toolbar picker: results and focus from a retired visit cannot act on the
+next repository. The existing native checkout and occupied-worktree reviews
+remain authoritative.
+
 ### Workspace clone queue
 
 Bulk clone takes up to 20 sources and one chosen parent folder. Reviewing the

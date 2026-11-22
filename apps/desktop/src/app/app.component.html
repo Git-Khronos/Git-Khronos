@@ -394,10 +394,13 @@
               <div id="branch-picker" class="toolbar-nav-menu branch-nav-menu" role="dialog" aria-label="Switch branch" (click)="$event.stopPropagation()" (keydown)="handleToolbarBranchMenuKeydown($event)">
                 <label class="toolbar-nav-search">
                   <gc-icon name="search" [size]="12" />
-                  <input #toolbarBranchSearch type="search" aria-label="Filter branches" aria-describedby="branch-picker-result-count" placeholder="Search local and remote branches" [gcTextValue]="toolbarBranchQuery()" (gcTextValueChange)="toolbarBranchQuery.set($event)" (click)="$event.stopPropagation()" (keydown)="handleToolbarBranchSearchKeydown($event)" />
+                  <input #toolbarBranchSearch type="search" aria-label="Filter branches" [attr.aria-describedby]="toolbarBranchQuery().trim() && toolbarBranchMatches().total > 1 ? 'branch-picker-result-count branch-picker-choice-help' : 'branch-picker-result-count'" placeholder="Search local and remote branches" [gcTextValue]="toolbarBranchQuery()" (gcTextValueChange)="toolbarBranchQuery.set($event)" (click)="$event.stopPropagation()" (keydown)="handleToolbarBranchSearchKeydown($event)" />
                   @if (toolbarBranchQuery()) { <button type="button" title="Clear branch search" aria-label="Clear branch search" (click)="clearToolbarBranchSearch($event)"><gc-icon name="x" [size]="9" /></button> }
                 </label>
                 @if (toolbarBranchMatches(); as matches) {
+                  @if (toolbarBranchQuery().trim() && matches.total > 1) {
+                    <p id="branch-picker-choice-help" class="branch-picker-choice-help">Several branches match. Use the arrow keys or click to choose one.</p>
+                  }
                   @if (matches.local.length) {
                     <div class="toolbar-nav-section"><span>Local branches</span><b>{{ matches.local.length }}</b></div>
                     @for (branch of matches.local; track branch.fullName) {
@@ -423,7 +426,7 @@
                   }
                   @if (matches.remote.length) {
                     <div class="toolbar-nav-section remote"><span>Remote branches</span><b>{{ matches.remote.length }}</b></div>
-                    @for (group of matches.remote; track group.label) {
+                    @for (group of matches.remote; track group.primary.fullName) {
                       <button type="button" [disabled]="git.busy()" [attr.aria-label]="'Remote branch ' + group.label + ', fetch and check out local branch from ' + group.primary.name + ', ' + group.locations.length + (group.locations.length === 1 ? ' location' : ' locations')" (click)="checkoutFromBranchPicker(group.primary)">
                         <gc-icon name="branch" [size]="13" />
                         <span><strong>{{ group.label }}</strong><small>Track {{ group.primary.name }}{{ group.locations.length > 1 ? ' · ' + group.locations.length + ' remote locations' : '' }}</small></span>
