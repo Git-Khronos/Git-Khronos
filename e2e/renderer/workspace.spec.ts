@@ -5529,7 +5529,7 @@ test('compacts graph lanes and persists the graph layout', async ({ page }) => {
     nodes.map((node) => Number(node.getAttribute('data-lane-offset'))),
   );
   await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  await expect(page.getByRole('button', { name: /Fit all \d+ branch paths?/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Fit graph column to all branch paths' })).toBeVisible();
   await page.getByLabel('Compact Graph Column').check();
 
   await expect(page.locator('.commit-list')).toHaveClass(/compact-graph/);
@@ -5541,7 +5541,7 @@ test('compacts graph lanes and persists the graph layout', async ({ page }) => {
   );
   expect(Math.max(...compactOffsets)).toBeLessThan(Math.max(...expandedOffsets));
   expect(await titleClearanceViolations()).toEqual([]);
-  await page.getByRole('button', { name: /Fit all \d+ branch paths?/ }).click();
+  await page.getByRole('button', { name: 'Fit graph column to all branch paths' }).click();
   expect(await titleClearanceViolations()).toEqual([]);
 
   await page.reload();
