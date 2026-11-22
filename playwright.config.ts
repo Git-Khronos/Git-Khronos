@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices, type ReporterDescription } from '@playwright/test';
 
 const port = Number(process.env['PLAYWRIGHT_PORT'] ?? 4201);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PLAYWRIGHT_PORT');
@@ -6,6 +6,10 @@ const serverTimeout = Number(process.env['PLAYWRIGHT_SERVER_TIMEOUT_MS'] ?? 120_
 if (!Number.isInteger(serverTimeout) || serverTimeout < 1 || serverTimeout > 2_147_483_647) {
   throw new Error('Invalid PLAYWRIGHT_SERVER_TIMEOUT_MS: expected positive milliseconds');
 }
+const reporters: ReporterDescription[] = [['line']];
+if (process.env['CI']) reporters.push(['html', { open: 'never', outputFolder: process.env['GIT_KHRONOS_RENDERER_REPORT_DIR'] ?? 'playwright-report' }]);
+const rendererProgress = process.env['GIT_KHRONOS_RENDERER_PROGRESS_FILE'];
+if (rendererProgress) reporters.push(['./tools/renderer-progress-reporter.cjs', { path: rendererProgress }]);
 
 export default defineConfig({
   testDir: './e2e/renderer',
@@ -16,7 +20,7 @@ export default defineConfig({
   forbidOnly: !!process.env['CI'],
   retries: 0,
   workers: process.env['CI'] ? 1 : 2,
-  reporter: process.env['CI'] ? [['line'], ['html', { open: 'never', outputFolder: process.env['GIT_KHRONOS_RENDERER_REPORT_DIR'] ?? 'playwright-report' }]] : 'line',
+  reporter: reporters,
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     colorScheme: 'dark',

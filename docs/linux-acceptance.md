@@ -948,6 +948,14 @@ worker goes on to record `started.json`, `output.log`, and a terminal
 `result.json`. Use `node tools/run-validation.mjs status <run-directory>`
 to distinguish preparation, a running command, and a finished run.
 
+A direct `desktop:e2e` invocation also writes optional
+`renderer-progress.json` once Playwright knows the test plan. The status
+command reports how many distinct tests have returned a result, total
+attempts including retries, and the latest outcome for each counted test.
+These are live observations, not a percentage of release readiness or
+a prediction of the end time. `result.json` and the retained test report
+remain the authority. A custom `--reporter` override can omit this file.
+
 SIGINT or SIGTERM to that verified runner interrupts its owned command group,
 waits for cleanup, and records the interruption instead of abandoning children.
 Commands get a separate process group; unrelated groups are outside cleanup

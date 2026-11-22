@@ -2407,3 +2407,11 @@ No source code was copied.
 literal and slash-delimited prefix matches, full ref names, and peeled
 object fields. These defined the exact-match check; no source code was
 copied.
+
+## Local renderer progress
+
+- [Playwright Reporter API](https://playwright.dev/docs/api/class-reporter)
+- [Playwright reporter configuration](https://playwright.dev/docs/test-reporters)
+
+Used to bind an optional local progress snapshot to actual reporter events,
+not Nx console output. No documentation examples or upstream code were copied.

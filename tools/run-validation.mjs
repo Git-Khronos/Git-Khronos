@@ -36,6 +36,8 @@ if (snapshot && !commit) throw new Error('Snapshot ref does not resolve to a loc
 const directory = resolve(runDirectory);
 const commandCwd = commit ? join(directory, 'source') : process.cwd();
 if (commit && directory.includes(delimiter)) throw new Error('Snapshot run path contains Git’s path-list delimiter');
+const rendererRun = (args[0] === 'run' && /^desktop:e2e(?::[^:]+)?$/.test(args[1] ?? ''))
+  || (args[0] === 'e2e' && args[1] === 'desktop');
 const rendererSnapshot = Boolean(commit) && (
   args.some(argument => argument === 'desktop:e2e' || argument.startsWith('desktop:e2e:'))
   || (args[0] === 'e2e' && args[1] === 'desktop')
@@ -63,6 +65,7 @@ const environment = {
   } : process.env),
   GIT_KHRONOS_RENDERER_OUTPUT_DIR: join(directory, 'renderer-artifacts'),
   GIT_KHRONOS_RENDERER_REPORT_DIR: join(directory, 'renderer-report'),
+  GIT_KHRONOS_RENDERER_PROGRESS_FILE: rendererRun ? join(directory, 'renderer-progress.json') : undefined,
 };
 if (mode === 'start') {
   const runner = spawn(process.execPath, [fileURLToPath(import.meta.url), 'run', directory,

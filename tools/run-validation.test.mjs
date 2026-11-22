@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { processStart } from './validation-status.mjs';
+import RendererProgress from './renderer-progress-reporter.cjs';
 
 const launcher = fileURLToPath(new URL('./run-validation.mjs', import.meta.url));
 
@@ -62,6 +63,35 @@ test('validation status distinguishes waiting, stale ownership and unverified le
   assert.equal(readStatus(root).state, 'interrupted');
 });
 
+test('renderer progress updates retry outcomes without deciding the validation result', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-renderer-progress-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runner = { runnerPid: process.pid, runnerStart: processStart(process.pid) };
+  writeFileSync(join(root, 'started.json'), JSON.stringify(runner));
+  const reporter = new RendererProgress({ path: join(root, 'renderer-progress.json') });
+  const first = { id: 'owned-first' }, second = { id: 'owned-second' };
+  reporter.onBegin(undefined, { allTests: () => [first, second] });
+  const started = readStatus(root);
+  assert.equal(started.state, 'running');
+  assert.equal(started.rendererProgress.totalTests, 2);
+  assert.equal(started.rendererProgress.testsReported, 0);
+  reporter.onTestEnd(first, { status: 'failed' });
+  reporter.onTestEnd(first, { status: 'passed' });
+  reporter.onTestEnd(second, { status: 'skipped' });
+  reporter.onEnd({ status: 'passed' });
+  writeFileSync(join(root, 'result.json'), JSON.stringify({ ...runner, exitCode: 7, signal: null }));
+  const final = readStatus(root);
+  assert.equal(final.state, 'failed', 'Playwright progress must not override the owned command receipt');
+  assert.equal(final.rendererProgress.playwrightStatus, 'passed');
+  assert.equal(final.rendererProgress.testsReported, 2);
+  assert.equal(final.rendererProgress.attemptsReported, 3);
+  assert.deepEqual(final.rendererProgress.latestOutcomes, { passed: 1, failed: 0, timedOut: 0, skipped: 1, interrupted: 0 });
+  writeFileSync(join(root, 'renderer-progress.json'), ' '.repeat(8193));
+  const invalid = readStatus(root);
+  assert.equal(invalid.state, 'failed');
+  assert.equal(invalid.rendererProgress, undefined);
+});
+
 test('named validations in one checkout cannot erase another run or caller-owned artifact files', () => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-run-isolation-'));
   try {
@@ -71,6 +101,7 @@ test('named validations in one checkout cannot erase another run or caller-owned
     // Simulate the destructive startup behavior of a renderer runner, not its internals.
     writeFileSync(join(bin, 'pnpm'), `#!${process.execPath}
 const fs = require('node:fs');
+fs.writeFileSync(process.env.GIT_KHRONOS_RENDERER_PROGRESS_FILE, process.env.OWNED_VALIDATION_LABEL);
 for (const key of ['GIT_KHRONOS_RENDERER_OUTPUT_DIR', 'GIT_KHRONOS_RENDERER_REPORT_DIR']) {
   const directory = process.env[key];
   fs.rmSync(directory, {recursive:true, force:true});
@@ -82,7 +113,8 @@ for (const key of ['GIT_KHRONOS_RENDERER_OUTPUT_DIR', 'GIT_KHRONOS_RENDERER_REPO
       const directory = join(root, `run ${label}`);
       execFileSync(process.execPath, [launcher, 'run', directory, 'run', 'desktop:e2e'], {
         cwd, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, OWNED_VALIDATION_LABEL: label,
-          GIT_KHRONOS_RENDERER_OUTPUT_DIR: shared, GIT_KHRONOS_RENDERER_REPORT_DIR: shared },
+          GIT_KHRONOS_RENDERER_OUTPUT_DIR: shared, GIT_KHRONOS_RENDERER_REPORT_DIR: shared,
+          GIT_KHRONOS_RENDERER_PROGRESS_FILE: join(shared, 'retain') },
       });
       const started = JSON.parse(readFileSync(join(directory, 'started.json'), 'utf8'));
       const result = JSON.parse(readFileSync(join(directory, 'result.json'), 'utf8'));
@@ -90,6 +122,7 @@ for (const key of ['GIT_KHRONOS_RENDERER_OUTPUT_DIR', 'GIT_KHRONOS_RENDERER_REPO
       assert.equal(result.exitCode, 0);
     }
     for (const label of ['first', 'second']) {
+      assert.equal(readFileSync(join(root, `run ${label}`, 'renderer-progress.json'), 'utf8'), label);
       for (const type of ['renderer-artifacts', 'renderer-report']) {
         assert.equal(readFileSync(join(root, `run ${label}`, type, 'retained'), 'utf8'), label);
       }
