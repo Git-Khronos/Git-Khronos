@@ -3939,6 +3939,20 @@ Installer SHA-256:
 Receipt: `target/local-review/updater/jammy-builder/bisect-first-parent-recheck.LaUBkGe1/reports.json`.
 This is focused acceptance, not a new full qualification.
 
+### Frozen 0.1.6 candidate with deleted-path file history
+
+The local test-publisher installer from `620ed71cc812` has SHA-256
+`6ab0e15cebd10abd1d300f5113c470d2a59f7607df94ce5b857a55292ee0713f`.
+It passed all **37 release gates**, with **53 installed reports** covering
+Ubuntu 22.04, 24.04, 26.04 and Debian 12 and 13. The GitLab catalogue suite
+passed on all five. The test-key publisher preflight also passed.
+
+The exact, checksum-verified installer and receipts are staged at
+`target/local-review/qualified-0.1.6-620ed71/`. Platform and scenario detail
+is in `target/local-review/updater/jammy-builder/deleted-file-history-matrix.j6marbVA/verified-release.json`.
+This qualifies only those installer bytes, not later `dev` commits or any
+production-key build. No production signing or publication was performed.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard
