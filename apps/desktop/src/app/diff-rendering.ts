@@ -44,19 +44,33 @@ export function tokenizeDiffLine(segments: readonly DiffTextSegment[], path: str
   }
 
   const tokens: DiffSyntaxToken[] = [];
+  let scanned = 0;
+  const append = (text: string, kind: DiffSyntaxToken['kind'], changed: boolean): boolean => {
+    // Count pre-coalescing fragments so dense input still takes the bounded path.
+    if (++scanned > MAX_SYNTAX_TOKENS_PER_LINE) return false;
+    const previous = tokens.at(-1);
+    if (kind === 'plain' && !changed && previous?.kind === 'plain' && !previous.changed) {
+      // Ordinary words and spaces have the same style. Avoid a span for
+      // each when laying out wrapped context on one or both sides of the diff.
+      previous.text += text;
+    } else {
+      tokens.push({ text, kind, changed });
+    }
+    return true;
+  };
   for (const segment of segments) {
     let offset = 0;
     for (const match of segment.text.matchAll(SYNTAX_TOKEN_PATTERN)) {
       const index = match.index ?? 0;
-      if (index > offset) tokens.push({ text: segment.text.slice(offset, index), kind: 'plain', changed: segment.changed });
+      if (index > offset && !append(segment.text.slice(offset, index), 'plain', segment.changed)) {
+        return plainDiffTokens(segments);
+      }
       const text = match[0];
-      tokens.push({ text, kind: syntaxTokenKind(text, path), changed: segment.changed });
-      if (tokens.length > MAX_SYNTAX_TOKENS_PER_LINE) return plainDiffTokens(segments);
+      if (!append(text, syntaxTokenKind(text, path), segment.changed)) return plainDiffTokens(segments);
       offset = index + text.length;
     }
-    if (offset < segment.text.length) {
-      tokens.push({ text: segment.text.slice(offset), kind: 'plain', changed: segment.changed });
-      if (tokens.length > MAX_SYNTAX_TOKENS_PER_LINE) return plainDiffTokens(segments);
+    if (offset < segment.text.length && !append(segment.text.slice(offset), 'plain', segment.changed)) {
+      return plainDiffTokens(segments);
     }
   }
   return tokens;

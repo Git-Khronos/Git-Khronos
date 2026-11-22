@@ -463,6 +463,13 @@ When the loading fallback held focus, a rendered viewer takes it only
 if no other control took focus. Loading, closing and failed import
 are covered by `diff-workspace-loading.spec.ts`.
 
+The syntax scanner counts source fragments before combining adjacent
+unhighlighted plain text. Combining runs reduces the number of DOM spans in
+wrapped rows without merging across syntax or changed-word highlights,
+altering source coordinates, or raising the scanner budget.
+`diff-performance.spec.ts` checks the span count and exact source text on
+both sides of a wrapped split diff.
+
 ### Working-tree line recap freshness
 
 Porcelain status describes file states, not file contents. A successful

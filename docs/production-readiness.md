@@ -4421,3 +4421,15 @@ size and Escape closed the dialog, but the visible references launcher
 did not receive focus. This is a negative control, not a qualification
 report for the correction. Receipt:
 `target/local-review/updater/jammy-builder/worktree-focus-negative.vT7QlqTm/lane/results/`.
+
+### Wrapped diff rendering
+
+The wrapped split regression was reproduced on the older renderer: the
+same context line created 70 spans on each side, including separate spans
+for ordinary words and spaces. With unhighlighted plain runs combined,
+that line uses three spans, keeps its exact text, and still highlights
+the source's number. In a local Chromium profile of the 208-context-line
+fixture, the split view dropped from 29,140 to 1,260 token spans at both
+tested viewport/font combinations. This count is not a packaged WebKit
+performance claim. Local profile and fixture:
+`target/local-review/wrapped-diff-dom-profile.7HSRNYpb/`.

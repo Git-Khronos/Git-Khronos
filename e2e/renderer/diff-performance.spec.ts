@@ -1,5 +1,25 @@
 import { expect, test } from '@playwright/test';
 
+test('wrapped plain context keeps the text and number highlight without a span for every word', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('git-khronos.diff.word-wrap', 'true'));
+  await page.goto('/?compare-commits&diff-viewer=split');
+  await expect(page.locator('.split-diff-body')).toBeVisible();
+  const source = ' context line 120' + ' long readable source content'.repeat(8);
+  await page.evaluate(source => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    app.git.comparisonFileDiff.update((diff: any) => ({
+      ...diff, path: 'example.txt', patch: '@@ -1 +1 @@\n' + source + '\n',
+    }));
+  }, source);
+  const codes = page.locator('.split-side code');
+  await expect(codes).toHaveCount(2);
+  for (const code of await codes.all()) {
+    await expect.poll(() => code.textContent()).toBe(source);
+    await expect(code.locator('.syntax-number')).toHaveText('120');
+    await expect(code.locator('span')).toHaveCount(3);
+  }
+});
+
 test('bounds syntax work for long and dense diff and blame lines without losing text', async ({ page }) => {
   test.setTimeout(60_000);
   const dense = `${'a+'.repeat(512)}value`;

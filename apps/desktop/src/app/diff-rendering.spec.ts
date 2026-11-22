@@ -76,6 +76,33 @@ describe('diff rendering budget', () => {
       expect(tokens.at(-1)).toEqual({ text: '+', kind: 'punctuation', changed: false });
     });
 
+    it('coalesces unstyled text without crossing syntax or change-highlight boundaries', () => {
+      const tail = ' long readable source content'.repeat(8);
+      expect(tokenizeDiffLine([
+        { text: ' context line 120' + tail, changed: false },
+        { text: ' old text', changed: true },
+        { text: ' const answer', changed: false },
+      ], 'example.txt')).toEqual([
+        { text: ' context line ', kind: 'plain', changed: false },
+        { text: '120', kind: 'number', changed: false },
+        { text: tail, kind: 'plain', changed: false },
+        { text: ' ', kind: 'plain', changed: true },
+        { text: 'old', kind: 'plain', changed: true },
+        { text: ' ', kind: 'plain', changed: true },
+        { text: 'text', kind: 'plain', changed: true },
+        { text: ' ', kind: 'plain', changed: false },
+        { text: 'const', kind: 'keyword', changed: false },
+        { text: ' answer', kind: 'plain', changed: false },
+      ]);
+    });
+
+    it('still bounds scanned fragments when most of them would coalesce', () => {
+      const text = 'a '.repeat(MAX_SYNTAX_TOKENS_PER_LINE) + ' const';
+      expect(tokenizeDiffLine([{ text, changed: false }], 'dense.ts')).toEqual([
+        { text, kind: 'plain', changed: false },
+      ]);
+    });
+
     it('limits scanning across long line segments while preserving text and changes', () => {
       const prefix = 'const ';
       const withinLimit = prefix + 'a'.repeat(MAX_SYNTAX_LINE_CHARACTERS - prefix.length);
