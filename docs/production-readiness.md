@@ -4276,3 +4276,12 @@ warning and all budget settings remain unchanged.
 and stylesheet cleanup. The final renderer passed 38 loading, focus,
 compact-layout, navigation and diff-bounds cases. Receipts:
 `target/local-review/revision-inspector.qGE6HtTG/`.
+
+The test-publisher 0.1.6 Debian installer built from `d1560c6`, SHA-256
+`a216e0f7fb2ab46d7751b5b21eea1114c3912ed09f91f8aaf7ed8648922ea698`,
+passed 13 installed scenarios across commit rewrite, comparison patch,
+and comparison line budgets on Ubuntu 24.04 with the inherited Git
+environment. The exact-package verifier matched all three passing reports.
+Receipt:
+`target/local-review/updater/jammy-builder/revision-inspector-release.f4vdJyTy/reports.json`.
+This is focused evidence, not full matrix or production signing evidence.
