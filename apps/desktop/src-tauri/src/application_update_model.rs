@@ -141,15 +141,24 @@ impl UpdateModel {
         )
     }
 
+    pub fn can_check(&self, origin: Origin) -> bool {
+        self.configured
+            && !self.busy()
+            && self.preferences.attempt.is_none()
+            && self.phase != UpdatePhase::Installed
+            && self.origin_current(origin)
+            // A timer can neither discard a manual review nor replace bytes
+            // kept for a retry or an authorized install waiting for idle.
+            && (origin == Origin::Manual
+                || !self.verified
+                || !matches!(self.phase, UpdatePhase::Ready | UpdatePhase::Refused))
+    }
+
     pub fn begin_check(&mut self, origin: Origin) -> Result<ReadLease, &'static str> {
         if !self.configured {
             return Err("Publisher update trust is not configured.");
         }
-        if self.busy()
-            || self.preferences.attempt.is_some()
-            || self.phase == UpdatePhase::Installed
-            || !self.origin_current(origin)
-        {
+        if !self.can_check(origin) {
             return Err("Another update intent owns this action.");
         }
         self.generation += 1;

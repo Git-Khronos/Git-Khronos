@@ -173,9 +173,13 @@ fn authorization_refusal_defers_automatic_replay_but_keeps_explicit_manual_retry
             .prepare_install("owned-offer", Origin::Manual, true, "manual-retry".into())
             .is_ok()
     );
-    offered(&mut model, origin, "fresh-offer");
-    assert!(model.begin_download("fresh-offer", origin).is_err());
-    assert!(model.begin_download("fresh-offer", Origin::Manual).is_ok());
+    assert!(model.begin_check(origin).is_err());
+    // Restart releases the cached bytes, not the saved version deferral.
+    let mut restarted = UpdateModel::new(model.preferences, true);
+    let restarted_origin = restarted.automatic_origin();
+    offered(&mut restarted, restarted_origin, "fresh-offer");
+    assert!(restarted.begin_download("fresh-offer", restarted_origin).is_err());
+    assert!(restarted.begin_download("fresh-offer", Origin::Manual).is_ok());
 }
 
 #[test]

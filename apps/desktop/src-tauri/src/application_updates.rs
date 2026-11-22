@@ -249,10 +249,7 @@ fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
                 InstallReadiness::Blocked(reason) => Some(reason.to_owned()),
                 _ => None,
             },
-            can_check: model.configured
-                && !model.busy()
-                && model.preferences.attempt.is_none()
-                && model.phase != UpdatePhase::Installed,
+            can_check: model.can_check(Origin::Manual),
             can_download: model.configured
                 && matches!(model.phase, UpdatePhase::Available | UpdatePhase::Failed)
                 && model.offer.is_some(),
@@ -833,7 +830,7 @@ pub fn start(app: AppHandle) {
                         .as_ref()
                         .map(|offer| (true, offer.token.clone(), origin)));
                 }
-                if Instant::now() >= runtime.next_check {
+                if Instant::now() >= runtime.next_check && runtime.model.can_check(origin) {
                     return Ok(Some((false, String::new(), origin)));
                 }
                 Ok(None)

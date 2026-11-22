@@ -195,6 +195,47 @@ fn runtime_with_model(store: PathBuf, model: UpdateModel) -> Runtime {
 }
 
 #[test]
+fn application_update_background_check_cannot_replace_verified_or_refused_manual_offer() {
+    for refused in [false, true] {
+        let mut runtime = ready_runtime(PathBuf::new());
+        if refused {
+            let install = runtime
+                .model
+                .prepare_install("owned", Origin::Manual, true, "attempt".into())
+                .unwrap();
+            assert!(runtime.model.accept_persisted_install(install, true));
+            assert!(runtime.model.finish_install(
+                "attempt",
+                InstallOutcome::RefusedBeforeExecution,
+                true,
+            ));
+        }
+        runtime.model.set_automatic(true).unwrap();
+        let before = runtime.model.phase;
+        assert!(
+            runtime
+                .model
+                .begin_check(runtime.model.automatic_origin())
+                .is_err()
+        );
+        assert_eq!(runtime.model.phase, before);
+        assert!(runtime.model.verified);
+        assert_eq!(runtime.model.offer.as_ref().unwrap().token, "owned");
+        assert!(!runtime.model.can_automatically_install());
+        assert!(
+            runtime
+                .model
+                .prepare_install("owned", Origin::Manual, true, "manual-retry".into())
+                .is_ok()
+        );
+        // A deliberate manual check still replaces the reviewed offer.
+        assert!(runtime.model.begin_check(Origin::Manual).is_ok());
+        assert_eq!(runtime.model.phase, UpdatePhase::Checking);
+        assert!(!runtime.model.verified && runtime.model.offer.is_none());
+    }
+}
+
+#[test]
 fn application_update_blockers_require_verified_bytes_and_preserve_installer_feedback() {
     let mut runtime = ready_runtime(PathBuf::new());
     assert_eq!(
@@ -309,6 +350,13 @@ fn application_update_controller_keeps_signed_bytes_bound_to_an_explicit_opt_out
         "owned-verified",
         verified
     ));
+    runtime.model.set_automatic(true).unwrap();
+    assert!(
+        runtime
+            .model
+            .begin_check(runtime.model.automatic_origin())
+            .is_err()
+    );
     assert_eq!(runtime.model.phase, UpdatePhase::Ready);
     assert_eq!(runtime.downloaded, payload.len());
     let (owner, bytes) = runtime.bytes.as_ref().unwrap();
@@ -512,6 +560,7 @@ fn application_update_admission_automatic_retry_still_requires_current_consent()
         .is_err()
     );
     assert!(runtime.model.can_automatically_install());
+    assert!(!runtime.model.can_check(origin), "Waiting for idle must keep the verified offer");
     assert!(model::load_preferences(&runtime.store).unwrap().attempt.is_none());
     runtime.model.set_automatic(false).unwrap();
     assert!(

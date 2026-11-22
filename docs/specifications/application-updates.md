@@ -77,8 +77,12 @@ native transport/installer and the renderer. Application-level Updates entries
 are present in the main menu and welcome launcher. Manual checks and explicit
 download/verify/install do not require automatic consent. The native preference
 is opt-in, persisted atomically, and never duplicated in renderer local storage.
-The background scheduler checks every six hours after opt-in; installation
-requires a current automatic-origin lease and an idle native activity snapshot.
+The background scheduler checks every six hours after opt-in when it has no
+verified package awaiting a decision. A check cannot replace a verified package
+just because automatic mode was enabled or re-enabled, or while an authorized
+update is waiting for idle native work. An explicit manual check can replace
+the current offer. Automatic installation still requires a current
+automatic-origin lease and an idle native activity snapshot.
 Linux package installation does not forcibly exit this window. Windows checks
 and signature verification are wired, but self-installation is deliberately
 unavailable until a safe restart boundary is implemented. That platform work
