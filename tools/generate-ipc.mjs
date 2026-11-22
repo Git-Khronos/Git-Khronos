@@ -29,10 +29,13 @@ export function adaptBindings(source) {
           || (ts.isLiteralTypeNode(type) && type.literal.kind === ts.SyntaxKind.NullKeyword));
       return { name, type, nullable };
     });
-    const args = fields.map(field => `${field.name}${field.nullable ? '?' : ''}: ${field.type}`).join('; ');
-    const optional = fields.every(field => field.nullable) ? ' = {}' : '';
+    const args = fields.length
+      ? `{ ${fields.map(field => `${field.name}${field.nullable ? '?' : ''}: ${field.type}`).join('; ')} }`
+      : '{}';
+    const optional = fields.every(field => field.nullable);
+    const bind = optional ? '__bindOptionalCommand__' : '__bindCommand__';
     names.push(command);
-    return `export function ${command}(args: { ${args} }${optional}): ${method.type.getText(file)} { return TAURI_INVOKE(${JSON.stringify(command)}, args); }`;
+    return `export const ${command}: (args${optional ? '?' : ''}: ${args}) => ${method.type.getText(file)} = /* @__PURE__ */ ${bind}(${JSON.stringify(command)});`;
   });
   const statement = file.statements.find(statement => ts.isVariableStatement(statement)
     && statement.declarationList.declarations.includes(declaration));
@@ -43,7 +46,19 @@ export function adaptBindings(source) {
       + "import { safeInvoke as TAURI_INVOKE } from './safe-json';";
   });
   if (transport === payloadsAndEvents) throw new Error('Missing generated Tauri transport import');
-  const output = transport + '\n\n// Named-argument functions derived from the generated command AST.\n'
+  // Factories share implementation, keep each export independently tree-shakable
+  // and retain the previous distinction between required and default-empty calls.
+  const binders = `
+// Named-argument functions derived from the generated command AST.
+function __bindCommand__<Args extends Record<string, unknown>, R>(command: string): (args: Args) => Promise<R> {
+  return args => TAURI_INVOKE<R>(command, args);
+}
+function __bindOptionalCommand__<Args extends Record<string, unknown>, R>(command: string): (args?: Args) => Promise<R> {
+  return (args: Args | Record<string, never> = {}) => TAURI_INVOKE<R>(command, args);
+}
+
+`;
+  const output = transport + '\n' + binders
     + entries.join('\n')
     + '\nexport type CommandMap = {\n' + names.map(name => `  ${name}: typeof ${name};`).join('\n') + '\n};\n';
   // Exported documentation can leave spaces before line breaks. Normalize at

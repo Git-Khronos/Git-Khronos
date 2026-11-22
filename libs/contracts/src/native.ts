@@ -609,287 +609,294 @@ function __makeEvents__<T extends Record<string, any>>(
 
 
 // Named-argument functions derived from the generated command AST.
-export function answer_authentication(args: { requestId: string; answer?: string | null }): Promise<null> { return TAURI_INVOKE("answer_authentication", args); }
-export function pending_authentication(args: {  } = {}): Promise<GitAuthenticationPrompt[]> { return TAURI_INVOKE("pending_authentication", args); }
-export function open_working_file_editor(args: { repoId: string; path: string; encoding?: WorkingTextEncoding | null; operationId: string }): Promise<EditorSnapshot> { return TAURI_INVOKE("open_working_file_editor", args); }
-export function save_working_file_editor(args: { editorId: string; revision: string; text: string; stage: boolean; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("save_working_file_editor", args); }
-export function stage_saved_working_file_editor(args: { editorId: string; revision: string; operationId: string }): Promise<EditorWriteResult> { return TAURI_INVOKE("stage_saved_working_file_editor", args); }
-export function close_working_file_editor(args: { editorId: string }): Promise<boolean> { return TAURI_INVOKE("close_working_file_editor", args); }
-export function snapshot_editor_draft(args: { editorId: string; revision: string; sequence: number; text: string }): Promise<RecoveryDraftSummary> { return TAURI_INVOKE("snapshot_editor_draft", args); }
-export function inspect_editor_drafts(args: {  } = {}): Promise<RecoveryDraftInspection> { return TAURI_INVOKE("inspect_editor_drafts", args); }
-export function load_editor_draft_entry(args: { id: string; kind: RecoveryDraftEntryKind; reviewToken: string }): Promise<RecoveryDraftRecord> { return TAURI_INVOKE("load_editor_draft_entry", args); }
-export function review_editor_draft(args: { request: EditorDraftReviewRequest }): Promise<EditorDraftReview> { return TAURI_INVOKE("review_editor_draft", args); }
-export function discard_editor_draft(args: { editorId: string; revision: string }): Promise<EditorDraftDiscarded> { return TAURI_INVOKE("discard_editor_draft", args); }
-export function discard_editor_draft_entry(args: { id: string; kind: RecoveryDraftEntryKind; reviewToken: string }): Promise<null> { return TAURI_INVOKE("discard_editor_draft_entry", args); }
-export function inspect_gitlab_project(args: { request: GitLabInspectRequest }): Promise<GitLabProjectInspection> { return TAURI_INVOKE("inspect_gitlab_project", args); }
-export function prepare_gitlab_clone(args: { request: GitLabPrepareCloneRequest }): Promise<PreparedGitLabClone> { return TAURI_INVOKE("prepare_gitlab_clone", args); }
-export function execute_gitlab_clone(args: { request: GitLabExecuteCloneRequest }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_gitlab_clone", args); }
-export function discard_gitlab_clone_plan(args: { contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_gitlab_clone_plan", args); }
-export function load_gitlab_namespaces(args: { request: GitLabNamespacesRequest }): Promise<GitLabNamespacePage> { return TAURI_INVOKE("load_gitlab_namespaces", args); }
-export function inspect_gitlab_namespace(args: { request: GitLabInspectNamespaceRequest }): Promise<GitLabNamespaceInspection> { return TAURI_INVOKE("inspect_gitlab_namespace", args); }
-export function load_gitlab_forks(args: { request: GitLabForksRequest }): Promise<GitLabForkPage> { return TAURI_INVOKE("load_gitlab_forks", args); }
-export function inspect_gitlab_fork(args: { request: GitLabInspectForkRequest }): Promise<GitLabForkInspection> { return TAURI_INVOKE("inspect_gitlab_fork", args); }
-export function connect_gitlab_account(args: { request: GitLabConnectRequest }): Promise<GitLabConnection> { return TAURI_INVOKE("connect_gitlab_account", args); }
-export function connect_gitlab_fork_account(args: { request: GitLabConnectRequest }): Promise<GitLabConnection> { return TAURI_INVOKE("connect_gitlab_fork_account", args); }
-export function prepare_gitlab_fork(args: { request: PrepareForkRequest }): Promise<PreparedFork> { return TAURI_INVOKE("prepare_gitlab_fork", args); }
-export function discard_gitlab_fork(args: { context: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_gitlab_fork", args); }
-export function execute_gitlab_fork(args: { request: SubmitForkRequest }): Promise<ForkSubmissionOutcome> { return TAURI_INVOKE("execute_gitlab_fork", args); }
-export function list_gitlab_fork_records(args: { request: ForkRecordListRequest }): Promise<ForkRecordList> { return TAURI_INVOKE("list_gitlab_fork_records", args); }
-export function reconcile_gitlab_fork_record(args: { request: ReconcileForkRequest }): Promise<ForkRecordRefresh> { return TAURI_INVOKE("reconcile_gitlab_fork_record", args); }
-export function retire_gitlab_fork_record(args: { request: RetireForkRequest }): Promise<boolean> { return TAURI_INVOKE("retire_gitlab_fork_record", args); }
-export function gitlab_connections(args: {  } = {}): Promise<GitLabConnection[]> { return TAURI_INVOKE("gitlab_connections", args); }
-export function load_gitlab_projects(args: { request: GitLabProjectsRequest }): Promise<GitLabProjectPage> { return TAURI_INVOKE("load_gitlab_projects", args); }
-export function disconnect_gitlab_account(args: { connectionId: string }): Promise<boolean> { return TAURI_INVOKE("disconnect_gitlab_account", args); }
-export function validate_tool_profile(args: { profile: ToolProfile }): Promise<null> { return TAURI_INVOKE("validate_tool_profile", args); }
-export function open_configured_terminal(args: { repoId: string; profile: ToolProfile; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_configured_terminal", args); }
-export function prepare_file_tool_launch(args: { request: PrepareFileToolLaunchRequest }): Promise<PreparedFileToolLaunch> { return TAURI_INVOKE("prepare_file_tool_launch", args); }
-export function launch_reviewed_file_tool(args: { request: ExecuteFileToolReviewRequest }): Promise<FileToolSessionSnapshot> { return TAURI_INVOKE("launch_reviewed_file_tool", args); }
-export function list_file_tool_sessions(args: {  } = {}): Promise<FileToolSessionSnapshot[]> { return TAURI_INVOKE("list_file_tool_sessions", args); }
-export function stop_file_tool_command(args: { sessionId: string }): Promise<FileToolSessionSnapshot> { return TAURI_INVOKE("stop_file_tool_command", args); }
-export function review_file_tool_result(args: { request: FileToolReviewRequest }): Promise<PreparedFileToolResult> { return TAURI_INVOKE("review_file_tool_result", args); }
-export function save_reviewed_file_tool_result(args: { request: SaveFileToolResultRequest }): Promise<FileToolSaveOutcome> { return TAURI_INVOKE("save_reviewed_file_tool_result", args); }
-export function review_file_tool_staging(args: { request: FileToolReviewRequest }): Promise<PreparedFileToolStage> { return TAURI_INVOKE("review_file_tool_staging", args); }
-export function stage_reviewed_file_tool_result(args: { request: ExecuteFileToolReviewRequest }): Promise<FileToolStageOutcome> { return TAURI_INVOKE("stage_reviewed_file_tool_result", args); }
-export function review_file_tool_cleanup(args: { request: FileToolReviewRequest }): Promise<PreparedFileToolCleanup> { return TAURI_INVOKE("review_file_tool_cleanup", args); }
-export function discard_reviewed_file_tool_session(args: { request: DiscardFileToolSessionRequest }): Promise<boolean> { return TAURI_INVOKE("discard_reviewed_file_tool_session", args); }
-export function discard_file_tool_review(args: { request: DiscardFileToolReviewRequest }): Promise<null> { return TAURI_INVOKE("discard_file_tool_review", args); }
-export function system_info(args: {  } = {}): Promise<SystemInfo> { return TAURI_INVOKE("system_info", args); }
-export function inspect_windows_launcher(args: {  } = {}): Promise<WindowsLauncherInspection> { return TAURI_INVOKE("inspect_windows_launcher", args); }
-export function repair_windows_shortcut(args: { path: string; fingerprint: string; plan: WindowsShortcutRepairPlan }): Promise<WindowsShortcutRepair> { return TAURI_INVOKE("repair_windows_shortcut", args); }
-export function set_window_chrome_scale(args: { percent: number }): Promise<void> { return TAURI_INVOKE("set_window_chrome_scale", args); }
-export function set_window_chrome_colors(args: { background: string; foreground: string; border: string; page: string }): Promise<void> { return TAURI_INVOKE("set_window_chrome_colors", args); }
-export function incoming_repository_links(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("incoming_repository_links", args); }
-export function acknowledge_incoming_repository_link(args: { requestId: string }): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("acknowledge_incoming_repository_link", args); }
-export function dismiss_incoming_repository_link_overflow(args: {  } = {}): Promise<IncomingRepositoryLinkState> { return TAURI_INVOKE("dismiss_incoming_repository_link_overflow", args); }
-export function cancel_git_operation(args: { operationId: string }): Promise<boolean> { return TAURI_INVOKE("cancel_git_operation", args); }
-export function open_repository(args: { path: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("open_repository", args); }
-export function clone_repository(args: { remote: string; parentPath: string; folder: string; branch?: string | null; depth?: number | null; recurseSubmodules?: boolean | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("clone_repository", args); }
-export function initialize_repository(args: { parentPath: string; folder: string; initialBranch: string; createReadme: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("initialize_repository", args); }
-export function refresh_repository(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("refresh_repository", args); }
-export function refresh_repository_status(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("refresh_repository_status", args); }
-export function diagnose_signing(args: { repoId: string }): Promise<SigningDiagnostic> { return TAURI_INVOKE("diagnose_signing", args); }
-export function load_more_commits(args: { repoId: string }): Promise<CommitHistoryPage> { return TAURI_INVOKE("load_more_commits", args); }
-export function set_checkpoint_visibility(args: { repoId: string; show: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_checkpoint_visibility", args); }
-export function search_tracked_files(args: { repoId: string; query: string; limit: number }): Promise<TrackedFileSearch> { return TAURI_INVOKE("search_tracked_files", args); }
-export function list_repository_files(args: { repoId: string; query: string; cursor?: string | null }): Promise<RepositoryFiles> { return TAURI_INVOKE("list_repository_files", args); }
-export function create_repository_file(args: { repoId: string; path: string }): Promise<RepositoryFileMutation> { return TAURI_INVOKE("create_repository_file", args); }
-export function delete_repository_file(args: { repoId: string; path: string }): Promise<RepositoryFileMutation> { return TAURI_INVOKE("delete_repository_file", args); }
-export function delete_untracked_repository_file(args: { repoId: string; path: string }): Promise<RepositoryFileMutation> { return TAURI_INVOKE("delete_untracked_repository_file", args); }
-export function read_repository_file_text(args: { repoId: string; path: string; operationId: string }): Promise<string | null> { return TAURI_INVOKE("read_repository_file_text", args); }
-export function load_reflog(args: { repoId: string }): Promise<ReflogPage> { return TAURI_INVOKE("load_reflog", args); }
-export function load_more_changes(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("load_more_changes", args); }
-export function open_repository_in_file_manager(args: { repoId: string }): Promise<null> { return TAURI_INVOKE("open_repository_in_file_manager", args); }
-export function open_external_terminal(args: { repoId: string }): Promise<null> { return TAURI_INVOKE("open_external_terminal", args); }
-export function open_external_url(args: { url: string }): Promise<null> { return TAURI_INVOKE("open_external_url", args); }
-export function toggle_fullscreen(args: {  } = {}): Promise<boolean> { return TAURI_INVOKE("toggle_fullscreen", args); }
-export function stage_all(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("stage_all", args); }
-export function unstage_all(args: { repoId: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("unstage_all", args); }
-export function stage_path(args: { repoId: string; path: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("stage_path", args); }
-export function unstage_path(args: { repoId: string; path: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("unstage_path", args); }
-export function stage_worktree_rename(args: { repoId: string; source: string; destination: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("stage_worktree_rename", args); }
-export function unstage_index_rename(args: { repoId: string; source: string; destination: string }): Promise<RepositoryStatus> { return TAURI_INVOKE("unstage_index_rename", args); }
-export function discard_path(args: { repoId: string; path: string; untracked: boolean }): Promise<RepositoryStatus> { return TAURI_INVOKE("discard_path", args); }
-export function manage_reference(args: { repoId: string; action: string; name: string; expectedOid?: string | null; message?: string | null; url?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("manage_reference", args); }
-export function configure_remote(args: { repoId: string; previousName?: string | null; name: string; fetchUrl: string; pushUrl?: string | null; changePush: boolean; add: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("configure_remote", args); }
-export function transport_reference(args: { repoId: string; request: ReferenceTransport; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("transport_reference", args); }
-export function rename_reference(args: { repoId: string; request: ReferenceRename; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("rename_reference", args); }
-export function preview_remote_tag(args: { repoId: string; remote: string; name: string; operationId: string }): Promise<string> { return TAURI_INVOKE("preview_remote_tag", args); }
-export function stash_selected(args: { repoId: string; options: StashOptions }): Promise<RepositorySnapshot> { return TAURI_INVOKE("stash_selected", args); }
-export function apply_stash_options(args: { repoId: string; reference: string; expectedOid: string; restoreIndex: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("apply_stash_options", args); }
-export function apply_stashed_file(args: { repoId: string; reference: string; expectedOid: string; path: string; previousPath?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("apply_stashed_file", args); }
-export function branch_from_stash(args: { repoId: string; reference: string; expectedOid: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("branch_from_stash", args); }
-export function stash_checkout(args: { repoId: string; name: string; expectedHead: string; expectedTarget: string; message: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("stash_checkout", args); }
-export function preview_discard(args: { repoId: string; paths?: string[] | null }): Promise<PreparedDiscard> { return TAURI_INVOKE("preview_discard", args); }
-export function discard_changes(args: { repoId: string; token: string }): Promise<DiscardResult> { return TAURI_INVOKE("discard_changes", args); }
-export function load_discard_recoveries(args: { repoId: string }): Promise<DiscardRecoveryInfo[]> { return TAURI_INVOKE("load_discard_recoveries", args); }
-export function apply_saved_discard(args: { repoId: string; id: string; reverse: boolean; expectedSha256?: string | null }): Promise<AppliedDiscardRecovery> { return TAURI_INVOKE("apply_saved_discard", args); }
-export function forget_saved_discard(args: { repoId: string; id: string; expectedSha256?: string | null }): Promise<boolean> { return TAURI_INVOKE("forget_saved_discard", args); }
-export function ignore_path(args: { repoId: string; path: string; patternKind: string; stopTracking: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("ignore_path", args); }
-export function commit_changes(args: { repoId: string; message: string; amend: boolean; skipHooks: boolean; sign: boolean; policy?: CommitPolicy | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("commit_changes", args); }
-export function update_head_message(args: { repoId: string; checkout: CommitRewriteCheckout; message: string; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_head_message", args); }
-export function edit_commit(args: { repoId: string; checkout: CommitRewriteCheckout; targetOid: string; message: string; author: CommitAuthorInput; skipHooks: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("edit_commit", args); }
-export function checkout_branch(args: { repoId: string; name: string; review?: BranchIntegrationReview | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_branch", args); }
-export function checkout_remote_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_remote_branch", args); }
-export function sync_checkout_remote_branch(args: { repoId: string; name: string; operationId: string }): Promise<RemoteCheckoutResult> { return TAURI_INVOKE("sync_checkout_remote_branch", args); }
-export function create_branch(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch", args); }
-export function create_branch_at(args: { repoId: string; name: string; oid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch_at", args); }
-export function create_branch_reference(args: { repoId: string; name: string; oid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_branch_reference", args); }
-export function create_worktree(args: { repoId: string; parentPath: string; folder: string; branch: string; base: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_worktree", args); }
-export function create_worktree_for_branch(args: { repoId: string; parentPath: string; folder: string; branch: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_worktree_for_branch", args); }
-export function set_worktree_locked(args: { repoId: string; path: string; locked: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_worktree_locked", args); }
-export function remove_worktree(args: { repoId: string; path: string; deleteBranch: boolean; force: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("remove_worktree", args); }
-export function move_worktree(args: { repoId: string; request: WorktreeMove }): Promise<RepositorySnapshot> { return TAURI_INVOKE("move_worktree", args); }
-export function repair_worktree(args: { repoId: string; request: WorktreeRepair }): Promise<RepositorySnapshot> { return TAURI_INVOKE("repair_worktree", args); }
-export function worktree_registration_review(args: { repoId: string }): Promise<WorktreeRegistrationReview> { return TAURI_INVOKE("worktree_registration_review", args); }
-export function prune_worktree_registration(args: { repoId: string; request: WorktreeRegistrationPrune }): Promise<WorktreeRegistrationPruneResult> { return TAURI_INVOKE("prune_worktree_registration", args); }
-export function submodule_state_review(args: { repoId: string }): Promise<SubmoduleStateReview> { return TAURI_INVOKE("submodule_state_review", args); }
-export function sync_submodule_url(args: { repoId: string; request: SubmoduleUrlSync }): Promise<SubmoduleUrlSyncResult> { return TAURI_INVOKE("sync_submodule_url", args); }
-export function set_submodule_tracking_branch(args: { repoId: string; request: SubmoduleTrackingBranchChange }): Promise<SubmoduleTrackingBranchResult> { return TAURI_INVOKE("set_submodule_tracking_branch", args); }
-export function checkout_recorded_submodule_commit(args: { repoId: string; request: SubmoduleRecordedCheckout }): Promise<SubmoduleRecordedCheckoutResult> { return TAURI_INVOKE("checkout_recorded_submodule_commit", args); }
-export function deinit_submodule(args: { repoId: string; request: SubmoduleDeinit }): Promise<SubmoduleDeinitResult> { return TAURI_INVOKE("deinit_submodule", args); }
-export function remove_submodule(args: { repoId: string; request: SubmoduleRemoval }): Promise<SubmoduleRemovalResult> { return TAURI_INVOKE("remove_submodule", args); }
-export function inspect_repository_integrity(args: { repoId: string; operationId: string }): Promise<IntegrityReport> { return TAURI_INVOKE("inspect_repository_integrity", args); }
-export function add_submodule(args: { repoId: string; url: string; path: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("add_submodule", args); }
-export function initialize_submodule(args: { repoId: string; path: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("initialize_submodule", args); }
-export function initialize_all_submodules(args: { repoId: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("initialize_all_submodules", args); }
-export function update_submodule(args: { repoId: string; path: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_submodule", args); }
-export function update_all_submodules(args: { repoId: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("update_all_submodules", args); }
-export function checkout_commit(args: { repoId: string; oid: string; expectedHeadOid?: string | null; expectedBranch?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("checkout_commit", args); }
-export function rename_branch(args: { repoId: string; oldName: string; newName: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("rename_branch", args); }
-export function set_branch_upstream(args: { repoId: string; branch: string; upstream?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_branch_upstream", args); }
-export function delete_branch(args: { repoId: string; name: string; force: boolean; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_branch", args); }
-export function delete_checkpoint_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_checkpoint_reference", args); }
-export function delete_original_reference(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("delete_original_reference", args); }
-export function integrate_branch(args: { repoId: string; name: string; strategy: string; review?: BranchIntegrationReview | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("integrate_branch", args); }
-export function continue_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_merge", args); }
-export function abort_merge(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("abort_merge", args); }
-export function prepare_interactive_rebase(args: { repoId: string; source: string; target: string; selectionOids?: string[] | null; root?: boolean | null }): Promise<InteractiveRebasePlan> { return TAURI_INVOKE("prepare_interactive_rebase", args); }
-export function execute_interactive_rebase(args: { repoId: string; source: string; target: string; steps: InteractiveRebaseStep[]; selectionOids?: string[] | null; root?: boolean | null; ontoOid?: string | null; reviewedTips: InteractiveRebaseTips }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_interactive_rebase", args); }
-export function continue_rebase(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("continue_rebase", args); }
-export function begin_rebase_split(args: { repoId: string; expectedHead: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("begin_rebase_split", args); }
-export function preview_merge(args: { repoId: string; request: MergePreviewRequest; operationId: string }): Promise<MergePreview> { return TAURI_INVOKE("preview_merge", args); }
-export function compare_branches(args: { repoId: string; target: string; source: string }): Promise<BranchComparison> { return TAURI_INVOKE("compare_branches", args); }
-export function load_hosting_page(args: { repoId: string; remote: string; section: HostingSection; query?: HostingQuery | null; operationId: string }): Promise<HostingPage> { return TAURI_INVOKE("load_hosting_page", args); }
-export function load_hosted_review(args: { repoId: string; remote: string; pullNumber: number; expectedHeadOid: string; query?: HostedReviewQuery | null; operationId: string }): Promise<HostedReview> { return TAURI_INVOKE("load_hosted_review", args); }
-export function load_branch_workflow(args: { repoId: string; operationId: string }): Promise<BranchWorkflowView> { return TAURI_INVOKE("load_branch_workflow", args); }
-export function prepare_branch_workflow(args: { repoId: string; request: BranchWorkflowRequest; operationId: string }): Promise<PreparedBranchWorkflow> { return TAURI_INVOKE("prepare_branch_workflow", args); }
-export function execute_branch_workflow(args: { repoId: string; token: string; operationId: string }): Promise<BranchWorkflowFinishStatus | null> { return TAURI_INVOKE("execute_branch_workflow", args); }
-export function discard_branch_workflow_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_branch_workflow_plan", args); }
-export function control_branch_workflow_finish(args: { repoId: string; id: string; revision: number; control: BranchWorkflowControl; operationId: string }): Promise<BranchWorkflowFinishStatus | null> { return TAURI_INVOKE("control_branch_workflow_finish", args); }
-export function load_hosted_repositories(args: { query: HostedRepositoryQuery; operationId: string }): Promise<HostedRepositoryPage> { return TAURI_INVOKE("load_hosted_repositories", args); }
-export function inspect_hosted_repository(args: { fullName: string; repositoryId: string; accountId: string; operationId: string }): Promise<HostedRepositoryInspection> { return TAURI_INVOKE("inspect_hosted_repository", args); }
-export function prepare_hosted_clone(args: { contextId: string; request: HostedCloneRequest; operationId: string }): Promise<PreparedHostedClone> { return TAURI_INVOKE("prepare_hosted_clone", args); }
-export function execute_hosted_clone(args: { contextId: string; token: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_hosted_clone", args); }
-export function discard_hosted_clone_plan(args: { contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_clone_plan", args); }
-export function prepare_hosted_write(args: { repoId: string; remote: string; request: HostedWriteRequest; operationId: string }): Promise<PreparedHostedWrite> { return TAURI_INVOKE("prepare_hosted_write", args); }
-export function load_hosted_forks(args: { query: HostedForkQuery; operationId: string }): Promise<HostedForkPage> { return TAURI_INVOKE("load_hosted_forks", args); }
-export function inspect_hosted_fork(args: { selection: HostedForkSelection; operationId: string }): Promise<HostedForkInspection> { return TAURI_INVOKE("inspect_hosted_fork", args); }
-export function prepare_hosted_fork(args: { contextId: string; request: HostedForkRequest; operationId: string }): Promise<PreparedHostedFork> { return TAURI_INVOKE("prepare_hosted_fork", args); }
-export function execute_hosted_fork(args: { contextId: string; token: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("execute_hosted_fork", args); }
-export function list_hosted_fork_requests(args: { operationId: string }): Promise<HostedForkStatus[]> { return TAURI_INVOKE("list_hosted_fork_requests", args); }
-export function load_hosted_fork_request(args: { id: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("load_hosted_fork_request", args); }
-export function reconcile_hosted_fork(args: { id: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("reconcile_hosted_fork", args); }
-export function prepare_hosted_fork_acknowledgement(args: { contextId: string; id: string; operationId: string }): Promise<PreparedForkAcknowledgement> { return TAURI_INVOKE("prepare_hosted_fork_acknowledgement", args); }
-export function execute_hosted_fork_acknowledgement(args: { contextId: string; token: string; operationId: string }): Promise<HostedForkStatus> { return TAURI_INVOKE("execute_hosted_fork_acknowledgement", args); }
-export function discard_hosted_fork_review(args: { contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_fork_review", args); }
-export function prepare_hosted_fork_remote(args: { repoId: string; contextId: string; request: HostedForkRemoteRequest; operationId: string }): Promise<PreparedHostedForkRemote> { return TAURI_INVOKE("prepare_hosted_fork_remote", args); }
-export function execute_hosted_fork_remote(args: { repoId: string; contextId: string; token: string; operationId: string }): Promise<HostedForkRemoteReceipt> { return TAURI_INVOKE("execute_hosted_fork_remote", args); }
-export function discard_hosted_fork_remote(args: { repoId: string; contextId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_fork_remote", args); }
-export function execute_hosted_write(args: { repoId: string; token: string; operationId: string }): Promise<HostedWriteReceipt> { return TAURI_INVOKE("execute_hosted_write", args); }
-export function discard_hosted_write_plan(args: { repoId: string; token: string }): Promise<boolean> { return TAURI_INVOKE("discard_hosted_write_plan", args); }
-export function prepare_merge_rebase(args: { repoId: string; source: string; target: string }): Promise<MergeRebasePlan> { return TAURI_INVOKE("prepare_merge_rebase", args); }
-export function execute_merge_rebase(args: { repoId: string; request: MergeRebaseRequest }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_merge_rebase", args); }
-export function export_diff_patch(args: { repoId: string; staged: boolean; paths: string[]; destination: string }): Promise<number> { return TAURI_INVOKE("export_diff_patch", args); }
-export function review_diff_patch(args: { repoId: string; file: string; target: PatchTarget }): Promise<PatchReview> { return TAURI_INVOKE("review_diff_patch", args); }
-export function import_diff_patch(args: { repoId: string; request: PatchRequest }): Promise<RepositorySnapshot> { return TAURI_INVOKE("import_diff_patch", args); }
-export function export_git_bundle(args: { repoId: string; branch: string; expectedOid: string; destination: string }): Promise<number> { return TAURI_INVOKE("export_git_bundle", args); }
-export function review_git_bundle(args: { repoId: string; file: string }): Promise<BundleReview> { return TAURI_INVOKE("review_git_bundle", args); }
-export function import_git_bundle(args: { repoId: string; request: BundleRequest; tip: BundleTip }): Promise<string> { return TAURI_INVOKE("import_git_bundle", args); }
-export function review_mail_patch_export(args: { repoId: string; oids: string[] }): Promise<MailPatchReview> { return TAURI_INVOKE("review_mail_patch_export", args); }
-export function export_mail_patch(args: { repoId: string; request: MailPatchRequest; destination: string }): Promise<number> { return TAURI_INVOKE("export_mail_patch", args); }
-export function review_mail_patch_import(args: { repoId: string; file: string }): Promise<MailPatchImportReview> { return TAURI_INVOKE("review_mail_patch_import", args); }
-export function import_mail_patch(args: { repoId: string; request: MailPatchImportRequest }): Promise<MailPatchProgress> { return TAURI_INVOKE("import_mail_patch", args); }
-export function control_mail_patch(args: { repoId: string; action: MailPatchAction }): Promise<MailPatchProgress> { return TAURI_INVOKE("control_mail_patch", args); }
-export function skip_rebase(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("skip_rebase", args); }
-export function abort_rebase(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("abort_rebase", args); }
-export function fetch_repository(args: { repoId: string; remote?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("fetch_repository", args); }
-export function fetch_branches(args: { repoId: string; options: FetchOptions; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("fetch_branches", args); }
-export function shallow_history_state(args: { repoId: string }): Promise<ShallowHistoryState> { return TAURI_INVOKE("shallow_history_state", args); }
-export function perform_repository_maintenance(args: { repoId: string }): Promise<null> { return TAURI_INVOKE("perform_repository_maintenance", args); }
-export function sync_repository(args: { repoId: string }): Promise<RepositorySnapshot | null> { return TAURI_INVOKE("sync_repository", args); }
-export function lfs_pull(args: { repoId: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_pull", args); }
-export function lfs_prune(args: { repoId: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_prune", args); }
-export function lfs_prune_preview(args: { repoId: string }): Promise<LfsPrunePreview> { return TAURI_INVOKE("lfs_prune_preview", args); }
-export function lfs_prune_objects(args: { repoId: string; preview: LfsPrunePreview; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_prune_objects", args); }
-export function lfs_initialize(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_initialize", args); }
-export function lfs_track_pattern(args: { repoId: string; pattern: string; lockable: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_track_pattern", args); }
-export function lfs_tracking_rules(args: { repoId: string }): Promise<LfsTrackingRules> { return TAURI_INVOKE("lfs_tracking_rules", args); }
-export function lfs_file_attributes(args: { repoId: string; file: string }): Promise<LfsFileAttributes> { return TAURI_INVOKE("lfs_file_attributes", args); }
-export function lfs_objects(args: { repoId: string }): Promise<LfsObjects> { return TAURI_INVOKE("lfs_objects", args); }
-export function lfs_locks(args: { repoId: string }): Promise<LfsLocks> { return TAURI_INVOKE("lfs_locks", args); }
-export function lfs_lock_file(args: { repoId: string; file: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_lock_file", args); }
-export function lfs_unlock_file(args: { repoId: string; lock: LfsLock; force: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_unlock_file", args); }
-export function lfs_fetch_preview(args: { repoId: string; file: string; remote: string; expectedOid: string; expectedSize: number }): Promise<LfsFetchPreview> { return TAURI_INVOKE("lfs_fetch_preview", args); }
-export function lfs_fetch_object(args: { repoId: string; preview: LfsFetchPreview; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_fetch_object", args); }
-export function lfs_checkout_preview(args: { repoId: string; file: string; expectedOid: string; expectedSize: number }): Promise<LfsCheckoutPreview> { return TAURI_INVOKE("lfs_checkout_preview", args); }
-export function lfs_checkout_object(args: { repoId: string; preview: LfsCheckoutPreview; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_checkout_object", args); }
-export function lfs_untrack_pattern(args: { repoId: string; pattern: string; expectedState: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("lfs_untrack_pattern", args); }
-export function sparse_checkout_set(args: { repoId: string; paths: string[]; sparseIndex: boolean }): Promise<RepositorySnapshot> { return TAURI_INVOKE("sparse_checkout_set", args); }
-export function sparse_checkout_reapply(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("sparse_checkout_reapply", args); }
-export function sparse_checkout_disable(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("sparse_checkout_disable", args); }
-export function pull_repository(args: { repoId: string; strategy: string; remote?: string | null; branch?: string | null; checkout: PullCheckout; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("pull_repository", args); }
-export function push_repository(args: { repoId: string; remote?: string | null; branch?: string | null; expectedHeadOid?: string | null; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("push_repository", args); }
-export function review_push_destination(args: { repoId: string; remote: string }): Promise<PushDestinationReview> { return TAURI_INVOKE("review_push_destination", args); }
-export function force_push_repository(args: { repoId: string; remote: string; branch: string; expectedRemoteOid: string; expectedHeadOid: string; expectedDestinationState: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("force_push_repository", args); }
-export function publish_branch(args: { repoId: string; remote: string; branch: string; operationId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("publish_branch", args); }
-export function add_remote(args: { repoId: string; name: string; url: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("add_remote", args); }
-export function set_remote_url(args: { repoId: string; name: string; url: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_remote_url", args); }
-export function set_repository_identity(args: { repoId: string; name: string; email: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("set_repository_identity", args); }
-export function remove_remote(args: { repoId: string; name: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("remove_remote", args); }
-export function stash_changes(args: { repoId: string; message?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("stash_changes", args); }
-export function pop_stash(args: { repoId: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("pop_stash", args); }
-export function apply_stash(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("apply_stash", args); }
-export function pop_stash_entry(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("pop_stash_entry", args); }
-export function drop_stash(args: { repoId: string; reference: string; expectedOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("drop_stash", args); }
-export function rename_stash(args: { repoId: string; reference: string; expectedOid: string; message: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("rename_stash", args); }
-export function create_tag(args: { repoId: string; name: string; oid: string; message?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("create_tag", args); }
-export function cherry_pick_commits(args: { repoId: string; oids: string[]; mainline?: number | null; noCommit?: boolean | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("cherry_pick_commits", args); }
-export function revert_commit(args: { repoId: string; oid: string; mainline?: number | null; oids?: string[] | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("revert_commit", args); }
-export function control_history_operation(args: { repoId: string; operation: string; action: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("control_history_operation", args); }
-export function reset_to_commit(args: { repoId: string; oid: string; mode: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("reset_to_commit", args); }
-export function preview_reset(args: { repoId: string; oid: string; mode: string }): Promise<PreparedReset> { return TAURI_INVOKE("preview_reset", args); }
-export function execute_prepared_reset(args: { repoId: string; token: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("execute_prepared_reset", args); }
-export function load_operation_recoveries(args: { repoId: string }): Promise<OperationRecovery[]> { return TAURI_INVOKE("load_operation_recoveries", args); }
-export function restore_operation_recovery(args: { repoId: string; id: string; branch: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("restore_operation_recovery", args); }
-export function forget_operation_recovery(args: { repoId: string; id: string }): Promise<null> { return TAURI_INVOKE("forget_operation_recovery", args); }
-export function start_bisect(args: { repoId: string; badOid: string; goodOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("start_bisect", args); }
-export function mark_bisect(args: { repoId: string; verdict: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("mark_bisect", args); }
-export function reset_bisect(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("reset_bisect", args); }
-export function move_head(args: { repoId: string; expectedOid: string; targetOid: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("move_head", args); }
-export function inspect_commit(args: { repoId: string; oid: string }): Promise<CommitDetails> { return TAURI_INVOKE("inspect_commit", args); }
-export function inspect_tag(args: { repoId: string; name: string }): Promise<TagDetails> { return TAURI_INVOKE("inspect_tag", args); }
-export function inspect_commit_file(args: { repoId: string; oid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("inspect_commit_file", args); }
-export function inspect_file_media(args: { repoId: string; request: FileComparisonRequest; operationId: string }): Promise<FileMediaComparison> { return TAURI_INVOKE("inspect_file_media", args); }
-export function parse_repository_link(args: { rawLink: string }): Promise<RepositoryLink> { return TAURI_INVOKE("parse_repository_link", args); }
-export function create_repository_link(args: { remote: string; target: RepositoryLinkTarget }): Promise<string> { return TAURI_INVOKE("create_repository_link", args); }
-export function discover_repository_link(args: { rawLink: string; knownPaths: string[]; operationId: string }): Promise<RepositoryLinkDiscovery> { return TAURI_INVOKE("discover_repository_link", args); }
-export function open_repository_link(args: { rawLink: string; path: string; expectedOid?: string | null; operationId: string }): Promise<OpenedRepositoryLink> { return TAURI_INVOKE("open_repository_link", args); }
-export function repository_link_read_policy(args: { repoId: string }): Promise<RepositoryLinkReadPolicy> { return TAURI_INVOKE("repository_link_read_policy", args); }
-export function repository_link_read_policies(args: {  } = {}): Promise<Partial<{ [key in string]: RepositoryLinkReadPolicy }>> { return TAURI_INVOKE("repository_link_read_policies", args); }
-export function resume_repository_link_auto_fetch(args: { repoId: string }): Promise<null> { return TAURI_INVOKE("resume_repository_link_auto_fetch", args); }
-export function inspect_stash(args: { repoId: string; oid: string }): Promise<CommitDetails> { return TAURI_INVOKE("inspect_stash", args); }
-export function inspect_stash_file(args: { repoId: string; oid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("inspect_stash_file", args); }
-export function compare_commits(args: { repoId: string; baseOid: string; targetOid: string }): Promise<CommitComparison> { return TAURI_INVOKE("compare_commits", args); }
-export function compare_commit_file(args: { repoId: string; baseOid: string; targetOid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("compare_commit_file", args); }
-export function compare_commit_with_working_tree(args: { repoId: string; baseOid: string }): Promise<CommitComparison> { return TAURI_INVOKE("compare_commit_with_working_tree", args); }
-export function compare_commit_file_with_working_tree(args: { repoId: string; baseOid: string; path: string; previousPath?: string | null }): Promise<CommitFileDiff> { return TAURI_INVOKE("compare_commit_file_with_working_tree", args); }
-export function inspect_working_tree_file(args: { repoId: string; path: string; staged: boolean; previousPath?: string | null }): Promise<WorkingTreeFileDiff> { return TAURI_INVOKE("inspect_working_tree_file", args); }
-export function working_tree_change_summary(args: { repoId: string }): Promise<WorkingTreeSummaries> { return TAURI_INVOKE("working_tree_change_summary", args); }
-export function application_update_status(args: {  } = {}): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("application_update_status", args); }
-export function set_automatic_application_updates(args: { enabled: boolean }): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("set_automatic_application_updates", args); }
-export function check_application_update(args: {  } = {}): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("check_application_update", args); }
-export function download_application_update(args: { offerId: string }): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("download_application_update", args); }
-export function install_application_update(args: { offerId: string }): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("install_application_update", args); }
-export function inspect_application_update(args: {  } = {}): Promise<ApplicationUpdateStatus> { return TAURI_INVOKE("inspect_application_update", args); }
-export function inspect_file_history(args: { repoId: string; revision: string; path: string }): Promise<FileHistoryEntry[]> { return TAURI_INVOKE("inspect_file_history", args); }
-export function search_repository_history(args: { repoId: string; query: HistoryQuery; cursor?: HistoryCursor | null; operationId: string }): Promise<HistorySearchPage> { return TAURI_INVOKE("search_repository_history", args); }
-export function inspect_file_history_page(args: { repoId: string; revision: string; path: string; cursor?: FileHistoryCursor | null; operationId: string }): Promise<FileHistoryPage> { return TAURI_INVOKE("inspect_file_history_page", args); }
-export function inspect_blame_navigation(args: { repoId: string; oid: string; path: string }): Promise<BlameNavigation> { return TAURI_INVOKE("inspect_blame_navigation", args); }
-export function inspect_history_commit(args: { repoId: string; oid: string }): Promise<CommitSummary> { return TAURI_INVOKE("inspect_history_commit", args); }
-export function compare_history_revisions(args: { repoId: string; base: string; target: string; mode: string }): Promise<CommitComparison> { return TAURI_INVOKE("compare_history_revisions", args); }
-export function inspect_file_blame(args: { repoId: string; revision: string; path: string }): Promise<FileBlameLine[]> { return TAURI_INVOKE("inspect_file_blame", args); }
-export function inspect_file_blame_page(args: { repoId: string; revision: string; path: string; firstLine: number }): Promise<FileBlamePage> { return TAURI_INVOKE("inspect_file_blame_page", args); }
-export function restore_files_from_commit(args: { repoId: string; oid: string; paths: string[] }): Promise<RepositorySnapshot> { return TAURI_INVOKE("restore_files_from_commit", args); }
-export function inspect_conflict(args: { repoId: string; path: string }): Promise<ConflictDetails> { return TAURI_INVOKE("inspect_conflict", args); }
-export function resolve_conflict(args: { repoId: string; path: string; resolution: string; output?: string | null; expectedState?: string | null }): Promise<RepositorySnapshot> { return TAURI_INVOKE("resolve_conflict", args); }
-export function apply_working_tree_hunk(args: { repoId: string; path: string; staged: boolean; hunkIndex: number; action: string; expectedPatch?: string | null }): Promise<RepositoryStatus> { return TAURI_INVOKE("apply_working_tree_hunk", args); }
-export function apply_working_tree_lines(args: { repoId: string; path: string; staged: boolean; hunkIndex: number; lineIndices: number[]; action: string; expectedPatch?: string | null }): Promise<RepositoryStatus> { return TAURI_INVOKE("apply_working_tree_lines", args); }
-export function undo_discard(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("undo_discard", args); }
-export function redo_discard(args: { repoId: string }): Promise<RepositorySnapshot> { return TAURI_INVOKE("redo_discard", args); }
-export function open_terminal(args: { repoId: string; rows: number; cols: number }): Promise<TerminalInfo> { return TAURI_INVOKE("open_terminal", args); }
-export function write_terminal(args: { sessionId: string; data: number[] }): Promise<null> { return TAURI_INVOKE("write_terminal", args); }
-export function resize_terminal(args: { sessionId: string; rows: number; cols: number }): Promise<null> { return TAURI_INVOKE("resize_terminal", args); }
-export function close_terminal(args: { sessionId: string }): Promise<null> { return TAURI_INVOKE("close_terminal", args); }
+function __bindCommand__<Args extends Record<string, unknown>, R>(command: string): (args: Args) => Promise<R> {
+  return args => TAURI_INVOKE<R>(command, args);
+}
+function __bindOptionalCommand__<Args extends Record<string, unknown>, R>(command: string): (args?: Args) => Promise<R> {
+  return (args: Args | Record<string, never> = {}) => TAURI_INVOKE<R>(command, args);
+}
+
+export const answer_authentication: (args: { requestId: string; answer?: string | null }) => Promise<null> = /* @__PURE__ */ __bindCommand__("answer_authentication");
+export const pending_authentication: (args?: {}) => Promise<GitAuthenticationPrompt[]> = /* @__PURE__ */ __bindOptionalCommand__("pending_authentication");
+export const open_working_file_editor: (args: { repoId: string; path: string; encoding?: WorkingTextEncoding | null; operationId: string }) => Promise<EditorSnapshot> = /* @__PURE__ */ __bindCommand__("open_working_file_editor");
+export const save_working_file_editor: (args: { editorId: string; revision: string; text: string; stage: boolean; operationId: string }) => Promise<EditorWriteResult> = /* @__PURE__ */ __bindCommand__("save_working_file_editor");
+export const stage_saved_working_file_editor: (args: { editorId: string; revision: string; operationId: string }) => Promise<EditorWriteResult> = /* @__PURE__ */ __bindCommand__("stage_saved_working_file_editor");
+export const close_working_file_editor: (args: { editorId: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("close_working_file_editor");
+export const snapshot_editor_draft: (args: { editorId: string; revision: string; sequence: number; text: string }) => Promise<RecoveryDraftSummary> = /* @__PURE__ */ __bindCommand__("snapshot_editor_draft");
+export const inspect_editor_drafts: (args?: {}) => Promise<RecoveryDraftInspection> = /* @__PURE__ */ __bindOptionalCommand__("inspect_editor_drafts");
+export const load_editor_draft_entry: (args: { id: string; kind: RecoveryDraftEntryKind; reviewToken: string }) => Promise<RecoveryDraftRecord> = /* @__PURE__ */ __bindCommand__("load_editor_draft_entry");
+export const review_editor_draft: (args: { request: EditorDraftReviewRequest }) => Promise<EditorDraftReview> = /* @__PURE__ */ __bindCommand__("review_editor_draft");
+export const discard_editor_draft: (args: { editorId: string; revision: string }) => Promise<EditorDraftDiscarded> = /* @__PURE__ */ __bindCommand__("discard_editor_draft");
+export const discard_editor_draft_entry: (args: { id: string; kind: RecoveryDraftEntryKind; reviewToken: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("discard_editor_draft_entry");
+export const inspect_gitlab_project: (args: { request: GitLabInspectRequest }) => Promise<GitLabProjectInspection> = /* @__PURE__ */ __bindCommand__("inspect_gitlab_project");
+export const prepare_gitlab_clone: (args: { request: GitLabPrepareCloneRequest }) => Promise<PreparedGitLabClone> = /* @__PURE__ */ __bindCommand__("prepare_gitlab_clone");
+export const execute_gitlab_clone: (args: { request: GitLabExecuteCloneRequest }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("execute_gitlab_clone");
+export const discard_gitlab_clone_plan: (args: { contextId: string; token: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("discard_gitlab_clone_plan");
+export const load_gitlab_namespaces: (args: { request: GitLabNamespacesRequest }) => Promise<GitLabNamespacePage> = /* @__PURE__ */ __bindCommand__("load_gitlab_namespaces");
+export const inspect_gitlab_namespace: (args: { request: GitLabInspectNamespaceRequest }) => Promise<GitLabNamespaceInspection> = /* @__PURE__ */ __bindCommand__("inspect_gitlab_namespace");
+export const load_gitlab_forks: (args: { request: GitLabForksRequest }) => Promise<GitLabForkPage> = /* @__PURE__ */ __bindCommand__("load_gitlab_forks");
+export const inspect_gitlab_fork: (args: { request: GitLabInspectForkRequest }) => Promise<GitLabForkInspection> = /* @__PURE__ */ __bindCommand__("inspect_gitlab_fork");
+export const connect_gitlab_account: (args: { request: GitLabConnectRequest }) => Promise<GitLabConnection> = /* @__PURE__ */ __bindCommand__("connect_gitlab_account");
+export const connect_gitlab_fork_account: (args: { request: GitLabConnectRequest }) => Promise<GitLabConnection> = /* @__PURE__ */ __bindCommand__("connect_gitlab_fork_account");
+export const prepare_gitlab_fork: (args: { request: PrepareForkRequest }) => Promise<PreparedFork> = /* @__PURE__ */ __bindCommand__("prepare_gitlab_fork");
+export const discard_gitlab_fork: (args: { context: string; token: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("discard_gitlab_fork");
+export const execute_gitlab_fork: (args: { request: SubmitForkRequest }) => Promise<ForkSubmissionOutcome> = /* @__PURE__ */ __bindCommand__("execute_gitlab_fork");
+export const list_gitlab_fork_records: (args: { request: ForkRecordListRequest }) => Promise<ForkRecordList> = /* @__PURE__ */ __bindCommand__("list_gitlab_fork_records");
+export const reconcile_gitlab_fork_record: (args: { request: ReconcileForkRequest }) => Promise<ForkRecordRefresh> = /* @__PURE__ */ __bindCommand__("reconcile_gitlab_fork_record");
+export const retire_gitlab_fork_record: (args: { request: RetireForkRequest }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("retire_gitlab_fork_record");
+export const gitlab_connections: (args?: {}) => Promise<GitLabConnection[]> = /* @__PURE__ */ __bindOptionalCommand__("gitlab_connections");
+export const load_gitlab_projects: (args: { request: GitLabProjectsRequest }) => Promise<GitLabProjectPage> = /* @__PURE__ */ __bindCommand__("load_gitlab_projects");
+export const disconnect_gitlab_account: (args: { connectionId: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("disconnect_gitlab_account");
+export const validate_tool_profile: (args: { profile: ToolProfile }) => Promise<null> = /* @__PURE__ */ __bindCommand__("validate_tool_profile");
+export const open_configured_terminal: (args: { repoId: string; profile: ToolProfile; rows: number; cols: number }) => Promise<TerminalInfo> = /* @__PURE__ */ __bindCommand__("open_configured_terminal");
+export const prepare_file_tool_launch: (args: { request: PrepareFileToolLaunchRequest }) => Promise<PreparedFileToolLaunch> = /* @__PURE__ */ __bindCommand__("prepare_file_tool_launch");
+export const launch_reviewed_file_tool: (args: { request: ExecuteFileToolReviewRequest }) => Promise<FileToolSessionSnapshot> = /* @__PURE__ */ __bindCommand__("launch_reviewed_file_tool");
+export const list_file_tool_sessions: (args?: {}) => Promise<FileToolSessionSnapshot[]> = /* @__PURE__ */ __bindOptionalCommand__("list_file_tool_sessions");
+export const stop_file_tool_command: (args: { sessionId: string }) => Promise<FileToolSessionSnapshot> = /* @__PURE__ */ __bindCommand__("stop_file_tool_command");
+export const review_file_tool_result: (args: { request: FileToolReviewRequest }) => Promise<PreparedFileToolResult> = /* @__PURE__ */ __bindCommand__("review_file_tool_result");
+export const save_reviewed_file_tool_result: (args: { request: SaveFileToolResultRequest }) => Promise<FileToolSaveOutcome> = /* @__PURE__ */ __bindCommand__("save_reviewed_file_tool_result");
+export const review_file_tool_staging: (args: { request: FileToolReviewRequest }) => Promise<PreparedFileToolStage> = /* @__PURE__ */ __bindCommand__("review_file_tool_staging");
+export const stage_reviewed_file_tool_result: (args: { request: ExecuteFileToolReviewRequest }) => Promise<FileToolStageOutcome> = /* @__PURE__ */ __bindCommand__("stage_reviewed_file_tool_result");
+export const review_file_tool_cleanup: (args: { request: FileToolReviewRequest }) => Promise<PreparedFileToolCleanup> = /* @__PURE__ */ __bindCommand__("review_file_tool_cleanup");
+export const discard_reviewed_file_tool_session: (args: { request: DiscardFileToolSessionRequest }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("discard_reviewed_file_tool_session");
+export const discard_file_tool_review: (args: { request: DiscardFileToolReviewRequest }) => Promise<null> = /* @__PURE__ */ __bindCommand__("discard_file_tool_review");
+export const system_info: (args?: {}) => Promise<SystemInfo> = /* @__PURE__ */ __bindOptionalCommand__("system_info");
+export const inspect_windows_launcher: (args?: {}) => Promise<WindowsLauncherInspection> = /* @__PURE__ */ __bindOptionalCommand__("inspect_windows_launcher");
+export const repair_windows_shortcut: (args: { path: string; fingerprint: string; plan: WindowsShortcutRepairPlan }) => Promise<WindowsShortcutRepair> = /* @__PURE__ */ __bindCommand__("repair_windows_shortcut");
+export const set_window_chrome_scale: (args: { percent: number }) => Promise<void> = /* @__PURE__ */ __bindCommand__("set_window_chrome_scale");
+export const set_window_chrome_colors: (args: { background: string; foreground: string; border: string; page: string }) => Promise<void> = /* @__PURE__ */ __bindCommand__("set_window_chrome_colors");
+export const incoming_repository_links: (args?: {}) => Promise<IncomingRepositoryLinkState> = /* @__PURE__ */ __bindOptionalCommand__("incoming_repository_links");
+export const acknowledge_incoming_repository_link: (args: { requestId: string }) => Promise<IncomingRepositoryLinkState> = /* @__PURE__ */ __bindCommand__("acknowledge_incoming_repository_link");
+export const dismiss_incoming_repository_link_overflow: (args?: {}) => Promise<IncomingRepositoryLinkState> = /* @__PURE__ */ __bindOptionalCommand__("dismiss_incoming_repository_link_overflow");
+export const cancel_git_operation: (args: { operationId: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("cancel_git_operation");
+export const open_repository: (args: { path: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("open_repository");
+export const clone_repository: (args: { remote: string; parentPath: string; folder: string; branch?: string | null; depth?: number | null; recurseSubmodules?: boolean | null; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("clone_repository");
+export const initialize_repository: (args: { parentPath: string; folder: string; initialBranch: string; createReadme: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("initialize_repository");
+export const refresh_repository: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("refresh_repository");
+export const refresh_repository_status: (args: { repoId: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("refresh_repository_status");
+export const diagnose_signing: (args: { repoId: string }) => Promise<SigningDiagnostic> = /* @__PURE__ */ __bindCommand__("diagnose_signing");
+export const load_more_commits: (args: { repoId: string }) => Promise<CommitHistoryPage> = /* @__PURE__ */ __bindCommand__("load_more_commits");
+export const set_checkpoint_visibility: (args: { repoId: string; show: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("set_checkpoint_visibility");
+export const search_tracked_files: (args: { repoId: string; query: string; limit: number }) => Promise<TrackedFileSearch> = /* @__PURE__ */ __bindCommand__("search_tracked_files");
+export const list_repository_files: (args: { repoId: string; query: string; cursor?: string | null }) => Promise<RepositoryFiles> = /* @__PURE__ */ __bindCommand__("list_repository_files");
+export const create_repository_file: (args: { repoId: string; path: string }) => Promise<RepositoryFileMutation> = /* @__PURE__ */ __bindCommand__("create_repository_file");
+export const delete_repository_file: (args: { repoId: string; path: string }) => Promise<RepositoryFileMutation> = /* @__PURE__ */ __bindCommand__("delete_repository_file");
+export const delete_untracked_repository_file: (args: { repoId: string; path: string }) => Promise<RepositoryFileMutation> = /* @__PURE__ */ __bindCommand__("delete_untracked_repository_file");
+export const read_repository_file_text: (args: { repoId: string; path: string; operationId: string }) => Promise<string | null> = /* @__PURE__ */ __bindCommand__("read_repository_file_text");
+export const load_reflog: (args: { repoId: string }) => Promise<ReflogPage> = /* @__PURE__ */ __bindCommand__("load_reflog");
+export const load_more_changes: (args: { repoId: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("load_more_changes");
+export const open_repository_in_file_manager: (args: { repoId: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("open_repository_in_file_manager");
+export const open_external_terminal: (args: { repoId: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("open_external_terminal");
+export const open_external_url: (args: { url: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("open_external_url");
+export const toggle_fullscreen: (args?: {}) => Promise<boolean> = /* @__PURE__ */ __bindOptionalCommand__("toggle_fullscreen");
+export const stage_all: (args: { repoId: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("stage_all");
+export const unstage_all: (args: { repoId: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("unstage_all");
+export const stage_path: (args: { repoId: string; path: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("stage_path");
+export const unstage_path: (args: { repoId: string; path: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("unstage_path");
+export const stage_worktree_rename: (args: { repoId: string; source: string; destination: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("stage_worktree_rename");
+export const unstage_index_rename: (args: { repoId: string; source: string; destination: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("unstage_index_rename");
+export const discard_path: (args: { repoId: string; path: string; untracked: boolean }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("discard_path");
+export const manage_reference: (args: { repoId: string; action: string; name: string; expectedOid?: string | null; message?: string | null; url?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("manage_reference");
+export const configure_remote: (args: { repoId: string; previousName?: string | null; name: string; fetchUrl: string; pushUrl?: string | null; changePush: boolean; add: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("configure_remote");
+export const transport_reference: (args: { repoId: string; request: ReferenceTransport; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("transport_reference");
+export const rename_reference: (args: { repoId: string; request: ReferenceRename; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("rename_reference");
+export const preview_remote_tag: (args: { repoId: string; remote: string; name: string; operationId: string }) => Promise<string> = /* @__PURE__ */ __bindCommand__("preview_remote_tag");
+export const stash_selected: (args: { repoId: string; options: StashOptions }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("stash_selected");
+export const apply_stash_options: (args: { repoId: string; reference: string; expectedOid: string; restoreIndex: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("apply_stash_options");
+export const apply_stashed_file: (args: { repoId: string; reference: string; expectedOid: string; path: string; previousPath?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("apply_stashed_file");
+export const branch_from_stash: (args: { repoId: string; reference: string; expectedOid: string; name: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("branch_from_stash");
+export const stash_checkout: (args: { repoId: string; name: string; expectedHead: string; expectedTarget: string; message: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("stash_checkout");
+export const preview_discard: (args: { repoId: string; paths?: string[] | null }) => Promise<PreparedDiscard> = /* @__PURE__ */ __bindCommand__("preview_discard");
+export const discard_changes: (args: { repoId: string; token: string }) => Promise<DiscardResult> = /* @__PURE__ */ __bindCommand__("discard_changes");
+export const load_discard_recoveries: (args: { repoId: string }) => Promise<DiscardRecoveryInfo[]> = /* @__PURE__ */ __bindCommand__("load_discard_recoveries");
+export const apply_saved_discard: (args: { repoId: string; id: string; reverse: boolean; expectedSha256?: string | null }) => Promise<AppliedDiscardRecovery> = /* @__PURE__ */ __bindCommand__("apply_saved_discard");
+export const forget_saved_discard: (args: { repoId: string; id: string; expectedSha256?: string | null }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("forget_saved_discard");
+export const ignore_path: (args: { repoId: string; path: string; patternKind: string; stopTracking: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("ignore_path");
+export const commit_changes: (args: { repoId: string; message: string; amend: boolean; skipHooks: boolean; sign: boolean; policy?: CommitPolicy | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("commit_changes");
+export const update_head_message: (args: { repoId: string; checkout: CommitRewriteCheckout; message: string; skipHooks: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("update_head_message");
+export const edit_commit: (args: { repoId: string; checkout: CommitRewriteCheckout; targetOid: string; message: string; author: CommitAuthorInput; skipHooks: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("edit_commit");
+export const checkout_branch: (args: { repoId: string; name: string; review?: BranchIntegrationReview | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("checkout_branch");
+export const checkout_remote_branch: (args: { repoId: string; name: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("checkout_remote_branch");
+export const sync_checkout_remote_branch: (args: { repoId: string; name: string; operationId: string }) => Promise<RemoteCheckoutResult> = /* @__PURE__ */ __bindCommand__("sync_checkout_remote_branch");
+export const create_branch: (args: { repoId: string; name: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_branch");
+export const create_branch_at: (args: { repoId: string; name: string; oid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_branch_at");
+export const create_branch_reference: (args: { repoId: string; name: string; oid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_branch_reference");
+export const create_worktree: (args: { repoId: string; parentPath: string; folder: string; branch: string; base: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_worktree");
+export const create_worktree_for_branch: (args: { repoId: string; parentPath: string; folder: string; branch: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_worktree_for_branch");
+export const set_worktree_locked: (args: { repoId: string; path: string; locked: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("set_worktree_locked");
+export const remove_worktree: (args: { repoId: string; path: string; deleteBranch: boolean; force: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("remove_worktree");
+export const move_worktree: (args: { repoId: string; request: WorktreeMove }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("move_worktree");
+export const repair_worktree: (args: { repoId: string; request: WorktreeRepair }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("repair_worktree");
+export const worktree_registration_review: (args: { repoId: string }) => Promise<WorktreeRegistrationReview> = /* @__PURE__ */ __bindCommand__("worktree_registration_review");
+export const prune_worktree_registration: (args: { repoId: string; request: WorktreeRegistrationPrune }) => Promise<WorktreeRegistrationPruneResult> = /* @__PURE__ */ __bindCommand__("prune_worktree_registration");
+export const submodule_state_review: (args: { repoId: string }) => Promise<SubmoduleStateReview> = /* @__PURE__ */ __bindCommand__("submodule_state_review");
+export const sync_submodule_url: (args: { repoId: string; request: SubmoduleUrlSync }) => Promise<SubmoduleUrlSyncResult> = /* @__PURE__ */ __bindCommand__("sync_submodule_url");
+export const set_submodule_tracking_branch: (args: { repoId: string; request: SubmoduleTrackingBranchChange }) => Promise<SubmoduleTrackingBranchResult> = /* @__PURE__ */ __bindCommand__("set_submodule_tracking_branch");
+export const checkout_recorded_submodule_commit: (args: { repoId: string; request: SubmoduleRecordedCheckout }) => Promise<SubmoduleRecordedCheckoutResult> = /* @__PURE__ */ __bindCommand__("checkout_recorded_submodule_commit");
+export const deinit_submodule: (args: { repoId: string; request: SubmoduleDeinit }) => Promise<SubmoduleDeinitResult> = /* @__PURE__ */ __bindCommand__("deinit_submodule");
+export const remove_submodule: (args: { repoId: string; request: SubmoduleRemoval }) => Promise<SubmoduleRemovalResult> = /* @__PURE__ */ __bindCommand__("remove_submodule");
+export const inspect_repository_integrity: (args: { repoId: string; operationId: string }) => Promise<IntegrityReport> = /* @__PURE__ */ __bindCommand__("inspect_repository_integrity");
+export const add_submodule: (args: { repoId: string; url: string; path: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("add_submodule");
+export const initialize_submodule: (args: { repoId: string; path: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("initialize_submodule");
+export const initialize_all_submodules: (args: { repoId: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("initialize_all_submodules");
+export const update_submodule: (args: { repoId: string; path: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("update_submodule");
+export const update_all_submodules: (args: { repoId: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("update_all_submodules");
+export const checkout_commit: (args: { repoId: string; oid: string; expectedHeadOid?: string | null; expectedBranch?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("checkout_commit");
+export const rename_branch: (args: { repoId: string; oldName: string; newName: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("rename_branch");
+export const set_branch_upstream: (args: { repoId: string; branch: string; upstream?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("set_branch_upstream");
+export const delete_branch: (args: { repoId: string; name: string; force: boolean; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("delete_branch");
+export const delete_checkpoint_reference: (args: { repoId: string; reference: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("delete_checkpoint_reference");
+export const delete_original_reference: (args: { repoId: string; reference: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("delete_original_reference");
+export const integrate_branch: (args: { repoId: string; name: string; strategy: string; review?: BranchIntegrationReview | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("integrate_branch");
+export const continue_merge: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("continue_merge");
+export const abort_merge: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("abort_merge");
+export const prepare_interactive_rebase: (args: { repoId: string; source: string; target: string; selectionOids?: string[] | null; root?: boolean | null }) => Promise<InteractiveRebasePlan> = /* @__PURE__ */ __bindCommand__("prepare_interactive_rebase");
+export const execute_interactive_rebase: (args: { repoId: string; source: string; target: string; steps: InteractiveRebaseStep[]; selectionOids?: string[] | null; root?: boolean | null; ontoOid?: string | null; reviewedTips: InteractiveRebaseTips }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("execute_interactive_rebase");
+export const continue_rebase: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("continue_rebase");
+export const begin_rebase_split: (args: { repoId: string; expectedHead: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("begin_rebase_split");
+export const preview_merge: (args: { repoId: string; request: MergePreviewRequest; operationId: string }) => Promise<MergePreview> = /* @__PURE__ */ __bindCommand__("preview_merge");
+export const compare_branches: (args: { repoId: string; target: string; source: string }) => Promise<BranchComparison> = /* @__PURE__ */ __bindCommand__("compare_branches");
+export const load_hosting_page: (args: { repoId: string; remote: string; section: HostingSection; query?: HostingQuery | null; operationId: string }) => Promise<HostingPage> = /* @__PURE__ */ __bindCommand__("load_hosting_page");
+export const load_hosted_review: (args: { repoId: string; remote: string; pullNumber: number; expectedHeadOid: string; query?: HostedReviewQuery | null; operationId: string }) => Promise<HostedReview> = /* @__PURE__ */ __bindCommand__("load_hosted_review");
+export const load_branch_workflow: (args: { repoId: string; operationId: string }) => Promise<BranchWorkflowView> = /* @__PURE__ */ __bindCommand__("load_branch_workflow");
+export const prepare_branch_workflow: (args: { repoId: string; request: BranchWorkflowRequest; operationId: string }) => Promise<PreparedBranchWorkflow> = /* @__PURE__ */ __bindCommand__("prepare_branch_workflow");
+export const execute_branch_workflow: (args: { repoId: string; token: string; operationId: string }) => Promise<BranchWorkflowFinishStatus | null> = /* @__PURE__ */ __bindCommand__("execute_branch_workflow");
+export const discard_branch_workflow_plan: (args: { repoId: string; token: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("discard_branch_workflow_plan");
+export const control_branch_workflow_finish: (args: { repoId: string; id: string; revision: number; control: BranchWorkflowControl; operationId: string }) => Promise<BranchWorkflowFinishStatus | null> = /* @__PURE__ */ __bindCommand__("control_branch_workflow_finish");
+export const load_hosted_repositories: (args: { query: HostedRepositoryQuery; operationId: string }) => Promise<HostedRepositoryPage> = /* @__PURE__ */ __bindCommand__("load_hosted_repositories");
+export const inspect_hosted_repository: (args: { fullName: string; repositoryId: string; accountId: string; operationId: string }) => Promise<HostedRepositoryInspection> = /* @__PURE__ */ __bindCommand__("inspect_hosted_repository");
+export const prepare_hosted_clone: (args: { contextId: string; request: HostedCloneRequest; operationId: string }) => Promise<PreparedHostedClone> = /* @__PURE__ */ __bindCommand__("prepare_hosted_clone");
+export const execute_hosted_clone: (args: { contextId: string; token: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("execute_hosted_clone");
+export const discard_hosted_clone_plan: (args: { contextId: string; token: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("discard_hosted_clone_plan");
+export const prepare_hosted_write: (args: { repoId: string; remote: string; request: HostedWriteRequest; operationId: string }) => Promise<PreparedHostedWrite> = /* @__PURE__ */ __bindCommand__("prepare_hosted_write");
+export const load_hosted_forks: (args: { query: HostedForkQuery; operationId: string }) => Promise<HostedForkPage> = /* @__PURE__ */ __bindCommand__("load_hosted_forks");
+export const inspect_hosted_fork: (args: { selection: HostedForkSelection; operationId: string }) => Promise<HostedForkInspection> = /* @__PURE__ */ __bindCommand__("inspect_hosted_fork");
+export const prepare_hosted_fork: (args: { contextId: string; request: HostedForkRequest; operationId: string }) => Promise<PreparedHostedFork> = /* @__PURE__ */ __bindCommand__("prepare_hosted_fork");
+export const execute_hosted_fork: (args: { contextId: string; token: string; operationId: string }) => Promise<HostedForkStatus> = /* @__PURE__ */ __bindCommand__("execute_hosted_fork");
+export const list_hosted_fork_requests: (args: { operationId: string }) => Promise<HostedForkStatus[]> = /* @__PURE__ */ __bindCommand__("list_hosted_fork_requests");
+export const load_hosted_fork_request: (args: { id: string; operationId: string }) => Promise<HostedForkStatus> = /* @__PURE__ */ __bindCommand__("load_hosted_fork_request");
+export const reconcile_hosted_fork: (args: { id: string; operationId: string }) => Promise<HostedForkStatus> = /* @__PURE__ */ __bindCommand__("reconcile_hosted_fork");
+export const prepare_hosted_fork_acknowledgement: (args: { contextId: string; id: string; operationId: string }) => Promise<PreparedForkAcknowledgement> = /* @__PURE__ */ __bindCommand__("prepare_hosted_fork_acknowledgement");
+export const execute_hosted_fork_acknowledgement: (args: { contextId: string; token: string; operationId: string }) => Promise<HostedForkStatus> = /* @__PURE__ */ __bindCommand__("execute_hosted_fork_acknowledgement");
+export const discard_hosted_fork_review: (args: { contextId: string; token: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("discard_hosted_fork_review");
+export const prepare_hosted_fork_remote: (args: { repoId: string; contextId: string; request: HostedForkRemoteRequest; operationId: string }) => Promise<PreparedHostedForkRemote> = /* @__PURE__ */ __bindCommand__("prepare_hosted_fork_remote");
+export const execute_hosted_fork_remote: (args: { repoId: string; contextId: string; token: string; operationId: string }) => Promise<HostedForkRemoteReceipt> = /* @__PURE__ */ __bindCommand__("execute_hosted_fork_remote");
+export const discard_hosted_fork_remote: (args: { repoId: string; contextId: string; token: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("discard_hosted_fork_remote");
+export const execute_hosted_write: (args: { repoId: string; token: string; operationId: string }) => Promise<HostedWriteReceipt> = /* @__PURE__ */ __bindCommand__("execute_hosted_write");
+export const discard_hosted_write_plan: (args: { repoId: string; token: string }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("discard_hosted_write_plan");
+export const prepare_merge_rebase: (args: { repoId: string; source: string; target: string }) => Promise<MergeRebasePlan> = /* @__PURE__ */ __bindCommand__("prepare_merge_rebase");
+export const execute_merge_rebase: (args: { repoId: string; request: MergeRebaseRequest }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("execute_merge_rebase");
+export const export_diff_patch: (args: { repoId: string; staged: boolean; paths: string[]; destination: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_diff_patch");
+export const review_diff_patch: (args: { repoId: string; file: string; target: PatchTarget }) => Promise<PatchReview> = /* @__PURE__ */ __bindCommand__("review_diff_patch");
+export const import_diff_patch: (args: { repoId: string; request: PatchRequest }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("import_diff_patch");
+export const export_git_bundle: (args: { repoId: string; branch: string; expectedOid: string; destination: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_git_bundle");
+export const review_git_bundle: (args: { repoId: string; file: string }) => Promise<BundleReview> = /* @__PURE__ */ __bindCommand__("review_git_bundle");
+export const import_git_bundle: (args: { repoId: string; request: BundleRequest; tip: BundleTip }) => Promise<string> = /* @__PURE__ */ __bindCommand__("import_git_bundle");
+export const review_mail_patch_export: (args: { repoId: string; oids: string[] }) => Promise<MailPatchReview> = /* @__PURE__ */ __bindCommand__("review_mail_patch_export");
+export const export_mail_patch: (args: { repoId: string; request: MailPatchRequest; destination: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_mail_patch");
+export const review_mail_patch_import: (args: { repoId: string; file: string }) => Promise<MailPatchImportReview> = /* @__PURE__ */ __bindCommand__("review_mail_patch_import");
+export const import_mail_patch: (args: { repoId: string; request: MailPatchImportRequest }) => Promise<MailPatchProgress> = /* @__PURE__ */ __bindCommand__("import_mail_patch");
+export const control_mail_patch: (args: { repoId: string; action: MailPatchAction }) => Promise<MailPatchProgress> = /* @__PURE__ */ __bindCommand__("control_mail_patch");
+export const skip_rebase: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("skip_rebase");
+export const abort_rebase: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("abort_rebase");
+export const fetch_repository: (args: { repoId: string; remote?: string | null; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("fetch_repository");
+export const fetch_branches: (args: { repoId: string; options: FetchOptions; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("fetch_branches");
+export const shallow_history_state: (args: { repoId: string }) => Promise<ShallowHistoryState> = /* @__PURE__ */ __bindCommand__("shallow_history_state");
+export const perform_repository_maintenance: (args: { repoId: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("perform_repository_maintenance");
+export const sync_repository: (args: { repoId: string }) => Promise<RepositorySnapshot | null> = /* @__PURE__ */ __bindCommand__("sync_repository");
+export const lfs_pull: (args: { repoId: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_pull");
+export const lfs_prune: (args: { repoId: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_prune");
+export const lfs_prune_preview: (args: { repoId: string }) => Promise<LfsPrunePreview> = /* @__PURE__ */ __bindCommand__("lfs_prune_preview");
+export const lfs_prune_objects: (args: { repoId: string; preview: LfsPrunePreview; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_prune_objects");
+export const lfs_initialize: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_initialize");
+export const lfs_track_pattern: (args: { repoId: string; pattern: string; lockable: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_track_pattern");
+export const lfs_tracking_rules: (args: { repoId: string }) => Promise<LfsTrackingRules> = /* @__PURE__ */ __bindCommand__("lfs_tracking_rules");
+export const lfs_file_attributes: (args: { repoId: string; file: string }) => Promise<LfsFileAttributes> = /* @__PURE__ */ __bindCommand__("lfs_file_attributes");
+export const lfs_objects: (args: { repoId: string }) => Promise<LfsObjects> = /* @__PURE__ */ __bindCommand__("lfs_objects");
+export const lfs_locks: (args: { repoId: string }) => Promise<LfsLocks> = /* @__PURE__ */ __bindCommand__("lfs_locks");
+export const lfs_lock_file: (args: { repoId: string; file: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_lock_file");
+export const lfs_unlock_file: (args: { repoId: string; lock: LfsLock; force: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_unlock_file");
+export const lfs_fetch_preview: (args: { repoId: string; file: string; remote: string; expectedOid: string; expectedSize: number }) => Promise<LfsFetchPreview> = /* @__PURE__ */ __bindCommand__("lfs_fetch_preview");
+export const lfs_fetch_object: (args: { repoId: string; preview: LfsFetchPreview; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_fetch_object");
+export const lfs_checkout_preview: (args: { repoId: string; file: string; expectedOid: string; expectedSize: number }) => Promise<LfsCheckoutPreview> = /* @__PURE__ */ __bindCommand__("lfs_checkout_preview");
+export const lfs_checkout_object: (args: { repoId: string; preview: LfsCheckoutPreview; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_checkout_object");
+export const lfs_untrack_pattern: (args: { repoId: string; pattern: string; expectedState: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("lfs_untrack_pattern");
+export const sparse_checkout_set: (args: { repoId: string; paths: string[]; sparseIndex: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("sparse_checkout_set");
+export const sparse_checkout_reapply: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("sparse_checkout_reapply");
+export const sparse_checkout_disable: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("sparse_checkout_disable");
+export const pull_repository: (args: { repoId: string; strategy: string; remote?: string | null; branch?: string | null; checkout: PullCheckout; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("pull_repository");
+export const push_repository: (args: { repoId: string; remote?: string | null; branch?: string | null; expectedHeadOid?: string | null; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("push_repository");
+export const review_push_destination: (args: { repoId: string; remote: string }) => Promise<PushDestinationReview> = /* @__PURE__ */ __bindCommand__("review_push_destination");
+export const force_push_repository: (args: { repoId: string; remote: string; branch: string; expectedRemoteOid: string; expectedHeadOid: string; expectedDestinationState: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("force_push_repository");
+export const publish_branch: (args: { repoId: string; remote: string; branch: string; operationId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("publish_branch");
+export const add_remote: (args: { repoId: string; name: string; url: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("add_remote");
+export const set_remote_url: (args: { repoId: string; name: string; url: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("set_remote_url");
+export const set_repository_identity: (args: { repoId: string; name: string; email: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("set_repository_identity");
+export const remove_remote: (args: { repoId: string; name: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("remove_remote");
+export const stash_changes: (args: { repoId: string; message?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("stash_changes");
+export const pop_stash: (args: { repoId: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("pop_stash");
+export const apply_stash: (args: { repoId: string; reference: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("apply_stash");
+export const pop_stash_entry: (args: { repoId: string; reference: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("pop_stash_entry");
+export const drop_stash: (args: { repoId: string; reference: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("drop_stash");
+export const rename_stash: (args: { repoId: string; reference: string; expectedOid: string; message: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("rename_stash");
+export const create_tag: (args: { repoId: string; name: string; oid: string; message?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_tag");
+export const cherry_pick_commits: (args: { repoId: string; oids: string[]; mainline?: number | null; noCommit?: boolean | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("cherry_pick_commits");
+export const revert_commit: (args: { repoId: string; oid: string; mainline?: number | null; oids?: string[] | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("revert_commit");
+export const control_history_operation: (args: { repoId: string; operation: string; action: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("control_history_operation");
+export const reset_to_commit: (args: { repoId: string; oid: string; mode: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("reset_to_commit");
+export const preview_reset: (args: { repoId: string; oid: string; mode: string }) => Promise<PreparedReset> = /* @__PURE__ */ __bindCommand__("preview_reset");
+export const execute_prepared_reset: (args: { repoId: string; token: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("execute_prepared_reset");
+export const load_operation_recoveries: (args: { repoId: string }) => Promise<OperationRecovery[]> = /* @__PURE__ */ __bindCommand__("load_operation_recoveries");
+export const restore_operation_recovery: (args: { repoId: string; id: string; branch: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("restore_operation_recovery");
+export const forget_operation_recovery: (args: { repoId: string; id: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("forget_operation_recovery");
+export const start_bisect: (args: { repoId: string; badOid: string; goodOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("start_bisect");
+export const mark_bisect: (args: { repoId: string; verdict: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("mark_bisect");
+export const reset_bisect: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("reset_bisect");
+export const move_head: (args: { repoId: string; expectedOid: string; targetOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("move_head");
+export const inspect_commit: (args: { repoId: string; oid: string }) => Promise<CommitDetails> = /* @__PURE__ */ __bindCommand__("inspect_commit");
+export const inspect_tag: (args: { repoId: string; name: string }) => Promise<TagDetails> = /* @__PURE__ */ __bindCommand__("inspect_tag");
+export const inspect_commit_file: (args: { repoId: string; oid: string; path: string; previousPath?: string | null }) => Promise<CommitFileDiff> = /* @__PURE__ */ __bindCommand__("inspect_commit_file");
+export const inspect_file_media: (args: { repoId: string; request: FileComparisonRequest; operationId: string }) => Promise<FileMediaComparison> = /* @__PURE__ */ __bindCommand__("inspect_file_media");
+export const parse_repository_link: (args: { rawLink: string }) => Promise<RepositoryLink> = /* @__PURE__ */ __bindCommand__("parse_repository_link");
+export const create_repository_link: (args: { remote: string; target: RepositoryLinkTarget }) => Promise<string> = /* @__PURE__ */ __bindCommand__("create_repository_link");
+export const discover_repository_link: (args: { rawLink: string; knownPaths: string[]; operationId: string }) => Promise<RepositoryLinkDiscovery> = /* @__PURE__ */ __bindCommand__("discover_repository_link");
+export const open_repository_link: (args: { rawLink: string; path: string; expectedOid?: string | null; operationId: string }) => Promise<OpenedRepositoryLink> = /* @__PURE__ */ __bindCommand__("open_repository_link");
+export const repository_link_read_policy: (args: { repoId: string }) => Promise<RepositoryLinkReadPolicy> = /* @__PURE__ */ __bindCommand__("repository_link_read_policy");
+export const repository_link_read_policies: (args?: {}) => Promise<Partial<{ [key in string]: RepositoryLinkReadPolicy }>> = /* @__PURE__ */ __bindOptionalCommand__("repository_link_read_policies");
+export const resume_repository_link_auto_fetch: (args: { repoId: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("resume_repository_link_auto_fetch");
+export const inspect_stash: (args: { repoId: string; oid: string }) => Promise<CommitDetails> = /* @__PURE__ */ __bindCommand__("inspect_stash");
+export const inspect_stash_file: (args: { repoId: string; oid: string; path: string; previousPath?: string | null }) => Promise<CommitFileDiff> = /* @__PURE__ */ __bindCommand__("inspect_stash_file");
+export const compare_commits: (args: { repoId: string; baseOid: string; targetOid: string }) => Promise<CommitComparison> = /* @__PURE__ */ __bindCommand__("compare_commits");
+export const compare_commit_file: (args: { repoId: string; baseOid: string; targetOid: string; path: string; previousPath?: string | null }) => Promise<CommitFileDiff> = /* @__PURE__ */ __bindCommand__("compare_commit_file");
+export const compare_commit_with_working_tree: (args: { repoId: string; baseOid: string }) => Promise<CommitComparison> = /* @__PURE__ */ __bindCommand__("compare_commit_with_working_tree");
+export const compare_commit_file_with_working_tree: (args: { repoId: string; baseOid: string; path: string; previousPath?: string | null }) => Promise<CommitFileDiff> = /* @__PURE__ */ __bindCommand__("compare_commit_file_with_working_tree");
+export const inspect_working_tree_file: (args: { repoId: string; path: string; staged: boolean; previousPath?: string | null }) => Promise<WorkingTreeFileDiff> = /* @__PURE__ */ __bindCommand__("inspect_working_tree_file");
+export const working_tree_change_summary: (args: { repoId: string }) => Promise<WorkingTreeSummaries> = /* @__PURE__ */ __bindCommand__("working_tree_change_summary");
+export const application_update_status: (args?: {}) => Promise<ApplicationUpdateStatus> = /* @__PURE__ */ __bindOptionalCommand__("application_update_status");
+export const set_automatic_application_updates: (args: { enabled: boolean }) => Promise<ApplicationUpdateStatus> = /* @__PURE__ */ __bindCommand__("set_automatic_application_updates");
+export const check_application_update: (args?: {}) => Promise<ApplicationUpdateStatus> = /* @__PURE__ */ __bindOptionalCommand__("check_application_update");
+export const download_application_update: (args: { offerId: string }) => Promise<ApplicationUpdateStatus> = /* @__PURE__ */ __bindCommand__("download_application_update");
+export const install_application_update: (args: { offerId: string }) => Promise<ApplicationUpdateStatus> = /* @__PURE__ */ __bindCommand__("install_application_update");
+export const inspect_application_update: (args?: {}) => Promise<ApplicationUpdateStatus> = /* @__PURE__ */ __bindOptionalCommand__("inspect_application_update");
+export const inspect_file_history: (args: { repoId: string; revision: string; path: string }) => Promise<FileHistoryEntry[]> = /* @__PURE__ */ __bindCommand__("inspect_file_history");
+export const search_repository_history: (args: { repoId: string; query: HistoryQuery; cursor?: HistoryCursor | null; operationId: string }) => Promise<HistorySearchPage> = /* @__PURE__ */ __bindCommand__("search_repository_history");
+export const inspect_file_history_page: (args: { repoId: string; revision: string; path: string; cursor?: FileHistoryCursor | null; operationId: string }) => Promise<FileHistoryPage> = /* @__PURE__ */ __bindCommand__("inspect_file_history_page");
+export const inspect_blame_navigation: (args: { repoId: string; oid: string; path: string }) => Promise<BlameNavigation> = /* @__PURE__ */ __bindCommand__("inspect_blame_navigation");
+export const inspect_history_commit: (args: { repoId: string; oid: string }) => Promise<CommitSummary> = /* @__PURE__ */ __bindCommand__("inspect_history_commit");
+export const compare_history_revisions: (args: { repoId: string; base: string; target: string; mode: string }) => Promise<CommitComparison> = /* @__PURE__ */ __bindCommand__("compare_history_revisions");
+export const inspect_file_blame: (args: { repoId: string; revision: string; path: string }) => Promise<FileBlameLine[]> = /* @__PURE__ */ __bindCommand__("inspect_file_blame");
+export const inspect_file_blame_page: (args: { repoId: string; revision: string; path: string; firstLine: number }) => Promise<FileBlamePage> = /* @__PURE__ */ __bindCommand__("inspect_file_blame_page");
+export const restore_files_from_commit: (args: { repoId: string; oid: string; paths: string[] }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("restore_files_from_commit");
+export const inspect_conflict: (args: { repoId: string; path: string }) => Promise<ConflictDetails> = /* @__PURE__ */ __bindCommand__("inspect_conflict");
+export const resolve_conflict: (args: { repoId: string; path: string; resolution: string; output?: string | null; expectedState?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("resolve_conflict");
+export const apply_working_tree_hunk: (args: { repoId: string; path: string; staged: boolean; hunkIndex: number; action: string; expectedPatch?: string | null }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("apply_working_tree_hunk");
+export const apply_working_tree_lines: (args: { repoId: string; path: string; staged: boolean; hunkIndex: number; lineIndices: number[]; action: string; expectedPatch?: string | null }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("apply_working_tree_lines");
+export const undo_discard: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("undo_discard");
+export const redo_discard: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("redo_discard");
+export const open_terminal: (args: { repoId: string; rows: number; cols: number }) => Promise<TerminalInfo> = /* @__PURE__ */ __bindCommand__("open_terminal");
+export const write_terminal: (args: { sessionId: string; data: number[] }) => Promise<null> = /* @__PURE__ */ __bindCommand__("write_terminal");
+export const resize_terminal: (args: { sessionId: string; rows: number; cols: number }) => Promise<null> = /* @__PURE__ */ __bindCommand__("resize_terminal");
+export const close_terminal: (args: { sessionId: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("close_terminal");
 export type CommandMap = {
   answer_authentication: typeof answer_authentication;
   pending_authentication: typeof pending_authentication;

@@ -3504,6 +3504,21 @@ focused browser checks passed; the three new intent checks failed on the
 click-only baseline because it made no request before activation. Exact
 receipts are under `compact-intent-*` in the startup profile directory.
 
+### Share the generated native command implementation
+
+The generated named command exports now share two small factories, one for
+required request objects and one that defaults omitted requests to an
+empty object. The Rust registry remains authoritative, and all exports
+still use the checked IPC transport. An AST comparison found identical
+wire names, argument types and optionality, and result types across all 281
+commands. Native event and payload declarations were unchanged.
+
+Same-settings production builds measured 1,300,031 → 1,295,331 raw initial
+bytes (−4,700 JS bytes, CSS unchanged), 190 fewer gzip bytes, and 73 fewer
+Brotli bytes. No new lazy request was introduced and the 900 kB warning
+remains. These are measurements of emitted assets, not startup timing.
+Receipts are in `target/local-review/ipc-binding-weight.tyGpqbBR/`.
+
 ### Cancellable Git process latency
 
 The process coordinator now wakes when both output readers finish instead

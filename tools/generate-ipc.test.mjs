@@ -9,12 +9,15 @@ test('derives named arguments, native names, and nullable top-level options', ()
       return await TAURI_INVOKE("fetch_branches", { repoId, options, operationId });
     },
     async systemInfo(): Promise<Info> { return await TAURI_INVOKE("system_info"); }
+    async optionalSnapshot(repoId: string | null): Promise<Snapshot> {
+      return await TAURI_INVOKE("optional_snapshot", { repoId });
+    },
   };`;
   const output = adaptBindings(source);
-  assert.match(output, /function fetch_branches\(args: \{ repoId: string; options: FetchOptions; operationId\?: string \| null \}/);
-  assert.match(output, /Promise<Snapshot>/);
+  assert.match(output, /const fetch_branches: \(args: \{ repoId: string; options: FetchOptions; operationId\?: string \| null \}\) => Promise<Snapshot> = \/\* @__PURE__ \*\/ __bindCommand__\("fetch_branches"\)/);
   assert.doesNotMatch(output, /export const commands/);
-  assert.match(output, /function system_info\(args: \{  \} = \{\}\)/);
+  assert.match(output, /const system_info: \(args\?: \{\}\) => Promise<Info> = \/\* @__PURE__ \*\/ __bindOptionalCommand__\("system_info"\)/);
+  assert.match(output, /const optional_snapshot: \(args\?: \{ repoId\?: string \| null \}\) => Promise<Snapshot> = \/\* @__PURE__ \*\/ __bindOptionalCommand__\("optional_snapshot"\)/);
   assert.match(output, /safeInvoke as TAURI_INVOKE/);
 });
 
