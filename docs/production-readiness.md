@@ -2242,6 +2242,12 @@ GitLab and file-tool captures now scroll once and poll their actual
 dialog geometry synchronously with a bounded wait. The end capture still
 requires the action to fit inside the dialog. No click, provider request,
 or operation is retried by the screenshot helper.
+With that harness-only change (`07e6b41`), all 47 installed GitLab
+scenarios passed on Debian 12 with Git 2.39.5 against the unchanged
+`4c0c69a` installer (SHA-256
+`72ed2623e0f112fe0e936a7cdc0f8af7997020fc0dc92885e9107e2de5377f85`).
+The exact focused receipt is in
+`target/local-review/updater/jammy-builder/receipt-freshness-matrix.depeS42i/bookworm-gitlab-repair.6cNJH7bT/focused.verified.json`.
 
 Readiness-wait follow-up, 2026-10-24: a controlled four-second browser-reply
 delivery delay reproduces the old client-polling timeout on valid geometry.
@@ -3554,6 +3560,15 @@ one conflicted path; filtering out only Git's `U` record is insufficient.
 The installed recap gate now exercises this overflow case. The failing
 baseline, conflict probe, and source checks are retained under
 `target/local-review/recap-status-overflow.6NLZbVz1/`.
+
+An unavailable recap now offers a scoped Retry without refreshing the
+repository. It keeps a valid sibling count for the same snapshot and
+returns keyboard focus to the initiating section heading. Both new
+interaction checks failed without the control; all 19 focused Chromium
+checks passed after the change, including a 250 px header. Production
+build succeeded at 1,296,859 raw initial bytes: the 900 kB warning
+remains and neither budget changed. Receipts are under
+`target/local-review/recap-retry.2LF7DbNp/`.
 
 ### Rebuilding native code after restoring a source archive
 
