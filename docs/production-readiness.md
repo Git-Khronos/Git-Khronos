@@ -3416,6 +3416,14 @@ shows the Git report when Abort ends without rewinding a separately
 moved HEAD. Owned CLI reproductions are in
 `target/local-review/mail-recovery-ignored.vG001cPn/`.
 
+The exact `d8185e8` fixture-key installer passed 18 detached-checkout
+scenarios on Ubuntu 24.04 with inherited Git setup. The focused verifier
+matched both mail-patch controls to that exact package; it verified
+refusal without ref/index changes and successful retry. APT simulation
+passed; the host was not modified. Installer and receipt:
+`target/local-review/updater/jammy-builder/mail-recovery-release.aVa3Vz43/`
+(SHA-256 `fab4c3a3f579f2d474c56f8b1ad43f3c43b38a0d42cb62c9856a7d416d3edb0f`).
+
 Bisect Reset now refuses to overwrite ignored files when restoring an
 original branch or detached start. It preserves the bisect session and
 allows retry after moving the obstruction. No-checkout sessions still
@@ -3488,6 +3496,21 @@ traffic refusal remains in its original report; removing the resolver
 from this local fixture does not prove it caused that refusal. Python
 harness tests (150) and native GitLab source tests (103) also passed.
 See `target/local-review/gitlab-loopback-readiness.pEfBzgsX/`.
+
+The bounded WebDriver polling follow-up (`4c55bb7` harness) passed all
+47 GitLab and 20 smoke scenarios on the unchanged `5539be8` fixture-key
+package on Ubuntu 24.04. The focused verifier selected both expected
+reports with inherited Git setup and checked the same installed executable,
+launcher and package hashes. The new loopback unit test rejects an HTTP
+reply arriving after the readiness deadline. Receipts:
+`target/local-review/native-poll-deadline.qN6mXjwb/installed/`.
+
+The next five-distribution local matrix is pinned to the exact
+`468c577` product build and separately archived `4c55bb7` harness.
+It is queued against the existing offline build, not a rebuild or a
+publication. Its 37 required checks and per-lane evidence are recorded
+under `target/local-review/updater/jammy-builder/next-linux-matrix.Wj85katk/`.
+This replaces no qualification until all lanes and the strict verifier pass.
 
 ### Manual and automatic Fetch recovery
 
