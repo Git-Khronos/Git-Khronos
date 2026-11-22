@@ -1,3 +1,30 @@
+<ng-template #toolbarOptionsMenu>
+  @if (toolbarOptionsView(); as menu) {
+    @defer (on immediate) {
+      <div gcToolbarOptions [id]="menu.id" [class]="'toolbar-menu ' + menu.className" role="menu"
+        [attr.aria-label]="menu.label" [attr.aria-describedby]="menu.kind === 'pull' && menu.hasSubmodules ? 'pull-submodule-scope' : null"
+        [view]="menu" (activate)="runToolbarOptionsAction(menu, $event)" (ready)="toolbarOptionsReady(menu, $event)"
+        (keydown)="handleToolbarActionMenuKeydown($event)"></div>
+    } @loading {
+      <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ $implicit: menu, failed: false }" />
+    } @error {
+      <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ $implicit: menu, failed: true }" />
+    }
+  }
+</ng-template>
+
+<ng-template #toolbarOptionsFallback let-menu let-failed="failed">
+  <div [id]="menu.id" [class]="'toolbar-menu ' + menu.className" role="menu"
+    [attr.aria-label]="menu.label" (keydown)="handleToolbarActionMenuKeydown($event)">
+    @if (failed) {
+      <p class="toolbar-menu-note" role="alert">Toolbar options could not load. Restart Git Khronos before retrying.</p>
+    } @else {
+      <p class="toolbar-menu-note" role="status">Loading toolbar options…</p>
+    }
+    <button #toolbarOptionsFallbackControl type="button" role="menuitem" (click)="dismissToolbarOptions()">{{ failed ? 'Close' : 'Cancel' }}</button>
+  </div>
+</ng-template>
+
 <ng-template #fileChangeRecap let-stats>
   <span class="file-change-summary" role="img" [attr.aria-label]="stats.label">
     <span>+{{ stats.additions }}</span><i>−{{ stats.deletions }}</i>
@@ -427,132 +454,43 @@
         <div class="toolbar-divider history-divider" aria-hidden="true"></div>
         <div class="toolbar-split toolbar-primary-fetch" (click)="$event.stopPropagation()">
           <button class="tool-button split-main" type="button" aria-label="Fetch all remotes" title="Fetch all remotes" (click)="runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><span><gc-icon name="refresh" /></span><small>Fetch</small></button>
-          <button class="split-toggle" type="button" title="Fetch options" aria-label="Fetch options" aria-haspopup="menu" [attr.aria-controls]="fetchMenuOpen() ? 'fetch-options-menu' : null" [attr.aria-expanded]="fetchMenuOpen()" (click)="toggleFetchMenu($event)" [disabled]="git.busy() || git.backgroundFetchBusy()"><gc-icon name="chevron-down" [size]="10" /></button>
-          @if (fetchMenuOpen()) {
-            <div id="fetch-options-menu" class="toolbar-menu fetch-menu" role="menu" aria-label="Fetch options" (keydown)="handleToolbarActionMenuKeydown($event)">
-              <header class="toolbar-menu-context">
-                <gc-icon name="remote" [size]="14" />
-                <span><small>Remote references</small><strong>{{ toolbarRemotes().length }} {{ toolbarRemotes().length === 1 ? 'remote' : 'remotes' }}</strong></span>
-                <b>{{ fetchMenuDetail() }}</b>
-              </header>
-              <button type="button" role="menuitem" (click)="toolbarOverlays.close('fetch'); runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Fetch updates without pruning</small></span></button>
-              <button type="button" role="menuitem" (click)="openFetchOptionsFromToolbar()"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
-            </div>
-          }
+          <button class="split-toggle" type="button" title="Fetch options" aria-label="Fetch options" aria-haspopup="menu" [attr.aria-controls]="fetchMenuOpen() ? 'fetch-options-menu' : null" [attr.aria-expanded]="fetchMenuOpen()" (click)="toggleToolbarOptions($event, 'fetch')" [disabled]="git.busy() || git.backgroundFetchBusy()"><gc-icon name="chevron-down" [size]="10" /></button>
+          @if (fetchMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
         </div>
         <div class="toolbar-split" (click)="$event.stopPropagation()">
           <button class="tool-button split-main" type="button" (click)="pullCurrentBranch()" [disabled]="git.busy() || !currentBranch() || !currentRemote() || repo.bare" [attr.aria-label]="pullToolbarLabel()" title="{{ pullToolbarLabel() }} · {{ pullStrategyLabel() }}"><span><gc-icon name="pull" />@if (currentRemoteIsUpstream() && currentBranchSync().behind) { <b class="toolbar-sync-badge incoming">{{ currentBranchSync().behind }}</b> }</span><small>Pull</small></button>
-          <button class="split-toggle" type="button" (click)="togglePullMenu($event)" [disabled]="git.busy()" title="Pull options" aria-label="Pull options" aria-haspopup="menu" [attr.aria-controls]="pullMenuOpen() ? 'pull-options-menu' : null" [attr.aria-expanded]="pullMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
-          @if (pullMenuOpen()) {
-            <div id="pull-options-menu" class="toolbar-menu pull-menu" role="menu" aria-label="Pull options"
-                 [attr.aria-describedby]="repo.submodules.length ? 'pull-submodule-scope' : null" (keydown)="handleToolbarActionMenuKeydown($event)">
-              <header class="toolbar-menu-context">
-                <gc-icon [name]="currentRemote() ? remoteIcon(currentRemote()!.name) : 'remote'" [size]="14" />
-                <span><small>Pull destination</small>@if (currentRemote() && currentRemoteBranch()) { <strong>{{ currentRemote()!.name }}/{{ currentRemoteBranch() }}</strong> } @else { <strong>No remote branch selected</strong> }</span>
-                @if (currentRemoteIsUpstream()) { <b>{{ currentBranchSync().behind ? currentBranchSync().behind + ' incoming' : 'Up to date' }}</b> } @else { <b>Selected remote</b> }
-              </header>
-              <div class="menu-caption">Pull strategy</div>
-              @for (choice of pullStrategyChoices; track choice.id) {
-                @let selected = pullStrategy() === choice.id;
-                @let label = pullStrategyLabel(choice.id);
-                <div class="pull-strategy-row" [class.default]="selected">
-                  <button type="button" role="menuitem" (click)="executePullStrategy(choice.id)">
-                    <gc-icon name="pull" [size]="13" /><span><strong>{{ label }} @if (selected) { <em class="default-strategy-badge">Default</em> }</strong><small>{{ choice.description }}</small></span>
-                  </button>
-                  <button class="pull-default" type="button" role="menuitemradio"
-                    [title]="selected ? 'Default pull strategy' : 'Make ' + label + ' the default'"
-                    [attr.aria-label]="selected ? label + ' is the default pull strategy' : 'Make ' + label + ' the default pull strategy'"
-                    [attr.aria-checked]="selected" (click)="setDefaultPullStrategy($event, choice.id)"><gc-icon name="star" [size]="12" /></button>
-                </div>
-              }
-              @if (repo.submodules.length) {
-                <p id="pull-submodule-scope" class="toolbar-menu-note">Pull does not update submodule checkouts. Use Submodules to update them separately.</p>
-              }
-            </div>
-          }
+          <button class="split-toggle" type="button" (click)="toggleToolbarOptions($event, 'pull')" [disabled]="git.busy()" title="Pull options" aria-label="Pull options" aria-haspopup="menu" [attr.aria-controls]="pullMenuOpen() ? 'pull-options-menu' : null" [attr.aria-expanded]="pullMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+          @if (pullMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
         </div>
         <div class="toolbar-split" (click)="$event.stopPropagation()">
           <button class="tool-button split-main" type="button" (click)="pushCurrentBranch()" [disabled]="git.busy() || !currentBranch()" [attr.aria-label]="pushToolbarLabel()" title="{{ pushToolbarLabel() }}"><span><gc-icon name="push" />@if (currentRemoteIsUpstream() && currentBranchSync().ahead) { <b class="toolbar-sync-badge outgoing">{{ currentBranchSync().ahead }}</b> }</span><small>{{ currentBranch()?.upstream ? 'Push' : 'Publish' }}</small></button>
-          <button class="split-toggle" type="button" (click)="togglePushMenu($event)" [disabled]="git.busy() || !currentBranch() || !currentRemote()" title="Push options" aria-label="Push options" aria-haspopup="menu" [attr.aria-controls]="pushMenuOpen() ? 'push-options-menu' : null" [attr.aria-expanded]="pushMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
-          @if (pushMenuOpen()) {
-            <div id="push-options-menu" class="toolbar-menu push-menu" role="menu" aria-label="Push options" (keydown)="handleToolbarActionMenuKeydown($event)">
-              <header class="toolbar-menu-context">
-                <gc-icon [name]="currentRemote() ? remoteIcon(currentRemote()!.name) : 'remote'" [size]="14" />
-                <span><small>{{ currentBranch()?.upstream ? 'Push destination' : 'Publish destination' }}</small><strong>{{ currentRemote()?.name }}/{{ currentRemoteBranch() }}</strong></span>
-                @if (currentRemoteIsUpstream()) { <b>{{ currentBranchSync().ahead ? currentBranchSync().ahead + ' outgoing' : 'Up to date' }}</b> } @else { <b>Selected remote</b> }
-              </header>
-              <button type="button" role="menuitem" (click)="toolbarOverlays.close('push'); pushCurrentBranch()"><gc-icon name="push" [size]="13" /><span><strong>{{ currentBranch()?.upstream ? 'Push' : 'Publish branch' }}</strong><small>{{ pushToolbarLabel() }}</small></span></button>
-              <div class="menu-separator"></div>
-              <button class="danger-item" type="button" role="menuitem" [disabled]="!currentRemoteIsUpstream()" (click)="requestForcePush()"><gc-icon name="warning" [size]="13" /><span><strong>Force Push with Lease…</strong><small>Rewrite only if the reviewed upstream commit is unchanged</small></span></button>
-            </div>
-          }
+          <button class="split-toggle" type="button" (click)="toggleToolbarOptions($event, 'push')" [disabled]="git.busy() || !currentBranch() || !currentRemote()" title="Push options" aria-label="Push options" aria-haspopup="menu" [attr.aria-controls]="pushMenuOpen() ? 'push-options-menu' : null" [attr.aria-expanded]="pushMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+          @if (pushMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
         </div>
         <div class="toolbar-divider action-group-divider" aria-hidden="true"></div>
         <div class="toolbar-split" (click)="$event.stopPropagation()">
           <button class="tool-button split-main" type="button" aria-label="Create branch" aria-keyshortcuts="Control+B Meta+B" title="Create branch ({{ primaryShortcutKey }}+B)" (click)="openBranchCreator()" [disabled]="git.busy()"><span><gc-icon name="branch" /></span><small>Branch</small></button>
-          <button class="split-toggle" type="button" (click)="toggleBranchMenu($event)" [disabled]="git.busy()" title="Branch options" aria-label="Branch options" aria-haspopup="menu" [attr.aria-controls]="branchMenuOpen() ? 'branch-options-menu' : null" [attr.aria-expanded]="branchMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
-          @if (branchMenuOpen()) {
-            <div id="branch-options-menu" class="toolbar-menu branch-menu" role="menu" aria-label="Branch options" (keydown)="handleToolbarActionMenuKeydown($event)">
-              <header class="toolbar-menu-context">
-                <gc-icon name="branch" [size]="14" />
-                <span><small>Current branch</small><strong>{{ checkoutDisplayName() }}</strong></span>
-                <b>{{ currentBranchStateLabel() }}</b>
-              </header>
-              <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openBranchCreatorFromToolbarMenu()"><gc-icon name="plus" [size]="13" /><span><strong>Create branch</strong><small>From the current HEAD</small></span></button>
-              <button type="button" role="menuitem" [disabled]="git.busy() || !currentBranch()" (click)="openIntegrationFromToolbarMenu()"><gc-icon name="merge" [size]="13" /><span><strong>Merge or rebase into {{ currentBranch()?.name ?? 'current branch' }}…</strong><small>Choose a branch and see what will happen</small></span></button>
-              <div class="menu-separator"></div>
-              <div class="menu-caption">Local branches</div>
-              @for (branch of visibleBranches(); track branch.fullName) {
-                <button type="button" role="menuitem" [disabled]="git.busy()" (click)="checkoutFromToolbar(branch)" [class.current]="branch.current">
-                  <gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="13" /><span><strong>{{ branch.name }}</strong><small>{{ branch.current ? 'Current branch' : 'Checkout branch' }}</small></span>
-                </button>
-              }
-            </div>
-          }
+          <button class="split-toggle" type="button" (click)="toggleToolbarOptions($event, 'branch')" [disabled]="git.busy()" title="Branch options" aria-label="Branch options" aria-haspopup="menu" [attr.aria-controls]="branchMenuOpen() ? 'branch-options-menu' : null" [attr.aria-expanded]="branchMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+          @if (branchMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
         </div>
         <div class="toolbar-split toolbar-secondary-direct" (click)="$event.stopPropagation()">
           <button class="tool-button split-main" type="button" title="Stash all changes, including untracked files" aria-label="Stash all changes" (click)="stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><span><gc-icon name="archive" /></span><small>Stash</small></button>
-          <button class="split-toggle" type="button" title="Stash options" aria-label="Stash options" aria-haspopup="menu" [attr.aria-controls]="stashMenuOpen() ? 'stash-options-menu' : null" (click)="toggleStashMenu($event)" [attr.aria-expanded]="stashMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
-          @if (stashMenuOpen()) {
-            <div id="stash-options-menu" class="toolbar-menu stash-menu" role="menu" aria-label="Stash options" (keydown)="handleToolbarActionMenuKeydown($event)">
-              <header class="toolbar-menu-context">
-                <gc-icon name="archive" [size]="14" />
-                <span><small>Working directory</small><strong>{{ checkoutDisplayName() }}</strong></span>
-                <b>{{ repo.status.entryCount }} {{ repo.status.entryCount === 1 ? 'change' : 'changes' }}</b>
-              </header>
-              <button type="button" role="menuitem" (click)="toolbarOverlays.close('stash'); stashCurrentChanges()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="archive" [size]="13" /><span><strong>Stash all changes</strong><small>Save staged, unstaged, and untracked files</small></span></button>
-              <button type="button" role="menuitem" (click)="openStashOptionsFromToolbar()" [disabled]="!repo.status.entryCount || git.busy()"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose which changes and files to save</small></span></button>
-            </div>
-          }
+          <button class="split-toggle" type="button" title="Stash options" aria-label="Stash options" aria-haspopup="menu" [attr.aria-controls]="stashMenuOpen() ? 'stash-options-menu' : null" (click)="toggleToolbarOptions($event, 'stash')" [attr.aria-expanded]="stashMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+          @if (stashMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
         </div>
         <button class="tool-button toolbar-secondary-direct" type="button" title="Pop the latest stash" (click)="git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><span><gc-icon name="archive-restore" /></span><small>Pop</small></button>
         @if (repo.lfs.enabled) {
           <div class="toolbar-split toolbar-secondary-direct" (click)="$event.stopPropagation()">
             <button class="tool-button split-main" type="button" title="Pull Git LFS objects" [class.lfs-pointers]="!!repo.lfs.pointerFiles" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><span><gc-icon name="server" /></span><small>LFS@if (repo.lfs.pointerFiles) { <span class="lfs-pointer-count">{{ repo.lfs.pointerFiles }}</span> }</small></button>
-            <button class="split-toggle" type="button" title="Git LFS options" aria-label="Git LFS options" aria-haspopup="menu" [attr.aria-controls]="lfsMenuOpen() ? 'lfs-options-menu' : null" (click)="toggleLfsMenu($event)" [attr.aria-expanded]="lfsMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
-            @if (lfsMenuOpen()) {
-              <div id="lfs-options-menu" class="toolbar-menu lfs-menu" role="menu" aria-label="Git LFS options" (keydown)="handleToolbarActionMenuKeydown($event)">
-                <div class="lfs-menu-status"><gc-icon name="server" [size]="15" /><span><strong>Git LFS</strong><small>{{ repo.lfs.available ? (repo.lfs.version || 'Available') : 'Not installed or unavailable' }}@if (repo.lfs.trackedFiles !== null) { · {{ repo.lfs.trackedFiles }} tracked {{ repo.lfs.trackedFiles === 1 ? 'file' : 'files' }} } @else if (repo.lfs.available) { · File counts unavailable }@if (repo.lfs.pointerFiles) { · {{ repo.lfs.pointerFiles }} not materialized }</small></span></div>
-                <div class="menu-separator"></div>
-                <button type="button" role="menuitem" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects needed by the current checkout</small></span></button>
-                <button class="danger-item" type="button" role="menuitem" (click)="requestLfsPrune()" [disabled]="git.busy() || !repo.lfs.available"><gc-icon name="trash" [size]="13" /><span><strong>Clean LFS storage</strong><small>Review and remove unreferenced local objects</small></span></button>
-              </div>
-            }
+            <button class="split-toggle" type="button" title="Git LFS options" aria-label="Git LFS options" aria-haspopup="menu" [attr.aria-controls]="lfsMenuOpen() ? 'lfs-options-menu' : null" (click)="toggleToolbarOptions($event, 'lfs')" [attr.aria-expanded]="lfsMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+            @if (lfsMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
           </div>
         }
         @if (repo.sparseCheckout.enabled) {
           <div class="toolbar-split toolbar-secondary-direct" (click)="$event.stopPropagation()">
             <button class="tool-button split-main" type="button" title="Edit sparse checkout directories" (click)="openSparseCheckoutPreferences()" [disabled]="git.busy()"><span><gc-icon name="folder-git" /></span><small>Sparse</small></button>
-            <button class="split-toggle" type="button" title="Sparse checkout options" aria-label="Sparse checkout options" aria-haspopup="menu" [attr.aria-controls]="sparseCheckoutMenuOpen() ? 'sparse-checkout-options-menu' : null" (click)="toggleSparseCheckoutMenu($event)" [attr.aria-expanded]="sparseCheckoutMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
-            @if (sparseCheckoutMenuOpen()) {
-              <div id="sparse-checkout-options-menu" class="toolbar-menu sparse-menu" role="menu" aria-label="Sparse checkout options" (keydown)="handleToolbarActionMenuKeydown($event)">
-                <div class="lfs-menu-status"><gc-icon name="folder-git" [size]="15" /><span><strong>Sparse Checkout</strong><small>{{ repo.sparseCheckout.paths.length }} selected {{ repo.sparseCheckout.paths.length === 1 ? 'directory' : 'directories' }} · {{ repo.sparseCheckout.sparseIndex ? 'sparse index' : 'full index' }}</small></span></div>
-                <div class="menu-separator"></div>
-                <button type="button" role="menuitem" (click)="openSparseCheckoutPreferences()" [disabled]="git.busy()"><gc-icon name="edit" [size]="13" /><span><strong>Edit directories</strong><small>Choose what remains in the working tree</small></span></button>
-                <button type="button" role="menuitem" (click)="reapplySparseCheckout()" [disabled]="git.busy()"><gc-icon name="refresh" [size]="13" /><span><strong>Reapply sparse checkout</strong><small>Restore the configured directory selection</small></span></button>
-                <button class="danger-item" type="button" role="menuitem" (click)="requestSparseCheckoutDisable()" [disabled]="git.busy()"><gc-icon name="x" [size]="13" /><span><strong>Disable sparse checkout</strong><small>Restore every tracked file</small></span></button>
-              </div>
-            }
+            <button class="split-toggle" type="button" title="Sparse checkout options" aria-label="Sparse checkout options" aria-haspopup="menu" [attr.aria-controls]="sparseCheckoutMenuOpen() ? 'sparse-checkout-options-menu' : null" (click)="toggleToolbarOptions($event, 'sparseCheckout')" [attr.aria-expanded]="sparseCheckoutMenuOpen()"><gc-icon name="chevron-down" [size]="10" /></button>
+            @if (sparseCheckoutMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
           </div>
         }
         <div class="toolbar-overflow-control" (click)="$event.stopPropagation()">

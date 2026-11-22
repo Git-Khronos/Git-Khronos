@@ -4153,6 +4153,15 @@ The production build, generated contract check, strict Git core Clippy,
 The initial bundle warning remains. Installed comparison-patch qualification
 is separate from these results.
 
+The Ubuntu 24.04 installer from `9fb3f7a` passed ten focused installed
+comparison, patch and source ZIP scenarios on Git 2.43. The native save
+picker remained available with all file rows filtered out, and cancellation
+wrote nothing. An independent Git checkout applied the exported text and
+binary changes and reproduced the exact target tree.
+SHA-256: `7370e4265b12e55f6caf6bd039d5ca3989f8c13c5cb6a23a66a0ee63a7ad8e02`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/comparison-patch-release.ELi02Wv3/reports.json`.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard
@@ -4167,3 +4176,20 @@ The 5,698-byte action component is outside the initial asset list.
 This is a small reduction in emitted startup bytes, not a measured
 startup-latency improvement. Both budgets are unchanged, and the
 900 kB warning remains. Evidence: `target/local-review/sidebar-item-deferral.dBS1pkAo/`.
+
+### Shared deferred content for toolbar split menus
+
+Fetch, Pull, Push, Branch, Stash, LFS and Sparse Checkout share one
+on-demand options component. The primary actions still render immediately.
+The shell owns keyboard navigation, focus recovery, checkout invalidation
+and dispatch into the existing Git flows.
+
+Production output compared with `9fb3f7a`: 1,312,312 → 1,302,499 raw
+initial bytes (−9,813), including −1,788 initial stylesheet bytes.
+The independently compressed initial totals fell by 1,573 gzip bytes and
+927 Brotli bytes. The 13,628-byte menu chunk is outside the initial asset
+list. The 900 kB warning remains; this measures emitted asset bytes, not
+launch latency. Evidence: `target/local-review/toolbar-options.29EAtUGS/`.
+All 113 focused Chromium tests passed, including delayed or failed menu
+loading, checkout retirement, no enabled actions, default Pull selection,
+primary split-menu navigation and sparse checkout confirmation.

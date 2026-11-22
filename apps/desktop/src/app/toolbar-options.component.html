@@ -1,0 +1,84 @@
+@let menu = view();
+@switch (menu.kind) {
+  @case ('fetch') {
+    <header class="toolbar-menu-context">
+      <gc-icon name="remote" [size]="14" />
+      <span><small>Remote references</small><strong>{{ menu.remoteCount }} {{ menu.remoteCount === 1 ? 'remote' : 'remotes' }}</strong></span>
+      <b>{{ menu.detail }}</b>
+    </header>
+    <button type="button" role="menuitem" (click)="activate.emit('fetchAll')" [disabled]="menu.disabled"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Fetch updates without pruning</small></span></button>
+    <button type="button" role="menuitem" (click)="activate.emit('fetchOptions')"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
+  }
+  @case ('pull') {
+    <header class="toolbar-menu-context">
+      <gc-icon [name]="menu.destination.icon" [size]="14" />
+      <span><small>Pull destination</small>@if (menu.destination.remote && menu.destination.branch) { <strong>{{ menu.destination.remote }}/{{ menu.destination.branch }}</strong> } @else { <strong>No remote branch selected</strong> }</span>
+      @if (menu.destination.upstream) { <b>{{ menu.behind ? menu.behind + ' incoming' : 'Up to date' }}</b> } @else { <b>Selected remote</b> }
+    </header>
+    <div class="menu-caption">Pull strategy</div>
+    @for (choice of choices; track choice.id) {
+      @let selected = menu.strategy === choice.id;
+      @let label = strategyLabel[choice.id];
+      <div class="pull-strategy-row" [class.default]="selected">
+        <button type="button" role="menuitem" (click)="activate.emit({ kind: 'pull', strategy: choice.id })">
+          <gc-icon name="pull" [size]="13" /><span><strong>{{ label }} @if (selected) { <em class="default-strategy-badge">Default</em> }</strong><small>{{ choice.description }}</small></span>
+        </button>
+        <button class="pull-default" type="button" role="menuitemradio"
+          [title]="selected ? 'Default pull strategy' : 'Make ' + label + ' the default'"
+          [attr.aria-label]="selected ? label + ' is the default pull strategy' : 'Make ' + label + ' the default pull strategy'"
+          [attr.aria-checked]="selected" (click)="activate.emit({ kind: 'defaultPull', strategy: choice.id })"><gc-icon name="star" [size]="12" /></button>
+      </div>
+    }
+    @if (menu.hasSubmodules) {
+      <p id="pull-submodule-scope" class="toolbar-menu-note">Pull does not update submodule checkouts. Use Submodules to update them separately.</p>
+    }
+  }
+  @case ('push') {
+    <header class="toolbar-menu-context">
+      <gc-icon [name]="menu.destination.icon" [size]="14" />
+      <span><small>{{ menu.hasUpstream ? 'Push destination' : 'Publish destination' }}</small><strong>{{ menu.destination.remote }}/{{ menu.destination.branch }}</strong></span>
+      @if (menu.destination.upstream) { <b>{{ menu.ahead ? menu.ahead + ' outgoing' : 'Up to date' }}</b> } @else { <b>Selected remote</b> }
+    </header>
+    <button type="button" role="menuitem" (click)="activate.emit('push')"><gc-icon name="push" [size]="13" /><span><strong>{{ menu.hasUpstream ? 'Push' : 'Publish branch' }}</strong><small>{{ menu.summary }}</small></span></button>
+    <div class="menu-separator"></div>
+    <button class="danger-item" type="button" role="menuitem" [disabled]="!menu.destination.upstream" (click)="activate.emit('forcePush')"><gc-icon name="warning" [size]="13" /><span><strong>Force Push with Lease…</strong><small>Rewrite only if the reviewed upstream commit is unchanged</small></span></button>
+  }
+  @case ('branch') {
+    <header class="toolbar-menu-context">
+      <gc-icon name="branch" [size]="14" />
+      <span><small>Current branch</small><strong>{{ menu.head }}</strong></span>
+      <b>{{ menu.headState }}</b>
+    </header>
+    <button type="button" role="menuitem" [disabled]="menu.busy" (click)="activate.emit('createBranch')"><gc-icon name="plus" [size]="13" /><span><strong>Create branch</strong><small>From the current HEAD</small></span></button>
+    <button type="button" role="menuitem" [disabled]="menu.busy || !menu.branchName" (click)="activate.emit('integrate')"><gc-icon name="merge" [size]="13" /><span><strong>Merge or rebase into {{ menu.branchName ?? 'current branch' }}…</strong><small>Choose a branch and see what will happen</small></span></button>
+    <div class="menu-separator"></div>
+    <div class="menu-caption">Local branches</div>
+    @for (branch of menu.branches; track branch.fullName) {
+      <button type="button" role="menuitem" [disabled]="menu.busy" (click)="activate.emit({ kind: 'checkout', branch })" [class.current]="branch.current">
+        <gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="13" /><span><strong>{{ branch.name }}</strong><small>{{ branch.current ? 'Current branch' : 'Checkout branch' }}</small></span>
+      </button>
+    }
+  }
+  @case ('stash') {
+    <header class="toolbar-menu-context">
+      <gc-icon name="archive" [size]="14" />
+      <span><small>Working directory</small><strong>{{ menu.head }}</strong></span>
+      <b>{{ menu.changeCount }} {{ menu.changeCount === 1 ? 'change' : 'changes' }}</b>
+    </header>
+    <button type="button" role="menuitem" (click)="activate.emit('stashAll')" [disabled]="!menu.changeCount || menu.busy"><gc-icon name="archive" [size]="13" /><span><strong>Stash all changes</strong><small>Save staged, unstaged, and untracked files</small></span></button>
+    <button type="button" role="menuitem" (click)="activate.emit('stashOptions')" [disabled]="!menu.changeCount || menu.busy"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose which changes and files to save</small></span></button>
+  }
+  @case ('lfs') {
+    <div class="lfs-menu-status"><gc-icon name="server" [size]="15" /><span><strong>Git LFS</strong><small>{{ menu.lfs.available ? (menu.lfs.version || 'Available') : 'Not installed or unavailable' }}@if (menu.lfs.trackedFiles !== null) { · {{ menu.lfs.trackedFiles }} tracked {{ menu.lfs.trackedFiles === 1 ? 'file' : 'files' }} } @else if (menu.lfs.available) { · File counts unavailable }@if (menu.lfs.pointerFiles) { · {{ menu.lfs.pointerFiles }} not materialized }</small></span></div>
+    <div class="menu-separator"></div>
+    <button type="button" role="menuitem" (click)="activate.emit('pullLfs')" [disabled]="menu.busy || !menu.lfs.available"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects needed by the current checkout</small></span></button>
+    <button class="danger-item" type="button" role="menuitem" (click)="activate.emit('pruneLfs')" [disabled]="menu.busy || !menu.lfs.available"><gc-icon name="trash" [size]="13" /><span><strong>Clean LFS storage</strong><small>Review and remove unreferenced local objects</small></span></button>
+  }
+  @case ('sparseCheckout') {
+    <div class="lfs-menu-status"><gc-icon name="folder-git" [size]="15" /><span><strong>Sparse Checkout</strong><small>{{ menu.sparse.paths.length }} selected {{ menu.sparse.paths.length === 1 ? 'directory' : 'directories' }} · {{ menu.sparse.sparseIndex ? 'sparse index' : 'full index' }}</small></span></div>
+    <div class="menu-separator"></div>
+    <button type="button" role="menuitem" (click)="activate.emit('editSparse')" [disabled]="menu.busy"><gc-icon name="edit" [size]="13" /><span><strong>Edit directories</strong><small>Choose what remains in the working tree</small></span></button>
+    <button type="button" role="menuitem" (click)="activate.emit('reapplySparse')" [disabled]="menu.busy"><gc-icon name="refresh" [size]="13" /><span><strong>Reapply sparse checkout</strong><small>Restore the configured directory selection</small></span></button>
+    <button class="danger-item" type="button" role="menuitem" (click)="activate.emit('disableSparse')" [disabled]="menu.busy"><gc-icon name="x" [size]="13" /><span><strong>Disable sparse checkout</strong><small>Restore every tracked file</small></span></button>
+  }
+}

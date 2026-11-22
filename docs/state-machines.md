@@ -902,6 +902,18 @@ base tree and checking the resulting target tree ID. Only then may it create
 a new destination file outside the checkout and Git metadata. WIP is not an
 eligible comparison export; it has its own tracked-patch workflow.
 
+### Toolbar split menus
+
+The primary toolbar buttons and their split toggles are always available.
+All seven split menus share one deferred presentation component; it cannot
+run Git directly. The active overlay owns the menu, opener and checkout visit.
+Changing the visit retires the overlay, and action dispatch rechecks the
+current menu view before using its data. The loading and error states can
+be dismissed using the same keyboard path as the loaded menu. When content
+arrives, it can focus the first enabled action only if focus still belongs
+to that menu or its opener. If no action is enabled, focus stays on the
+opener. Native review and confirmation ownership do not move into the menu.
+
 ### Workspace clone queue
 
 Bulk clone takes up to 20 sources and one chosen parent folder. Reviewing the
