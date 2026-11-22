@@ -1,5 +1,49 @@
 """Exercise exact partial changes against real index and worktree bytes."""
+import json
+
 from native_acceptance import open_ui
+from native_worktree_scenarios import checkout_footprint
+
+
+def wrapped_diff_rendering(driver, fixtures, report):
+    """Read the real Git diff through the installed renderer, never injected patch data."""
+    repository = fixtures.repository("wrapped-diff-rendering", commits=1)
+    file = repository / "fixture.txt"
+    context = "context line 120" + " long readable source content" * 8
+    file.write_text(f"old opening\n{context}\nconst count = 1;\n", encoding="utf-8")
+    fixtures.git(repository, "add", "--", file.name)
+    fixtures.git(repository, "commit", "-qm", "Before wrapped review")
+    file.write_text(f"new opening\n{context}\nconst count = 2;\n", encoding="utf-8")
+    repo_id = open_ui(driver, repository)
+    before = checkout_footprint(fixtures, repository, (file.name,))
+    driver.click_visible(".wip-nav")
+    driver.click_visible('[title="View changes in fixture.txt"]')
+    driver.wait("return !!document.querySelector('.diff-primary-view')")
+    if not driver.script("return document.querySelector('.diff-workspace').classList.contains('word-wrap')"):
+        driver.click_visible('.diff-wrap-toggle, .diff-footer-wrap-toggle')
+    driver.wait("return !!document.querySelector('.diff-workspace.word-wrap')")
+    report["wrappedDiffRendering"] = {}
+    for mode in ("split", "hunk", "inline"):
+        driver.click_visible(f'[data-diff-mode="{mode}"]')
+        observation = driver.wait("""const mode = """ + json.dumps(mode) + """;
+          if (document.querySelector('[data-diff-mode="' + mode + '"]')?.getAttribute('aria-pressed') !== 'true') return null;
+          const primary = document.querySelector('.diff-primary-view');
+          const codes = [...(primary?.querySelectorAll(
+            '[data-diff-old-line="2"] code, [data-diff-new-line="2"] code') ?? [])];
+          if (codes.length !== (mode === 'split' ? 2 : 1)) return null;
+          return { context: codes.map(code => ({
+            text: code.textContent, spans: code.querySelectorAll('span').length,
+            number: code.querySelector('.syntax-number')?.textContent ?? null
+          })), replacementHighlights: [...primary.querySelectorAll('.word-change')]
+            .map(span => span.textContent) };""")
+        report["wrappedDiffRendering"][mode] = observation
+        assert all(code["text"] == " " + context for code in observation["context"]), observation
+        assert all(code["number"] == "120" for code in observation["context"]), observation
+        assert [code["spans"] for code in observation["context"]] == [3] * (2 if mode == "split" else 1), observation
+        assert {"1", "2"} <= set(observation["replacementHighlights"]), observation
+        assert checkout_footprint(fixtures, repository, (file.name,)) == before
+    report["scenarios"].append("native-wrapped-diff-coalesces-context-and-preserves-text-and-word-highlights")
+    return repository, repo_id
 
 
 def stage_after_patch_like_source_text(driver, fixtures, report):

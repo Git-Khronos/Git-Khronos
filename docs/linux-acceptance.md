@@ -124,6 +124,16 @@ their accessible labels together, including singular counts and exclusions.
 It covers staging, rename previews, and updates after an external edit with
 unchanged porcelain status.
 
+## Focused wrapped diff rendering check
+
+Run `--suite diff-rendering` with a reviewed installer to check a real Git
+working-tree diff in the installed WebView. The fixture keeps a long
+unchanged context line between edits. Split, hunk and inline views must
+preserve its exact text, number syntax and changed-word highlights while
+using only three spans per copy of the context line. The scenario checks
+that opening and switching the views leaves HEAD, refs, index, config and
+working bytes unchanged.
+
 ## Focused setup keyboard check
 
 Use the existing runner with a reviewed package to check that setup inputs do

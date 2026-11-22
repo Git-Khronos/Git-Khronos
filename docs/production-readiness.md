@@ -4433,3 +4433,11 @@ fixture, the split view dropped from 29,140 to 1,260 token spans at both
 tested viewport/font combinations. This count is not a packaged WebKit
 performance claim. Local profile and fixture:
 `target/local-review/wrapped-diff-dom-profile.7HSRNYpb/`.
+
+The focused installed `diff-rendering` scenario reproduced exactly 70
+spans on each side of a real Git context line on the unchanged
+test-publisher `86900ea` package (Debian 12, Git 2.39.5). It retained the
+text, number and changed-word highlights and failed specifically at the
+three-span limit. This is negative-control evidence; the positive
+installed run uses the newer package. Receipt:
+`target/local-review/updater/jammy-builder/native-wrapped-diff-negative.uwmDIEOp/lane/results/`.
