@@ -36,6 +36,14 @@ shortcut, not evidence of whole-repository search completeness.
 
 ## File history and blame
 
+Use **Find File History or Blame** (**Ctrl/Cmd+Shift+H**) and enter the
+repository-relative path to look up a deleted or renamed file. Choose
+**File history for exact path** even if the name is absent at HEAD.
+This looks at history reachable from the current checkout, not every
+branch. Deletion entries are marked **Deleted**; select the entry to
+open the removal diff. Choose an older entry to inspect the file as it
+existed then.
+
 From a file's diff, choose **History** and use **Load older file history**.
 Pages contain 100 entries and follow Git's documented single-path `--follow`
 rename traversal. Historical entries retain the path at that commit and the

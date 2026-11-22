@@ -224,7 +224,7 @@ mayHaveMore: boolean; nextPage: number | null; warnings: string[] }
 export type GitLabProjectQuery = { page: number; expectedAccount: GitLabAccount | null; scope: GitLabProjectScope; search: string; includeArchived: boolean }
 export type GitLabProjectScope = "membership" | "accessible"
 export type GitLabProjectsRequest = { connectionId: string; query: GitLabProjectQuery; operationId: string }
-export type HistoricalFileEntry = ({ oid: string; authorName: string; authorEmail: string; authoredAt: string; subject: string }) & { path: string; previousPath: string | null }
+export type HistoricalFileEntry = ({ oid: string; authorName: string; authorEmail: string; authoredAt: string; subject: string }) & { path: string; previousPath: string | null; status?: string | null }
 export type HistoryCursor = { query: HistoryQuery; revisions: string[]; offset: number }
 export type HistoryQuery = { message?: string; author?: string; oid?: string; since?: string; until?: string; path?: string;
 /**

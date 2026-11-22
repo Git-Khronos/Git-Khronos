@@ -2326,3 +2326,15 @@ to collect independent diagnostics without relaxing publisher gating.
 and staged comparison bases, the empty-tree behavior before the first commit,
 binary numstat markers, and NUL-terminated rename records. Used to implement
 separate index and working-file totals with one native read. No source copied.
+
+
+## Exact historical file paths
+
+Sources: [Git log](https://git-scm.com/docs/git-log) and
+[Git diff](https://git-scm.com/docs/git-diff) documentation.
+
+Owned Git fixtures verified NUL-separated pretty-format fields and
+name/status records across create, rename and delete commits. The
+reader consumes paths according to each status record rather than
+recognizing arbitrary filename or author text as a delimiter.
+No source code was copied.

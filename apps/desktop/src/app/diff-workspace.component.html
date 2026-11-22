@@ -101,7 +101,7 @@
       }
       <div [style.display]="view.diffInsightMode() === 'history' ? 'contents' : 'none'">
         @defer (when view.diffInsightMode() === 'history') {
-          <gc-file-history [path]="diff.path" [revision]="view.activeDiffRevision()!" [authorColor]="view.authorColor" [initials]="view.initials" (navigate)="view.openHistoricalFile($event.oid, $event.path, $event.previousPath)" />
+          <gc-file-history [path]="diff.path" [revision]="view.activeDiffRevision()!" [authorColor]="view.authorColor" [initials]="view.initials" (navigate)="view.openHistoricalFile($event.oid, $event.path, $event.previousPath, $event.status)" />
         }
       </div>
       <div [style.display]="view.diffInsightMode() === 'blame' ? 'contents' : 'none'">

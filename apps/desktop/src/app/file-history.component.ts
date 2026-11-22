@@ -20,7 +20,7 @@ import { HistorySearchService } from './history-search.service';
         @for (entry of entries(); track entry.oid) {
           <article class="history-entry">
             <span class="history-avatar" [style.--author-color]="authorColor()(entry.authorName, entry.authorEmail)">{{ initials()(entry.authorName) }}</span>
-            <div><button type="button" (click)="navigate.emit(entry)">{{ entry.subject }}</button><small>{{ entry.path }} · {{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small></div>
+            <div><button type="button" (click)="navigate.emit(entry)">{{ entry.subject }}</button><small>{{ entry.path }} · @if (entry.status === 'D') { Deleted · } {{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small></div>
             <code>{{ entry.oid.slice(0, 8) }}</code>
           </article>
         } @empty {
@@ -63,7 +63,7 @@ export class FileHistoryComponent {
   readonly revision = input.required<string>();
   readonly authorColor = input.required<(name: string, email: string) => string>();
   readonly initials = input.required<(name: string) => string>();
-  readonly navigate = output<{ oid: string; path: string; previousPath?: string | null }>();
+  readonly navigate = output<{ oid: string; path: string; previousPath?: string | null; status?: string | null }>();
   readonly owned = computed(() => this.history.matchesFile(this.revision(), this.path()));
   readonly entries = computed(() => this.owned() ? this.history.files() : []);
   private readonly injector = inject(Injector);

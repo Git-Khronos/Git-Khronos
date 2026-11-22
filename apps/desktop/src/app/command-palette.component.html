@@ -11,7 +11,7 @@
           [attr.aria-label]="scope() === 'files' ? 'Search tracked files' : scope() === 'branches' ? 'Search branches' : 'Search commands'"
           role="combobox" aria-controls="command-palette-results" aria-autocomplete="list" aria-expanded="true"
           [attr.aria-activedescendant]="items.length ? 'command-palette-option-' + selection() : null"
-          [placeholder]="scope() === 'files' ? 'Search files for history or blame' : scope() === 'branches' ? 'Search local and remote branches' : 'Search commands, repos, refs, and files'"
+          [placeholder]="scope() === 'files' ? 'Search files or enter an exact historical path' : scope() === 'branches' ? 'Search local and remote branches' : 'Search commands, repos, refs, and files'"
           autocomplete="off" [ngModel]="query()" (ngModelChange)="queryChanged.emit($event)"
           (keydown)="handleSearchKey($event)" />
         @if (scope() !== 'branches') { <kbd>{{ scope() === 'files' ? shortcutKey() + ' Shift H' : shortcutKey() + ' P' }}</kbd> }
@@ -60,6 +60,7 @@
       <small class="palette-result-count" aria-live="polite">{{ items.length }} {{ scope() === 'branches' ? (items.length === 1 ? 'branch' : 'branches') : scope() === 'files' || query().trim() ? (items.length === 1 ? 'result' : 'results') : (items.length === 1 ? 'command' : 'commands') }}</small>
       @if (!query().trim() && scope() === 'all') { <span class="palette-search-hint">Commands · repos · refs · files</span> }
       @if (scope() === 'branches') { <span class="palette-search-hint">Local · remote</span> }
+      @if (scope() === 'files') { <span class="palette-search-hint">Exact paths include deleted files</span> }
       <span class="palette-navigation-hint"><kbd>↑</kbd><kbd>↓</kbd> Navigate</span><span class="palette-jump-hint"><kbd>PgUp</kbd><kbd>PgDn</kbd> Jump</span><span><kbd>↵</kbd> {{ scope() === 'branches' ? 'Switch' : 'Run' }}</span><span><kbd>Esc</kbd> Close</span>
     </footer>
   </section>

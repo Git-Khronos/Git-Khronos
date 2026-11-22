@@ -3930,6 +3930,15 @@ a lost file or partial vote. Installer SHA-256:
 Receipt: `target/local-review/updater/jammy-builder/bisect-ignored-paths-release.92qsml8r/reports.json`.
 This evidence does not qualify later changes.
 
+The installer from `ac468d8` passed 30 installed detached-checkout
+scenarios on Ubuntu 24.04, including first-parent and large-range
+bisection. An initial harness run selected an ambiguous checkbox;
+the corrected selector was rerun against the unchanged installer.
+Installer SHA-256:
+`b0749659ef37cbb98f2f0db11b194b56666d73ea36ed536a31786d1007906509`.
+Receipt: `target/local-review/updater/jammy-builder/bisect-first-parent-recheck.LaUBkGe1/reports.json`.
+This is focused acceptance, not a new full qualification.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard

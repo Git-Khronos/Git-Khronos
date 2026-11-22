@@ -8,6 +8,7 @@ const COMMAND_QUICK_ACTION_IDS: readonly string[] = ['fetch', 'pull', 'push', 'r
 const COMMAND_GROUP_ORDER: readonly string[] = ['Quick Actions', 'Workspace', 'Repository', 'Git Features', 'Edit', 'Remote', 'Branch', 'Working Tree', 'History', 'View'];
 
 function commandMatchScore(query: string, action: CommandAction): number {
+  if (action.exactFileHistory) return 0; // Keep tracked suggestions ahead of the explicit lookup.
   const phrase = query.trim().toLocaleLowerCase();
   const tokens = phrase.split(/\s+/).filter(Boolean);
   const label = action.label.toLocaleLowerCase();
@@ -313,7 +314,23 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
     }
   }
   }
-  for (const path of source.git.trackedFileSearch()?.paths ?? []) {
+  const tracked = source.git.trackedFileSearch()?.paths ?? [];
+  // An exact path can be absent at HEAD. It can still have history, but
+  // do not offer blame or claim that the typed path is currently tracked.
+  if (filesOnly && repository.headOid && search === query && !tracked.includes(search)
+    && !/^[\/\\]|^[a-z]:[\/\\]|[\0\r\n]/i.test(search)
+    && search.split('/').every(part => !!part && part !== '.' && part !== '..')) {
+    append({
+      id: `exact-file-history:${search}`,
+      group: 'History',
+      label: `File history for exact path: ${search}`,
+      detail: 'Search this path even if it is no longer tracked',
+      enabled: true,
+      icon: 'history',
+      exactFileHistory: { path: search, scope: source.git.activeRepositoryReadScope(), revision: repository.headOid },
+    });
+  }
+  for (const path of tracked) {
     const encodedPath = encodeURIComponent(path);
     append({
       id: `tracked-history:${encodedPath}`,

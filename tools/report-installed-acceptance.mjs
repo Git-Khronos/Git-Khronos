@@ -74,6 +74,7 @@ const UBUNTU_NOBLE_REVIEWS = [
   ['tracked-file-search', [
     'native-tracked-file-search-uses-distinct-unmerged-paths-before-the-result-limit',
     'native-tracked-file-palette-keeps-one-history-and-blame-per-path-without-changing-merge-state',
+    'native-file-history-opens-a-deleted-literal-path-and-its-removal-diff',
   ]],
   ['feature-rebase', 'native-feature-rebase-uses-configured-development-without-moving-sibling-refs'],
   ['commit-rewrite', [

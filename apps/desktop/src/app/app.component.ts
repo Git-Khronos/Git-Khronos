@@ -440,6 +440,7 @@ export interface CommandAction {
   icon: IconName;
   stashTarget?: { repositoryId: string; stash: StashEntry };
   bisectTarget?: BisectVoteTarget | null;
+  exactFileHistory?: { path: string; scope: string; revision: string };
 }
 
 interface BisectVoteTarget {
@@ -10323,7 +10324,7 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.historyNavigationGeneration === intent.generation && this.git.activeRepositoryReadScope() === intent.scope;
   }
 
-  protected async openHistoricalFile(oid: string, path: string, previousPath: string | null = null): Promise<void> {
+  protected async openHistoricalFile(oid: string, path: string, previousPath: string | null = null, change?: string | null): Promise<void> {
     const mode = this.diffInsightMode();
     if (!this.diffViewerOpen() || (mode !== 'history' && mode !== 'blame')) return;
     const intent = this.beginHistoryNavigation();
@@ -10344,7 +10345,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     await this.git.inspectCommit(oid);
     if (!current()) return;
-    await this.git.inspectCommitFile({ path, previousPath, status: previousPath ? 'R' : 'M', additions: null, deletions: null });
+    await this.git.inspectCommitFile({ path, previousPath, status: change ?? (previousPath ? 'R' : 'M'), additions: null, deletions: null });
     if (current()) this.diffInsightMode.set('diff');
   }
 
@@ -11601,6 +11602,13 @@ export class AppComponent implements OnInit, OnDestroy {
       await this.inspectWorkingTreeFile(path, stagedValue === '1');
       if (kind === 'file-history') await this.showFileHistory();
       else if (kind === 'file-blame') await this.showFileBlame();
+      return;
+    }
+    if (action.exactFileHistory) {
+      const target = action.exactFileHistory;
+      if (target.scope === this.git.activeRepositoryReadScope() && target.revision === this.git.repository()?.headOid) {
+        await this.openTrackedFileInsight(target.path, 'history');
+      }
       return;
     }
     if (action.id.startsWith('tracked-history:') || action.id.startsWith('tracked-blame:')) {

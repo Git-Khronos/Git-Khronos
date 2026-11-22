@@ -135,6 +135,8 @@ pub struct HistoricalFileEntry {
     pub commit: FileHistoryEntry,
     pub path: String,
     pub previous_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
@@ -632,6 +634,7 @@ pub fn file_history_page(
         "--literal-pathspecs".into(),
         "log".into(),
         "--follow".into(),
+        "--root".into(),
         "--encoding=UTF-8".into(),
         "--no-notes".into(),
         "--no-show-signature".into(),
@@ -640,7 +643,7 @@ pub fn file_history_page(
         "--find-renames".into(),
         "--no-ext-diff".into(),
         "--no-textconv".into(),
-        "--format=%x00GC_HISTORY%x00%H%x00%an%x00%ae%x00%aI%x00%s%x00".into(),
+        "--format=tformat:%H%x00%an%x00%ae%x00%aI%x00%s".into(),
         "--name-status".into(),
         "-z".into(),
         format!("--max-count={}", cursor.offset.saturating_add(101)),
@@ -656,55 +659,82 @@ pub fn file_history_page(
             None,
         )
     })?;
-    let records = text.split("\0GC_HISTORY\0").skip(1).collect::<Vec<_>>();
+    let invalid = || {
+        AppError::new(
+            "invalidHistoryOutput",
+            "Git returned an incomplete or invalid file history record.",
+            None,
+        )
+    };
+    let body = if text.is_empty() {
+        None
+    } else {
+        Some(text.strip_suffix('\0').ok_or_else(invalid)?)
+    };
+    let mut fields = body
+        .into_iter()
+        .flat_map(|body| body.split('\0'))
+        .peekable();
     let mut entries = Vec::new();
     // Git --follow must see rename records before a page boundary. --skip can
     // suppress that traversal, so replay the bounded prefix and retain this page.
     cursor.historical_path = file.to_owned();
-    for (record_index, record) in records
-        .iter()
-        .take(cursor.offset.saturating_add(100))
-        .enumerate()
-    {
-        let parts = record.split('\0').collect::<Vec<_>>();
-        if parts.len() < 6 {
-            return Err(AppError::new(
-                "invalidHistoryOutput",
-                "Git returned an incomplete history record.",
-                None,
-            ));
-        }
-        validate_commit_oid(parts[0]).map_err(|_| {
-            AppError::new(
-                "invalidHistoryOutput",
-                "Git returned invalid file history metadata.",
-                None,
-            )
-        })?;
+    for record_index in 0..cursor.offset.saturating_add(100) {
+        let Some(oid) = fields.next() else {
+            break;
+        };
+        validate_commit_oid(oid).map_err(|_| invalid())?;
+        let mut metadata = || fields.next().ok_or_else(invalid);
+        let [author, email, date, subject] = [metadata()?, metadata()?, metadata()?, metadata()?];
         let mut previous_path = None;
-        let mut index = 5;
-        while index < parts.len() {
-            let status = parts[index].trim_start_matches('\n');
-            if status.starts_with('R') && index + 2 < parts.len() {
-                if parts[index + 2] == cursor.historical_path {
-                    previous_path = Some(parts[index + 1].to_owned());
-                }
-                index += 3;
+        let mut status = None;
+        // Only a metadata boundary can introduce an object ID. A path
+        // is always consumed as data regardless of its spelling.
+        while fields
+            .peek()
+            .is_some_and(|next| validate_commit_oid(next).is_err())
+        {
+            let change = fields.next().ok_or_else(invalid)?.trim_start_matches('\n');
+            let (kind, score) = change.as_bytes().split_first().ok_or_else(invalid)?;
+            let valid_score =
+                !score.is_empty() && score.len() <= 3 && score.iter().all(u8::is_ascii_digit);
+            let paired = matches!(kind, b'R' | b'C');
+            let supported = if paired {
+                valid_score
             } else {
-                index += 1;
+                matches!(kind, b'A' | b'B' | b'D' | b'M' | b'T' | b'U' | b'X')
+                    && (score.is_empty() || (matches!(kind, b'B' | b'M') && valid_score))
+            };
+            if !supported {
+                return Err(invalid());
+            }
+            let mut path_field = || {
+                fields
+                    .next()
+                    .filter(|field| !field.is_empty())
+                    .ok_or_else(invalid)
+            };
+            let source = path_field()?;
+            let target = if paired { path_field()? } else { source };
+            if target == cursor.historical_path {
+                status = Some(char::from(*kind).to_string());
+                if *kind == b'R' {
+                    previous_path = Some(source.to_owned());
+                }
             }
         }
         if record_index >= cursor.offset {
             entries.push(HistoricalFileEntry {
                 commit: FileHistoryEntry {
-                    oid: parts[0].into(),
-                    author_name: parts[1].into(),
-                    author_email: parts[2].into(),
-                    authored_at: parts[3].into(),
-                    subject: parts[4].into(),
+                    oid: oid.into(),
+                    author_name: author.into(),
+                    author_email: email.into(),
+                    authored_at: date.into(),
+                    subject: subject.into(),
                 },
                 path: cursor.historical_path.clone(),
                 previous_path: previous_path.clone(),
+                status,
             });
         }
         if let Some(previous) = previous_path {
@@ -712,7 +742,7 @@ pub fn file_history_page(
         }
     }
     cursor.offset += entries.len();
-    let complete = records.len() <= cursor.offset;
+    let complete = fields.peek().is_none();
     Ok(FileHistoryPage {
         entries,
         complete,
@@ -900,6 +930,41 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn deleted_file_history_preserves_marker_like_names_and_opens_the_removal() {
+        let repo = Fixture::new();
+        repo.run(&["config", "user.name", "GC_HISTORY"]);
+        repo.run(&["config", "log.showRoot", "false"]);
+        let created = repo.commit("GC_HISTORY", "the last contents\n", "GC_HISTORY");
+        let name = "archived [1].txt";
+        repo.run(&["mv", "--", "GC_HISTORY", name]);
+        repo.run(&["commit", "-qm", "Rename the file"]);
+        repo.run(&["rm", "--", name]);
+        repo.run(&["commit", "-qm", "Delete the file"]);
+        let deleted = repo.run(&["rev-parse", "HEAD"]);
+        let index = fs::read(repo.0.join(".git/index")).unwrap();
+        let page = file_history_page(&repo.0, &deleted, name, None, &CancellationToken::default()).unwrap();
+        assert!(page.complete && page.cursor.is_none());
+        assert_eq!(page.entries.len(), 3);
+        let [removal, rename, creation] = page.entries.as_slice() else { unreachable!() };
+        assert_eq!(removal.commit.oid, deleted);
+        assert_eq!(removal.path, name);
+        assert_eq!(removal.status.as_deref(), Some("D"));
+        let diff = commit_file_diff(&repo.0, &removal.commit.oid, &removal.path, None).unwrap();
+        assert!(diff.patch.contains("-the last contents"));
+        assert_eq!(rename.previous_path.as_deref(), Some("GC_HISTORY"));
+        assert_eq!(rename.status.as_deref(), Some("R"));
+        assert_eq!(creation.path, "GC_HISTORY");
+        assert_eq!(creation.commit.oid, created);
+        assert_eq!(creation.commit.author_name, "GC_HISTORY");
+        assert_eq!(creation.commit.subject, "GC_HISTORY");
+        assert_eq!(creation.status.as_deref(), Some("A"));
+        let absent = file_history_page(&repo.0, &deleted, "no such file.txt", None, &CancellationToken::default()).unwrap();
+        assert!(absent.complete && absent.entries.is_empty());
+        assert_eq!(repo.run(&["rev-parse", "HEAD"]), deleted);
+        assert_eq!(fs::read(repo.0.join(".git/index")).unwrap(), index);
     }
 
     #[test]

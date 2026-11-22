@@ -28,6 +28,7 @@ async function installHistoryFixture(page: Page): Promise<void> {
           state.reject?.({ kind: 'operationCancelled', message: 'History search cancelled; results are incomplete.' });
           return Promise.resolve(true);
         }
+        if (command === 'search_tracked_files') return Promise.resolve({ paths: [], truncated: false });
         if (command === 'inspect_history_commit') return Promise.resolve({ ...entry, oid: args.oid, parents: [parentOid], description: 'Original commit metadata', decorations: [] });
         if (command === 'inspect_commit') return Promise.resolve({ oid: args.oid, message: entry.subject, signature: { status: 'unsigned' }, files: [], filesTruncated: false });
         if (command === 'inspect_commit_file') return Promise.resolve({ oid: args.oid, path: args.path, patch: '+historical source\n', truncated: false });
@@ -47,6 +48,62 @@ async function installHistoryFixture(page: Page): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => installHistoryFixture(page));
+
+test('an exact path absent at HEAD opens its deletion and then the historical diff', async ({ page }) => {
+  const path = 'docs/removed [1].txt';
+  const expected = await page.evaluate((path) => {
+    const state = (window as any).__historyFixture;
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    native.invoke = (command: string, args: any) => {
+      if (command === 'search_tracked_files') return Promise.resolve({ paths: [], truncated: false });
+      if (command === 'inspect_file_history_page') {
+        state.calls.push({ command, args });
+        return Promise.resolve({ entries: [{ ...state.entry, subject: 'Remove old notes', path,
+          previousPath: null, status: 'D' }], cursor: null, complete: true });
+      }
+      if (command === 'inspect_commit_file') {
+        state.calls.push({ command, args });
+        return Promise.resolve({ oid: args.oid, path: args.path, truncated: false,
+          patch: '@@ -1 +0,0 @@\n-last saved contents\n' });
+      }
+      return invoke(command, args);
+    };
+    return { head: state.app.git.repository().headOid, deleted: state.oldOid };
+  }, path);
+
+  await page.keyboard.press('Control+Shift+H');
+  const search = page.getByRole('combobox', { name: 'Search tracked files', exact: true });
+  await search.fill(path);
+  await expect(page.getByRole('option', { name: /Blame:/ })).toHaveCount(0);
+  await page.getByRole('option').filter({ hasText: 'File history for exact path: ' + path }).click();
+  const history = page.getByRole('region', { name: 'File history', exact: true });
+  await expect(history).toContainText('Deleted');
+  const read = await page.evaluate(() => (window as any).__historyFixture.calls.find((call: any) =>
+    call.command === 'inspect_file_history_page')?.args);
+  expect(read).toMatchObject({ path, revision: expected.head, cursor: null });
+  await history.getByRole('button', { name: 'Remove old notes' }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__historyFixture.calls.find((call: any) =>
+    call.command === 'inspect_commit_file')?.args)).toMatchObject({ oid: expected.deleted, path, previousPath: null });
+  await expect(page.getByRole('region', { name: 'Diff viewer' })).toContainText('last saved contents');
+});
+
+test('a retired exact path action cannot look up history on a different HEAD', async ({ page }) => {
+  await page.keyboard.press('Control+Shift+H');
+  const search = page.getByRole('combobox', { name: 'Search tracked files', exact: true });
+  await search.fill('docs/deleted.txt');
+  const action = page.getByRole('option').filter({ hasText: 'File history for exact path: docs/deleted.txt' });
+  await expect(action).toBeVisible();
+  await action.evaluate((button: HTMLButtonElement) => {
+    const { git } = (window as any).__historyFixture.app;
+    git.repositories.update((items: any[]) => items.map(item => item.id === git.activeRepositoryId()
+      ? { ...item, headOid: 'f'.repeat(40) } : item));
+    button.click();
+  });
+  expect(await page.evaluate(() => (window as any).__historyFixture.calls.some((call: any) =>
+    call.command === 'inspect_file_history_page'))).toBe(false);
+  await expect(page.getByRole('region', { name: 'File history', exact: true })).toHaveCount(0);
+});
 
 test('deferred history preserves entered filters across closing and restores the search opener', async ({ page }) => {
   const opener = page.getByRole('button', { name: 'Search all repository history', exact: true });

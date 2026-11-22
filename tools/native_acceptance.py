@@ -1414,8 +1414,9 @@ def main():
                 from native_patch_export_scenarios import patch_export_scope
                 repository, repo_id = patch_export_scope(driver, fixtures, report)
             elif args.suite == "tracked-file-search":
-                from native_tracked_file_search_scenarios import tracked_file_search_during_merge
-                repository, repo_id = tracked_file_search_during_merge(driver, fixtures, report)
+                from native_tracked_file_search_scenarios import deleted_file_history_from_exact_path, tracked_file_search_during_merge
+                tracked_file_search_during_merge(driver, fixtures, report)
+                repository, repo_id = deleted_file_history_from_exact_path(driver, fixtures, report)
             elif args.suite == "diff-line-selection":
                 from native_diff_line_selection_scenarios import diff_line_selection
                 repository, repo_id = diff_line_selection(driver, fixtures, report)
