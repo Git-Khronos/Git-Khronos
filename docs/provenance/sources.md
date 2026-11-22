@@ -934,7 +934,9 @@ Used for:
 - Checking possible switch destinations without copying Git's bisect
   algorithm. Owned Git fixtures showed that ordinary start and voting
   can replace ignored files; bounded ancestry and tree listings support
-  refusing these writes before recording a bisect change.
+  refusing these writes before recording a bisect change. The
+  full-history path probe can establish that unrelated ignored roots
+  never appeared, even beyond the individual-tree scan limit.
 - Restoring the original branch and commit with Git's reset operation.
 
 No source code was copied.

@@ -394,6 +394,29 @@ def bisect_checkout_protects_ignored_contents(driver, fixtures, report):
     report['scenarios'].append('native-bisect-checkouts-refuse-ignored-data-loss-before-starting-or-voting')
 
 
+def bisect_large_range_allows_unrelated_ignored_data(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-large-range', commits=1030)
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~1029')
+    (repository / '.git/info/exclude').write_text('/*.local\n')
+    local = repository / 'build[unused].local'
+    local.write_text('Ignored build output outside this history.\n')
+    repo_id = open_ui(driver, repository)
+    result = driver.invoke('start_bisect', repoId=repo_id,
+                           review={'badOid': head, 'goodOid': good, 'branch': 'main', 'noCheckout': False})
+    candidate = result['status']['bisectCandidate']
+    assert not candidate['noCheckout'] and candidate['oid'] != head
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == candidate['oid']
+    result = driver.invoke('mark_bisect', repoId=repo_id, verdict='skip', candidate=candidate)
+    assert result['status']['bisectCandidate']['oid'] != candidate['oid']
+    assert fixtures.git(repository, 'rev-parse', 'refs/bisect/skip-' + candidate['oid']) == candidate['oid']
+    driver.invoke('reset_bisect', repoId=repo_id)
+    assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == head
+    assert local.read_text() == 'Ignored build output outside this history.\n'
+    report['scenarios'].append('native-bisect-large-range-allows-unrelated-ignored-data')
+
+
 def bisect_start_rejects_a_stale_checkout(driver, fixtures, report):
     repository = fixtures.repository('owned-bisect-start-review', commits=6)
     repo_id = open_ui(driver, repository)
@@ -657,6 +680,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     mail_recovery_preserves_ignored_files(driver, fixtures, report)
     bisect_reset_preserves_ignored_files(driver, fixtures, report)
     bisect_checkout_protects_ignored_contents(driver, fixtures, report)
+    bisect_large_range_allows_unrelated_ignored_data(driver, fixtures, report)
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
     bisect_can_start_without_switching_dirty_checkout(driver, fixtures, report)
     bisect_vote_binds_the_test_candidate(driver, fixtures, report)

@@ -641,6 +641,47 @@ fn bisect_vote_unverified() -> AppError {
     )
 }
 
+fn inspect_bisect_checkout<T>(
+    unavailable: Unavailable,
+    inspect: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    git_cancellation::inspect_within(Duration::from_secs(8), || without_lazy_fetch(inspect))
+        .map_err(|error| {
+            if error.kind == "gitInspectionTimeout" {
+                unavailable()
+            } else {
+                error
+            }
+        })
+}
+
+fn bisect_ignored_roots_were_never_tracked(
+    path: &Path,
+    bad: &str,
+    roots: &BTreeSet<&str>,
+    unavailable: Unavailable,
+) -> Result<bool, AppError> {
+    // If any root existed in the traversed history, either a root commit
+    // introduced it or some parent-to-child change introduced it. Follow
+    // every merge parent and include Git links in those comparisons.
+    let mut args = vec![
+        "--literal-pathspecs",
+        "rev-list",
+        "--full-history",
+        "--root",
+        "--ignore-submodules=none",
+        "--max-count=1",
+        bad,
+        "--",
+    ];
+    args.extend(roots.iter().copied());
+    let output = bounded(path, &args, unavailable)?;
+    if !output.status.success() {
+        return Err(unavailable());
+    }
+    Ok(output.stdout.is_empty())
+}
+
 fn bisect_range_obstruction(
     path: &Path,
     ignored: &LocalPaths,
@@ -683,9 +724,6 @@ fn bisect_range_obstruction(
         return Err(unavailable());
     }
     let trees = std::str::from_utf8(&output.stdout).map_err(|_| unavailable())?;
-    if trees.lines().count() > MAX_COMMITS {
-        return Err(unavailable());
-    }
 
     // Usually all ignored paths are under a few generated directories.
     // Restrict the tree listings to those literal top-level names when
@@ -700,6 +738,17 @@ fn bisect_range_obstruction(
             && roots.len() <= 512
             && roots.iter().map(|root| root.len() + 1).sum::<usize>() <= 64 * 1024
     });
+    let trees = if trees.lines().count() > MAX_COMMITS {
+        let roots = roots.as_ref().ok_or_else(unavailable)?;
+        if !bisect_ignored_roots_were_never_tracked(path, bad, roots, unavailable)? {
+            return Err(unavailable());
+        }
+        // The original checkout may be outside this ancestry and still
+        // needs its own check below.
+        ""
+    } else {
+        trees
+    };
     let mut seen = HashSet::new();
     let mut remaining = MAX_TREE_BYTES;
     for tree in original.into_iter().chain(trees.lines()) {
@@ -737,10 +786,10 @@ pub(super) fn ensure_bisect_start_preserves_ignored_files(
     good: &str,
 ) -> Result<bool, AppError> {
     let unavailable = bisect_start_unverified;
-    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
-        return Ok(false);
-    };
-    without_lazy_fetch(|| {
+    inspect_bisect_checkout(unavailable, || {
+        let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+            return Ok(false);
+        };
         if let Some(name) =
             bisect_range_obstruction(path, &ignored, bad, &[good.to_owned()], None, unavailable)?
         {
@@ -808,10 +857,10 @@ pub(super) fn ensure_bisect_vote_preserves_ignored_files(
         return Ok(false);
     }
     let unavailable = bisect_vote_unverified;
-    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
-        return Ok(false);
-    };
-    without_lazy_fetch(|| {
+    inspect_bisect_checkout(unavailable, || {
+        let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+            return Ok(false);
+        };
         let refs = bisect_boundaries(path, unavailable)?;
         let text = std::str::from_utf8(&refs).map_err(|_| unavailable())?;
         let old = candidate

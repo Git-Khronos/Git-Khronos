@@ -19095,11 +19095,11 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
     }
 
     #[test]
-    fn bisect_refuses_unverified_ignored_paths_over_the_commit_scan_bound() {
+    fn bisect_over_the_tree_scan_limit_allows_unrelated_ignored_paths_but_checks_every_merge_parent() {
         let repo = TestRepository::new();
         let path = &repo.path;
         let mut history = String::new();
-        for index in 0..514 {
+        for index in 0..1030 {
             history.push_str(&format!(
                 "commit refs/heads/main\nmark :{}\ncommitter Test <test@example.test> 1700000000 +0000\ndata 4\nstep\n",
                 index + 1,
@@ -19115,11 +19115,29 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             history.as_bytes(),
             "create bounded bisect fixture",
         ).unwrap();
+        let good = reference_tip(path, "HEAD~1029").unwrap();
+        let obstacle = "settings[1].local";
+        // Only a merge's non-first parent contains this path, as a Git link.
+        // This detects history simplification or submodule diff settings
+        // incorrectly turning an unsafe scan into an empty success.
+        repo.git(&["switch", "-c", "old-side", &good]);
+        repo.git(&["update-index", "--add", "--cacheinfo", &format!("160000,{good},{obstacle}")]);
+        commit(path, "Record a Git link on the side").unwrap();
+        repo.git(&["switch", "main"]);
+        repo.git(&["merge", "--no-ff", "-s", "ours", "-m", "Keep the first-parent tree", "old-side"]);
+        repo.git(&["config", "diff.ignoreSubmodules", "all"]);
         let bad = reference_tip(path, "HEAD").unwrap();
-        let good = reference_tip(path, "HEAD~513").unwrap();
-        repo.write(".git/info/exclude", "/settings.local\n");
-        repo.write("settings.local", "only ignored copy\n");
+        repo.write(".git/info/exclude", "*.local\n");
+        repo.write("build[unused].local", "unrelated ignored contents\n");
 
+        start_bisect(path, &bad, &good).unwrap();
+        let candidate = read_head_status(path).unwrap().bisect_candidate.unwrap();
+        assert!(!candidate.no_checkout);
+        mark_bisect(path, "skip", &candidate).unwrap();
+        reset_bisect(path).unwrap();
+        assert_eq!(fs::read_to_string(path.join("build[unused].local")).unwrap(), "unrelated ignored contents\n");
+
+        repo.write(obstacle, "only ignored copy\n");
         let error = start_bisect(path, &bad, &good).unwrap_err();
         assert_eq!(error.kind, "bisectStartIgnoredPathsUnverified");
         assert!(!path.join(".git/BISECT_START").exists());
@@ -19129,7 +19147,34 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         assert!(read_head_status(path).unwrap().bisect_candidate.unwrap().no_checkout);
         reset_bisect(path).unwrap();
         assert_eq!(reference_tip(path, "HEAD").unwrap(), bad);
-        assert_eq!(fs::read_to_string(path.join("settings.local")).unwrap(), "only ignored copy\n");
+        assert_eq!(fs::read_to_string(path.join(obstacle)).unwrap(), "only ignored copy\n");
+    }
+
+    #[test]
+    fn bisect_checkout_preflight_respects_an_earlier_deadline_or_cancellation() {
+        let repo = TestRepository::new();
+        let path = &repo.path;
+        repo.git(&["commit", "--allow-empty", "-m", "Known good"]);
+        let good = reference_tip(path, "HEAD").unwrap();
+        repo.git(&["commit", "--allow-empty", "-m", "Known bad"]);
+        let bad = reference_tip(path, "HEAD").unwrap();
+        repo.write(".git/info/exclude", "/settings.local\n");
+        repo.write("settings.local", "only ignored copy\n");
+        let preflight = || {
+            merge_checkout_guard::ensure_bisect_start_preserves_ignored_files(path, &bad, &good)
+        };
+        let expired = git_cancellation::inspect(Duration::ZERO, preflight).unwrap_err();
+        assert_eq!(expired.kind, "bisectStartIgnoredPathsUnverified");
+        let cancelled = CancellationToken::default();
+        cancelled.cancel();
+        let cancelled = git_cancellation::with(Some(&cancelled), preflight).unwrap_err();
+        assert_eq!(cancelled.kind, "operationCancelled");
+        assert!(!path.join(".git/BISECT_START").exists());
+        assert_eq!(reference_tip(path, "HEAD").unwrap(), bad);
+        assert_eq!(
+            fs::read_to_string(path.join("settings.local")).unwrap(),
+            "only ignored copy\n",
+        );
     }
 
     #[test]
