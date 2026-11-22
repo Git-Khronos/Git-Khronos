@@ -3292,6 +3292,14 @@ local repositories. Future package qualification requires the new
 workspace-Pull scenario. The installed baseline failure is retained
 under `target/local-review/pull-squash-safety.y3cPYiIi/installed-red/`.
 
+The fixed `67c41dd` installer passed the Ubuntu 24.04 Pull and
+detached-checkout suites: seven plus ten installed scenarios. Its Pull
+test confirms both the batch and explicit toolbar paths advance the
+reviewed branch without leaving a staged squash or rewriting config.
+Package SHA-256:
+`c2043f495f628f20ec955c450b5ffa33c823f9d64ea889cd1fb14f93465822af`.
+Receipts: `target/local-review/updater/jammy-builder/explicit-integration-release.xbF8IBI6/`.
+
 In a separate owned-Git test, both explicit and configured Pull moved
 an unselected local branch because a remote fetch mapping named it as
 a destination. Both routes now refuse that configuration before writing
@@ -3301,6 +3309,18 @@ ordinary local upstream, and a legacy remote-file refusal. Future
 installed qualification requires the direct-refspec scenario too.
 The CLI reproduction is in
 `target/local-review/pull-refspec-scope.WErAhMEB/`.
+
+The same destination check now protects named Fetch, Fetch All and
+automatic Fetch. Source tests exercise each entry point and verify a
+mixed set of remotes cannot partially fetch before a scope refusal.
+Remote opt-outs, normal tracking mappings and custom tracking
+namespaces remain supported. A separate installed scenario now checks
+that an unsafe mapping refuses all three ordinary routes while
+branch-only Fetch still updates only tracking refs. Source and package
+verifier tests do not replace the future installed run. The updated
+harness reproduced the unguarded success in the installed named Fetch
+on `67c41dd`. That baseline receipt is in
+`target/local-review/fetch-local-branch-scope.SjadMvCY/installed-red/`.
 
 ### Packaged GitLab TLS fixture readiness
 

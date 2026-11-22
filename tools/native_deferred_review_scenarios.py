@@ -114,6 +114,36 @@ def deferred_review_workflows(driver, fixtures, report):
     evidence.append({'source': str(source), 'localBareRemote': str(remote), 'before': before_ordinary,
                      'afterBackground': after_background, 'ordinaryFetchHead': quick_head,
                      'backgroundTrackingHead': background_head, 'foregroundFetchHeadPreserved': True})
+
+    # Fetching the same owned ref through a custom destination must not move
+    # a branch merely because it is not currently checked out.
+    fixtures.git(source, 'branch', 'unselected', base)
+    mapping = '+refs/heads/main:refs/heads/unselected'
+    fixtures.git(source, 'config', '--add', 'remote.origin.fetch', mapping)
+    scoped_head = fixtures.git(remote, 'commit-tree', tree, '-p', background_head, '-m', 'Owned scoped Fetch')
+    fixtures.git(remote, 'update-ref', 'refs/heads/main', scoped_head)
+    before_unsafe = checkout_footprint(fixtures, source, ('fixture.txt', 'untracked-note.txt'))
+    for command, args in (
+        ('fetch_repository', {'remote': 'origin', 'operationId': 'owned-fetch-unsafe-named'}),
+        ('fetch_repository', {'remote': None, 'operationId': 'owned-fetch-unsafe-all'}),
+        ('sync_repository', {}),
+    ):
+        try:
+            driver.invoke(command, repoId=repo_id, **args)
+        except RuntimeError as refusal:
+            assert json.loads(str(refusal))['kind'] == 'fetchUpdatesLocalBranch', str(refusal)
+        else:
+            raise AssertionError(f'{command} accepted a fetch mapping into an unselected local branch')
+        assert checkout_footprint(fixtures, source, ('fixture.txt', 'untracked-note.txt')) == before_unsafe
+        assert fetch_head.read_bytes() == foreground_fetch_head
+
+    open_fetch(source)
+    confirm_fetch('Fetch branches')
+    assert fixtures.git(source, 'rev-parse', 'refs/remotes/origin/main') == scoped_head
+    assert fixtures.git(source, 'rev-parse', 'refs/heads/unselected') == base
+    preserved(before_unsafe, checkout_footprint(fixtures, source, ('fixture.txt', 'untracked-note.txt')))
+    fixtures.git(source, 'config', '--fixed-value', '--unset-all', 'remote.origin.fetch', mapping)
+    report['scenarios'].append('native-ordinary-and-background-fetch-refuse-local-branch-refspecs')
     remote_refs = fixtures.git(remote, 'show-ref')  # The shallow fixtures below use this updated source.
 
     shallow = fixtures.root / 'deferred-shallow-review'

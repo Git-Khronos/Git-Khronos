@@ -304,6 +304,17 @@ test('installed workspace batch must preserve its checkout and saved Pull policy
   }
 });
 
+test('installed environment must prove manual and background Fetch protect local branches', () => {
+  const fixtures = matrixFixtures();
+  const environment = fixtures.find(report => report.suite === 'environment');
+  const scenario = 'native-ordinary-and-background-fetch-refuse-local-branch-refspecs';
+  assert.ok(environment.scenarios.includes(scenario));
+  const older = { ...environment, scenarios: environment.scenarios.filter(name => name !== scenario) };
+  const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== environment), older]);
+  assert.equal(matrix.complete, false);
+  assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['environment']);
+});
+
 test('installed recap evidence must prove diff sides stay distinct even for the same path', () => {
   const fixtures = matrixFixtures();
   const recaps = fixtures.find(report => report.suite === 'working-tree-recaps');
@@ -408,6 +419,7 @@ test('split passing reports cannot combine to satisfy a required suite', () => {
       'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer',
       'native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal',
       'native-worktree-and-branch-removal-requires-recovery-before-removing-checkout',
+      'native-ordinary-and-background-fetch-refuse-local-branch-refspecs',
     ]],
   ]) {
     const full = fixtures.find(report => report.suite === suite);

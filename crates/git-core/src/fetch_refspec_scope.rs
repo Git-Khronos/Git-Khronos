@@ -1,22 +1,82 @@
-//! A Pull authorizes Git's integration phase to move the receiving branch.
-//! The fetch that precedes it must not separately update local branches.
+//! Ordinary transport can update tracking refs, but does not authorize a
+//! direct fetch into local branches. Pull can separately integrate its source.
 use super::*;
 
 const CONFIG_LIMIT: usize = 256 * 1024;
 const LOCAL_BRANCHES: &[u8] = b"refs/heads/";
 
-fn unverified() -> AppError {
-    AppError::new(
-        "pullFetchScopeUnverified",
-        "The configured Pull fetch scope could not be verified. Nothing was fetched.",
-        Some("Review the repository's upstream and remote fetch mappings in Git, then retry."),
-    )
+#[derive(Clone, Copy)]
+enum Operation {
+    Pull,
+    Fetch,
+}
+
+impl Operation {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Pull => "Pull",
+            Self::Fetch => "Fetch",
+        }
+    }
+
+    fn unverified(self) -> AppError {
+        AppError::new(
+            match self {
+                Self::Pull => "pullFetchScopeUnverified",
+                Self::Fetch => "fetchScopeUnverified",
+            },
+            format!(
+                "The configured {} scope could not be verified. Nothing was fetched.",
+                self.label()
+            ),
+            Some("Review the repository's upstream and remote fetch mappings in Git, then retry."),
+        )
+    }
+
+    fn legacy(self) -> AppError {
+        AppError::new(
+            match self {
+                Self::Pull => "legacyPullRemoteUnverified",
+                Self::Fetch => "legacyFetchRemoteUnverified",
+            },
+            format!(
+                "A legacy Git remote file may control this {}'s fetch mappings. Nothing was fetched.",
+                self.label()
+            ),
+            Some(
+                "Migrate the remote to normal Git configuration and verify its fetch destinations before retrying.",
+            ),
+        )
+    }
+
+    fn local_branch(self) -> AppError {
+        let (kind, message) = match self {
+            Self::Pull => (
+                "pullFetchUpdatesLocalBranch",
+                "This remote's fetch mapping could update a local branch before Pull integrates anything. Nothing was fetched.",
+            ),
+            Self::Fetch => (
+                "fetchUpdatesLocalBranch",
+                "A selected remote's fetch mapping could update a local branch. Nothing was fetched.",
+            ),
+        };
+        let hint = match self {
+            Self::Pull => {
+                "Map incoming branches to remote-tracking refs instead of local branches, then retry Pull."
+            }
+            Self::Fetch => {
+                "Use branch-only Fetch options, or map incoming branches to remote-tracking refs before retrying ordinary Fetch."
+            }
+        };
+        AppError::new(kind, message, Some(hint))
+    }
 }
 
 fn config(
     path: &Path,
     args: &[&str],
     cancellation: Option<&CancellationToken>,
+    operation: Operation,
 ) -> Result<Vec<u8>, AppError> {
     let (output, truncated) =
         run_git_with_stdout_limit_and_cancellation(path, args, CONFIG_LIMIT, cancellation)?;
@@ -26,7 +86,7 @@ fn config(
     if !truncated && output.status.code() == Some(1) && output.stdout.is_empty() {
         return Ok(Vec::new());
     }
-    Err(unverified())
+    Err(operation.unverified())
 }
 
 fn split_first(bytes: &[u8], separator: u8) -> Option<(&[u8], &[u8])> {
@@ -82,6 +142,7 @@ fn configured_remote(
     checkout: Option<&PullCheckout>,
     cancellation: Option<&CancellationToken>,
 ) -> Result<Option<String>, AppError> {
+    let unverified = || Operation::Pull.unverified();
     let branch = if let Some(checkout) = checkout {
         checkout.branch.clone()
     } else {
@@ -107,7 +168,12 @@ fn configured_remote(
         return Ok(None);
     };
     let key = format!("branch.{branch}.remote");
-    let remote = config(path, &["config", "--null", "--get", &key], cancellation)?;
+    let remote = config(
+        path,
+        &["config", "--null", "--get", &key],
+        cancellation,
+        Operation::Pull,
+    )?;
     let value = remote.strip_suffix(b"\0").unwrap_or(&remote);
     if value.is_empty() {
         return Ok(None);
@@ -120,21 +186,30 @@ fn configured_remote(
         .map_err(|_| unverified())
 }
 
-fn require_config_based_remote(
+fn require_config_based_remotes(
     path: &Path,
-    remote: Option<&str>,
+    remotes: Option<&[&str]>,
     cancellation: Option<&CancellationToken>,
+    operation: Operation,
 ) -> Result<(), AppError> {
-    if remote.is_some_and(|name| {
-        // Git accepts legacy remote files only for a simple nickname, not a
-        // path or the special local repository ".".
-        let mut parts = Path::new(name).components();
-        !matches!(parts.next(), Some(std::path::Component::Normal(_)))
-            || parts.next().is_some()
-            || name.chars().any(std::path::is_separator)
-    }) {
+    let legacy_names = remotes.map(|remotes| {
+        remotes
+            .iter()
+            .copied()
+            .filter(|name| {
+                // Git accepts legacy remote files only for a simple nickname, not a
+                // path or the special local repository ".".
+                let mut parts = Path::new(name).components();
+                matches!(parts.next(), Some(std::path::Component::Normal(_)))
+                    && parts.next().is_none()
+                    && !name.chars().any(std::path::is_separator)
+            })
+            .collect::<Vec<_>>()
+    });
+    if legacy_names.as_ref().is_some_and(Vec::is_empty) {
         return Ok(());
     }
+    let unverified = || operation.unverified();
     let locations = run_git_with_cancellation(
         path,
         &[
@@ -156,27 +231,24 @@ fn require_config_based_remote(
         return Err(unverified());
     }
     for directory in paths {
-        let present = if let Some(remote) = remote {
-            match fs::symlink_metadata(directory.join(remote)) {
-                Ok(_) => true,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-                Err(_) => return Err(unverified()),
+        if let Some(names) = &legacy_names {
+            for remote in names {
+                match fs::symlink_metadata(directory.join(remote)) {
+                    Ok(_) => return Err(operation.legacy()),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(_) => return Err(unverified()),
+                }
             }
         } else {
             match fs::read_dir(directory) {
-                Ok(mut entries) => entries.next().is_some(),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+                Ok(mut entries) => {
+                    if entries.next().is_some() {
+                        return Err(operation.legacy());
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(_) => return Err(unverified()),
             }
-        };
-        if present {
-            return Err(AppError::new(
-                "legacyPullRemoteUnverified",
-                "A legacy Git remote file may control this Pull's fetch mappings. Nothing was fetched.",
-                Some(
-                    "Migrate the remote to normal Git configuration and verify its fetch destinations before retrying.",
-                ),
-            ));
         }
     }
     Ok(())
@@ -195,38 +267,80 @@ pub(super) fn require_no_local_branch_fetch(
         None
     };
     let remote = explicit_remote.or(configured.as_deref());
-    require_config_based_remote(path, remote, cancellation)?;
+    check_remotes(
+        path,
+        remote.as_ref().map(std::slice::from_ref),
+        explicit_source,
+        cancellation,
+        Operation::Pull,
+    )
+}
+
+pub(super) fn require_fetch_without_local_branch_updates(
+    path: &Path,
+    remotes: &[&str],
+    cancellation: Option<&CancellationToken>,
+) -> Result<(), AppError> {
+    check_remotes(path, Some(remotes), None, cancellation, Operation::Fetch)
+}
+
+fn check_remotes(
+    path: &Path,
+    remotes: Option<&[&str]>,
+    explicit_source: Option<&str>,
+    cancellation: Option<&CancellationToken>,
+    operation: Operation,
+) -> Result<(), AppError> {
+    if remotes.is_some_and(<[&str]>::is_empty) {
+        return Ok(());
+    }
+    require_config_based_remotes(path, remotes, cancellation, operation)?;
     let unsafe_mapping =
         |refspec| fetch_maps_to_local_branch(refspec, explicit_source.map(str::as_bytes));
-    let records = if let Some(remote) = remote {
+    let single = remotes.and_then(|names| match names {
+        [remote] => Some(remote),
+        _ => None,
+    });
+    let records = if let Some(remote) = single {
         let key = format!("remote.{remote}.fetch");
-        config(path, &["config", "--null", "--get-all", &key], cancellation)?
+        config(
+            path,
+            &["config", "--null", "--get-all", &key],
+            cancellation,
+            operation,
+        )?
     } else {
-        // Without a recorded upstream, leave Git's default remote choice
-        // intact but verify every potential configured fetch mapping.
+        // Read several remotes in one call. Without a recorded Pull upstream,
+        // leave Git's default selection intact and verify every mapping.
         config(
             path,
             &["config", "--null", "--get-regexp", r"^remote\..*\.fetch$"],
             cancellation,
+            operation,
         )?
     };
     let Some(records) = records.strip_suffix(b"\0") else {
         return Ok(());
     };
     for record in records.split(|&byte| byte == 0) {
-        let refspec = if remote.is_some() {
+        let refspec = if single.is_some() {
             record
         } else {
-            split_first(record, b'\n').ok_or_else(unverified)?.1
+            let (key, refspec) =
+                split_first(record, b'\n').ok_or_else(|| operation.unverified())?;
+            let name = key
+                .strip_prefix(b"remote.")
+                .and_then(|key| key.strip_suffix(b".fetch"))
+                .ok_or_else(|| operation.unverified())?;
+            if remotes
+                .is_some_and(|selected| !selected.iter().any(|remote| remote.as_bytes() == name))
+            {
+                continue;
+            }
+            refspec
         };
         if unsafe_mapping(refspec) {
-            return Err(AppError::new(
-                "pullFetchUpdatesLocalBranch",
-                "This remote's fetch mapping could update a local branch before Pull integrates anything. Nothing was fetched.",
-                Some(
-                    "Map incoming branches to remote-tracking refs instead of local branches, then retry Pull.",
-                ),
-            ));
+            return Err(operation.local_branch());
         }
     }
     Ok(())

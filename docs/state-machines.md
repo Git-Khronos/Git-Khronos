@@ -1328,9 +1328,14 @@ the tracker.
 Ordinary foreground Fetch and background sync do not prune refs, even when
 Git config enables pruning. Use the explicit branch-only Fetch options to
 prune stale remote-tracking branches. A background fetch also leaves
-`FETCH_HEAD` alone; foreground Fetch still records its result there. These
-commands otherwise continue to use Git's configured fetch mappings. The
-background path skips opt-out remotes and fetches changed remotes by name:
+`FETCH_HEAD` alone; foreground Fetch still records its result there. Both
+paths preflight configured destinations before starting transport. Named
+Fetch, Fetch All and background sync refuse a mapping that may write
+directly to a local branch. They don't change the remote config. Other
+configured tracking mappings remain available, and explicit branch-only
+Fetch options already isolate the configured mapping. Fetch All and the
+background path honor remote opt-outs; the background path fetches each
+changed remote by name:
 Git 2.39 does not carry the no-write flag into multi-remote fetch children.
 
 Coverage: `operation-tracker.spec.ts`, `operation-tracker-characterization.spec.ts`,

@@ -1982,6 +1982,105 @@ fn pull_strategy_missing_upstream_refuses_without_selecting_another_branch_or_lo
 }
 
 #[test]
+fn ordinary_and_background_fetch_refuse_local_branch_destinations_before_any_fetch() {
+    for mode in ["named", "all", "background"] {
+        let (repository, _, head, _) = pull_fixture(false, false);
+        let path = &repository.0;
+        run_mutation(
+            path,
+            &["branch", "unselected"],
+            "create an independent local branch",
+        )
+        .unwrap();
+        let remote = if mode == "named" {
+            "origin"
+        } else {
+            let remote_path = path.join(".git/pull-remote.git");
+            add_remote(
+                path,
+                "zz-unselected-destination",
+                remote_path.to_str().unwrap(),
+            )
+            .unwrap();
+            "zz-unselected-destination"
+        };
+        let fetch_key = format!("remote.{remote}.fetch");
+        run_mutation(
+            path,
+            &[
+                "config",
+                "--add",
+                &fetch_key,
+                "+refs/heads/main:refs/heads/unselected",
+            ],
+            "map a remote ref to an independent branch",
+        )
+        .unwrap();
+        let config = fs::read(path.join(".git/config")).unwrap();
+        let index = fs::read(path.join(".git/index")).unwrap();
+        let before = run_git(path, &["show-ref"]).unwrap().stdout;
+        let recorded = path.join(".git/FETCH_HEAD");
+        fs::write(&recorded, format!("{head}\t\tPrevious fetch\n")).unwrap();
+        let previous = fs::read(&recorded).unwrap();
+        let error = match mode {
+            "named" => fetch_remote(path, "origin"),
+            "all" => fetch(path),
+            "background" => fetch_if_needed(path).map(|_| ()),
+            _ => unreachable!(),
+        }
+        .expect_err(mode);
+        assert_eq!(error.kind, "fetchUpdatesLocalBranch", "{mode}");
+        assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, before);
+        assert_eq!(fs::read(&recorded).unwrap(), previous);
+        assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+        assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+        assert!(!path.join("remote-file").exists());
+    }
+}
+
+#[test]
+fn ordinary_fetch_honors_remote_opt_outs_and_still_allows_custom_tracking_refs() {
+    let (repository, _, head, incoming) = pull_fixture(false, false);
+    let path = &repository.0;
+    let remote_path = path.join(".git/pull-remote.git");
+    add_remote(path, "unsafe-but-skipped", remote_path.to_str().unwrap()).unwrap();
+    for (key, value) in [
+        ("remote.unsafe-but-skipped.skipFetchAll", "true"),
+        (
+            "remote.unsafe-but-skipped.fetch",
+            "+refs/heads/main:refs/heads/unselected",
+        ),
+        (
+            "remote.origin.fetch",
+            "+refs/heads/main:refs/custom/tracking/main",
+        ),
+    ] {
+        run_mutation(
+            path,
+            &["config", "--add", key, value],
+            "configure an owned remote",
+        )
+        .unwrap();
+    }
+    let config = fs::read(path.join(".git/config")).unwrap();
+    assert!(fetch_if_needed(path).unwrap());
+    fetch(path).unwrap();
+    assert_eq!(repository.oid(), head);
+    assert_eq!(rev(path, "refs/custom/tracking/main"), incoming);
+    assert!(
+        !run_git(path, &["rev-parse", "--verify", "refs/heads/unselected"])
+            .unwrap()
+            .status
+            .success()
+    );
+    assert_eq!(
+        fetch_remote(path, "unsafe-but-skipped").unwrap_err().kind,
+        "fetchUpdatesLocalBranch"
+    );
+    assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+}
+
+#[test]
 fn pull_refuses_fetch_mappings_that_write_unreviewed_local_branches() {
     for explicit in [false, true] {
         let (repository, _, head, _) = pull_fixture(false, false);

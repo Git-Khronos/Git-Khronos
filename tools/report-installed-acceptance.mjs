@@ -126,6 +126,7 @@ const RELEASE_MATRIX = [
     'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer',
     'native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal',
     'native-worktree-and-branch-removal-requires-recovery-before-removing-checkout',
+    'native-ordinary-and-background-fetch-refuse-local-branch-refspecs',
   ], true],
   ['ubuntu', '24.04', 'smoke', SMOKE_SCENARIO],
   ['ubuntu', '24.04', 'gitlab', GITLAB_SCENARIOS],

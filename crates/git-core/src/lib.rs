@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-mod pull_refspec_scope;
+mod fetch_refspec_scope;
 mod push_destination;
 pub use push_destination::{PushDestinationReview, review_push_destination};
 
@@ -4658,6 +4658,7 @@ fn fetch_remote_with_cancellation(
 ) -> Result<(), AppError> {
     validate_remote_name(path, remote)?;
     require_remote(path, remote)?;
+    fetch_refspec_scope::require_fetch_without_local_branch_updates(path, &[remote], cancellation)?;
     let mut args = fetch_command_args();
     args.extend(["--no-all", "--", remote]);
     let output = run_git_with_cancellation(path, &args, cancellation)?;
@@ -4694,21 +4695,13 @@ pub fn perform_repository_maintenance(path: &Path) -> Result<(), AppError> {
 /// empty fetch. The dry run is cheap when nothing changed, which is the common case
 /// for periodic background synchronization.
 pub fn fetch_if_needed(path: &Path) -> Result<bool, AppError> {
-    let remotes = run_git(path, &["remote"])?;
-    ensure_success("list repository remotes", &remotes)?;
-    let remotes = String::from_utf8(remotes.stdout).map_err(|_| {
-        AppError::new(
-            "unsupportedRemoteEncoding",
-            "Remote names must be UTF-8 for background fetching.",
-            None,
-        )
-    })?;
-    if remotes.is_empty() {
-        return Ok(false);
-    }
-    let skipped = background_fetch_skips(path)?;
+    let remotes = fetch_all_candidates(path, None)?;
+    let names = remotes.iter().map(String::as_str).collect::<Vec<_>>();
+    // Check every selected mapping before previewing or contacting a remote.
+    // A refusal must not hide earlier updates to another remote's refs.
+    fetch_refspec_scope::require_fetch_without_local_branch_updates(path, &names, None)?;
     let mut changed = Vec::new();
-    for remote in remotes.lines().filter(|remote| !skipped.contains(*remote)) {
+    for remote in names {
         let preview = run_fetch_preview(path, remote)?;
         if !preview.stdout.is_empty() || !preview.stderr.is_empty() {
             changed.push(remote);
@@ -4725,7 +4718,34 @@ pub fn fetch_if_needed(path: &Path) -> Result<bool, AppError> {
     Ok(!changed.is_empty())
 }
 
-fn background_fetch_skips(path: &Path) -> Result<HashSet<String>, AppError> {
+fn fetch_all_candidates(
+    path: &Path,
+    cancellation: Option<&CancellationToken>,
+) -> Result<Vec<String>, AppError> {
+    let remotes = run_git_with_cancellation(path, &["remote"], cancellation)?;
+    ensure_success("list repository remotes", &remotes)?;
+    let remotes = String::from_utf8(remotes.stdout).map_err(|_| {
+        AppError::new(
+            "unsupportedRemoteEncoding",
+            "Remote names must be UTF-8 to verify Fetch scope.",
+            None,
+        )
+    })?;
+    if remotes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let skipped = fetch_all_skips(path, cancellation)?;
+    Ok(remotes
+        .lines()
+        .filter(|remote| !skipped.contains(*remote))
+        .map(str::to_owned)
+        .collect())
+}
+
+fn fetch_all_skips(
+    path: &Path,
+    cancellation: Option<&CancellationToken>,
+) -> Result<HashSet<String>, AppError> {
     let (output, truncated) = run_git_with_stdout_limit_and_cancellation(
         path,
         &[
@@ -4736,15 +4756,15 @@ fn background_fetch_skips(path: &Path) -> Result<HashSet<String>, AppError> {
             r"^remote\..+\.(skipfetchall|skipdefaultupdate)$",
         ],
         128 * 1024,
-        None,
+        cancellation,
     )?;
     if !truncated && output.status.code() == Some(1) && output.stdout.is_empty() {
         return Ok(HashSet::new());
     }
     let unavailable = || {
         AppError::new(
-            "backgroundFetchPolicyUnavailable",
-            "The list of remotes allowed for background Fetch could not be read. Nothing was fetched.",
+            "fetchAllPolicyUnavailable",
+            "The list of remotes allowed for Fetch All could not be read. Nothing was fetched.",
             Some("Review the remote skipFetchAll settings in Git, then retry."),
         )
     };
@@ -4800,6 +4820,9 @@ fn fetch_all_remotes(
     path: &Path,
     cancellation: Option<&CancellationToken>,
 ) -> Result<(), AppError> {
+    let candidates = fetch_all_candidates(path, cancellation)?;
+    let names = candidates.iter().map(String::as_str).collect::<Vec<_>>();
+    fetch_refspec_scope::require_fetch_without_local_branch_updates(path, &names, cancellation)?;
     let mut args = fetch_command_args();
     args.push("--all");
     let output = run_git_with_cancellation(path, &args, cancellation)?;
@@ -5048,7 +5071,7 @@ fn pull_from_remote_with_strategy_and_cancellation(
             require_unambiguous_pull_upstream(path, branch, cancellation)?;
         }
     }
-    pull_refspec_scope::require_no_local_branch_fetch(
+    fetch_refspec_scope::require_no_local_branch_fetch(
         path,
         remote,
         branch_ref.as_deref(),
