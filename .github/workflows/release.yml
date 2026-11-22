@@ -58,7 +58,7 @@ jobs:
       - name: Install Linux build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl fakeroot
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl libssl-dev pkg-config fakeroot
       - name: Check release tag matches project version
         run: |
           version="${RELEASE_TAG#v}"

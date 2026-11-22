@@ -150,6 +150,12 @@ task package:deb
 task package:deb:path
 ```
 
+An experimental, executable AppImage can be built on Ubuntu 22.04 amd64 with
+`task package:appimage`; `task package:appimage:path` prints its path. This
+target always rebuilds and validates one ELF executable artifact. It is not yet
+part of the published release or signed update feed, and has not replaced the
+Debian installed-package acceptance gate.
+
 `task install:linux:dry-run` builds or reuses the verified local package and
 shows APT's plan without installing anything or asking for administrator access.
 `task install:linux` (also `task install:system`) installs the package
@@ -269,6 +275,8 @@ invocation after enabling these checks builds once to establish a baseline in
 deletions, or missing required outputs trigger another build. Use
 `task --force package:deb` to rebuild explicitly, for example after changing the
 installed toolchain or system libraries.
+The AppImage target intentionally does not reuse a prior build: its Jammy
+compatibility baseline and actual executable artifact are checked on every run.
 Linux package builds use `flock` from util-linux. Local and Jammy builds share
 renderer files and package notices, so only one Task build can write to the
 checkout at a time, even with different `CARGO_TARGET_DIR` values. If a build

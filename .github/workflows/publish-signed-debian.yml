@@ -94,7 +94,7 @@ jobs:
       - name: Install verification prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev pkg-config
       - run: pnpm install --frozen-lockfile
       - run: pnpm nx run desktop:build --output-style=static
       - name: Prepare and reverify exactly the assets to upload

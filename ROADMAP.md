@@ -68,7 +68,9 @@ workflows run in the packaged desktop application—not merely in a browser mock
   SHA256SUMS, and publication gated on exact-package Linux runtime acceptance.
   Signed Debian update controls, local publisher-key builds, and manifest
   staging are implemented; the public signed release feed and installed
-  update/restart qualification remain. AppImage also remains)
+  update/restart qualification remain. An uncached Ubuntu 22.04 AppImage build
+  task now validates that exactly one executable ELF artifact was produced;
+  release checksums/SBOM/signatures and packaged runtime qualification remain)
 - [ ] English accessibility review and externalized UI strings
   (an automated structural audit covers names, labels, dialogs, ARIA references,
   focusability and reading order in 16 preview states and open overlays;

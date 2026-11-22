@@ -141,6 +141,21 @@ tasks:
     cmds:
       - bash tools/build-linux-package.sh ubuntu-jammy "ubuntu-jammy:{{.CHECKSUM}}" "{{.TAURI_CONFIG}}"
 
+  package:appimage:
+    aliases: [package:appimage:path]
+    desc: Build an executable AppImage on the Ubuntu 22.04 amd64 compatibility baseline
+    platforms: [linux]
+    cmds:
+      - bash tools/require-ubuntu-jammy.sh
+      - task: package:appimage:build
+
+  package:appimage:build:
+    internal: true
+    platforms: [linux]
+    method: none
+    cmds:
+      - bash tools/build-linux-package.sh ubuntu-jammy-appimage appimage-jammy:uncached "{{.TAURI_CONFIG}}"
+
   package:deb:path:
     desc: Print the latest Debian/Ubuntu package path
     platforms: [linux]

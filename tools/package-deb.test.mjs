@@ -287,6 +287,7 @@ if (process.env.FAIL_ABI) process.exit(1);
 `);
   await copyFile(join(repositoryRoot, 'tools/package-build-receipt.mjs'), join(root, 'tools/package-build-receipt.mjs'));
   await copyFile(join(repositoryRoot, 'tools/build-linux-package.sh'), join(root, 'tools/build-linux-package.sh'));
+  await copyFile(join(repositoryRoot, 'tools/check-linux-appimage.mjs'), join(root, 'tools/check-linux-appimage.mjs'));
   await copyFile(join(repositoryRoot, 'tools/check-linux-package-watcher.mjs'), join(root, 'tools/check-linux-package-watcher.mjs'));
   await put('apps/desktop/src/main.ts');
   await put('apps/desktop/src-tauri/tauri.conf.json');
@@ -294,14 +295,15 @@ if (process.env.FAIL_ABI) process.exit(1);
   await put('crates/git-core/src/lib.rs');
   await put('packaging/debian/changelog');
   await put('bin/pnpm', `#!/usr/bin/env node
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname } from 'node:path';
 if (process.argv[2] === '--version') {
   console.log('12.14.0');
 } else {
+  const appimage = !!process.env.EXPECT_APPIMAGE;
   const expected = [
-    'exec', 'tauri', 'build', '--bundles', 'deb', '--config',
+    'exec', 'tauri', 'build', '--bundles', appimage ? 'appimage' : 'deb', '--config',
     'apps/desktop/src-tauri/tauri.conf.json'
   ];
   if (process.env.EXPECT_JAMMY) expected.push('--config', 'packaging/linux/ubuntu-jammy.conf.json');
@@ -330,11 +332,15 @@ if (process.argv[2] === '--version') {
     process.exit(99);
   }
   if (process.env.FAIL_BUILD) process.exit(1);
-  for (const path of ${JSON.stringify(outputs)}) {
+  const generated = appimage
+    ? ['target/release/bundle/appimage/Git-Khronos_0.1.0_amd64.AppImage']
+    : ${JSON.stringify(outputs)};
+  for (const path of generated) {
     const output = process.env.CARGO_TARGET_DIR && path.startsWith('target/release/')
       ? process.env.CARGO_TARGET_DIR + path.slice('target'.length) : path;
     mkdirSync(dirname(output), { recursive: true });
-    writeFileSync(output, 'built');
+    writeFileSync(output, appimage ? Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01]) : 'built');
+    if (appimage) chmodSync(output, 0o755);
   }
   mkdirSync('apps/desktop/src-tauri/gen/schemas', { recursive: true });
   writeFileSync('apps/desktop/src-tauri/gen/schemas/capabilities.json', Date.now().toString());
@@ -403,6 +409,27 @@ test('Jammy records an exact package only after host and ABI gates and cannot re
   assert.deepEqual((await f.calls()).slice(-2), ['build', 'verify']);
   f.ok(['--force', ...jammy], env);
   assert.deepEqual((await f.calls()).slice(-2), ['build', 'abi']);
+});
+
+test('AppImage builds only on the Jammy baseline, are checked as executable ELF artifacts, and rebuild each time', async (t) => {
+  const f = await fixture(t);
+  const appimage = ['package:appimage'];
+  const env = { EXPECT_APPIMAGE: '1', EXPECT_JAMMY: '1' };
+  assert.notEqual(f.run(appimage, { ...env, FAIL_HOST_CHECK: '1' }).status, 0);
+  await assert.rejects(readFile(join(f.root, 'calls')), { code: 'ENOENT' });
+
+  f.ok(appimage, env);
+  f.ok(appimage, env);
+  assert.deepEqual(await f.calls(), ['build', 'build']);
+  const artifact = join(f.root, 'target/release/bundle/appimage/Git-Khronos_0.1.0_amd64.AppImage');
+  assert.deepEqual((await readFile(artifact)).subarray(0, 4), Buffer.from([0x7f, 0x45, 0x4c, 0x46]));
+  assert.equal((await stat(artifact)).mode & 0o111, 0o111);
+  const pathTask = f.run(['package:appimage:path'], env);
+  assert.equal(pathTask.status, 0, `${pathTask.stdout}\n${pathTask.stderr}`);
+  assert.match(pathTask.stdout, /Git-Khronos_0\.1\.0_amd64\.AppImage/);
+  assert.equal(await f.builds(), 3);
+  await assert.rejects(readFile(join(f.root, 'target/release/.git-khronos-package-build.v1.json')),
+    { code: 'ENOENT' }, 'an AppImage must not be mistaken for the Debian package receipt');
 });
 
 test('input edits, additions, renames and deletions invalidate the build', async (t) => {

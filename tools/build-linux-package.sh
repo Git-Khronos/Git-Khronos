@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Build one local or Jammy artifact without overlapping writes to workspace outputs.
+# Build one local or Jammy Linux artifact without overlapping writes to workspace outputs.
 set -euo pipefail
 
 flavor="${1:-}"
 checksum="${2:-}"
 tauri_config="${3:-}"
 case "$flavor" in
-  local) extra_config=() ;;
-  ubuntu-jammy) extra_config=(--config packaging/linux/ubuntu-jammy.conf.json) ;;
-  *) printf 'Expected local or ubuntu-jammy package flavor.\n' >&2; exit 2 ;;
+  local) bundle=deb; extra_config=() ;;
+  ubuntu-jammy) bundle=deb; extra_config=(--config packaging/linux/ubuntu-jammy.conf.json) ;;
+  ubuntu-jammy-appimage) bundle=appimage; extra_config=(--config packaging/linux/ubuntu-jammy.conf.json) ;;
+  *) printf 'Expected local, ubuntu-jammy, or ubuntu-jammy-appimage package flavor.\n' >&2; exit 2 ;;
 esac
 [[ -n "$checksum" && -n "$tauri_config" ]] || { printf 'Missing package checksum or Tauri configuration.\n' >&2; exit 2; }
 command -v flock >/dev/null || { printf 'Git Khronos: flock (util-linux) is required to build a Linux package.\n' >&2; exit 1; }
@@ -25,17 +26,23 @@ if ! flock --exclusive --nonblock 9; then
 fi
 
 node tools/check-linux-package-watcher.mjs apps/desktop/src-tauri/Cargo.toml
-node tools/package-build-receipt.mjs begin "$checksum"
+if [[ "$bundle" == deb ]]; then
+  node tools/package-build-receipt.mjs begin "$checksum"
+fi
 # Task saw changed inputs (or requested a rebuild). Cargo's timestamp check
 # can still accept an older workspace executable after a checkout or archive
 # restore. Invalidate just workspace release artifacts, not dependency caches.
 cargo clean --release --workspace --locked
 export TMPDIR="${TMPDIR:-$PWD/target/package-tmp}"
 mkdir -p -- "$TMPDIR"
-pnpm exec tauri build --bundles deb --config "$tauri_config" "${extra_config[@]}"
-tools/manage-linux-package.sh name
-if [[ "$flavor" == ubuntu-jammy ]]; then
-  package_file="$(tools/manage-linux-package.sh print-package)"
-  node tools/check-linux-abi.mjs "$package_file"
+pnpm exec tauri build --bundles "$bundle" --config "$tauri_config" "${extra_config[@]}"
+if [[ "$bundle" == deb ]]; then
+  tools/manage-linux-package.sh name
+  if [[ "$flavor" == ubuntu-jammy ]]; then
+    package_file="$(tools/manage-linux-package.sh print-package)"
+    node tools/check-linux-abi.mjs "$package_file"
+  fi
+  node tools/package-build-receipt.mjs complete "$checksum"
+else
+  node tools/check-linux-appimage.mjs "${CARGO_TARGET_DIR:-target}/release/bundle/appimage"
 fi
-node tools/package-build-receipt.mjs complete "$checksum"

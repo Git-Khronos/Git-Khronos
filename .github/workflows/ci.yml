@@ -89,7 +89,7 @@ jobs:
       - name: Install Linux build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl libssl-dev pkg-config
       - run: pnpm install --frozen-lockfile
       - name: Verify generated IPC, TypeScript, Rust, and harness tests
         run: |
@@ -193,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb libxtst6 git-lfs openssh-client openssh-server fakeroot desktop-file-utils libglib2.0-bin openssl dbus
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb libxtst6 git-lfs openssh-client openssh-server fakeroot desktop-file-utils libglib2.0-bin openssl libssl-dev pkg-config dbus
           for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
             command -v "$tool"
           done
