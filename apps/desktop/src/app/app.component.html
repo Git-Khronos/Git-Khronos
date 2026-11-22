@@ -1105,7 +1105,11 @@
                 @if (target && target.candidate.noCheckout) {
                   <button type="button" (click)="viewBisectCommit(target.candidate.oid)">View candidate</button>
                 }
-                <button class="good" type="button" [disabled]="git.busy() || !target" (click)="markBisect('good', target)">Good</button><button class="bad" type="button" [disabled]="git.busy() || !target" (click)="markBisect('bad', target)">Bad</button><button type="button" [disabled]="git.busy() || !target" (click)="markBisect('skip', target)">Skip</button>
+                @let oldTerm = target?.candidate.terms?.old ?? 'Good';
+                @let newTerm = target?.candidate.terms?.new ?? 'Bad';
+                <button class="good" type="button" [disabled]="git.busy() || !target" [title]="'Mark as ' + oldTerm" (click)="markBisect('good', target)">{{ oldTerm }}</button>
+                <button class="bad" type="button" [disabled]="git.busy() || !target" [title]="'Mark as ' + newTerm" (click)="markBisect('bad', target)">{{ newTerm }}</button>
+                <button type="button" [disabled]="git.busy() || !target" (click)="markBisect('skip', target)">Skip</button>
               }
               <button type="button" [disabled]="git.busy()" (click)="resetBisect()">Reset</button>
             </div>

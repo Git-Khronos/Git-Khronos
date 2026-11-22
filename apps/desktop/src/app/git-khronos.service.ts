@@ -1,4 +1,5 @@
 import type { PushDestinationReview } from '@git-khronos/contracts';
+import { sameBisectCandidate } from './bisect-candidate';
 import { PREPARED_MERGE_LABEL, repositoryOperationState } from './repository-operation';
 import { AsyncStateController } from './async-state';
 import { OperationTracker } from './operation-tracker';
@@ -177,8 +178,7 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
     && leftOperation.rebaseSplit?.treeMatches === rightOperation.rebaseSplit?.treeMatches
     && !!leftOperation.mailPatchInProgress === !!rightOperation.mailPatchInProgress
     && leftOperation.bisectInProgress === rightOperation.bisectInProgress
-    && left.bisectCandidate?.oid === right.bisectCandidate?.oid
-    && left.bisectCandidate?.noCheckout === right.bisectCandidate?.noCheckout
+    && sameBisectCandidate(left.bisectCandidate, right.bisectCandidate)
     && sameBisectResult(left.bisectResult, right.bisectResult)
     && left.entryCount === right.entryCount
     && left.entriesTruncated === right.entriesTruncated
@@ -2726,7 +2726,7 @@ export class GitKhronosService implements OnDestroy {
   async markBisect(verdict: 'good' | 'bad' | 'skip', expected: BisectCandidate): Promise<void> {
     const repository = this.repository();
     const candidate = this.bisectCandidate();
-    if (!repository || !candidate || candidate.oid !== expected.oid || candidate.noCheckout !== expected.noCheckout) return;
+    if (!repository || !candidate || !sameBisectCandidate(candidate, expected)) return;
     if (this.browserPreview()) {
       const currentIndex = repository.commits.findIndex((commit) => commit.oid === expected.oid);
       const candidate = repository.commits[Math.min(repository.commits.length - 1, Math.max(0, currentIndex + 1))];
@@ -2737,7 +2737,9 @@ export class GitKhronosService implements OnDestroy {
       this.activity.set(`Bisect marked ${verdict}`);
       return;
     }
-    await this.mutate('mark_bisect', `Marking commit ${verdict}…`, `Commit marked ${verdict}`, { verdict, candidate: expected });
+    const label = verdict === 'good' ? expected.terms?.old ?? verdict
+      : verdict === 'bad' ? expected.terms?.new ?? verdict : verdict;
+    await this.mutate('mark_bisect', `Marking commit ${label}…`, `Commit marked ${label}`, { verdict, candidate: expected });
   }
 
   async resetBisect(): Promise<void> {

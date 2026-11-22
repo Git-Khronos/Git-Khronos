@@ -191,6 +191,40 @@ test('an old palette action cannot vote after a different candidate appears', as
   expect(await page.evaluate(() => (window as any).__bisectVote.calls)).toEqual([]);
 });
 
+test('native bisect terms update the banner and retire a palette vote even when the OID is unchanged', async ({ page }) => {
+  const { banner, expected } = await openVote(page, true);
+  await page.evaluate(async () => {
+    const state = (window as any).__bisectVote;
+    const status = state.git.repository().status;
+    state.nextStatus = { ...status, bisectCandidate: { ...status.bisectCandidate, terms: { old: 'fast', new: 'slow' } } };
+    await state.git.refreshStatusInBackground();
+  });
+  await expect(banner.getByRole('button', { name: 'Good', exact: true })).toHaveCount(0);
+  await banner.getByRole('button', { name: 'fast', exact: true }).click();
+  await expect(banner.getByRole('button', { name: 'fast', exact: true })).toBeEnabled();
+  await expect.poll(() => page.evaluate(() => (window as any).__bisectVote.calls)).toEqual([
+    { ...expected, candidate: { ...expected.candidate, terms: { old: 'fast', new: 'slow' } } },
+  ]);
+
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search commands', exact: true }).fill('Bisect Mark Current Commit slow');
+  const action = page.getByRole('option', { name: /Bisect: Mark Current Commit slow/ });
+  await expect(action).toBeVisible();
+  await action.evaluate((button: HTMLElement) => {
+    const state = (window as any).__bisectVote;
+    const { git } = state;
+    const status = git.repository().status;
+    state.nextStatus = { ...status, bisectCandidate: { ...status.bisectCandidate, terms: { old: 'slow', new: 'fast' } } };
+    git.repositories.update((items: any[]) => items.map(item => item.id === git.activeRepositoryId()
+      ? { ...item, status: state.nextStatus } : item));
+    button.click();
+  });
+  expect(await page.evaluate(() => (window as any).__bisectVote.calls)).toHaveLength(1);
+  await page.keyboard.press('Escape');
+  await expect(banner.locator('.good')).toHaveText('slow');
+  await expect(banner.locator('.bad')).toHaveText('fast');
+});
+
 test('a found bisect result replaces the test candidate and stops offering votes', async ({ page }) => {
   await openVote(page, true);
   await page.evaluate(() => {

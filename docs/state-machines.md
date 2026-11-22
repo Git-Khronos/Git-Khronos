@@ -793,8 +793,11 @@ Neither mode changes Git's candidate selection.
 Good, Bad, and Skip capture the displayed candidate and checkout visit,
 whether invoked from the banner or palette. For Git's no-checkout mode,
 the candidate is the exact `BISECT_HEAD` ref and is independent of HEAD.
-Native validation compares the current candidate and checkout mode before
-recording an explicit OID, never relying on Git's implicit default.
+The banner and palette use the native session's terms, including old/new
+or custom terms from a session started outside the application.
+Native validation compares the current candidate, checkout mode and terms
+before voting for an explicit OID. Invalid or ambiguous terms do not
+authorize a native vote.
 An unavailable candidate disables votes but does not disable Reset.
 When Git records a unique result, the banner shows that exact commit
 instead of presenting another test candidate. Only View result and Reset

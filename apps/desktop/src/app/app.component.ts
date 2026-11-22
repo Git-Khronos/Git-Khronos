@@ -74,6 +74,7 @@ import type {
   Worktree,
   WorkingTreeEntry,
 } from '@git-khronos/contracts';
+import { sameBisectCandidate } from './bisect-candidate';
 import { GitKhronosService, type OpenRepositoryResult, type RepositoryWorkspace, type SavedRepositoryReplacement } from './git-khronos.service';
 import { OverlayController } from './overlay-controller';
 import { repositoryOperationState } from './repository-operation';
@@ -14117,7 +14118,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async markBisect(verdict: 'good' | 'bad' | 'skip', target: BisectVoteTarget | null): Promise<void> {
     const current = this.bisectVoteTarget();
     if (this.git.busy() || !target || !current || current.checkoutScope !== target.checkoutScope
-      || current.candidate.oid !== target.candidate.oid || current.candidate.noCheckout !== target.candidate.noCheckout) return;
+      || !sameBisectCandidate(current.candidate, target.candidate)) return;
     await this.git.markBisect(verdict, target.candidate);
   }
 

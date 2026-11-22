@@ -435,6 +435,30 @@ def bisect_vote_binds_the_test_candidate(driver, fixtures, report):
     report['scenarios'].append('native-bisect-vote-rejects-an-obsolete-no-checkout-candidate')
 
 
+def bisect_can_vote_using_native_terms(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-terms', commits=7)
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~6')
+    fixtures.git(repository, 'bisect', 'start', '--no-checkout', '--term-old=fast', '--term-new=slow', head, good)
+    repo_id = open_ui(driver, repository)
+    status = driver.invoke('refresh_repository_status', repoId=repo_id)
+    candidate = status['bisectCandidate']
+    assert candidate['terms'] == {'old': 'fast', 'new': 'slow'} and candidate['noCheckout'], candidate
+    banner = '[aria-label="Git bisect in progress"]'
+    driver.wait("return document.querySelector(" + json.dumps(banner + ' .bad') + ")?.textContent.trim() === 'slow'")
+    driver.click_scrolled_text(banner + ' button', 'fast', wait_for_ready=True)
+    driver.wait("return document.querySelector('.activity-status')?.textContent.includes('Commit marked fast')")
+    assert fixtures.git(repository, 'rev-parse', 'refs/bisect/fast-' + candidate['oid']) == candidate['oid']
+    current = driver.invoke('refresh_repository_status', repoId=repo_id)['bisectCandidate']
+    assert current['oid'] != candidate['oid'] and current['terms'] == candidate['terms']
+    driver.click_scrolled_text(banner + ' button', 'slow', wait_for_ready=True)
+    driver.wait("return document.querySelector('.activity-status')?.textContent.includes('Commit marked slow')")
+    assert fixtures.git(repository, 'rev-parse', 'refs/bisect/slow') == current['oid']
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == head
+    driver.invoke('reset_bisect', repoId=repo_id)
+    report['scenarios'].append('native-bisect-votes-use-the-current-old-and-new-terms')
+
+
 def bisect_reports_the_first_bad_commit(driver, fixtures, report):
     repository = fixtures.repository('owned-bisect-result', commits=2)
     bad = fixtures.git(repository, 'rev-parse', 'HEAD')
@@ -578,6 +602,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
     bisect_can_start_without_switching_dirty_checkout(driver, fixtures, report)
     bisect_vote_binds_the_test_candidate(driver, fixtures, report)
+    bisect_can_vote_using_native_terms(driver, fixtures, report)
     bisect_reports_the_first_bad_commit(driver, fixtures, report)
     bisect_reports_inconclusive_candidates(driver, fixtures, report)
     replay_recovery_preserves_ignored_files(driver, fixtures, report)

@@ -31,6 +31,8 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
   const busy = source.git.busy();
   const bisectTarget = source.bisectVoteTarget();
   const bisectOid = bisectTarget ? bisectTarget.candidate.oid.slice(0, 7) : 'unavailable';
+  const bisectOldTerm = bisectTarget?.candidate.terms?.old ?? 'Good';
+  const bisectNewTerm = bisectTarget?.candidate.terms?.new ?? 'Bad';
   const actions: CommandAction[] = [
     ...source.git.workspaces().map((workspace, index): CommandAction => {
       const current = workspace.id === source.git.activeWorkspaceId();
@@ -111,8 +113,8 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
     ] : []),
     ...((repository && source.repositoryOperation().bisectInProgress) ? [
       ...(!source.git.bisectResult() ? [
-      { id: 'bisect-good', group: 'History', label: 'Bisect: Mark Current Commit Good', detail: `Mark candidate ${bisectOid} as known good`, enabled: !busy && !!bisectTarget, icon: 'check' as IconName, bisectTarget },
-      { id: 'bisect-bad', group: 'History', label: 'Bisect: Mark Current Commit Bad', detail: `Mark candidate ${bisectOid} as known bad`, enabled: !busy && !!bisectTarget, icon: 'warning' as IconName, bisectTarget },
+      { id: 'bisect-good', group: 'History', label: `Bisect: Mark Current Commit ${bisectOldTerm}`, detail: `Mark candidate ${bisectOid} as ${bisectOldTerm}`, enabled: !busy && !!bisectTarget, icon: 'check' as IconName, bisectTarget },
+      { id: 'bisect-bad', group: 'History', label: `Bisect: Mark Current Commit ${bisectNewTerm}`, detail: `Mark candidate ${bisectOid} as ${bisectNewTerm}`, enabled: !busy && !!bisectTarget, icon: 'warning' as IconName, bisectTarget },
       { id: 'bisect-skip', group: 'History', label: 'Bisect: Skip Current Commit', detail: `Continue without classifying candidate ${bisectOid}`, enabled: !busy && !!bisectTarget, icon: 'redo' as IconName, bisectTarget },
       ] : []),
       { id: 'bisect-reset', group: 'History', label: 'Bisect: Reset', detail: 'Stop the search and restore the original branch', enabled: !busy, icon: 'reset' as IconName },

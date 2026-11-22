@@ -6572,10 +6572,62 @@ fn start_bisect_at(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
+pub struct BisectTerms {
+    pub old: String,
+    pub new: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BisectCandidate {
     pub oid: String,
     pub no_checkout: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terms: Option<BisectTerms>,
+}
+
+fn read_bisect_terms(path: &Path) -> Result<Option<BisectTerms>, AppError> {
+    let unavailable = || AppError::new(
+        "bisectTermsUnavailable",
+        "Git's bisect terms could not be verified. No vote was recorded.",
+        Some("Inspect the session with git bisect terms, or reset the search."),
+    );
+    let entry = operation_storage::git_entry(path, "BISECT_TERMS")?;
+    let directory = entry.parent().ok_or_else(unavailable)?;
+    let Some(data) = operation_storage::read_bounded(directory, "BISECT_TERMS", 8 * 1024, unavailable)? else {
+        // Git may not create this file until a boundary has been marked.
+        return Ok(None);
+    };
+    let stored = std::str::from_utf8(&data).map_err(|_| unavailable())?;
+    let (new, old) = stored
+        .strip_suffix('\n')
+        .and_then(|data| data.split_once('\n'))
+        .ok_or_else(unavailable)?;
+    if (new, old) == ("bad", "good") {
+        return Ok(None);
+    }
+    if new == old || matches!(new, "good" | "old") || matches!(old, "bad" | "new") {
+        return Err(unavailable());
+    }
+    for term in [new, old] {
+        // The file is editable. A value must never dispatch a built-in
+        // bisect operation, even if it would be a valid ref name.
+        if term.is_empty()
+            || term.chars().any(char::is_control)
+            || matches!(
+                term,
+                "start" | "skip" | "next" | "reset" | "replay" | "log" | "run"
+                    | "visualize" | "view" | "terms" | "help"
+            )
+        {
+            return Err(unavailable());
+        }
+        let name = format!("refs/bisect/{term}");
+        if !run_git(path, &["check-ref-format", &name])?.status.success() {
+            return Err(unavailable());
+        }
+    }
+    Ok(Some(BisectTerms { old: old.to_owned(), new: new.to_owned() }))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
@@ -6697,8 +6749,9 @@ fn add_bisect_progress(path: &Path, status: &mut RepositoryStatus) {
 }
 
 fn read_bisect_candidate(path: &Path) -> Result<BisectCandidate, AppError> {
+    let terms = read_bisect_terms(path)?;
     if let Some(oid) = merge_checkout_guard::exact_bisect_head(path)? {
-        return Ok(BisectCandidate { oid, no_checkout: true });
+        return Ok(BisectCandidate { oid, no_checkout: true, terms });
     }
     let unavailable = || AppError::new(
         "bisectCandidateUnavailable",
@@ -6707,7 +6760,7 @@ fn read_bisect_candidate(path: &Path) -> Result<BisectCandidate, AppError> {
     );
     let oid = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
     validate_commit_oid(&oid).map_err(|_| unavailable())?;
-    Ok(BisectCandidate { oid, no_checkout: false })
+    Ok(BisectCandidate { oid, no_checkout: false, terms })
 }
 
 pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Result<(), AppError> {
@@ -6751,22 +6804,31 @@ pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Re
     if &read_bisect_candidate(path)? != expected {
         return Err(AppError::new(
             "staleBisectCandidate",
-            "The candidate changed since this bisect result was shown. No verdict was recorded.",
+            "The candidate or its terms changed since it was shown. No verdict was recorded.",
             Some("Refresh the repository and test the current candidate before marking it."),
         ));
     }
-    // Pass the exact revision. Never allow native bisect to resolve the
-    // target implicitly after the check if another client advances it.
-    let output = run_git(path, &["bisect", verdict, &expected.oid])?;
+    let term = match (&expected.terms, verdict) {
+        (Some(terms), "good") => terms.old.as_str(),
+        (Some(terms), "bad") => terms.new.as_str(),
+        _ => verdict,
+    };
+    // Skip is the only built-in subcommand we dispatch here. Pass votes
+    // after the separator so their reviewed terms stay positional.
+    let output = if verdict == "skip" {
+        run_git(path, &["bisect", "skip", &expected.oid])?
+    } else {
+        run_git(path, &["bisect", "--", term, &expected.oid])?
+    };
     // Git can record the vote but return 2 because only skipped revisions
     // remain. Accept this outcome only when both pieces of native state agree.
     if output.status.code() == Some(2)
         && matches!(read_bisect_result(path), Ok(Some(BisectResult::Ambiguous { .. })))
     {
         let recorded_ref = if verdict == "bad" {
-            verdict.to_owned()
+            term.to_owned()
         } else {
-            format!("{verdict}-{}", expected.oid)
+            format!("{term}-{}", expected.oid)
         };
         if bisect_ref_matches(path, &recorded_ref, &expected.oid)? {
             return Ok(());
@@ -18561,7 +18623,7 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             assert!(status.bisect_candidate.is_none());
             assert_eq!(status.bisect_result, Some(BisectResult::Found { oid: bad.clone(), term: term.into() }));
             let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
-            let vote = BisectCandidate { oid: bad, no_checkout: !opts.is_empty() };
+            let vote = BisectCandidate { oid: bad, no_checkout: !opts.is_empty(), terms: None };
             assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectResultAlreadyFound");
             assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
 
@@ -18660,16 +18722,78 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             commit(path, &format!("Point {point}")).unwrap();
             commits.push(reference_tip(path, "HEAD").unwrap());
         }
-        repo.git(&["bisect", "start", "--no-checkout", &commits[3], &commits[0]]);
+        repo.git(&["bisect", "start", "--no-checkout", "--term-old=fast", "--term-new=slow", &commits[3], &commits[0]]);
         repo.git(&["bisect", "skip", &commits[2]]);
         let candidate = read_head_status(path).unwrap().bisect_candidate.unwrap();
         assert_eq!(candidate.oid, commits[1]);
         mark_bisect(path, "good", &candidate).expect("accept the recorded good vote");
-        assert!(bisect_ref_matches(path, &format!("good-{}", candidate.oid), &candidate.oid).unwrap());
-        let Some(BisectResult::Ambiguous { possible_oids, .. }) = read_head_status(path).unwrap().bisect_result else {
+        assert!(bisect_ref_matches(path, &format!("fast-{}", candidate.oid), &candidate.oid).unwrap());
+        let Some(BisectResult::Ambiguous { possible_oids, term }) = read_head_status(path).unwrap().bisect_result else {
             panic!("expected the skipped commit and the bad boundary");
         };
+        assert_eq!(term, "slow");
         assert_eq!(possible_oids.iter().collect::<HashSet<_>>(), commits[2..].iter().collect());
+    }
+
+    #[test]
+    fn bisect_votes_use_reviewed_native_terms_for_both_boundaries() {
+        for (old, new) in [("old", "new"), ("fast/path", "slow"), ("--help", "fixed")] {
+            let repo = TestRepository::new();
+            let path = &repo.path;
+            let mut commits = Vec::new();
+            for point in 1..=7 {
+                repo.write("test.txt", &format!("Point {point}\n"));
+                stage_all(path).unwrap();
+                commit(path, &format!("Point {point}")).unwrap();
+                commits.push(reference_tip(path, "HEAD").unwrap());
+            }
+            let opts = [format!("--term-old={old}"), format!("--term-new={new}")];
+            repo.git(&["bisect", "start", "--no-checkout", &opts[0], &opts[1], &commits[6], &commits[0]]);
+            let terms = Some(BisectTerms { old: old.into(), new: new.into() });
+            let first = read_head_status(path).unwrap().bisect_candidate.unwrap();
+            assert_eq!(first.terms, terms);
+            mark_bisect(path, "good", &first).unwrap();
+            assert!(bisect_ref_matches(path, &format!("{old}-{}", first.oid), &first.oid).unwrap());
+            let second = read_status(path).unwrap().bisect_candidate.unwrap();
+            assert_eq!(second.terms, terms);
+            assert_ne!(first.oid, second.oid);
+            mark_bisect(path, "bad", &second).unwrap();
+            assert!(bisect_ref_matches(path, new, &second.oid).unwrap());
+            assert_eq!(reference_tip(path, "HEAD").unwrap(), commits[6]);
+        }
+    }
+
+    #[test]
+    fn unchanged_bisect_candidate_cannot_use_replaced_or_unverified_terms() {
+        let repo = TestRepository::new();
+        let path = &repo.path;
+        repo.git(&["commit", "--allow-empty", "-m", "Base"]);
+        let good = reference_tip(path, "HEAD").unwrap();
+        for step in 1..=5 {
+            repo.git(&["commit", "--allow-empty", "-m", &format!("Point {step}")]);
+        }
+        let bad = reference_tip(path, "HEAD").unwrap();
+        repo.git(&["bisect", "start", "--no-checkout", "--term-old=fast", "--term-new=slow", &bad, &good]);
+        let first = read_head_status(path).unwrap().bisect_candidate.unwrap();
+
+        reset_bisect(path).unwrap();
+        // Reuse both words, but reverse their meanings in Git's new session.
+        repo.git(&["bisect", "start", "--no-checkout", "--term-old=slow", "--term-new=fast", &bad, &good]);
+        let current = read_head_status(path).unwrap().bisect_candidate.unwrap();
+        assert_eq!(first.oid, current.oid);
+        let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
+        let refs = || run_git(path, &["for-each-ref", "refs/bisect/"]).unwrap().stdout;
+        let reviewed_refs = refs();
+        assert_eq!(mark_bisect(path, "good", &first).unwrap_err().kind, "staleBisectCandidate");
+        assert_eq!(refs(), reviewed_refs);
+
+        // A damaged terms file must not dispatch a built-in bisect command.
+        fs::write(path.join(".git/BISECT_TERMS"), "fast\nrun\n").unwrap();
+        let damaged = read_head_status(path).unwrap();
+        assert!(damaged.bisect_in_progress && damaged.bisect_candidate.is_none());
+        assert_eq!(mark_bisect(path, "good", &current).unwrap_err().kind, "bisectTermsUnavailable");
+        assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
+        assert_eq!(refs(), reviewed_refs);
     }
 
     #[test]

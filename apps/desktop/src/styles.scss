@@ -856,6 +856,7 @@ code, kbd { font-family: var(--font-mono); }
 .bisect-progress > small { overflow: hidden; color: #a9c4bf; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .bisect-progress > div { display: flex; gap: 5px; }
 .bisect-progress :is(button, select) { padding: 4px 8px; border: 1px solid #526865; border-radius: 3px; background: #304846; color: #c7d9d5; font-size: 12px; }
+.bisect-progress :is(.good, .bad) { max-inline-size: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bisect-progress button.good { border-color: #4b8b70; color: #8ce3ba; }
 .bisect-progress button.bad { border-color: #8d5362; color: #ef9caf; }
 .bisect-progress button:disabled { opacity: .4; }
