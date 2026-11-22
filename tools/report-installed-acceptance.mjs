@@ -441,14 +441,42 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
   return summary;
 }
 
+async function planReleaseLane(id, versionId, packagePath, reportInputs) {
+  const inLane = ({ distribution }) => distribution.id === id && distribution.versionId === versionId;
+  let checks = releaseRequirements().filter(inLane);
+  if (!checks.length) throw new Error(`Unsupported release distribution: ${id} ${versionId}. Use --list-release-matrix.`);
+  if (packagePath !== undefined) {
+    const reportPaths = await expandAcceptanceReports(reportInputs, { allowEmptyDirectories: true });
+    // The strict collector rejects foreign or malformed evidence. A valid failed
+    // report is expected on retries, but cannot satisfy any release check.
+    const { releaseMatrix } = await reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix: true });
+    checks = releaseMatrix.checks.filter(check => inLane(check) && check.report === null);
+  }
+  const plan = {
+    version: 1,
+    checks: checks.map(({ distribution, suite, inheritedGitEnvironment = false, requiredScenarios }) => ({
+      distribution, suite, inheritedGitEnvironment, requiredScenarios,
+    })),
+  };
+  return plan.checks.length ? { version: 1, checks: parseFocusedAcceptance(plan) } : plan;
+}
+
 async function main(args) {
   try {
     const usage = 'Usage: node tools/report-installed-acceptance.mjs --list-release-matrix\n'
+      + '   or: node tools/report-installed-acceptance.mjs --plan-release-lane ID VERSION_ID [PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …]\n'
       + '   or: node tools/report-installed-acceptance.mjs [--verify-focused PLAN | --release-progress | --release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
     if (args[0] === '--list-release-matrix') {
       if (args.length !== 1) throw new Error(usage);
       const checks = releaseRequirements();
       console.log(JSON.stringify({ kind: 'requirements', totalChecks: checks.length, checks }, null, 2));
+      return;
+    }
+    if (args[0] === '--plan-release-lane') {
+      const [, id, versionId, packagePath, ...reportInputs] = args;
+      if (!id || !versionId || [id, versionId].some(arg => arg.startsWith('--')) ||
+          packagePath === '' || packagePath?.startsWith('--')) throw new Error(usage);
+      console.log(JSON.stringify(await planReleaseLane(id, versionId, packagePath, reportInputs), null, 2));
       return;
     }
     const releaseMatrix = args[0] === '--release-matrix';

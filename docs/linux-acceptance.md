@@ -629,6 +629,28 @@ not make the progress command fail; a verified failure or a rejected report
 causes a nonzero exit even though the JSON snapshot is still available. Use
 `--verify-release`, not the progress command, for handoff.
 
+To start or resume one distribution's qualification, generate a plan from
+the release checklist instead of retyping its suites:
+
+```bash
+node tools/report-installed-acceptance.mjs --plan-release-lane ubuntu 24.04 > noble-all.json
+node tools/report-installed-acceptance.mjs --plan-release-lane ubuntu 24.04 \
+  "$PACKAGE" --reports-dir "$OLD_RESULTS" > noble-retry.json
+```
+
+Without an installer, the plan contains every check for that distribution.
+With an installer and retained reports, it skips only checks satisfied by a
+passing installed report for those exact package bytes. Failed, incomplete,
+and missing checks remain in the plan. Malformed or mismatched reports stop
+planning; keep reports for different installers in separate directories.
+
+If `checks` is empty, there is nothing to rerun for this distribution. Otherwise,
+in a disposable runner for that distribution with the same package installed,
+run `node tools/run-focused-installed-acceptance.mjs noble-retry.json "$PACKAGE" "$NEW_RESULTS"`.
+Keep the original passing reports and the passing retry reports for the final
+handoff; don't submit superseded failures. An empty plan does not qualify any
+other distribution or replace `--verify-release`.
+
 For a strict offline handoff, check the full matrix and publisher preflight
 in one command. Supply the original installed reports, not a prior summary:
 

@@ -306,6 +306,44 @@ test('progress keeps valid parallel results visible when a report is malformed o
   assert.equal(strict.status, 1);
   assert.equal(strict.stdout, '');
   assert.match(strict.stderr, /different Debian package/);
+
+  await t.test('a lane retry uses only exact, passing installed evidence with all required scenarios', async () => {
+    const jammy = summarizeReleaseMatrix([]).checks.filter(check => check.distribution.versionId === '22.04');
+    const directory = join(root, 'retained');
+    const writeReport = async (suite, overrides = {}) => {
+      const check = jammy.find(check => check.suite === suite);
+      const dir = join(directory, suite);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, 'report.json'), JSON.stringify({
+        ...passing, suite, scenarios: check.requiredScenarios,
+        inheritedGitEnvironment: check.inheritedGitEnvironment ?? false, ...overrides,
+      }));
+    };
+    const retry = (...inputs) => spawnSync(process.execPath, [
+      cli, '--plan-release-lane', 'ubuntu', '22.04', artifact, ...inputs,
+    ], { encoding: 'utf8' });
+    await writeReport('gitlab', { passed: false });
+    await writeReport('watcher-refresh', { scenarios: jammy.find(({ suite }) => suite === 'watcher-refresh').requiredScenarios.slice(0, 1) });
+    await writeReport('environment', { inheritedGitEnvironment: false });
+    await writeReport('lfs-counts', { linuxDistribution: { id: 'ubuntu', versionId: '24.04' } });
+    const result = retry(paths.passing, '--reports-dir', directory);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(parseFocusedAcceptance(JSON.parse(result.stdout)).map(check => check.suite),
+      jammy.slice(1).map(check => check.suite));
+    for (const [file, diagnostic] of [[paths.wrong, /different Debian package/], [paths.malformed, /Invalid JSON/]]) {
+      const bad = retry(file);
+      assert.equal(bad.status, 1);
+      assert.equal(bad.stdout, '');
+      assert.match(bad.stderr, diagnostic);
+    }
+    for (const { suite } of jammy.slice(1)) await writeReport(suite);
+    const complete = retry(paths.passing, '--reports-dir', directory);
+    assert.equal(complete.status, 0, complete.stderr);
+    assert.deepEqual(JSON.parse(complete.stdout), { version: 1, checks: [] });
+    const notRelease = run('--release-matrix', paths.passing, '--reports-dir', directory);
+    assert.equal(notRelease.status, 1);
+    assert.equal(JSON.parse(notRelease.stdout).releaseMatrix.complete, false);
+  });
 });
 
 test('local release checks include every installed Ubuntu 24.04 workflow review required by CI', () => {
@@ -337,6 +375,30 @@ test('the CLI lists requirements without a package and cannot pass them off as e
   assert.equal(mixed.status, 1);
   assert.equal(mixed.stdout, '');
   assert.match(mixed.stderr, /Usage:/);
+});
+
+test('each supported release distribution produces a runnable focused plan without a package', () => {
+  const cli = fileURLToPath(new URL('./report-installed-acceptance.mjs', import.meta.url));
+  const run = (...args) => spawnSync(process.execPath, [cli, '--plan-release-lane', ...args], { encoding: 'utf8' });
+  const matrix = summarizeReleaseMatrix([]).checks;
+  for (const key of Object.keys(requiredMatrix)) {
+    const [id, versionId] = key.split(':');
+    const result = run(id, versionId);
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(parseFocusedAcceptance(JSON.parse(result.stdout)), matrix.filter(check =>
+      check.distribution.id === id && check.distribution.versionId === versionId
+    ).map(({ report, inheritedGitEnvironment = false, ...check }) => ({ ...check, inheritedGitEnvironment })));
+  }
+  for (const [args, diagnostic] of [
+    [['debian', '24.04'], /Unsupported release distribution/],
+    [['ubuntu'], /Usage:/],
+    [['ubuntu', '24.04', '--reports-dir', 'results'], /Usage:/],
+  ]) {
+    const result = run(...args);
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, diagnostic);
+  }
 });
 
 test('passing patch reports on other platforms or without cancellation evidence do not qualify Noble', () => {
