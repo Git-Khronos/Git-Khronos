@@ -4384,6 +4384,15 @@ vote failed, and the retained WebView screenshot shows Git's
 `need a subcommand` error. This is negative-control evidence only.
 Receipt: `target/local-review/updater/jammy-builder/bisect-minimum-negative.VfKJVeHn/lane/results/`.
 
+The test-publisher installer from `73a2f14` passed the same
+`bisect-voting` suite on Debian 12 with Git 2.39.5: five scenarios,
+including custom old/new term votes, the first-bad result, the
+inconclusive result and refusal of extra votes. The strict focused
+verifier matched SHA-256
+`cca3d63ab6b856915f003231b14db660cb3b7e549efc9edd67dfb019c58e76eb`.
+Receipt:
+`target/local-review/updater/jammy-builder/bisect-minimum-release.zDIlUFuk/reports.json`.
+
 On Ubuntu 22.04 with Git 2.56.1, the test-publisher installer from
 `374b433` (SHA-256
 `0c8b408e904fcf82f4339eb1ba47311ff30ec7b30a47d42c532eb0c22ac7e522`)
