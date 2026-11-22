@@ -5870,7 +5870,7 @@ pub fn apply_stash_checked(
     expected_oid: &str,
 ) -> Result<(), AppError> {
     validate_selected_stash(path, reference, expected_oid)?;
-    merge_checkout_guard::ensure_stash_untracked_restore_unobstructed(path, expected_oid)?;
+    merge_checkout_guard::ensure_stash_restore_preserves_local_files(path, expected_oid)?;
     // A concurrent push may renumber the stack after validation. Apply the
     // captured object, never resolve the mutable selector a second time.
     run_mutation(path, &["stash", "apply", expected_oid], "apply the selected stash")
@@ -19155,6 +19155,57 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
                 .is_empty()
         );
         assert!(operation_recoveries(&repository.path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn stash_tracked_additions_do_not_overwrite_ignored_local_files() {
+        let actions = [
+            apply_stash_checked,
+            pop_stash_checked,
+            |path: &Path, reference: &str, oid: &str| apply_stash_with_index(path, reference, oid, true),
+        ];
+        for (mode, action) in actions.into_iter().enumerate() {
+            for diverged in [false, true] {
+                let repository = TestRepository::new();
+                let path = &repository.path;
+                repository.write("neighbour.txt", "original\n");
+                repository.git(&["add", "--", "neighbour.txt"]);
+                repository.git(&["commit", "-m", "Base"]);
+                repository.write("settings.local", "saved staged bytes\n");
+                repository.git(&["add", "--", "settings.local"]);
+                repository.write("settings.local", "saved working bytes\n");
+                repository.git(&["stash", "push", "-m", "Save indexed addition"]);
+                let saved = reference_tip(path, "refs/stash").unwrap();
+                assert!(reference_tip(path, &format!("{saved}^3")).is_none());
+                if diverged {
+                    repository.write("neighbour.txt", "later receiver edit\n");
+                    repository.git(&["commit", "-am", "Later receiver commit"]);
+                }
+                let head = reference_tip(path, "HEAD");
+                fs::write(path.join(".git/info/exclude"), "/settings.local\n/moved-settings\n").unwrap();
+                repository.write("settings.local", "only local bytes\n");
+                let index = fs::read(path.join(".git/index")).unwrap();
+                let error = action(path, "stash@{0}", &saved).unwrap_err();
+                assert_eq!(error.kind, "stashTrackedPathObstruction", "{error:?}");
+                assert!(error.message.contains("settings.local"), "{error:?}");
+                assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+                assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"only local bytes\n");
+                assert_eq!(reference_tip(path, "HEAD"), head);
+                assert_eq!(reference_tip(path, "refs/stash").as_deref(), Some(saved.as_str()));
+
+                fs::rename(path.join("settings.local"), path.join("moved-settings")).unwrap();
+                action(path, "stash@{0}", &saved).unwrap();
+                assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"saved working bytes\n");
+                assert_eq!(fs::read(path.join("moved-settings")).unwrap(), b"only local bytes\n");
+                assert_eq!(reference_tip(path, "HEAD"), head);
+                assert_eq!(reference_tip(path, "refs/stash").is_none(), mode == 1);
+                let staged = run_git(path, &["show", ":settings.local"]).unwrap();
+                assert_eq!(
+                    staged.stdout,
+                    if mode == 2 { b"saved staged bytes\n".as_slice() } else { b"saved working bytes\n" }
+                );
+            }
+        }
     }
 
     #[test]

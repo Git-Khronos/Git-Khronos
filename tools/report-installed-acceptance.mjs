@@ -64,6 +64,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-stash-refuses-mixed-mode-selection-without-changing-index-stash-or-files',
     'native-stash-mode-change-saves-only-currently-eligible-selected-paths',
     'native-stash-restore-refuses-local-untracked-collision-before-applying',
+    'native-stash-restore-preserves-ignored-file-against-tracked-addition',
   ]],
   ['patch-export', [
     'native-patch-export-clean-scope-disables-destination-picker',

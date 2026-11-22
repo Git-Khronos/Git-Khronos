@@ -3557,7 +3557,17 @@ Revert and mail-patch recovery checks. Its exact focused report is
 This is proof for those exercised actions and package bytes, not a replacement
 for the fresh release build or its full matrix.
 
-### Stash untracked collision preflight
+The clean-target `11f6066` installer passed all 32 focused scenarios
+(21 detached checkout and recovery, 11 working-tree recaps) on Ubuntu
+24.04 with stock Git 2.43. That includes the Bisect Reset refusal and safe
+retry and the independent staged/unstaged line budgets. Package SHA-256:
+`5234417f0861536fda1f199fab9f93f12fce79f3b03b69263334852036655679`.
+The exact focused verification is in
+`target/local-review/updater/jammy-builder/clean-release-candidate.UQ07JjUV/focused.verified.json`.
+This test-publisher installer was built without copied Cargo release outputs;
+it does not qualify the subsequent package-task fix or the later stash changes.
+
+### Stash restore collision preflight
 
 Git can return an untracked-file collision after it has already restored
 tracked changes. The app checks the selected stash's untracked tree against
@@ -3570,9 +3580,19 @@ The source regression covers ignored and visible local files on a later
 receiver commit across the three commands. The installed stash-selection
 gate requires the ignored-file case on the actual package. This check does
 not predict other merge effects, such as tracked-file conflicts or path
-relocation during the native merge. The CLI reproduction and source
-validation are retained in
+relocation during the native merge. The CLI reproduction, failing older
+installer and source validation are retained in
 `target/local-review/stash-untracked-preflight.R3M4lu0F/`.
+
+A separate failure affected tracked additions: Git could report successful
+Apply while silently replacing ignored local bytes. The same preflight now
+checks the literal destinations in the stash's saved index and worktree
+deltas. Real-Git tests cover Apply, Pop and staged-state Apply both at the
+stash base and after an unrelated receiver commit. The refusal preserves
+the index, HEAD, stash and original bytes; moving the ignored file permits
+a retry with the chosen index behavior. The new installed gate checks the
+same refusal and retry on all three commands. The guard does not predict
+paths an arbitrary divergent merge might create by relocating changes.
 
 ### Manual and automatic Fetch recovery
 

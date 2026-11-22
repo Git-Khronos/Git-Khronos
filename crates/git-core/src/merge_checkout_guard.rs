@@ -427,34 +427,67 @@ fn same_base_autostash_obstruction(
     checkout_obstruction(path, ignored, base, stash, unavailable)
 }
 
-pub(super) fn ensure_stash_untracked_restore_unobstructed(
+fn stash_tracked_obstruction(
     path: &Path,
+    ignored: &LocalPaths,
+    base: &str,
+    index: &str,
     stash: &str,
-) -> Result<(), AppError> {
-    let unavailable = || {
+    unavailable: Unavailable,
+) -> Result<Option<String>, AppError> {
+    for tree in [stash, index] {
+        if let Some(name) = checkout_obstruction(path, ignored, base, tree, unavailable)? {
+            return Ok(Some(name));
+        }
+    }
+    Ok(None)
+}
+
+pub(super) fn ensure_stash_restore_preserves_local_files(path: &Path, stash: &str) -> Result<(), AppError> {
+    let untracked_unavailable = || {
         AppError::new(
             "stashUntrackedPathsUnverified",
             "Could not verify that the stash's untracked files can be restored safely. No changes were applied.",
             Some("Move or back up untracked local files, including ignored files, before retrying."),
         )
     };
+    let tracked_unavailable = || {
+        AppError::new(
+            "stashTrackedPathsUnverified",
+            "Could not check whether the stash's tracked changes may replace ignored local files. No changes were applied.",
+            Some("Move or back up ignored local files before retrying."),
+        )
+    };
     without_lazy_fetch(|| {
-        let parents = stash_file_restore::stash_parents(path, &stash.to_ascii_lowercase())
-            .map_err(|_| unavailable())?;
-        let Some(tree) = parents.get(2) else {
-            return Ok(());
-        };
+        let stash = stash.to_ascii_lowercase();
+        let parents =
+            stash_file_restore::stash_parents(path, &stash).map_err(|_| untracked_unavailable())?;
         // Git restores this tree at its saved paths after applying the tracked
         // merge. Refuse an existing untracked obstruction before that merge,
         // even when the local copy is ignored or HEAD moved since the stash.
-        let Some(local) = untracked_paths(path, PATH_LIMIT, UntrackedScope::All, unavailable)? else {
-            return Ok(());
-        };
-        if let Some(blocked) = restore_obstruction(path, &local, tree, unavailable)? {
+        if let Some(tree) = parents.get(2)
+            && let Some(local) = untracked_paths(path, PATH_LIMIT, UntrackedScope::All, untracked_unavailable)?
+            && let Some(blocked) = restore_obstruction(path, &local, tree, untracked_unavailable)?
+        {
             return Err(AppError::new(
                 "stashUntrackedPathObstruction",
                 format!("Local untracked contents at '{blocked}' block the selected stash. No changes were applied."),
                 Some("Move the local file or directory out of the way, then retry. The stash was kept."),
+            ));
+        }
+        // Unlike an ordinary untracked file, Git may silently overwrite an
+        // ignored file while applying the tracked merge. Check both saved
+        // tracked deltas. This guards their literal destinations, not paths
+        // a divergent merge might produce through directory renames.
+        if let Some(ignored) = ignored_paths(path, PATH_LIMIT, tracked_unavailable)?
+            && let Some(blocked) = stash_tracked_obstruction(
+                path, &ignored, &parents[0], &parents[1], &stash, tracked_unavailable,
+            )?
+        {
+            return Err(AppError::new(
+                "stashTrackedPathObstruction",
+                format!("The stash could overwrite ignored local contents at '{blocked}'. No changes were applied."),
+                Some("Move the ignored file or directory out of the way, then retry. The stash was kept."),
             ));
         }
         Ok(())
@@ -491,10 +524,8 @@ pub(super) fn ensure_stash_branch_preserves_ignored_files(
                 Some("Move the ignored file or directory out of the way, then retry."),
             )
         };
-        for tree in [stash, parents[1].as_str()] {
-            if let Some(name) = checkout_obstruction(path, &ignored, base, tree, unavailable)? {
-                return Err(blocked(name));
-            }
+        if let Some(name) = stash_tracked_obstruction(path, &ignored, base, &parents[1], stash, unavailable)? {
+            return Err(blocked(name));
         }
         if let Some(tree) = parents.get(2)
             && let Some(name) = restore_obstruction(path, &ignored, tree, unavailable)?

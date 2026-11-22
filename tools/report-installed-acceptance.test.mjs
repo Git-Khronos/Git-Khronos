@@ -409,15 +409,19 @@ test('installed recaps must prove distinct diff sides and independent line budge
   }
 });
 
-test('installed stash selection must prove restore refuses a saved-untracked collision before mutation', () => {
+test('installed stash selection must prove both restore collision checks refuse before mutation', () => {
   const fixtures = matrixFixtures();
   const stash = fixtures.find(report => report.suite === 'stash-selection');
-  const scenario = 'native-stash-restore-refuses-local-untracked-collision-before-applying';
-  assert.ok(stash.scenarios.includes(scenario));
-  const older = { ...stash, scenarios: stash.scenarios.filter(name => name !== scenario) };
-  const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== stash), older]);
-  assert.equal(matrix.complete, false);
-  assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['stash-selection']);
+  for (const scenario of [
+    'native-stash-restore-refuses-local-untracked-collision-before-applying',
+    'native-stash-restore-preserves-ignored-file-against-tracked-addition',
+  ]) {
+    assert.ok(stash.scenarios.includes(scenario));
+    const older = { ...stash, scenarios: stash.scenarios.filter(name => name !== scenario) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== stash), older]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['stash-selection']);
+  }
 });
 
 test('installed Pull requires both repository-scope and explicit single-branch evidence', () => {

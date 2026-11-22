@@ -1379,7 +1379,10 @@ def main():
             elif args.suite == "stash-selection":
                 from native_stash_review_scenarios import stash_apply_collision_scope, stash_selection_scope
                 stash_selection_scope(driver, fixtures, report)
-                repository, repo_id = stash_apply_collision_scope(driver, fixtures, report)
+                stash_apply_collision_scope(driver, fixtures, report)
+                repository, repo_id = stash_apply_collision_scope(
+                    driver, fixtures, report, saved_as_tracked=True,
+                )
             elif args.suite == "patch-export":
                 from native_patch_export_scenarios import patch_export_scope
                 repository, repo_id = patch_export_scope(driver, fixtures, report)

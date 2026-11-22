@@ -888,8 +888,10 @@ Selected Apply, Pop and staged-state Apply check the immutable stash's saved
 untracked tree against the current untracked paths, including ignored files.
 An obstruction refuses before Git applies tracked changes or changes the
 index. The stash remains selected and the user can move the local file
-and retry. This preflight does not turn later native merge conflicts or
-external worktree changes into a rollback guarantee.
+and retry. Ignored files at the literal destinations of the tracked stash
+deltas are also guarded, including changes in the saved index. This does
+not predict relocated paths on arbitrary divergent merges or turn later
+native conflicts and external worktree changes into a rollback guarantee.
 
 Each stash and tag/reference request also owns its form-control instances. Their
 loaded components key the rendered view by request identity. Ignoring an obsolete
