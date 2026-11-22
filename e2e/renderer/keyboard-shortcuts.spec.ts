@@ -11,8 +11,8 @@ test('searches shortcut actions and keys without losing the full reference', asy
 
   await expect(dialog).toBeVisible();
   await expect(search).toBeFocused();
-  await expect(dialog.getByRole('status')).toHaveText('50 shortcuts');
-  await expect(dialog.locator('dt')).toHaveCount(50);
+  await expect(dialog.getByRole('status')).toHaveText('51 shortcuts');
+  await expect(dialog.locator('dt')).toHaveCount(51);
   const sectionNavigation = dialog.getByRole('navigation', { name: 'Shortcut sections' });
   await expect(sectionNavigation).toContainText('Jump to');
   await expect(sectionNavigation.getByRole('button')).toHaveCount(4);
@@ -48,7 +48,7 @@ test('searches shortcut actions and keys without losing the full reference', asy
   await dialog.getByRole('button', { name: 'Clear shortcut search' }).click();
   await expect(search).toBeFocused();
   await expect(search).toHaveValue('');
-  await expect(dialog.getByRole('status')).toHaveText('50 shortcuts');
+  await expect(dialog.getByRole('status')).toHaveText('51 shortcuts');
 });
 
 test('recovers from no matches and restores focus when closed', async ({ page }) => {
@@ -64,7 +64,7 @@ test('recovers from no matches and restores focus when closed', async ({ page })
 
   await dialog.getByRole('button', { name: 'Clear search' }).click();
   await expect(search).toBeFocused();
-  await expect(dialog.locator('dt')).toHaveCount(50);
+  await expect(dialog.locator('dt')).toHaveCount(51);
 
   await search.press('Escape');
   await expect(dialog).toBeHidden();
