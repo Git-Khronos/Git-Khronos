@@ -3240,6 +3240,16 @@ before confirming. This is a fixture fix, not a retroactive pass for the
 archived full run. The exact `02ff4a7` installer separately passed all
 four Ubuntu 24.04 Pull scope scenarios, including sibling preservation.
 
+The `62ac826` candidate adds checkout-scoped stored-reference deletion and
+keeps safe branch deletion results independent of other UI errors. Its
+pinned renderer regression run passed all 134 cases. The exact installer
+then passed all 37 Linux runtime gates with 52 passing reports; the Ubuntu
+22.04 environment suite passed 292 scenarios. The checksum-verified
+fixture-key package and successful APT simulation are in
+`target/local-review/qualified-0.1.6-62ac826/` (SHA-256
+`2098043f28c3b9a066adaf846e48d060c44922a079c70fd3ac28dbc6264d1745`).
+This handoff supersedes the earlier local package, not the public release.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds
