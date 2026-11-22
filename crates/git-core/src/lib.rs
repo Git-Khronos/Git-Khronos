@@ -5870,6 +5870,7 @@ pub fn apply_stash_checked(
     expected_oid: &str,
 ) -> Result<(), AppError> {
     validate_selected_stash(path, reference, expected_oid)?;
+    merge_checkout_guard::ensure_stash_untracked_restore_unobstructed(path, expected_oid)?;
     // A concurrent push may renumber the stack after validation. Apply the
     // captured object, never resolve the mutable selector a second time.
     run_mutation(path, &["stash", "apply", expected_oid], "apply the selected stash")
@@ -19154,6 +19155,77 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
                 .is_empty()
         );
         assert!(operation_recoveries(&repository.path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn saved_untracked_stash_collisions_refuse_before_restoring_any_tracked_changes() {
+        let actions = [
+            apply_stash_checked,
+            pop_stash_checked,
+            |path: &Path, reference: &str, oid: &str| {
+                apply_stash_with_index(path, reference, oid, true)
+            },
+        ];
+        for (mode, action) in actions.into_iter().enumerate() {
+            for ignored in [false, true] {
+                let repository = TestRepository::new();
+                let path = &repository.path;
+                repository.write("tracked.txt", "baseline\n");
+                repository.git(&["add", "--", "tracked.txt"]);
+                repository.git(&["commit", "-m", "Base"]);
+                repository.write("tracked.txt", "saved staged edit\n");
+                repository.git(&["add", "--", "tracked.txt"]);
+                repository.write("tracked.txt", "saved working edit\n");
+                repository.write("settings.local", "saved untracked\n");
+                repository.git(&["stash", "push", "--include-untracked", "-m", "Saved"]);
+                let saved = reference_tip(path, "refs/stash").unwrap();
+                // The saved untracked tree uses literal names on any base.
+                repository.git(&["commit", "--allow-empty", "-m", "Later HEAD"]);
+                if ignored {
+                    fs::write(path.join(".git/info/exclude"), "/settings.local\n").unwrap();
+                }
+                repository.write("settings.local", "existing local bytes\n");
+                let index = fs::read(path.join(".git/index")).unwrap();
+                let error = action(path, "stash@{0}", &saved).unwrap_err();
+                assert_eq!(error.kind, "stashUntrackedPathObstruction", "{error:?}");
+                assert!(error.message.contains("settings.local"), "{error:?}");
+                assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+                assert_eq!(fs::read(path.join("tracked.txt")).unwrap(), b"baseline\n");
+                assert_eq!(
+                    fs::read(path.join("settings.local")).unwrap(),
+                    b"existing local bytes\n"
+                );
+                assert_eq!(
+                    reference_tip(path, "refs/stash").as_deref(),
+                    Some(saved.as_str())
+                );
+
+                fs::rename(path.join("settings.local"), path.join("moved-settings")).unwrap();
+                action(path, "stash@{0}", &saved).unwrap();
+                assert_eq!(
+                    fs::read(path.join("tracked.txt")).unwrap(),
+                    b"saved working edit\n"
+                );
+                assert_eq!(
+                    fs::read(path.join("settings.local")).unwrap(),
+                    b"saved untracked\n"
+                );
+                assert_eq!(
+                    fs::read(path.join("moved-settings")).unwrap(),
+                    b"existing local bytes\n"
+                );
+                assert_eq!(reference_tip(path, "refs/stash").is_none(), mode == 1);
+                let staged = run_git(path, &["show", ":tracked.txt"]).unwrap();
+                assert_eq!(
+                    staged.stdout,
+                    if mode == 2 {
+                        b"saved staged edit\n".as_slice()
+                    } else {
+                        b"baseline\n"
+                    }
+                );
+            }
+        }
     }
 
     #[test]

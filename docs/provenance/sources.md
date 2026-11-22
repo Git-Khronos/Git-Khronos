@@ -1315,6 +1315,11 @@ merge-driver fixtures renumber the stash stack during application to check that
 the applied contents remain those selected and neither entry is removed on the
 changed-stack path. No upstream source code was copied.
 
+Owned Git fixtures verified that a collision during untracked restoration
+can make native Apply fail after tracked changes are already present. The
+app independently checks saved untracked paths before selected Apply or Pop,
+using Git's literal tree and untracked path listings.
+
 The branch-from-stash check uses the documented stash base, working tree and
 index layout and [checkout's ignored-file refusal](https://git-scm.com/docs/git-checkout).
 Owned repositories verified the separate saved-untracked tree, Git's

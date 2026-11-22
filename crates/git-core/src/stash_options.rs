@@ -574,6 +574,7 @@ pub fn apply_stash_with_index(
             Some("Refresh the stash list before applying."),
         ));
     }
+    merge_checkout_guard::ensure_stash_untracked_restore_unobstructed(path, expected_oid)?;
     let mut args = vec!["-c", "stash.index=false", "stash", "apply"];
     if restore_index {
         args.push("--index");

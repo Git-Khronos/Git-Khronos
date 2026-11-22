@@ -1377,8 +1377,9 @@ def main():
                 from native_submodule_update_scenarios import update_one_submodule
                 repository, repo_id = update_one_submodule(driver, fixtures, report)
             elif args.suite == "stash-selection":
-                from native_stash_review_scenarios import stash_selection_scope
-                repository, repo_id = stash_selection_scope(driver, fixtures, report)
+                from native_stash_review_scenarios import stash_apply_collision_scope, stash_selection_scope
+                stash_selection_scope(driver, fixtures, report)
+                repository, repo_id = stash_apply_collision_scope(driver, fixtures, report)
             elif args.suite == "patch-export":
                 from native_patch_export_scenarios import patch_export_scope
                 repository, repo_id = patch_export_scope(driver, fixtures, report)

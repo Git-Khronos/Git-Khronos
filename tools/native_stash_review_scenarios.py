@@ -75,6 +75,58 @@ def stash_selection_scope(driver, fixtures, report):
     return repository, repo_id
 
 
+def stash_apply_collision_scope(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    for command in ('apply_stash', 'pop_stash_entry', 'apply_stash_options'):
+        repository = fixtures.repository(f'owned-{command}-collision', commits=2)
+        tracked, note, moved = (repository / name for name in (
+            'fixture.txt', 'settings.local', 'saved-settings.local'))
+        baseline = tracked.read_bytes()
+        staged = b'Saved staged change.\n'
+        working = b'Saved working change.\n'
+        local = b'The only copy of live local settings.\n'
+        tracked.write_bytes(staged)
+        fixtures.git(repository, 'add', '--', tracked.name)
+        tracked.write_bytes(working)
+        note.write_bytes(b'Saved settings.\n')
+        fixtures.git(repository, 'stash', 'push', '--include-untracked', '-m', 'Collision probe')
+        oid = fixtures.git(repository, 'rev-parse', 'refs/stash')
+        fixtures.git(repository, 'commit', '--allow-empty', '-qm', 'A later receiver commit')
+        (repository / '.git/info/exclude').write_text(f'/{note.name}\n/{moved.name}\n')
+        note.write_bytes(local)
+        assert fixtures.git(repository, 'check-ignore', '--', note.name) == note.name
+        repo_id = open_ui(driver, repository)
+        files = (tracked.name, note.name)
+        before = checkout_footprint(fixtures, repository, files)
+        arguments = {'repoId': repo_id, 'reference': 'stash@{0}', 'expectedOid': oid}
+        if command == 'apply_stash_options':
+            arguments['restoreIndex'] = True
+        try:
+            driver.invoke(command, **arguments)
+        except RuntimeError as error:
+            detail = json.loads(str(error))
+            assert detail['kind'] == 'stashUntrackedPathObstruction' and note.name in detail['message'], detail
+        else:
+            raise AssertionError(f'{command} accepted an occupied untracked stash destination')
+        assert checkout_footprint(fixtures, repository, files) == before
+        assert tracked.read_bytes() == baseline and note.read_bytes() == local
+        assert fixtures.git(repository, 'rev-parse', 'refs/stash') == oid
+
+        note.rename(moved)
+        driver.invoke(command, **arguments)
+        assert tracked.read_bytes() == working
+        assert note.read_bytes() == b'Saved settings.\n' and moved.read_bytes() == local
+        assert fixtures.git(repository, 'rev-parse', 'HEAD') == before['head']
+        actual_staged = fixtures.git(repository, 'show', f':{tracked.name}')
+        expected_staged = staged if command == 'apply_stash_options' else baseline
+        assert actual_staged == expected_staged.decode().strip()
+        remaining = fixtures.git(repository, 'stash', 'list', '--format=%H')
+        assert remaining == ('' if command == 'pop_stash_entry' else oid)
+    report['scenarios'].append('native-stash-restore-refuses-local-untracked-collision-before-applying')
+    return repository, repo_id
+
+
 def stash_review_workflows(driver, fixtures, report):
     from native_acceptance import open_ui
 

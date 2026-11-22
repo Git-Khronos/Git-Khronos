@@ -884,6 +884,13 @@ dispatch also intersects with the latest visible status. The native command
 rechecks every explicit path before stashing, rather than saving only the
 eligible subset of an outdated selection.
 
+Selected Apply, Pop and staged-state Apply check the immutable stash's saved
+untracked tree against the current untracked paths, including ignored files.
+An obstruction refuses before Git applies tracked changes or changes the
+index. The stash remains selected and the user can move the local file
+and retry. This preflight does not turn later native merge conflicts or
+external worktree changes into a rollback guarantee.
+
 Each stash and tag/reference request also owns its form-control instances. Their
 loaded components key the rendered view by request identity. Ignoring an obsolete
 `ngModelChange` event protects signal state but is not sufficient to reset the

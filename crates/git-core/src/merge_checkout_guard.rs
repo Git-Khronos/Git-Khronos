@@ -168,7 +168,7 @@ fn check_branch_options(path: &Path, branch: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-struct IgnoredPaths {
+struct LocalPaths {
     entries: BTreeSet<Vec<u8>>,
     ignore_case: bool,
     summarized: bool,
@@ -190,44 +190,42 @@ fn ignored_paths(
     path: &Path,
     ignored_limit: usize,
     unavailable: Unavailable,
-) -> Result<Option<IgnoredPaths>, AppError> {
-    let (ignored, large_checkout) = run_git_with_stdout_limit(
-        path,
-        &[
-            "ls-files",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-            "-z",
-        ],
-        ignored_limit,
-    )?;
-    if !ignored.status.success() {
+) -> Result<Option<LocalPaths>, AppError> {
+    untracked_paths(path, ignored_limit, UntrackedScope::Ignored, unavailable)
+}
+
+enum UntrackedScope {
+    Ignored,
+    All,
+}
+
+fn untracked_paths(
+    path: &Path,
+    limit: usize,
+    scope: UntrackedScope,
+    unavailable: Unavailable,
+) -> Result<Option<LocalPaths>, AppError> {
+    let mut args = vec!["ls-files", "--others", "-z"];
+    if matches!(scope, UntrackedScope::Ignored) {
+        args.extend(["--ignored", "--exclude-standard"]);
+    }
+    let (local, large_checkout) = run_git_with_stdout_limit(path, &args, limit)?;
+    if !local.status.success() {
         return Err(unavailable());
     }
     // If a dependency or build directory exceeds the detailed listing limit,
     // a broader listing can still prove that no incoming path is nearby.
-    let ignored = if large_checkout {
-        let summary = bounded(
-            path,
-            &[
-                "ls-files",
-                "--others",
-                "--ignored",
-                "--exclude-standard",
-                "--directory",
-                "-z",
-            ],
-            unavailable,
-        )?;
+    let local = if large_checkout {
+        args.push("--directory");
+        let summary = bounded(path, &args, unavailable)?;
         if !summary.status.success() || summary.stdout.is_empty() {
             return Err(unavailable());
         }
         summary
     } else {
-        ignored
+        local
     };
-    if ignored.stdout.is_empty() {
+    if local.stdout.is_empty() {
         return Ok(None);
     }
 
@@ -237,10 +235,10 @@ fn ignored_paths(
         (Some(0), b"false") | (Some(1), b"") => cfg!(any(windows, target_os = "macos")),
         _ => return Err(unavailable()),
     };
-    let entries = paths(&ignored.stdout, unavailable)?
+    let entries = paths(&local.stdout, unavailable)?
         .map(|raw| normalize(raw.strip_suffix(b"/").unwrap_or(raw), ignore_case))
         .collect();
-    Ok(Some(IgnoredPaths {
+    Ok(Some(LocalPaths {
         entries,
         ignore_case,
         summarized: large_checkout,
@@ -249,7 +247,7 @@ fn ignored_paths(
 
 fn checkout_obstruction(
     path: &Path,
-    ignored: &IgnoredPaths,
+    ignored: &LocalPaths,
     head: &str,
     tree: &str,
     unavailable: Unavailable,
@@ -280,17 +278,17 @@ fn checkout_obstruction(
 }
 
 fn obstructing_path(
-    ignored: &IgnoredPaths,
+    local: &LocalPaths,
     target_paths: &[u8],
     unavailable: Unavailable,
 ) -> Result<Option<String>, AppError> {
     for target in paths(target_paths, unavailable)? {
         if let Some(blocked) =
-            obstructions(&ignored.entries, &normalize(target, ignored.ignore_case))
+            obstructions(&local.entries, &normalize(target, local.ignore_case))
         {
             // A summarized directory can contain unrelated data; do not
             // claim that an exact collision was proved.
-            if ignored.summarized {
+            if local.summarized {
                 return Err(unavailable());
             }
             return Ok(Some(String::from_utf8_lossy(blocked).into_owned()));
@@ -383,7 +381,7 @@ fn bounded_state_line(
 
 fn restore_obstruction(
     path: &Path,
-    ignored: &IgnoredPaths,
+    ignored: &LocalPaths,
     target: &str,
     unavailable: Unavailable,
 ) -> Result<Option<String>, AppError> {
@@ -415,7 +413,7 @@ fn merge_autostash_tip(path: &Path, unavailable: Unavailable) -> Result<Option<S
 
 fn same_base_autostash_obstruction(
     path: &Path,
-    ignored: &IgnoredPaths,
+    ignored: &LocalPaths,
     base: &str,
     stash: &str,
     unavailable: Unavailable,
@@ -427,6 +425,40 @@ fn same_base_autostash_obstruction(
         return Err(unavailable());
     }
     checkout_obstruction(path, ignored, base, stash, unavailable)
+}
+
+pub(super) fn ensure_stash_untracked_restore_unobstructed(
+    path: &Path,
+    stash: &str,
+) -> Result<(), AppError> {
+    let unavailable = || {
+        AppError::new(
+            "stashUntrackedPathsUnverified",
+            "Could not verify that the stash's untracked files can be restored safely. No changes were applied.",
+            Some("Move or back up untracked local files, including ignored files, before retrying."),
+        )
+    };
+    without_lazy_fetch(|| {
+        let parents = stash_file_restore::stash_parents(path, &stash.to_ascii_lowercase())
+            .map_err(|_| unavailable())?;
+        let Some(tree) = parents.get(2) else {
+            return Ok(());
+        };
+        // Git restores this tree at its saved paths after applying the tracked
+        // merge. Refuse an existing untracked obstruction before that merge,
+        // even when the local copy is ignored or HEAD moved since the stash.
+        let Some(local) = untracked_paths(path, PATH_LIMIT, UntrackedScope::All, unavailable)? else {
+            return Ok(());
+        };
+        if let Some(blocked) = restore_obstruction(path, &local, tree, unavailable)? {
+            return Err(AppError::new(
+                "stashUntrackedPathObstruction",
+                format!("Local untracked contents at '{blocked}' block the selected stash. No changes were applied."),
+                Some("Move the local file or directory out of the way, then retry. The stash was kept."),
+            ));
+        }
+        Ok(())
+    })
 }
 
 pub(super) fn ensure_stash_branch_preserves_ignored_files(

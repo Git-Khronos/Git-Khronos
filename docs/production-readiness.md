@@ -3550,6 +3550,30 @@ The regression uses real Cargo and proves the packaged build sees a
 changed workspace dependency with an older timestamp. It also verifies
 that failed invalidation never creates a completed receipt for new inputs.
 
+The older pinned `468c577` candidate did pass the 21 Ubuntu 24.04 installed
+detached-checkout scenarios, including Bisect Reset and the Cherry-pick,
+Revert and mail-patch recovery checks. Its exact focused report is
+`target/local-review/focused-installed-evidence.twqARbH7/replay-recovery.result.json`.
+This is proof for those exercised actions and package bytes, not a replacement
+for the fresh release build or its full matrix.
+
+### Stash untracked collision preflight
+
+Git can return an untracked-file collision after it has already restored
+tracked changes. The app checks the selected stash's untracked tree against
+current untracked paths, even when ignored, before Apply, Pop, or staged-state
+Apply. On a collision it reports the obstructing path, leaves the original
+index and working bytes untouched, and keeps the stash. On a safe retry the
+native operation retains its ordinary index and removal semantics.
+
+The source regression covers ignored and visible local files on a later
+receiver commit across the three commands. The installed stash-selection
+gate requires the ignored-file case on the actual package. This check does
+not predict other merge effects, such as tracked-file conflicts or path
+relocation during the native merge. The CLI reproduction and source
+validation are retained in
+`target/local-review/stash-untracked-preflight.R3M4lu0F/`.
+
 ### Manual and automatic Fetch recovery
 
 Successful manual Fetch options now re-enable an automatic Fetch paused
