@@ -15,15 +15,9 @@
 .panel-resizer:active { background: var(--splitter-active); }
 .panel-resizer:hover::after, .panel-resizer:active::after { background: var(--purple); }
 .worktree-card-menu { position: absolute; z-index: 20; top: calc(100% - 4px); right: 5px; width: 218px; display: grid; gap: 1px; padding: 6px; border: 1px solid #4b4a64; border-radius: 4px; background: #28273a; box-shadow: 0 14px 38px #000c; }
-.worktree-card-menu > div { display: flex; min-width: 0; flex-direction: column; gap: 2px; padding: 5px 7px 7px; }
-.worktree-card-menu small { color: #8e8d9d; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.worktree-card-menu strong { overflow: hidden; color: #deddea; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.worktree-card-menu button { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 4px; padding: 6px 7px; border-radius: 3px; background: transparent; color: #bab9c9; font-size: 12px; text-align: left; }
-.worktree-card-menu button:hover:not(:disabled) { background: #3a3952; color: white; }
-.worktree-card-menu button gc-icon { color: var(--accent); }
-.worktree-card-menu button.danger gc-icon { color: #ec8298; }
-.worktree-card-menu > i { height: 1px; margin: 4px 2px; background: #3d3c51; }
-.worktree-card-menu > p { margin: 4px 7px 3px; color: #8f8d9f; font-size: 12px; line-height: 1.35; }
+.worktree-card-menu > button { padding: 6px 7px; border-radius: 3px; background: transparent; color: #bab9c9; font-size: 12px; text-align: left; }
+.worktree-card-menu > button:hover { background: #3a3952; color: white; }
+.worktree-card-menu > p { margin: 4px 7px 3px; color: #a8a6bb; font-size: 12px; line-height: 1.35; }
 .branch-search-control { height: 32px; display: grid; grid-template-columns: 15px minmax(0, 1fr) 24px; align-items: center; gap: 3px; margin: 0 10px 9px; padding: 0 4px 0 8px; border: 1px solid var(--nav-control-border); border-radius: 3px; background: var(--nav-control); color: var(--nav-icon-muted); }
 .branch-search-control:focus-within { border-color: color-mix(in srgb, var(--purple) 58%, var(--nav-control-border)); }
 .branch-search-control input { min-width: 0; height: 24px; border: 0; outline: 0; background: none; color: var(--text); font-size: var(--font-size-body); }

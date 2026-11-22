@@ -7,6 +7,7 @@ import type { PushDestinationReview } from '@git-khronos/contracts';
 import { MainMenuContentComponent } from './main-menu-content.component';
 import { CompactRepositoryActionsComponent, type CompactRepositoryAction, type CompactRepositoryActionsView } from './compact-repository-actions.component';
 import { GraphActionMenuComponent } from './graph-action-menu.component';
+import { SidebarItemActionsComponent, type SidebarItemAction, type SidebarItemActionsView } from './sidebar-item-actions.component';
 import { StashActionMenuComponent, type StashMenuAction } from './stash-action-menu.component';
 import { RepositoryTabMenuContentComponent, type RepositoryTabMenuAction, type RepositoryTabMenuView } from './repository-tab-menu-content.component';
 import { FileActionMenuComponent, type FileMenuAction } from './file-action-menu.component';
@@ -707,7 +708,7 @@ function stableAuthorColor(identity: string): string {
 @Component({
   selector: 'gc-root',
   imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
-    GraphActionMenuComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    GraphActionMenuComponent, SidebarItemActionsComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -814,6 +815,15 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   private readonly fileActionMenuElement = viewChild<ElementRef<HTMLElement>>('fileActionMenuElement');
   private readonly sidebarActionMenuElement = viewChild<ElementRef<HTMLElement>>('sidebarActionMenuElement');
+  private readonly sidebarItemMenuFallback = viewChild<ElementRef<HTMLButtonElement>>('sidebarItemMenuFallback');
+  private readonly sidebarItemMenuFallbackFocus = afterRenderEffect(() => {
+    const fallback = this.sidebarItemMenuFallback()?.nativeElement;
+    const menu = this.sidebarActionMenuElement()?.nativeElement;
+    if (fallback && menu?.contains(fallback)) {
+      this.fitSidebarItemMenu(menu, document.activeElement === this.sidebarActionMenuReturnFocus
+        || this.canRestoreFocusFrom(menu));
+    }
+  });
   private readonly sidebarContextMenuElement = viewChild<ElementRef<HTMLElement>>('sidebarContextMenuElement');
   private readonly branchDropMenuElement = viewChild<unknown, ElementRef<HTMLElement>>('branchDropMenuElement', { read: ElementRef });
   private readonly branchDropLoadErrorClose = viewChild<ElementRef<HTMLButtonElement>>('branchDropLoadErrorClose');
@@ -921,6 +931,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private fileContextMenuReturnFocus: HTMLElement | null = null;
   private sidebarActionMenuReturnFocus: HTMLElement | null = null;
   protected readonly sidebarActionMenuPosition = signal({ x: 8, y: 8 });
+  private sidebarItemMenuAnchor = { x: 8, y: 8 };
+  private readonly sidebarItemMenuScope = signal<string | null>(null);
   private sidebarContextMenuReturnFocus: HTMLElement | null = null;
   private branchDropMenuReturnFocus: HTMLElement | null = null;
   private focusedBranchDrop: ReviewedBranchPair | null = null;
@@ -1182,8 +1194,13 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly worktreeFolder = signal('');
   protected readonly worktreeHandoff = signal<'none' | 'terminal'>('none');
   protected readonly worktreeCreationSource = signal<string | null>(null);
-  protected readonly worktreeMenuPath = computed(() => {
+  private readonly sidebarItemOverlay = computed(() => {
     const active = this.actionOverlays.activeOverlay();
+    return (active?.kind === 'worktree' || active?.kind === 'submodule')
+      && this.sidebarItemMenuScope() === this.git.activeRepositoryReadScope() ? active : null;
+  });
+  protected readonly worktreeMenuPath = computed(() => {
+    const active = this.sidebarItemOverlay();
     return active?.kind === 'worktree' ? active.value : null;
   });
   protected readonly worktreeMoveRequest = signal<WorktreeMoveRequest | null>(null);
@@ -1208,8 +1225,20 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly documentation = inject(GitDocumentationService);
   protected readonly lfsTrackingRequest = signal<LfsTrackingRequest | null>(null);
   protected readonly submoduleMenuPath = computed(() => {
-    const active = this.actionOverlays.activeOverlay();
+    const active = this.sidebarItemOverlay();
     return active?.kind === 'submodule' ? active.value : null;
+  });
+  protected readonly sidebarItemActionsView = computed<SidebarItemActionsView | null>(() => {
+    const menu = this.sidebarItemOverlay();
+    if (!menu) return null;
+    const repo = this.git.repository();
+    const busy = this.git.busy();
+    if (menu.kind === 'worktree') {
+      const item = repo?.worktrees.find(worktree => worktree.path === menu.value);
+      return item ? { kind: 'worktree', item, busy, open: this.isWorktreeOpen(item.path) } : null;
+    }
+    const item = repo?.submodules.find(submodule => submodule.path === menu.value);
+    return item ? { kind: 'submodule', item, busy } : null;
   });
   protected readonly referencePaneMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
@@ -7097,6 +7126,35 @@ export class AppComponent implements OnInit, OnDestroy {
     this.focusSidebarActionMenu(event);
   }
 
+  protected runSidebarItemAction(view: SidebarItemActionsView, action: SidebarItemAction): void {
+    if (view !== this.sidebarItemActionsView()) return;
+    if (action === 'copy-path' || (action === 'copy-url' && view.kind === 'submodule')) {
+      const value = action === 'copy-url' && view.kind === 'submodule' ? view.item.url : view.item.path;
+      this.dismissSidebarActionMenu();
+      void this.copyContextValue(value);
+      return;
+    }
+    if (view.kind === 'worktree') {
+      const item = view.item;
+      switch (action) {
+        case 'open': this.dismissSidebarActionMenu(); void this.openWorktree(item.path); break;
+        case 'move': this.openWorktreeMove(item); break;
+        case 'repair': this.openWorktreeRepair(item); break;
+        case 'registrations': this.openWorktreeRegistrationReview(); break;
+        case 'toggle-lock': void this.setWorktreeLocked(item); break;
+        case 'remove': this.requestWorktreeRemoval(item, false); break;
+        case 'remove-and-delete': this.requestWorktreeRemoval(item, true); break;
+      }
+      return;
+    }
+    switch (action) {
+      case 'open': void this.openSubmodule(view.item); break;
+      case 'initialize': this.reviewSubmoduleInitialization(view.item); break;
+      case 'update': this.reviewSubmoduleUpdate(view.item); break;
+      case 'registrations': this.openWorktreeRegistrationReview(true); break;
+    }
+  }
+
   protected async openSubmodule(submodule: Submodule, returnFocus?: HTMLElement): Promise<void> {
     this.actionOverlays.close('submodule');
     if (!submodule.initialized) {
@@ -11879,7 +11937,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private setSidebarActionMenu(kind: 'worktree' | 'submodule', path: string | null): void {
     if (path === null) this.actionOverlays.close(kind);
-    else this.actionOverlays.open({ kind, value: path }, this.sidebarActionMenuReturnFocus);
+    else {
+      this.sidebarItemMenuScope.set(this.git.activeRepositoryReadScope());
+      this.actionOverlays.open({ kind, value: path }, this.sidebarActionMenuReturnFocus);
+    }
   }
 
   protected async pullLfsObjects(): Promise<void> {
@@ -14490,14 +14551,32 @@ export class AppComponent implements OnInit, OnDestroy {
     const preferred = event.type === 'contextmenu' || !bounds
       ? { x: event.clientX, y: event.clientY }
       : { x: bounds.right - 218, y: bounds.bottom + 4 };
+    this.sidebarItemMenuAnchor = preferred;
     this.sidebarActionMenuPosition.set(preferred);
-    const key = this.worktreeMenuPath() ?? this.submoduleMenuPath();
+    const overlay = this.sidebarItemOverlay();
+    const initialFocus = document.activeElement;
     queueMicrotask(() => requestAnimationFrame(() => {
+      if (!overlay || overlay !== this.sidebarItemOverlay()) return;
       const element = this.sidebarActionMenuElement()?.nativeElement;
-      if (!element || key !== (this.worktreeMenuPath() ?? this.submoduleMenuPath())) return;
-      this.sidebarActionMenuPosition.set(this.fittedMenuPosition(element, preferred));
-      element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
+      if (!element) return;
+      this.fitSidebarItemMenu(element, document.activeElement === initialFocus || this.canRestoreFocusFrom(element));
     }));
+  }
+
+  protected sidebarItemActionsReady(view: SidebarItemActionsView): void {
+    const element = this.sidebarActionMenuElement()?.nativeElement;
+    if (!element || view !== this.sidebarItemActionsView()) return;
+    this.fitSidebarItemMenu(element, document.activeElement === this.sidebarActionMenuReturnFocus
+      || this.canRestoreFocusFrom(element));
+  }
+
+  protected closeSidebarItemLoader(view: SidebarItemActionsView): void {
+    if (view === this.sidebarItemActionsView()) this.dismissSidebarActionMenu(true);
+  }
+
+  private fitSidebarItemMenu(element: HTMLElement, focus: boolean): void {
+    this.sidebarActionMenuPosition.set(this.fittedMenuPosition(element, this.sidebarItemMenuAnchor));
+    if (focus) element.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus({ preventScroll: true });
   }
 
   private fittedMenuPosition(element: HTMLElement, preferred: { x: number; y: number }): { x: number; y: number } {
@@ -14816,10 +14895,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private dismissSidebarActionMenu(restoreFocus = false): void {
     const target = restoreFocus ? this.sidebarActionMenuReturnFocus : null;
+    const menu = restoreFocus ? this.sidebarActionMenuElement()?.nativeElement ?? null : null;
     this.actionOverlays.close('worktree');
     this.actionOverlays.close('submodule');
     this.sidebarActionMenuReturnFocus = null;
-    if (target) queueMicrotask(() => target.focus({ preventScroll: true }));
+    if (target) queueMicrotask(() => {
+      if (!this.sidebarItemActionsView() && target.isConnected && this.canRestoreFocusFrom(menu)) {
+        target.focus({ preventScroll: true });
+      }
+    });
   }
 
   private dismissSidebarContextMenu(restoreFocus = false): void {

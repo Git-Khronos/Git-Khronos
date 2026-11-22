@@ -63,6 +63,81 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.commit-row').first()).toBeVisible();
 });
 
+for (const outcome of ['cancel', 'fail', 'load', 'switch'] as const) {
+  test(`sidebar item actions load on demand and preserve keyboard ownership on ${outcome}`, async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let requests = 0;
+    let delivered = false;
+    await page.route('**/chunk-*.js', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      if (!source.includes('SidebarItemActionsComponent') || !source.includes('Repair after external move')) {
+        await route.fulfill({ response, body: source });
+        return;
+      }
+      requests++;
+      await gate;
+      if (outcome === 'fail') await route.abort();
+      else await route.fulfill({ response, body: source });
+      delivered = true;
+    });
+    try {
+      await page.goto('/');
+      await expect(page.locator('.commit-row').first()).toBeVisible();
+      expect(requests).toBe(0);
+      if (outcome === 'switch') await showSubmodules(page);
+      const trigger = outcome === 'switch' ? page.locator('.submodule-actions').first()
+        : page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
+      await trigger.press('Enter');
+      const menu = page.getByRole('menu', { name: outcome === 'switch' ? 'Submodule actions' : 'Worktree actions', exact: true });
+      await expect.poll(() => requests).toBe(1);
+      await expect(menu.getByRole('menuitem', { name: 'Cancel', exact: true })).toBeFocused();
+      await expect(menu.getByRole('menuitem', { name: 'Remove this worktree', exact: true })).toHaveCount(0);
+      if (outcome === 'switch') {
+        // A different checkout can contain a submodule with the same
+        // relative path. Its presence must not revive the original menu.
+        await page.evaluate(() => {
+          const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+          const repo = git.repository();
+          git.repositories.update((items: any[]) => [...items, { ...repo, id: 'sidebar-other', path: '/owned/other-sidebar' }]);
+          git.activateRepository('sidebar-other');
+        });
+        release();
+        await expect.poll(() => delivered).toBe(true);
+        await expect(menu).toHaveCount(0);
+      } else if (outcome === 'cancel') {
+        await page.keyboard.press('Escape');
+        await expect(trigger).toBeFocused();
+        release();
+        await expect.poll(() => delivered).toBe(true);
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+      } else {
+        release();
+        if (outcome === 'fail') {
+          await expect(menu.getByRole('alert')).toContainText('Sidebar actions could not load');
+          await expect(menu.getByRole('menuitem', { name: 'Close', exact: true })).toBeFocused();
+        } else {
+          const first = menu.getByRole('menuitem', { name: 'Open worktree in a new tab', exact: true });
+          await expect(first).toBeFocused();
+          await expect(first).toHaveCSS('display', 'grid');
+        }
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+      }
+      if (outcome !== 'fail') {
+        await showSubmodules(page);
+        await page.locator('.submodule-actions').first().click();
+        await expect(page.getByRole('menu', { name: 'Submodule actions', exact: true })
+          .getByRole('menuitem', { name: 'Copy remote URL', exact: true })).toBeVisible();
+        expect(requests).toBe(1);
+      }
+    } finally { release(); }
+  });
+}
+
 for (const result of ['held', 'failed'] as const) {
   test(`stash action menu remains dismissible while its optional module is ${result}`, async ({ page }) => {
     let release!: () => void;

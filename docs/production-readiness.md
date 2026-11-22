@@ -3913,3 +3913,18 @@ the focused result is in
 `target/local-review/updater/jammy-builder/bisect-inconclusive-release.rRW4pVhk/`.
 The focused result is not a second full release qualification. Neither
 package is a production-key build or a published release.
+
+### Deferred Worktree and Submodule sidebar actions
+
+The sidebars share one on-demand action component. The position, keyboard
+navigation, original checkout scope and destructive-operation reviews
+remain owned by the parent shell. A loading or failed chunk remains
+dismissible, and a late response cannot reopen a menu after a checkout
+switch.
+
+Production output compared with `17e9ddb`: 1,305,155 → 1,303,747 raw
+initial bytes (−1,408), global CSS unchanged, gzip +52 and Brotli −2.
+The 5,698-byte action component is outside the initial asset list.
+This is a small reduction in emitted startup bytes, not a measured
+startup-latency improvement. Both budgets are unchanged, and the
+900 kB warning remains. Evidence: `target/local-review/sidebar-item-deferral.dBS1pkAo/`.

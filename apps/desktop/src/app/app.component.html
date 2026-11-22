@@ -653,6 +653,25 @@
       ><gc-icon name="panel-left" [size]="14" /><span aria-hidden="true">Refs</span></button>
     }
 
+    <ng-template #sidebarItemMenu>
+      @if (sidebarItemActionsView(); as view) {
+        <div #sidebarActionMenuElement class="worktree-card-menu list-menu" [class.submodule-menu]="view.kind === 'submodule'"
+          role="menu" [attr.aria-label]="view.kind === 'worktree' ? 'Worktree actions' : 'Submodule actions'"
+          [style.left.px]="sidebarActionMenuPosition().x" [style.top.px]="sidebarActionMenuPosition().y"
+          (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
+          @defer (on immediate) {
+            <gc-sidebar-item-actions [view]="view" (ready)="sidebarItemActionsReady($event)"
+              (chosen)="runSidebarItemAction($event.view, $event.action)" />
+          } @placeholder {
+            <p role="status">Loading sidebar actions…</p>
+            <button #sidebarItemMenuFallback type="button" role="menuitem" (click)="closeSidebarItemLoader(view)">Cancel</button>
+          } @error {
+            <p role="alert">Sidebar actions could not load. Restart Git Khronos to retry.</p>
+            <button #sidebarItemMenuFallback type="button" role="menuitem" (click)="closeSidebarItemLoader(view)">Close</button>
+          }
+        </div>
+      }
+    </ng-template>
     <main id="repository-workspace" class="workspace" [style.grid-template-columns]="gridColumns()">
       @if (sidebarVisible()) {
         <div class="panel-resizer right" [style.left.px]="panelWidth('sidebar') - 6" role="separator" tabindex="0" aria-label="Resize left panel" aria-controls="repository-reference-panel" aria-orientation="vertical" [attr.aria-valuemin]="170" [attr.aria-valuemax]="panelMaximumWidth('sidebar')" [attr.aria-valuenow]="panelWidth('sidebar')" [attr.aria-valuetext]="panelWidth('sidebar') + ' pixels'" title="Drag or use arrow keys to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize('sidebar', $event)" (keydown)="handlePanelResizeKeydown('sidebar', $event)" (dblclick)="resetPanelWidth('sidebar', $event)"></div>
@@ -710,19 +729,7 @@
                   </button>
                   <button class="worktree-list-actions" type="button" [attr.data-worktree-path]="worktree.path" title="Worktree actions" aria-label="Worktree actions for {{ worktree.branch ?? git.pathLabel(worktree.path) }}" aria-haspopup="menu" [attr.aria-expanded]="worktreeMenuPath() === worktree.path" (click)="toggleWorktreeMenu($event, worktree.path)"><gc-icon name="more" [size]="13" /></button>
                   @if (worktreeMenuPath() === worktree.path) {
-                    <div #sidebarActionMenuElement class="worktree-card-menu list-menu" role="menu" [style.left.px]="sidebarActionMenuPosition().x" [style.top.px]="sidebarActionMenuPosition().y" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
-                      <div><small>Worktree</small><strong>{{ worktree.branch || 'Detached HEAD' }}</strong></div>
-                      <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="actionOverlays.close('worktree'); openWorktree(worktree.path)"><gc-icon name="folder-git" [size]="12" />Open worktree in a new tab</button>
-                      <button type="button" role="menuitem" (click)="actionOverlays.close('worktree'); copyContextValue(worktree.path)"><gc-icon name="copy" [size]="12" />Copy worktree path</button>
-                      <button type="button" role="menuitem" [disabled]="git.busy() || worktree.current || worktree.locked || worktree.prunable || isWorktreeOpen(worktree.path)" (click)="openWorktreeMove(worktree)"><gc-icon name="folder-git" [size]="12" />Move linked worktree…</button>
-                      <button type="button" role="menuitem" [disabled]="git.busy() || worktree.current || worktree.locked || isWorktreeOpen(worktree.path)" (click)="openWorktreeRepair(worktree)"><gc-icon name="refresh" [size]="12" />Repair after external move…</button>
-                      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorktreeRegistrationReview()"><gc-icon name="eye" [size]="12" />Review registrations and prune report…</button>
-                      <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="setWorktreeLocked(worktree)"><gc-icon [name]="worktree.locked ? 'check' : 'pin'" [size]="12" />{{ worktree.locked ? 'Unlock this worktree' : 'Lock this worktree' }}</button>
-                      <i></i>
-                      <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || isWorktreeOpen(worktree.path)" (click)="requestWorktreeRemoval(worktree, false)"><gc-icon name="trash" [size]="12" />Remove this worktree</button>
-                      <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || !worktree.branch || isWorktreeOpen(worktree.path)" (click)="requestWorktreeRemoval(worktree, true)"><gc-icon name="trash" [size]="12" />Remove worktree and delete branch</button>
-                      @if (!worktree.current && isWorktreeOpen(worktree.path)) { <p>Close its repository tab before moving or removing it.</p> }
-                    </div>
+                    <ng-container [ngTemplateOutlet]="sidebarItemMenu" />
                   }
                 </div>
               } @empty { <div class="empty-ref">No matching worktrees</div> }
@@ -1028,18 +1035,7 @@
                   </button>
                   <button class="submodule-actions" type="button" title="Submodule actions" [attr.aria-label]="'Submodule actions for ' + submodule.path" aria-haspopup="menu" [attr.aria-expanded]="submoduleMenuPath() === submodule.path" (click)="toggleSubmoduleMenu($event, submodule.path)"><gc-icon name="more" [size]="13" /></button>
                   @if (submoduleMenuPath() === submodule.path) {
-                    <div #sidebarActionMenuElement class="worktree-card-menu list-menu submodule-menu" role="menu" [style.left.px]="sidebarActionMenuPosition().x" [style.top.px]="sidebarActionMenuPosition().y" (click)="$event.stopPropagation()" (keydown)="handleSidebarActionMenuKeydown($event)">
-                      <div><small>Submodule</small><strong>{{ submodule.path }}</strong></div>
-                      @if (!submodule.initialized) {
-                        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="reviewSubmoduleInitialization(submodule)"><gc-icon name="refresh" [size]="12" />Initialize…</button>
-                      } @else {
-                        <button type="button" role="menuitem" (click)="openSubmodule(submodule)"><gc-icon name="folder-git" [size]="12" />Open submodule</button>
-                        <button type="button" role="menuitem" [disabled]="git.busy()" (click)="reviewSubmoduleUpdate(submodule)"><gc-icon name="refresh" [size]="12" />Update from remote…</button>
-                      }
-                      <button type="button" role="menuitem" [disabled]="git.busy()" (click)="openWorktreeRegistrationReview(true)"><gc-icon name="settings" [size]="12" />Manage submodules…</button>
-                      <button type="button" role="menuitem" (click)="actionOverlays.close('submodule'); copyContextValue(submodule.url)"><gc-icon name="copy" [size]="12" />Copy remote URL</button>
-                      <button type="button" role="menuitem" (click)="actionOverlays.close('submodule'); copyContextValue(submodule.path)"><gc-icon name="copy" [size]="12" />Copy submodule path</button>
-                    </div>
+                    <ng-container [ngTemplateOutlet]="sidebarItemMenu" />
                   }
                 </div>
               } @empty {
