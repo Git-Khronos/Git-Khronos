@@ -38,6 +38,8 @@ pub(super) enum RecoveryReset {
     RebaseSkip,
     MailPatchSkip,
     MailPatchAbort,
+    HistorySkip,
+    HistoryAbort { native_sequencer: bool },
 }
 
 fn merge_abort_unavailable() -> AppError {
@@ -60,6 +62,14 @@ fn mail_patch_reset_unavailable() -> AppError {
     AppError::new(
         "mailPatchResetIgnoredPathsUnverified",
         "Could not check which ignored local files the mail-patch reset might replace. The operation remains stopped.",
+        Some("Move or back up ignored local files, then retry."),
+    )
+}
+
+fn history_reset_unavailable() -> AppError {
+    AppError::new(
+        "historyResetIgnoredPathsUnverified",
+        "Could not check which ignored local files the replay reset might replace. The operation remains active.",
         Some("Move or back up ignored local files, then retry."),
     )
 }
@@ -463,6 +473,19 @@ pub(super) fn ensure_stash_branch_preserves_ignored_files(
     })
 }
 
+fn history_original_tip(path: &Path, unavailable: Unavailable) -> Result<Option<String>, AppError> {
+    let sequence = operation_storage::git_entry(path, "sequencer")?;
+    operation_storage::directory(&sequence).map_err(|_| unavailable())?;
+    if !sequence.is_dir() {
+        // Git's single-step control can have no sequencer directory.
+        return Ok(None);
+    }
+    let original =
+        bounded_state_line(&sequence, "head", 66, unavailable)?.ok_or_else(unavailable)?;
+    validate_commit_oid(&original).map_err(|_| unavailable())?;
+    Ok(Some(original))
+}
+
 pub(super) fn ensure_recovery_reset_preserves_ignored_files(
     path: &Path,
     action: RecoveryReset,
@@ -492,18 +515,37 @@ pub(super) fn ensure_recovery_reset_preserves_ignored_files(
             "Abort Mail Patches",
             "Move the ignored file or directory out of the way, then retry Abort.",
         ),
+        RecoveryReset::HistorySkip => (
+            history_reset_unavailable,
+            "historySkipLocalPathObstruction",
+            "Skip Replay Step",
+            "Move the ignored file or directory out of the way, then retry Skip.",
+        ),
+        RecoveryReset::HistoryAbort { .. } => (
+            history_reset_unavailable,
+            "historyAbortLocalPathObstruction",
+            "Abort Replay",
+            "Move the ignored file or directory out of the way, then retry Abort.",
+        ),
     };
     let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
         return Ok(());
     };
     without_lazy_fetch(|| {
         let head = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
-        // Standalone git am uses ORIG_HEAD for Abort. Unlike Rebase Abort
-        // it does not restore an orig-head written inside its state folder.
-        let mail_original = matches!(action, RecoveryReset::MailPatchAbort)
-            .then(|| reference_tip(path, "ORIG_HEAD^{commit}").ok_or_else(unavailable))
-            .transpose()?;
-        let target = mail_original.as_deref().unwrap_or(&head);
+        let original = || match action {
+            // Standalone git am uses ORIG_HEAD; the multi-commit
+            // cherry-pick/revert sequencer has its own start marker.
+            RecoveryReset::MailPatchAbort => reference_tip(path, "ORIG_HEAD^{commit}")
+                .map(Some)
+                .ok_or_else(unavailable),
+            RecoveryReset::HistoryAbort { native_sequencer: true } => {
+                history_original_tip(path, unavailable)
+            }
+            _ => Ok(None),
+        };
+        let original_before = original()?;
+        let target = original_before.as_deref().unwrap_or(&head);
         let obstruction = |blocked: String| {
             AppError::new(
                 kind,
@@ -528,9 +570,7 @@ pub(super) fn ensure_recovery_reset_preserves_ignored_files(
                 return Err(unavailable());
             }
         }
-        if reference_tip(path, "HEAD").as_ref() != Some(&head)
-            || (mail_original.is_some() && reference_tip(path, "ORIG_HEAD^{commit}") != mail_original)
-        {
+        if reference_tip(path, "HEAD").as_ref() != Some(&head) || original()? != original_before {
             return Err(unavailable());
         }
         Ok(())

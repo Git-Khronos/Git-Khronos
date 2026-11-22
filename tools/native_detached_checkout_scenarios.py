@@ -337,6 +337,61 @@ def bisect_reset_preserves_ignored_files(driver, fixtures, report):
     report['scenarios'].append('native-bisect-reset-preserves-ignored-file-and-allows-safe-retry')
 
 
+def replay_recovery_preserves_ignored_files(driver, fixtures, report):
+    for operation, action in [('revert', 'skip'), ('cherry-pick', 'abort')]:
+        multi = operation == 'cherry-pick'
+        repository = fixtures.repository(f'owned-{operation}-{action}', commits=2)
+        conflict = repository / 'fixture.txt'
+        local = repository / 'original.local' if multi else conflict
+        tracked_text = 'Pre-sequence file.\n' if multi else 'Receiver text.\n'
+        if multi:
+            local.write_text(tracked_text)
+            fixtures.git(repository, 'add', '--', local.name)
+            fixtures.git(repository, 'commit', '-qm', 'Track the pre-sequence file')
+        fixtures.git(repository, 'switch', '-qc', 'source')
+        commits = []
+        if multi:
+            fixtures.git(repository, 'rm', '--', local.name)
+            fixtures.git(repository, 'commit', '-qm', 'Remove the original file')
+            commits.append(fixtures.git(repository, 'rev-parse', 'HEAD'))
+        conflict.write_text('Source text.\n')
+        fixtures.git(repository, 'commit', '-qam', 'Create a conflicting replay')
+        commits.append(fixtures.git(repository, 'rev-parse', 'HEAD'))
+        fixtures.git(repository, 'switch', 'main')
+        conflict.write_text('Receiver text.\n')
+        fixtures.git(repository, 'commit', '-qam', 'Prepare the receiving branch')
+        original = fixtures.git(repository, 'rev-parse', 'HEAD')
+        stopped = subprocess.run(
+            ['git', '-C', str(repository), operation, '--no-edit', *commits],
+            env=fixtures.env, capture_output=True, timeout=20,
+        )
+        assert stopped.returncode != 0 and fixtures.git(repository, 'ls-files', '-u'), stopped.stderr
+        if multi:
+            assert (repository / '.git/sequencer/head').read_text().strip() == original
+            assert not local.exists()
+        else:
+            fixtures.git(repository, 'rm', '-f', '--', local.name)
+        saved = repository / 'saved-local'
+        (repository / '.git/info/exclude').write_text(f'/{local.name}\n/{saved.name}\n')
+        local.write_text('Only ignored copy.\n')
+        open_ui(driver, repository)
+        progress = '.history-operation-progress'
+        driver.wait(f'return !!document.querySelector({json.dumps(progress)})')
+        files = (conflict.name, local.name) if multi else (local.name,)
+        before = checkout_footprint(fixtures, repository, files)
+        driver.click_scrolled_text(progress + ' button', action.title(), wait_for_ready=True)
+        expected = ('Abort Replay' if multi else 'Skip Replay Step') + ' could overwrite ignored local contents'
+        driver.wait('return document.querySelector(\'.error-toast\')?.textContent.includes(' + json.dumps(expected) + ')')
+        assert checkout_footprint(fixtures, repository, files) == before
+        local.rename(saved)
+        driver.click_scrolled_text(progress + ' button', action.title(), wait_for_ready=True)
+        driver.wait(f'return !document.querySelector({json.dumps(progress)})')
+        assert fixtures.git(repository, 'rev-parse', 'HEAD') == original
+        assert local.read_text() == tracked_text
+        assert saved.read_text() == 'Only ignored copy.\n'
+        report['scenarios'].append(f'native-{operation}-{action}-preserves-ignored-reset-file')
+
+
 def reviewed_detached_checkout(driver, fixtures, report):
     guarded_checkout_targets(driver, fixtures, report)
     context_rebase_preserves_sibling(driver, fixtures, report)
@@ -344,6 +399,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     recovery_reset_preserves_ignored_files(driver, fixtures, report)
     mail_recovery_preserves_ignored_files(driver, fixtures, report)
     bisect_reset_preserves_ignored_files(driver, fixtures, report)
+    replay_recovery_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')
     head = fixtures.git(repository, 'rev-parse', 'HEAD')

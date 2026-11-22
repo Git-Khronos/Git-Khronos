@@ -6453,10 +6453,14 @@ pub fn control_history_operation(
             ),
         ));
     }
-    let option = match action {
-        "continue" => "--continue",
-        "skip" => "--skip",
-        "abort" => "--abort",
+    use merge_checkout_guard::RecoveryReset;
+    let (option, reset) = match action {
+        "continue" => ("--continue", None),
+        "skip" => ("--skip", Some(RecoveryReset::HistorySkip)),
+        "abort" => (
+            "--abort",
+            Some(RecoveryReset::HistoryAbort { native_sequencer: true }),
+        ),
         _ => {
             return Err(AppError::new(
                 "invalidHistoryOperationAction",
@@ -6465,6 +6469,9 @@ pub fn control_history_operation(
             ));
         }
     };
+    if let Some(reset) = reset {
+        merge_checkout_guard::ensure_recovery_reset_preserves_ignored_files(path, reset)?;
+    }
     run_mutation(
         path,
         &["-c", "core.editor=true", operation, option],

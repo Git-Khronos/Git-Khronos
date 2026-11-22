@@ -568,6 +568,122 @@ fn replace_conflict_with_ignored_file(fixture: &Fixture) -> PathBuf {
 }
 
 #[test]
+fn replay_recovery_preserves_ignored_file_for_single_step_resets() {
+    for (operation, action, no_commit, kind) in [
+        ("cherry-pick", "skip", false, "historySkipLocalPathObstruction"),
+        ("cherry-pick", "abort", false, "historyAbortLocalPathObstruction"),
+        ("revert", "skip", false, "historySkipLocalPathObstruction"),
+        ("revert", "abort", false, "historyAbortLocalPathObstruction"),
+        ("cherry-pick", "abort", true, "historyAbortLocalPathObstruction"),
+    ] {
+        let fixture = Fixture::new();
+        fixture.commit_file("conflict", "Base");
+        fixture.git(&["switch", "-qc", "source"]);
+        fixture.commit_file("conflict", "Source");
+        let selected = fixture.git(&["rev-parse", "HEAD"]);
+        fixture.git(&["switch", "main"]);
+        fixture.commit_file("conflict", "Receiver");
+        let head = fixture.git(&["rev-parse", "HEAD"]);
+        if no_commit {
+            cherry_pick_commits_with_options(fixture.path(), &[selected], None, true).unwrap_err();
+        } else {
+            run_mutation(
+                fixture.path(),
+                &[operation, "--no-edit", &selected],
+                "start owned replay",
+            )
+            .unwrap_err();
+        }
+        let copy = replace_conflict_with_ignored_file(&fixture);
+        let index = fs::read(fixture.path().join(".git/index")).unwrap();
+        let error = control_history_operation(fixture.path(), operation, action).unwrap_err();
+        assert_eq!(error.kind, kind, "{operation} {action}: {error:?}");
+        assert!(error.message.contains("conflict"));
+        let active = repository_operation_state(fixture.path()).unwrap();
+        assert_eq!(active.history.as_deref(), Some(operation));
+        assert_eq!(active.history_no_commit, no_commit);
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), head);
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read_to_string(&copy).unwrap(), "Local ignored data");
+
+        let saved = copy.with_extension("saved");
+        fs::rename(&copy, &saved).unwrap();
+        control_history_operation(fixture.path(), operation, action).unwrap();
+        assert!(repository_operation_state(fixture.path()).unwrap().history.is_none());
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), head);
+        assert_eq!(fs::read_to_string(copy).unwrap(), "Receiver\n");
+        assert_eq!(fs::read_to_string(saved).unwrap(), "Local ignored data");
+    }
+}
+
+#[test]
+fn replay_abort_checks_the_original_tree_of_a_multi_commit_sequence() {
+    for operation in ["cherry-pick", "revert"] {
+        let fixture = Fixture::new();
+        fixture.commit_file("conflict", "Base");
+        let (first, second) = if operation == "cherry-pick" {
+            fixture.commit_file("restore", "Original file");
+            fixture.git(&["switch", "-qc", "source"]);
+            fixture.git(&["rm", "--", "restore"]);
+            fixture.git(&["commit", "-qm", "Remove file"]);
+            let first = fixture.git(&["rev-parse", "HEAD"]);
+            fixture.commit_file("conflict", "Source");
+            let second = fixture.git(&["rev-parse", "HEAD"]);
+            fixture.git(&["switch", "main"]);
+            (first, second)
+        } else {
+            fixture.commit_file("conflict", "Source");
+            let second = fixture.git(&["rev-parse", "HEAD"]);
+            fixture.commit_file("restore", "Original file");
+            (fixture.git(&["rev-parse", "HEAD"]), second)
+        };
+        fixture.commit_file("conflict", "Receiver");
+        let original = fixture.git(&["rev-parse", "HEAD"]);
+        run_mutation(
+            fixture.path(),
+            &[operation, "--no-edit", &first, &second],
+            "start owned replay sequence",
+        )
+        .unwrap_err();
+        let restored = fixture.path().join("restore");
+        assert!(!restored.exists());
+        let candidate = fixture.git(&["rev-parse", "HEAD"]);
+        assert_ne!(candidate, original);
+        let sequence = fixture.path().join(".git/sequencer/head");
+        assert_eq!(fs::read_to_string(&sequence).unwrap().trim_end(), original);
+        fixture.git(&["update-ref", "ORIG_HEAD", &candidate]);
+        fs::write(fixture.path().join(".git/info/exclude"), "/restore\n/saved\n").unwrap();
+        fs::write(&restored, "Local ignored data").unwrap();
+        let index = fs::read(fixture.path().join(".git/index")).unwrap();
+        let owner = fs::read(&sequence).unwrap();
+        fs::write(&sequence, "unexpected sequence origin\n").unwrap();
+        assert_eq!(
+            control_history_operation(fixture.path(), operation, "abort")
+                .unwrap_err()
+                .kind,
+            "historyResetIgnoredPathsUnverified"
+        );
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), candidate);
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        fs::write(&sequence, owner).unwrap();
+        let error = control_history_operation(fixture.path(), operation, "abort").unwrap_err();
+        assert_eq!(error.kind, "historyAbortLocalPathObstruction", "{error:?}");
+        assert!(error.message.contains("restore"));
+        assert_eq!(fs::read_to_string(&sequence).unwrap().trim_end(), original);
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), candidate);
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read_to_string(&restored).unwrap(), "Local ignored data");
+        let saved = fixture.path().join("saved");
+        fs::rename(&restored, &saved).unwrap();
+        control_history_operation(fixture.path(), operation, "abort").unwrap();
+        assert!(!sequence.exists());
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), original);
+        assert_eq!(fs::read_to_string(restored).unwrap(), "Original file\n");
+        assert_eq!(fs::read_to_string(saved).unwrap(), "Local ignored data");
+    }
+}
+
+#[test]
 fn rebase_preserves_ignored_files_in_the_way_of_the_new_base() {
     for reviewed in [false, true] {
         let fixture = Fixture::new();

@@ -258,6 +258,12 @@ pub(super) fn control(path: &Path, action: &str) -> Result<(), AppError> {
             apply_remaining(path, &file, &mut plan)
         }
         "abort" => {
+            merge_checkout_guard::ensure_recovery_reset_preserves_ignored_files(
+                path,
+                merge_checkout_guard::RecoveryReset::HistoryAbort {
+                    native_sequencer: false,
+                },
+            )?;
             run_mutation(
                 path,
                 &["reset", "--merge", &plan.head_oid],

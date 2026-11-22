@@ -3426,6 +3426,15 @@ advance can independently select a commit that overwrites ignored files;
 those checkout paths are not covered by this Reset safeguard. Evidence:
 `target/local-review/bisect-ignored-reset.WsTgl6Ng/`.
 
+Cherry-pick and Revert now check ignored-file collisions before the
+Skip or Abort reset, including no-commit Cherry-pick Abort. Multi-step
+Abort checks the original sequencer tree even if the file is absent at
+the stopped HEAD or `ORIG_HEAD` was changed. Tests verify the native
+sequence and index stay intact on refusal and safe retry. Installed
+qualification now requires Revert Skip and multi-step Cherry-pick Abort.
+Later replay after Skip is not covered by the reset check. CLI evidence:
+`target/local-review/replay-ignored-reset.CAjPDJZZ/`.
+
 The exact `fa3e152` package passed 36 focused Ubuntu 24.04 installed
 scenarios: 19 application-updates, ten detached-checkout and seven
 workspace-Pull. These ran without the inherited-Git launcher checks.
@@ -3445,6 +3454,13 @@ before the stash is applied; the app reports the already-created branch
 and keeps the stash. This safeguard is specific to the fixed-base
 branch-from-stash action, not Apply or Pop on an arbitrary checkout.
 Evidence: `target/local-review/stash-ignored-restore.2jOb0q9F/`.
+The exact `5539be8` installer passed 73 focused Ubuntu 24.04 scenarios
+with inherited Git setup: 57 setup/keyboard and 16 detached-checkout.
+The installed stash scenario verified refusal before branch creation and
+successful retry with the original stash and both copies preserved.
+Package and receipts:
+`target/local-review/updater/jammy-builder/stash-branch-release.jVuyan4e/`
+(SHA-256 `54dda40024bef7c524b2c79b82b6af6c20aa5bfdf03e3ab0d5dd591b1da306da`).
 
 ### Packaged GitLab TLS fixture readiness
 

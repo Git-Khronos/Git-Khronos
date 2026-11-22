@@ -1591,6 +1591,10 @@ The [Git bisect manual](https://git-scm.com/docs/git-bisect) defines Reset
 and `--no-checkout`. Owned fixtures verified the original-branch and
 detached start markers and the exact Git ref check for no-checkout mode
 with both files and reftable storage.
+[Git cherry-pick](https://git-scm.com/docs/git-cherry-pick) and
+[Git revert](https://git-scm.com/docs/git-revert) define Skip and Abort.
+Owned multi-step fixtures showed how the native sequencer restores its
+saved original commit instead of the mutable `ORIG_HEAD`.
 No upstream code was copied.
 
 ## Fast-forward Pull and ignored files

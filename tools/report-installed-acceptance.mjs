@@ -116,6 +116,8 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-mail-patch-skip-preserves-ignored-reset-file',
     'native-mail-patch-abort-preserves-ignored-reset-file',
     'native-bisect-reset-preserves-ignored-file-and-allows-safe-retry',
+    'native-cherry-pick-abort-preserves-ignored-reset-file',
+    'native-revert-skip-preserves-ignored-reset-file',
     'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',
     'native-detached-checkout-refuses-a-stale-branch-at-the-same-tip',
     'native-confirmed-detached-checkout-keeps-refs-and-non-overlapping-local-edits',
