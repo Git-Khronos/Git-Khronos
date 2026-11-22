@@ -3320,6 +3320,19 @@ installed qualification requires the direct-refspec scenario too.
 The CLI reproduction is in
 `target/local-review/pull-refspec-scope.WErAhMEB/`.
 
+The exact `3320c2f` package subsequently passed all **37 required Linux
+gates**, supported by 52 passing installed reports across five
+distributions. The original focused Ubuntu 24.04 attempt failed in the
+test fixture before making a Pull request: it tried to hash an incoming
+file before that file existed. That lane was rerun from the original
+harness with only the `f4520ea` fixture patch; the package bytes and the
+other passing lanes were unchanged. The strict verifier and APT simulation
+both passed. The fixture-key installer and receipts are in
+`target/local-review/qualified-0.1.6-3320c2f/` (SHA-256
+`ea67e62b364df7e741f3c90ac52afbbb0a7023d12f52d37cf837296a5dcf32b5`).
+It supersedes the earlier local handoff but not the public release and
+does not include later Fetch or ignored-file fixes.
+
 The same destination check now protects named Fetch, Fetch All and
 automatic Fetch. Source tests exercise each entry point and verify a
 mixed set of remotes cannot partially fetch before a scope refusal.
