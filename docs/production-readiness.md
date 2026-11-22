@@ -3380,6 +3380,20 @@ file overwritten when Merge Abort reapplied a native autostash. The source
 regressions exercise refusal and retry without altering Git's recovery
 commands. The earlier packaged Abort Rebase result does not cover these new
 paths. CLI evidence is in `target/local-review/abort-skip-ignored-probe.a1SmfFYd/`.
+The full Git-core run passed 1,158 tests (37 existing ignored tests), and
+strict library/test Clippy passed. Subsequent installed qualification
+requires both Skip backends and the Merge Abort reset/autostash retry.
+
+The exact `fa3e152` package passed 36 focused Ubuntu 24.04 installed
+scenarios: 19 application-updates, ten detached-checkout and seven
+workspace-Pull. These ran without the inherited-Git launcher checks.
+The updater scenario verified configured test-publisher trust, disabled
+automatic updates by default, and no installable offer. It did not inject
+the late Git-activity race, which is covered by the desktop native tests.
+Package and reports:
+`target/local-review/updater/jammy-builder/update-receipt-focused-release.Z8oD0kCB/`
+(SHA-256 `544e8d35b8bf1ba8fb72bfad1e4a200bb73c0fc64c3f1a9e412334ceb3ababa5`).
+This is not a full-matrix qualification or a public release.
 
 ### Packaged GitLab TLS fixture readiness
 

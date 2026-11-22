@@ -148,10 +148,98 @@ def abort_apply_rebase_preserves_ignored_settings(driver, fixtures, report):
     report['scenarios'].append('native-abort-apply-rebase-preserves-ignored-file-and-allows-safe-retry')
 
 
+def recovery_reset_preserves_ignored_files(driver, fixtures, report):
+    for mode in ('rebase-merge', 'rebase-apply', 'merge-abort'):
+        repository = fixtures.repository(f'owned-recovery-reset-{mode}', commits=2)
+        work_file = repository / 'fixture.txt'
+        saved_copy = repository / 'saved-fixture.txt'
+        staged = repository / 'staged.local'
+        fixtures.git(repository, 'switch', '-qc', 'upstream')
+        work_file.write_text('Upstream contents.\n')
+        fixtures.git(repository, 'commit', '-qam', 'Change upstream text')
+        upstream = fixtures.git(repository, 'rev-parse', 'HEAD')
+        fixtures.git(repository, 'switch', 'main')
+        work_file.write_text('Current branch contents.\n')
+        fixtures.git(repository, 'commit', '-qam', 'Change local text')
+        original = fixtures.git(repository, 'rev-parse', 'HEAD')
+        merge = mode == 'merge-abort'
+        if merge:
+            staged.write_text('Staged before starting Merge.\n')
+            fixtures.git(repository, 'add', '--', staged.name)
+            command = ['merge', '--autostash', '--no-edit', 'upstream']
+            marker = repository / '.git/MERGE_HEAD'
+            progress, action, message = '.merge-progress', 'Abort', 'Abort Merge'
+        else:
+            command = ['rebase', '--' + mode.removeprefix('rebase-'), 'upstream']
+            marker = repository / '.git' / mode / 'orig-head'
+            progress, action, message = '.rebase-progress', 'Skip', 'Skip Rebase Commit'
+        stopped = subprocess.run(
+            ['git', '-C', str(repository), *command], env=fixtures.env,
+            capture_output=True, timeout=20,
+        )
+        assert stopped.returncode != 0 and marker.is_file(), stopped.stderr
+        owner = marker.read_bytes()
+        assert fixtures.git(repository, 'ls-files', '-u', '--', work_file.name)
+        fixtures.git(repository, 'rm', '-f', '--', work_file.name)
+        (repository / '.git/info/exclude').write_text(
+            f'/{work_file.name}\n/{saved_copy.name}\n/{staged.name}\n/staged.saved\n'
+        )
+        work_file.write_text('Only copy of ignored local text.\n')
+        assert fixtures.git(repository, 'check-ignore', '--', work_file.name) == work_file.name
+        if merge:
+            stash = repository / '.git/MERGE_AUTOSTASH'
+            stash_oid = stash.read_bytes()
+            assert not staged.exists()
+            staged.write_text('Only copy of later ignored text.\n')
+            assert fixtures.git(repository, 'check-ignore', '--', staged.name) == staged.name
+        open_ui(driver, repository)
+        driver.wait(f'return !!document.querySelector({json.dumps(progress)})')
+
+        def refuse(blocked, files):
+            before = checkout_footprint(fixtures, repository, files)
+            driver.click_scrolled_text(progress + ' button', action, wait_for_ready=True)
+            expected = f"{message} could overwrite ignored local contents at '{blocked.name}'"
+            driver.wait(
+                "return document.querySelector('.error-toast')?.textContent.includes("
+                + json.dumps(expected) + ") || null"
+            )
+            assert checkout_footprint(fixtures, repository, files) == before
+            assert marker.read_bytes() == owner
+            if merge:
+                assert stash.read_bytes() == stash_oid
+
+        refuse(work_file, (work_file.name, staged.name) if merge else (work_file.name,))
+        work_file.rename(saved_copy)
+        if merge:
+            refuse(staged, (saved_copy.name, staged.name))
+            saved_stash_copy = repository / 'staged.saved'
+            staged.rename(saved_stash_copy)
+        driver.click_scrolled_text(progress + ' button', action, wait_for_ready=True)
+        done = 'Merge aborted' if merge else 'Rebase complete'
+        driver.wait(
+            f"return !document.querySelector({json.dumps(progress)}) && "
+            f"document.querySelector('.activity-status')?.textContent.includes({json.dumps(done)})"
+        )
+        assert not marker.exists()
+        assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+        assert fixtures.git(repository, 'rev-parse', 'HEAD') == (original if merge else upstream)
+        assert work_file.read_text() == ('Current branch contents.\n' if merge else 'Upstream contents.\n')
+        assert saved_copy.read_text() == 'Only copy of ignored local text.\n'
+        if merge:
+            assert not stash.exists()
+            assert staged.read_text() == 'Staged before starting Merge.\n'
+            assert saved_stash_copy.read_text() == 'Only copy of later ignored text.\n'
+            scenario = 'native-merge-abort-preserves-ignored-reset-and-autostash-files'
+        else:
+            scenario = f'native-skip-{mode}-preserves-ignored-reset-file'
+        report['scenarios'].append(scenario)
+
+
 def reviewed_detached_checkout(driver, fixtures, report):
     guarded_checkout_targets(driver, fixtures, report)
     context_rebase_preserves_sibling(driver, fixtures, report)
     abort_apply_rebase_preserves_ignored_settings(driver, fixtures, report)
+    recovery_reset_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')
     head = fixtures.git(repository, 'rev-parse', 'HEAD')
