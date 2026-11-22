@@ -34,6 +34,8 @@ commit or a legacy graft as shallow. Right-click that commit and choose
 **Review history depth…** to open the fetch review. Nothing is downloaded
 until you select a depth option and confirm; the marker follows the new
 boundary after a successful deepen and disappears after unshallowing.
+The marker also follows external Git changes, including through a linked
+checkout when its shared history changes without moving any ref.
 An unborn repository with no commit refs has an empty local history.
 
 Selecting a result opens commit details even when that commit has never been

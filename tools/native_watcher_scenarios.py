@@ -171,6 +171,58 @@ def watcher_reftable(driver, fixtures, report):
     return repository, repo_id
 
 
+def watcher_shallow_history(driver, fixtures, report):
+    from native_acceptance import open_ui
+    from native_worktree_scenarios import checkout_footprint
+
+    upstream = fixtures.repository('owned-watcher-shallow-source', commits=3)
+    clone = fixtures.root / 'owned-watcher-shallow-clone'
+    linked = fixtures.root / 'owned-watcher-shallow-linked'
+    fixtures.git(fixtures.root, 'clone', '--depth=1', upstream.resolve().as_uri(), str(clone))
+    for key in ('user.name', 'user.email'):
+        fixtures.git(clone, 'config', key, fixtures.git(upstream, 'config', key))
+    fixtures.git(clone, 'config', 'advice.graftFileDeprecated', 'false')
+    fixtures.git(clone, 'worktree', 'add', '--detach', str(linked), 'HEAD')
+    tip, middle, root = fixtures.git(upstream, 'rev-list', 'HEAD').splitlines()
+    # Once the true root arrives, Git can describe it as grafted both
+    # before and after unshallowing. Its *shallow* annotation must still change.
+    grafts = clone / '.git/info/grafts'
+    grafts.write_text(root + '\n')
+    repo_id = open_ui(driver, linked)
+    before = checkout_footprint(fixtures, linked)
+    row = lambda oid: f'[data-commit-oid="{oid}"]'
+
+    def rendered_boundary(oid, expected=True):
+        query = f"document.querySelector({json.dumps(row(oid))})?.getAttribute('aria-label')?.includes('shallow history boundary')"
+        driver.wait(f"return {query} === {json.dumps(expected)}")
+
+    rendered_boundary(tip)
+    with observe_repository_changes(driver, fixtures, report, 'shallowHistoryObservation', repository_id=repo_id) as mark:
+        for count, old, new in ((2, tip, middle), (3, middle, root)):
+            mark(f'external-deepen-{count}')
+            fixtures.git(clone, 'fetch', '--deepen=1', '--no-tags', '--no-write-fetch-head', 'origin')
+            assert fixtures.git(linked, 'rev-list', '--count', 'HEAD') == str(count)
+            rendered_boundary(old, expected=False)
+            rendered_boundary(new)
+            mark(f'boundary-{count}-rendered')
+            assert checkout_footprint(fixtures, linked) == before
+        report['scenarios'].append('native-watcher-shallow-depth-moves-the-boundary-in-a-linked-checkout-without-moving-refs')
+
+        # Graph identities and the legacy graft decoration remain the same.
+        raw = fixtures.git(linked, 'log', '--decorate=short', '--format=%H %P %D')
+        mark('external-unshallow')
+        fixtures.git(clone, 'fetch', '--unshallow', '--no-tags', '--no-write-fetch-head', 'origin')
+        assert fixtures.git(linked, 'rev-parse', '--is-shallow-repository') == 'false'
+        assert fixtures.git(linked, 'log', '--decorate=short', '--format=%H %P %D') == raw
+        assert grafts.read_text() == root + '\n'
+        rendered_boundary(root, expected=False)
+        mark('metadata-only-boundary-removed')
+        assert checkout_footprint(fixtures, linked) == before
+    assert any(event['type'] == 'repository-changed' for event in report['shallowHistoryObservation']['sample'])
+    report['scenarios'].append('native-watcher-clears-shallow-badge-when-commit-parents-and-decorations-do-not-change')
+    return linked, repo_id
+
+
 def remove_ref_during_change_burst(driver, fixtures, repository, repository_id, report, row, delete_ref):
     """Prove a same-branch graph update while native events are still arriving."""
     marker = repository / '.git' / 'owned-watcher-burst-marker'

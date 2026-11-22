@@ -24,6 +24,18 @@ describe('commit history reconciliation', () => {
     expect(reconcileCommitHistory(previous, [commit('a', ['dev']), commit('b')])).toBe(previous);
   });
 
+  it('updates the shallow badge even when the commit, parent list and decorations are unchanged', () => {
+    const older = commit('older', ['grafted']);
+    const previous = [commit('tip'), older];
+    const marked = { ...older, shallowBoundary: true };
+    const incoming = [commit('tip'), marked];
+    const result = reconcileCommitHistory(previous, incoming);
+    expect(result[0]).toBe(previous[0]);
+    expect(result[1]).toBe(marked);
+    expect(reconcileCommitHistory(result, previous)[1]).toBe(older);
+    expect(reconcileCommitHistory(previous, [commit('tip'), { ...older, shallowBoundary: null }])).toBe(previous);
+  });
+
   it('accepts corrected metadata and reordered or appended history', () => {
     const previous = [commit('a'), commit('b')];
     const corrected = { ...commit('a'), description: 'Updated metadata' };

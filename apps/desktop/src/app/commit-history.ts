@@ -11,6 +11,7 @@ function sameCommit(left: CommitSummary, right: CommitSummary): boolean {
     && left.authoredAt === right.authoredAt
     && left.subject === right.subject
     && left.description === right.description
+    && (left.shallowBoundary === true) === (right.shallowBoundary === true)
     && sameStrings(left.parents, right.parents)
     && sameStrings(left.decorations, right.decorations);
 }

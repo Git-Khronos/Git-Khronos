@@ -55,6 +55,15 @@ The renderer must update the branch list in response to real watcher
 notifications. Run this focused suite on Git versions that can initialize
 a reftable repository; it is not part of the Git 2.39 compatibility gate.
 
+Use `--suite watcher-shallow-history` to open a detached linked checkout and
+deepen its shared history from the primary checkout using an owned file
+remote. HEAD, refs, index, config and working files must stay identical.
+The rendered boundary moves as history arrives and disappears after
+unshallowing. A legacy graft on the root keeps its ordinary Git decoration
+unchanged, so the final check distinguishes shallow metadata from commit
+identity. The harness observes the actual watcher; it does not refresh
+the renderer itself.
+
 Read-only readiness checks tolerate WebKit's exact transient result-parsing
 error within the original deadline. Direct scripts, clicks and Git
 operations are not retried after an uncertain reply.

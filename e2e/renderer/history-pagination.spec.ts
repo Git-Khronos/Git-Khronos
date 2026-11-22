@@ -212,3 +212,37 @@ test('history paging still updates an open repository after switching tabs', asy
   });
   expect(result).toEqual({ loaded: true, active: 'other-repository', original: 'next-history-page', other: false });
 });
+
+test('watcher refresh clears a shallow badge without a change to the commit identity or raw decorations', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
+  const oid = await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    const repo = git.repository();
+    const commit = repo.commits[0];
+    const withMark = { ...commit, parents: [], decorations: [...commit.decorations, 'grafted'], shallowBoundary: true };
+    const original = { ...repo, commits: [withMark, ...repo.commits.slice(1)] };
+    const refreshed = { ...original, commits: [{ ...withMark, shallowBoundary: null }, ...original.commits.slice(1)] };
+    git.repositories.update((items: any[]) => items.map(item => item !== repo ? item : original));
+    (window as any).__historyWatcher = { git, repoId: repo.id, refresh: 0 };
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
+      if (command === 'refresh_repository') {
+        (window as any).__historyWatcher.refresh++;
+        return Promise.resolve(refreshed);
+      }
+      if (command === 'refresh_repository_status') return Promise.resolve(refreshed.status);
+      return Promise.resolve(null);
+    } };
+    return commit.oid;
+  });
+  const row = page.locator(`[data-commit-oid="${oid}"]`);
+  await expect(row).toHaveAttribute('aria-label', /shallow history boundary/);
+  await page.evaluate(() => {
+    const state = (window as any).__historyWatcher;
+    state.git.queueRepositoryChangeRefresh(state.repoId);
+  });
+  await expect(row).not.toHaveAttribute('aria-label', /shallow history boundary/);
+  await expect(row).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__historyWatcher.refresh)).toBe(1);
+});

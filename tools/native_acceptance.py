@@ -1196,7 +1196,7 @@ def main():
         "workspace-pull-upstreams", "pull-submodule-scope",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
-        "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
+        "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
         "commit-responsiveness", "ignore-responsiveness",
@@ -1487,6 +1487,9 @@ def main():
             elif args.suite == "watcher-reftable":
                 from native_watcher_scenarios import watcher_reftable
                 repository, repo_id = watcher_reftable(driver, fixtures, report)
+            elif args.suite == "watcher-shallow-history":
+                from native_watcher_scenarios import watcher_shallow_history
+                repository, repo_id = watcher_shallow_history(driver, fixtures, report)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:
