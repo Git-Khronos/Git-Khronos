@@ -326,6 +326,8 @@ test('installed Pull requires both repository-scope and explicit single-branch e
       scenario: 'native-pull-with-rebase-preserves-unreviewed-sibling-branches' },
     { suite: 'workspace-pull-upstreams',
       scenario: 'native-pull-honors-selected-strategy-over-implicit-squash' },
+    { suite: 'workspace-pull-upstreams',
+      scenario: 'native-pull-refuses-local-branch-fetch-mapping-before-fetch' },
     { suite: 'pull-submodule-scope',
       scenario: 'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule' },
   ]) {

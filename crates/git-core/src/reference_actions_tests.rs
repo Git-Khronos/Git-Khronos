@@ -1982,6 +1982,208 @@ fn pull_strategy_missing_upstream_refuses_without_selecting_another_branch_or_lo
 }
 
 #[test]
+fn pull_refuses_fetch_mappings_that_write_unreviewed_local_branches() {
+    for explicit in [false, true] {
+        let (repository, _, head, _) = pull_fixture(false, false);
+        let path = &repository.0;
+        run_mutation(
+            path,
+            &["branch", "unselected"],
+            "create an unreviewed branch",
+        )
+        .unwrap();
+        run_mutation(
+            path,
+            &[
+                "config",
+                "--add",
+                "remote.origin.fetch",
+                "+refs/heads/main:refs/heads/unselected",
+            ],
+            "give the owned fixture a direct local fetch destination",
+        )
+        .unwrap();
+        let refs = run_git(path, &["show-ref"]).unwrap().stdout;
+        let index = fs::read(path.join(".git/index")).unwrap();
+        let config = fs::read(path.join(".git/config")).unwrap();
+        assert!(!path.join(".git/FETCH_HEAD").exists());
+        let checkout = PullCheckout {
+            branch: Some("main".to_owned()),
+            head_oid: Some(head.clone()),
+        };
+        let error = pull_for_checkout_cancellable(
+            path,
+            "ff-only",
+            explicit.then_some("origin"),
+            explicit.then_some("main"),
+            &checkout,
+            &CancellationToken::default(),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind, "pullFetchUpdatesLocalBranch");
+        assert_eq!(repository.oid(), head);
+        assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
+        assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+        assert!(!path.join("remote-file").exists());
+        assert!(!path.join(".git/FETCH_HEAD").exists());
+    }
+}
+
+#[test]
+fn explicit_pull_can_select_an_upstream_unaffected_by_another_mapping() {
+    let (repository, publisher, head, incoming) = pull_fixture(false, false);
+    let path = &repository.0;
+    run_mutation(
+        &publisher,
+        &["branch", "extra"],
+        "create an owned unrelated upstream",
+    )
+    .unwrap();
+    run_mutation(
+        &publisher,
+        &["push", "origin", "extra"],
+        "publish owned fixture data",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["branch", "unselected"],
+        "create an unreviewed branch",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &[
+            "config",
+            "--add",
+            "remote.origin.fetch",
+            "+refs/heads/extra:refs/heads/unselected",
+        ],
+        "configure an unrelated direct destination",
+    )
+    .unwrap();
+    pull_from_remote_with_strategy(path, "ff-only", Some("origin"), Some("main")).unwrap();
+    assert_eq!(repository.oid(), incoming);
+    assert_eq!(rev(path, "refs/heads/unselected"), head);
+    assert!(
+        !run_git(
+            path,
+            &["rev-parse", "--verify", "refs/remotes/origin/extra"]
+        )
+        .unwrap()
+        .status
+        .success()
+    );
+}
+
+#[test]
+fn pull_refuses_legacy_remote_mappings_without_fetching() {
+    let (repository, _, head, _) = pull_fixture(false, false);
+    let path = &repository.0;
+    run_mutation(
+        path,
+        &["config", "branch.main.remote", "owned-legacy"],
+        "select the legacy fixture",
+    )
+    .unwrap();
+    let remotes = path.join(".git/remotes");
+    fs::create_dir_all(&remotes).unwrap();
+    fs::write(
+        remotes.join("owned-legacy"),
+        format!(
+            "URL: {}\nPull: +refs/heads/main:refs/heads/unselected\n",
+            path.join(".git/pull-remote.git").display()
+        ),
+    )
+    .unwrap();
+    let error = pull_with_strategy(path, "ff-only").unwrap_err();
+    assert_eq!(error.kind, "legacyPullRemoteUnverified");
+    assert_eq!(repository.oid(), head);
+    assert!(!path.join(".git/FETCH_HEAD").exists());
+    assert!(
+        !run_git(path, &["rev-parse", "--verify", "refs/heads/unselected"])
+            .unwrap()
+            .status
+            .success()
+    );
+}
+
+#[test]
+fn configured_pull_does_not_allow_fetch_all_to_expand_remote_scope() {
+    let (repository, _, head, incoming) = pull_fixture(false, false);
+    let path = &repository.0;
+    let remote = path.join(".git/pull-remote.git");
+    add_remote(path, "other", remote.to_str().unwrap()).unwrap();
+    run_mutation(
+        path,
+        &["config", "fetch.all", "true"],
+        "broaden Git's ordinary fetch default",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &[
+            "config",
+            "--add",
+            "remote.other.fetch",
+            "+refs/heads/main:refs/heads/unselected",
+        ],
+        "configure an unselected remote's local destination",
+    )
+    .unwrap();
+    let config = fs::read(path.join(".git/config")).unwrap();
+    pull_with_strategy(path, "ff-only").unwrap();
+    assert_ne!(repository.oid(), head);
+    assert_eq!(repository.oid(), incoming);
+    assert!(
+        !run_git(path, &["rev-parse", "--verify", "refs/heads/unselected"])
+            .unwrap()
+            .status
+            .success()
+    );
+    assert!(
+        !run_git(path, &["rev-parse", "--verify", "refs/remotes/other/main"])
+            .unwrap()
+            .status
+            .success()
+    );
+    assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+}
+
+#[test]
+fn configured_pull_still_supports_a_local_branch_upstream() {
+    let repository = Repository::new();
+    let path = &repository.0;
+    run_mutation(
+        path,
+        &["switch", "-c", "shared-upstream"],
+        "create local upstream",
+    )
+    .unwrap();
+    fs::write(path.join("shared.txt"), b"Local upstream contents\n").unwrap();
+    stage_all(path).unwrap();
+    commit(path, "Advance local upstream").unwrap();
+    let upstream = repository.oid();
+    run_mutation(path, &["switch", "main"], "restore the receiving branch").unwrap();
+    run_mutation(
+        path,
+        &["config", "branch.main.remote", "."],
+        "use local transport",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "branch.main.merge", "refs/heads/shared-upstream"],
+        "record local upstream",
+    )
+    .unwrap();
+    pull_with_strategy(path, "ff-only").unwrap();
+    assert_eq!(repository.oid(), upstream);
+    assert_eq!(rev(path, "refs/heads/shared-upstream"), upstream);
+}
+
+#[test]
 fn pull_strategy_deleted_upstream_retains_configuration_and_local_commits_after_pruning() {
     let (repository, _, local, _) = pull_fixture(true, false);
     let path = &repository.0;

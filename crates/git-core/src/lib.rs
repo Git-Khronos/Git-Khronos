@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
+mod pull_refspec_scope;
 mod push_destination;
 pub use push_destination::{PushDestinationReview, review_push_destination};
 
@@ -4995,7 +4996,6 @@ fn pull_from_remote_with_strategy_and_cancellation(
         }
     };
 
-    let branch_ref;
     // Pull advances the superproject, including its recorded gitlinks, but
     // nested fetch/checkout is a separate, explicitly reviewed operation.
     // Pull requests integration, not deletion of stale refs or local tags.
@@ -5009,20 +5009,24 @@ fn pull_from_remote_with_strategy_and_cancellation(
     // A receiving branch's mergeOptions may otherwise turn even a successful
     // fast-forward (including the fast path of Pull with Rebase) into staged
     // changes without advancing the branch. None of these modes is Squash.
-    args.extend(["pull", "--no-recurse-submodules", "--no-prune", "--no-squash"]);
+    args.extend([
+        "pull",
+        "--no-recurse-submodules",
+        "--no-prune",
+        "--no-squash",
+        "--no-all",
+    ]);
     args.extend(strategy_arguments);
-    match (remote, branch) {
+    let branch_ref = match (remote, branch) {
         (Some(remote), Some(branch)) => {
             validate_remote_name(path, remote)?;
             require_remote(path, remote)?;
             validate_branch_name(path, branch)?;
             // A short fetch name can resolve to a tag even when the remote has
             // a branch of the same name. The UI selected a branch, not a tag.
-            branch_ref = format!("refs/heads/{branch}");
-            args.push(remote);
-            args.push(&branch_ref);
+            Some(format!("refs/heads/{branch}"))
         }
-        (None, None) => {}
+        (None, None) => None,
         _ => {
             return Err(AppError::new(
                 "invalidRemoteTarget",
@@ -5030,6 +5034,9 @@ fn pull_from_remote_with_strategy_and_cancellation(
                 Some("Select a remote and try again."),
             ));
         }
+    };
+    if let Some((remote, branch_ref)) = remote.zip(branch_ref.as_deref()) {
+        args.extend([remote, branch_ref]);
     }
     if let Some(checkout) = checkout {
         require_pull_checkout(path, checkout)?;
@@ -5040,6 +5047,16 @@ fn pull_from_remote_with_strategy_and_cancellation(
         {
             require_unambiguous_pull_upstream(path, branch, cancellation)?;
         }
+    }
+    pull_refspec_scope::require_no_local_branch_fetch(
+        path,
+        remote,
+        branch_ref.as_deref(),
+        checkout,
+        cancellation,
+    )?;
+    if let Some(checkout) = checkout {
+        require_pull_checkout(path, checkout)?;
     }
     run_mutation_with_cancellation(path, &args, "pull from the remote", cancellation)
 }

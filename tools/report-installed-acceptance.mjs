@@ -32,6 +32,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config',
     'native-pull-with-rebase-preserves-unreviewed-sibling-branches',
     'native-pull-honors-selected-strategy-over-implicit-squash',
+    'native-pull-refuses-local-branch-fetch-mapping-before-fetch',
   ]],
   ['pull-submodule-scope', [
     'native-pull-updates-the-parent-gitlink-without-fetching-or-changing-the-submodule',

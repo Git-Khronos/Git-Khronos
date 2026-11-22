@@ -23,6 +23,35 @@ def _toolbar_pull(driver):
     driver.wait('return document.body.textContent.includes("Pull complete")')
 
 
+def _toolbar_pull_refuses_local_fetch_mapping(driver, fixtures, publisher, report):
+    from native_acceptance import open_ui
+
+    checkout = _local_clone(fixtures, publisher, 'pull-local-refspec-receiver')
+    head = fixtures.git(checkout, 'rev-parse', 'HEAD')
+    fixtures.git(checkout, 'branch', 'unselected', head)
+    mapping = '+refs/heads/main:refs/heads/unselected'
+    fixtures.git(checkout, 'config', '--add', 'remote.origin.fetch', mapping)
+    incoming = _write_commit(fixtures, publisher, 'refspec.txt', 'New owned upstream content\n')
+    open_ui(driver, checkout)
+    files = ('fixture.txt', 'refspec.txt')
+    before = checkout_footprint(fixtures, checkout, files)
+    fetch_head = checkout / '.git/FETCH_HEAD'
+    assert not fetch_head.exists()
+    driver.click_visible('button[aria-label="Pull from origin/main"]')
+    driver.wait('''return document.querySelector('.error-toast')
+      ?.textContent.includes("could update a local branch before Pull integrates anything")''')
+    assert checkout_footprint(fixtures, checkout, files) == before
+    assert not fetch_head.exists() and not (checkout / 'refspec.txt').exists()
+    assert fixtures.git(checkout, 'rev-parse', 'refs/heads/unselected') == head
+
+    fixtures.git(checkout, 'config', '--fixed-value', '--unset-all', 'remote.origin.fetch', mapping)
+    _toolbar_pull(driver)
+    assert fixtures.git(checkout, 'rev-parse', 'HEAD') == incoming
+    assert (checkout / 'refspec.txt').read_text() == 'New owned upstream content\n'
+    assert fixtures.git(checkout, 'rev-parse', 'refs/heads/unselected') == head
+    report['scenarios'].append('native-pull-refuses-local-branch-fetch-mapping-before-fetch')
+
+
 def _toolbar_pull_rebase_preserves_sibling(driver, fixtures, report):
     from native_acceptance import open_ui
 
@@ -202,5 +231,6 @@ def workspace_pull_upstreams(driver, fixtures, report):
     report['scenarios'].append('native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch')
     report['scenarios'].append('native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config')
     report['scenarios'].append('native-pull-honors-selected-strategy-over-implicit-squash')
+    _toolbar_pull_refuses_local_fetch_mapping(driver, fixtures, publisher, report)
     rebase = _toolbar_pull_rebase_preserves_sibling(driver, fixtures, report)
     return rebase, driver.invoke('open_repository', path=str(rebase))['id']

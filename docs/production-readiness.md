@@ -726,6 +726,14 @@ bytes. These are asset measurements using a simulated native bridge,
 not installed WebKit timings. Receipts are in
 `target/local-review/saved-startup-launcher.G8ICdgQs/`.
 
+The exact `0872217` installer subsequently passed all 20 Ubuntu 24.04
+installed smoke scenarios, including reopening saved repositories.
+This confirms the packaged desktop can restore the checkout, not the
+Chromium asset-request measurement in WebKit. Installer SHA-256:
+`f947dc109624418a0fecf75c299f22437d70842f3429a55043627a636f917f48`.
+The package and smoke report are retained under
+`target/local-review/updater/jammy-builder/repository-files-smoke.TJ0hNhlr/`.
+
 Deferring the commit editor and its private styles reduced the initial
 renderer from **1,333,972 to 1,331,513 bytes**. A production Chromium probe
 requested the form chunk only when the editor opened and confirmed focus
@@ -3283,6 +3291,16 @@ reproduced and then corrected on Git 2.39.5 and 2.53.0 using only owned
 local repositories. Future package qualification requires the new
 workspace-Pull scenario. The installed baseline failure is retained
 under `target/local-review/pull-squash-safety.y3cPYiIi/installed-red/`.
+
+In a separate owned-Git test, both explicit and configured Pull moved
+an unselected local branch because a remote fetch mapping named it as
+a destination. Both routes now refuse that configuration before writing
+FETCH_HEAD or changing any ref, index, working file, or Git setting.
+The source checks include a valid unaffected explicit source, an
+ordinary local upstream, and a legacy remote-file refusal. Future
+installed qualification requires the direct-refspec scenario too.
+The CLI reproduction is in
+`target/local-review/pull-refspec-scope.WErAhMEB/`.
 
 ### Packaged GitLab TLS fixture readiness
 

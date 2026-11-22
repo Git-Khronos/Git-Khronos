@@ -1070,6 +1070,15 @@ allows multiple merge sources, whereas the workspace action presents one
 upstream per repository. The app leaves that configuration unchanged;
 a single explicit toolbar source remains available.
 
+Git's [configured fetch mappings](https://git-scm.com/docs/git-fetch#_configured_remote_tracking_branches)
+also apply to explicit sources. A Pull can therefore update a second
+local branch while fetching, before it ever merges or rebases. Native
+rejects such direct local destinations, ambiguous names, and applicable
+legacy remote files before transport without changing configuration. An
+explicit fully qualified source outside an offending mapping can still
+be fetched. Tracking refs and the receiving checkout keep their Git-owned
+semantics.
+
 Original real-Git fixtures use owned local bare remotes and publishers.
 They check exact divergent merge parents without local replay, fast-forward-only
 refusal with refreshed tracking tip and preserved local contents, rebase with

@@ -295,6 +295,16 @@ Both configured and explicit Pull disable pruning for that invocation.
 Integration does not delete local tags or stale tracking refs as a side
 effect, even when pruning is configured. This does not disable normal tag
 following or change the configured fetch mappings.
+Pull also disables all-remote fetching. Before transport, native rejects
+configured fetch destinations that can write directly to a local branch
+(`refs/heads/`, wildcard parents, or ambiguous short names). Explicit
+toolbar Pull can still select a branch outside the source of a dangerous
+mapping. Normal remote-tracking, fully qualified custom tracking refs,
+and a configured local branch upstream remain supported. Legacy remote
+files are refused because normal config queries do not describe their
+mappings. A checked-out branch and commit are rechecked after this
+preflight. It is not a lock against other Git clients or a guard against
+overwriting ignored working files during Pull.
 None of the three Pull strategies stages a squash. The app overrides
 `--squash` in receiving-branch merge options for those invocations,
 including the fast-forward path of Pull with Rebase.
