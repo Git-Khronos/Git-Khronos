@@ -3173,8 +3173,8 @@ frozen branch pair through the existing reviewed native command, which
 leaves the sibling unchanged and retains the user's Git setting. Three
 browser regressions failed on the old renderer, then all 69 focused
 browser checks and the production build passed on the fix. The installed
-sibling-preservation check is required for future release candidates; the
-updated package's installed evidence is not yet available.
+sibling-preservation check is required for future release candidates and
+passed in the `d52b711` focused checkout suite described below.
 
 The same installed baseline also moved an unreviewed branch when Pull
 used the Rebase strategy. Pull now overrides `rebase.updateRefs` for its
@@ -3207,9 +3207,15 @@ It predates the later rebase, branch deletion, and worktree recovery fixes.
 The `d52b711` package then passed all seven focused checkout cases,
 including the installed sibling-branch rebase regression. Its SHA-256
 is `c4b2dba8066150b9353c4eb04a98939d64d8506bf472e012068bcc81a82c5124`.
-Neither receipt qualifies the combined `02ff4a7` package; that revision
-passed all source and package-tool tests, but its own installed matrix and
-full browser suite are separate, unfinished validations.
+The combined `02ff4a7` package subsequently passed its own strict installed
+matrix: 37 required gates and 52 passing reports across Ubuntu 22.04,
+24.04, and 26.04 and Debian 12 and 13. The Ubuntu 22.04 environment suite
+passed all 292 scenarios. The digest-matched installer, ABI and build
+receipts, matrix result, and successful APT simulation are in
+`target/local-review/qualified-0.1.6-02ff4a7/` (SHA-256
+`0fd729dfc405990077e8ec3a495d08c277843eaeee4e3e8f16355e78736bb7a9`).
+This qualifies those exact fixture-key package bytes, not later `dev`,
+the full Chromium suite, or a public signed release.
 
 The frozen browser run recorded a context-rebase test failure. An
 isolated replay on the same renderer forced a status read and reproduced
