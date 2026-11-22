@@ -422,9 +422,12 @@ fn application_update_uncertain_receipt_write_never_admits_or_replays_installati
 }
 
 #[test]
-fn application_update_admission_persists_before_rechecking_native_activity() {
+fn application_update_admission_retires_its_receipt_if_new_activity_prevents_launch() {
     let directory = tempfile::tempdir().unwrap();
     let mut runtime = ready_runtime(directory.path().join("preferences.json"));
+    runtime.model.set_automatic(true).unwrap();
+    runtime.model.preferences.deferred_version = Some("0.1.9".into());
+    let original = runtime.model.preferences.clone();
     let path = runtime.store.clone();
     assert!(
         admit_install(
@@ -448,9 +451,87 @@ fn application_update_admission_persists_before_rechecking_native_activity() {
         )
         .is_err()
     );
-    assert_eq!(runtime.model.phase, UpdatePhase::Uncertain);
-    assert!(runtime.model.preferences.attempt.is_some());
+    assert_eq!(runtime.model.phase, UpdatePhase::Ready);
+    assert_eq!(runtime.model.preferences, original);
+    assert_eq!(model::load_preferences(&path).unwrap(), original);
+    assert!(runtime.storage_error.is_none());
+    assert!(runtime.message.contains("No installer was started"));
     assert!(!runtime.model.can_automatically_install());
+
+    // Retrying when idle can create a new, independently prepared attempt.
+    admit_install(
+        &mut runtime,
+        "owned",
+        Origin::Manual,
+        true,
+        "after-activity".into(),
+        model::save_preferences,
+        || true,
+    )
+    .unwrap();
+    assert_eq!(runtime.model.phase, UpdatePhase::Installing);
+    assert_eq!(
+        model::load_preferences(&path).unwrap().attempt.unwrap().token,
+        "after-activity"
+    );
+}
+
+#[test]
+fn application_update_admission_automatic_retry_still_requires_current_consent() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut model = UpdateModel::new(
+        UpdatePreferences {
+            automatic: true,
+            ..UpdatePreferences::default()
+        },
+        true,
+    );
+    let origin = model.automatic_origin();
+    let check = model.begin_check(origin).unwrap();
+    assert!(model.checked(
+        check,
+        Some(UpdateOffer {
+            token: "owned".into(),
+            version: "0.2.0".into()
+        })
+    ));
+    let download = model.begin_download("owned", origin).unwrap();
+    assert!(model.downloaded_and_verified(download));
+    let mut runtime = runtime_with_model(directory.path().join("preferences.json"), model);
+
+    assert!(
+        admit_install(
+            &mut runtime,
+            "owned",
+            origin,
+            true,
+            "attempt".into(),
+            model::save_preferences,
+            || false,
+        )
+        .is_err()
+    );
+    assert!(runtime.model.can_automatically_install());
+    assert!(model::load_preferences(&runtime.store).unwrap().attempt.is_none());
+    runtime.model.set_automatic(false).unwrap();
+    assert!(
+        admit_install(
+            &mut runtime,
+            "owned",
+            origin,
+            true,
+            "revoked".into(),
+            |_, _| panic!("Retired consent must not reach receipt persistence"),
+            || true,
+        )
+        .is_err()
+    );
+    assert!(!runtime.model.can_automatically_install());
+}
+
+#[test]
+fn application_update_admission_busy_before_persistence_creates_no_receipt() {
+    let directory = tempfile::tempdir().unwrap();
     let mut runtime = ready_runtime(directory.path().join("other.json"));
     assert!(
         admit_install(
@@ -465,6 +546,83 @@ fn application_update_admission_persists_before_rechecking_native_activity() {
         .is_err()
     );
     assert!(runtime.model.preferences.attempt.is_none());
+}
+
+#[test]
+fn application_update_admission_uncertain_retirement_blocks_new_attempts() {
+    for simulate_post_rename in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let mut runtime = ready_runtime(directory.path().join("preferences.json"));
+        assert!(
+            admit_install(
+                &mut runtime,
+                "owned",
+                Origin::Manual,
+                true,
+                "attempt".into(),
+                |path, preferences| {
+                    if preferences.attempt.is_some() {
+                        return model::save_preferences(path, preferences);
+                    }
+                    if simulate_post_rename {
+                        model::save_preferences(path, preferences)?;
+                    }
+                    Err("Owned receipt retirement could not be confirmed".into())
+                },
+                || false,
+            )
+            .is_err()
+        );
+        assert_eq!(runtime.model.phase, UpdatePhase::Uncertain);
+        assert!(runtime.storage_error.is_some());
+        assert!(runtime.model.preferences.attempt.is_some());
+        assert_eq!(
+            model::load_preferences(&runtime.store).unwrap().attempt.is_none(),
+            simulate_post_rename
+        );
+        assert!(
+            admit_install(
+                &mut runtime,
+                "owned",
+                Origin::Manual,
+                true,
+                "replay".into(),
+                |_, _| panic!("Unconfirmed retirement must not allow replay"),
+                || true,
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn application_update_admission_never_retires_a_replaced_receipt() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("preferences.json");
+    let mut runtime = ready_runtime(path.clone());
+    let mut replacement = runtime.model.preferences.clone();
+    replacement.attempt = Some(model::InstallAttempt {
+        token: "different-receipt".into(),
+        version: "0.3.0".into(),
+    });
+    assert!(
+        admit_install(
+            &mut runtime,
+            "owned",
+            Origin::Manual,
+            true,
+            "attempt".into(),
+            model::save_preferences,
+            || {
+                model::save_preferences(&path, &replacement).unwrap();
+                false
+            },
+        )
+        .is_err()
+    );
+    assert_eq!(model::load_preferences(&path).unwrap(), replacement);
+    assert_eq!(runtime.model.phase, UpdatePhase::Uncertain);
+    assert!(runtime.storage_error.is_some());
 }
 
 #[test]

@@ -548,7 +548,7 @@ fn admit_install(
     origin: Origin,
     idle: bool,
     attempt_token: String,
-    persist: impl FnOnce(&std::path::Path, &UpdatePreferences) -> Result<(), String>,
+    mut persist: impl FnMut(&std::path::Path, &UpdatePreferences) -> Result<(), String>,
     recheck_idle: impl FnOnce() -> bool,
 ) -> Result<(), AppError> {
     if let Some(message) = &runtime.storage_error {
@@ -573,10 +573,23 @@ fn admit_install(
         .model
         .accept_persisted_install(receipt, recheck_idle())
     {
-        // No OS invocation occurred, but do not erase an unconfirmed receipt.
-        runtime.model.preferences = preferences;
-        runtime.model.phase = UpdatePhase::Uncertain;
-        runtime.message = "Installation did not start because native activity changed. The prepared receipt needs inspection.".into();
+        // We still own preparation and have not invoked the OS. Retire only
+        // our own persisted proposal. A crash before this durable retirement
+        // still leaves a receipt for the next process to inspect.
+        let retirement = model::load_preferences(&runtime.store).and_then(|observed| {
+            if observed != preferences {
+                return Err("The prepared installation receipt changed on disk before it could be retired.".into());
+            }
+            persist(&runtime.store, &runtime.model.preferences)
+        });
+        if let Err(message) = retirement {
+            runtime.model.preferences = preferences;
+            runtime.model.phase = UpdatePhase::Uncertain;
+            runtime.storage_error = Some(message);
+            runtime.message = "No installer was started, but retirement of the prepared receipt could not be confirmed. The updater will not retry automatically.".into();
+        } else {
+            runtime.message = "No installer was started because native activity changed. Retry when Git work, terminals and editors are idle.".into();
+        }
         return Err(error(runtime.message.clone()));
     }
     Ok(())
@@ -625,7 +638,7 @@ fn install_blocking(
     };
     let attempt_token = token()?;
     let idle = native_idle(app);
-    with_runtime(app, |runtime| {
+    let admission = with_runtime(app, |runtime| {
         admit_install(
             runtime,
             offer_id,
@@ -639,8 +652,9 @@ fn install_blocking(
             "Installing the verified update through the OS installer. Do not replay this action."
                 .into();
         Ok(())
-    })?;
+    });
     changed(app);
+    admission?;
     let outcome = installer::install(&update, &bytes, format, prepared);
     with_runtime(app, |runtime| {
         let mut next = runtime.model.preferences.clone();

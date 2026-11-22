@@ -1606,7 +1606,13 @@ consent epochs and accepted installation receipts. Manual actions do not require
 automatic consent. Opt-out retires future automatic intent but cannot discard an
 already admitted install's actual outcome. A durable prepared receipt precedes
 OS invocation; uncertain persistence or installer outcome blocks automatic replay
-across restart. Native installer outcomes and package/version observations, not a download or
+across restart. If a final native-activity check finds new work before any OS
+invocation, the same worker may durably retire its own still-matching prepared
+receipt. That leaves the verified package available for a fresh attempt when
+idle. If the stored proposal changed or durable retirement cannot be confirmed,
+the in-memory updater remains uncertain and blocks replay. A process that
+crashes before retirement still leaves a receipt for recovery.
+Native installer outcomes and package/version observations, not a download or
 renderer acknowledgment, govern installation confirmation. Worker failure after admission becomes
 inspectable uncertainty rather than an indefinitely busy UI; late worker failure
 cannot overwrite an already confirmed native outcome.
