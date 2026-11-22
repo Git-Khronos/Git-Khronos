@@ -4344,6 +4344,14 @@ Receipt: `target/local-review/updater/jammy-builder/activation-evidence-bookworm
 This confirms that the harness records the ownership and exits without
 changing the gate. It does not explain the earlier intermittent crash.
 
+The same `86900ea` bytes passed the strict local release matrix: 37
+required checks on Ubuntu 22.04, 24.04 and 26.04 and Debian 12 and 13.
+The verifier accepted the installed-publisher preflight and retained 53
+matching suite reports. This was a test-publisher package, not a
+production-signed release, and it predates the bisect and merge-preview
+compatibility fixes. Receipt:
+`target/local-review/updater/jammy-builder/shallow-depth-matrix-recheck.SvBkvVkr/verified-release.json`.
+
 ### Git minimum-version compatibility audit
 
 A source audit of `374b433` ran Git 2.39.5 with its matching helper
@@ -4357,8 +4365,8 @@ newer Git. All 17 focused bisect tests passed with the complete Git
 
 The initial minimum-version audit also found that one sparse-index
 attribute line-count case differs on Git 2.39.5 and that merge preview
-has an explicit Git 2.43 minimum. These remain distinct from bisect
-coverage; do not treat the full minimum-version Git-core suite as green.
+had an explicit Git 2.43 minimum. The initial full minimum-version suite
+therefore did not pass.
 Initial audit receipt:
 `target/local-review/bisect-release-git-minimum.vFqqgCUv/test.log`.
 
@@ -4375,3 +4383,22 @@ unchanged `86900ea` installer with Debian 12's Git 2.39.5. Its first named
 vote failed, and the retained WebView screenshot shows Git's
 `need a subcommand` error. This is negative-control evidence only.
 Receipt: `target/local-review/updater/jammy-builder/bisect-minimum-negative.VfKJVeHn/lane/results/`.
+
+On Ubuntu 22.04 with Git 2.56.1, the test-publisher installer from
+`374b433` (SHA-256
+`0c8b408e904fcf82f4339eb1ba47311ff30ec7b30a47d42c532eb0c22ac7e522`)
+passed 30 detached-checkout scenarios. The same package passed all 11
+history-depth scenarios on recheck. The first history-depth run stopped
+after two scenarios when the Fetch Options menu click did not open the
+dialog; the recheck did not change the package or scenario code. The
+combined focused verifier checks the same digest for both reports:
+`target/local-review/updater/jammy-builder/history-depth-recheck.LwbXt8tu/combined-focused.json`.
+This is not a full matrix for `374b433`.
+
+After `360ec10`, the full Git core library suite with the matching Git
+2.39.5 runtime passed 1,208 tests (37 ignored). The focused merge-preview
+suite passed all 13 tests on Git 2.39.5 and 2.56.1. The nested committed
+attribute test uses nonoverlapping file edits that conflict under the
+target's committed rule but would merge under the dirty checkout's rule.
+Source-test receipts: `target/local-review/merge-preview-old-git.wZcprnoD/`.
+The updated installed merge-preview check is separate from this result.
