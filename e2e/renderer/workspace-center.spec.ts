@@ -711,6 +711,46 @@ test('fetches selected repositories independently and reports each result', asyn
   expect(pulls.map((call: any) => call.args.repoId)).toEqual([firstRepositoryId, 'clean-repo']);
 });
 
+for (const replacement of ['original', 'matching newer failure']) {
+  test(`workspace Fetch resumes only the selected checkout's matching pause: ${replacement}`, async ({ page }) => {
+    await page.evaluate(async () => {
+      const fixture = (window as any).__center;
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+      (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
+        const repository = args?.repoId === fixture.second.id ? fixture.second : fixture.first;
+        if (command === 'sync_repository') throw { kind: 'fetchUpdatesLocalBranch', message: 'Fetch scope refused' };
+        if (command === 'fetch_repository') return new Promise(resolve => {
+          fixture.finishFetch = () => resolve(repository);
+        });
+        if (command === 'refresh_repository_status') return repository.status;
+        return null;
+      } };
+      await git.fetchInBackground(fixture.first.id);
+      await git.fetchInBackground(fixture.second.id);
+      fixture.pauseMessages = () => [fixture.first.id, fixture.second.id]
+        .map(id => git.backgroundFetchErrors()[id]?.message ?? null);
+      fixture.replacePause = () => git.backgroundFetchFailures.update((errors: any) => ({
+        ...errors, [fixture.second.id]: { ...errors[fixture.second.id] },
+      }));
+    });
+    const pauses = () => page.evaluate(() => (window as any).__center.pauseMessages());
+    expect(await pauses()).toEqual(['Fetch scope refused', 'Fetch scope refused']);
+    await expect(page.locator('.auto-fetch-status')).toHaveText('Fetch paused');
+    const dialog = await open(page);
+    await dialog.getByLabel('Select beta').check();
+    await dialog.getByRole('button', { name: 'Fetch selected (1)', exact: true }).click();
+    await page.waitForFunction(() => (window as any).__center.finishFetch);
+    await page.evaluate(replace => {
+      const fixture = (window as any).__center;
+      if (replace) fixture.replacePause();
+      fixture.finishFetch();
+    }, replacement !== 'original');
+    await expect(dialog.getByLabel('Repository action results')).toContainText('beta — success');
+    expect(await pauses()).toEqual(['Fetch scope refused', replacement === 'original' ? null : 'Fetch scope refused']);
+  });
+}
+
 test('workspace Pull explains an ambiguous upstream and continues to the next repository', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;

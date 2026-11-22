@@ -113,6 +113,15 @@ const REPORTED_IGNORE_FAILURES = new Set([
   'ignoreRuleAddedButUntrackingFailed', 'ignoreRuleRefreshFailed', 'ignoreRulePublicationUncertain',
   'ignoreRuleLockCleanupFailed', 'ignoreLockChanged', 'ignoreLockCleanupFailed',
 ]);
+const FETCH_SCOPE_FAILURES = new Set([
+  'fetchUpdatesLocalBranch', 'fetchScopeUnverified', 'legacyFetchRemoteUnverified',
+  'fetchAllPolicyUnavailable', 'unsupportedRemoteEncoding',
+]);
+
+interface BackgroundFetchFailure {
+  readonly message: string;
+  readonly requiresFetchAll: boolean;
+}
 
 export type ActivityReporter = (message: string) => void;
 
@@ -331,7 +340,8 @@ export class GitKhronosService implements OnDestroy {
   readonly backgroundFetchBusy = this.operations.backgroundBusy;
   readonly backgroundFetchRepositoryId = this.operations.backgroundRepositoryId;
   readonly backgroundFetchLastAt = signal<Record<string, number>>({});
-  readonly backgroundFetchErrors = signal<Record<string, string>>({});
+  private readonly backgroundFetchFailures = signal<Readonly<Record<string, BackgroundFetchFailure>>>({});
+  readonly backgroundFetchErrors = this.backgroundFetchFailures.asReadonly();
   readonly historyLoading = signal(false);
   readonly checkpointVisibilityUpdating = signal(false);
   private historyRequest: { repoId: string } | null = null;
@@ -1055,7 +1065,7 @@ export class GitKhronosService implements OnDestroy {
   async fetchInBackground(repositoryId: string | null = this.activeRepositoryId()): Promise<boolean> {
     const repository = this.repositories().find((candidate) => candidate.id === repositoryId);
     if (!repository || this.incomingRepositoryLinksPending() || this.repositoryLinkPolicies()[repository.id]?.autoFetchPaused || this.browserPreview() || this.busy() || this.backgroundFetchBusy()) return false;
-    // An explicit fetch retries a failure; timers must not repeatedly retry authentication.
+    // A covering manual Fetch can retry a failure; timers must not keep retrying it.
     if (this.backgroundFetchErrors()[repository.id]) return false;
     const request = this.operations.beginBackground(repository.id);
     if (!request) return false;
@@ -1086,7 +1096,13 @@ export class GitKhronosService implements OnDestroy {
       return true;
     } catch (error: unknown) {
       if (ownsOutcome()) {
-        this.backgroundFetchErrors.update((errors) => ({ ...errors, [repository.id]: this.formatError(error) }));
+        this.backgroundFetchFailures.update(errors => ({
+          ...errors,
+          [repository.id]: {
+            message: this.formatError(error),
+            requiresFetchAll: FETCH_SCOPE_FAILURES.has(this.errorKind(error) ?? ''),
+          },
+        }));
       }
       return false;
     } finally {
@@ -2226,36 +2242,31 @@ export class GitKhronosService implements OnDestroy {
       fetch_repository: ['Fetching…', 'Fetch complete'],
       push_repository: ['Pushing…', 'Push complete'],
     } as const;
-    const resumed = operation === 'fetch_repository' ? this.captureFetchRecovery(target.remote ?? null) : null;
-    const result = await this.mutate(operation, labels[operation][0], labels[operation][1], target);
-    if (result === 'success') resumed?.();
+    await this.mutate(operation, labels[operation][0], labels[operation][1], target);
   }
 
   async fetchBranches(options: FetchOptions, repositoryId: string): Promise<'success' | 'error' | 'cancelled' | undefined> {
     if (!this.requireRecoveryRepository(repositoryId)) return;
-    const resumed = this.captureFetchRecovery(options.remote);
-    const result = await this.mutate('fetch_branches', `Fetching from ${options.remote ?? 'all remotes'}…`,
+    return this.mutate('fetch_branches', `Fetching from ${options.remote ?? 'all remotes'}…`,
       `Fetch complete${options.prune ? '; stale remote-tracking branches pruned' : ''}; local tags unchanged`,
       { options });
-    if (result === 'success') resumed?.();
-    return result;
   }
 
-  private captureFetchRecovery(remote: string | null): (() => void) | null {
-    const repository = this.repository();
-    if (!repository) return null;
+  private captureFetchRecovery(repository: RepositorySnapshot, remote: string | null, branchOnly: boolean): (() => void) | null {
     const { id, path } = repository;
     const failure = this.backgroundFetchErrors()[id];
     if (!failure) return null;
+    // Scoped Fetch can avoid precisely the configuration automatic Fetch
+    // refused. Only ordinary Fetch All checks the same entire configured scope.
+    if (failure.requiresFetchAll && (branchOnly || remote !== null)) return null;
     const coversRepository = (snapshot: RepositorySnapshot) =>
       remote === null || (snapshot.remotes.length === 1 && snapshot.remotes[0].name === remote);
     if (!coversRepository(repository)) return null;
     return () => {
-      // A single remote in a multi-remote checkout does not prove the
-      // background auth refusal was resolved. Keep any later failure too.
       const current = this.repositories().find(candidate => candidate.id === id && candidate.path === path);
       if (!current || !coversRepository(current)) return;
-      this.backgroundFetchErrors.update(errors => {
+      this.backgroundFetchFailures.update(errors => {
+        // Identical text can describe different failures; preserve the newer record.
         if (errors[id] !== failure) return errors;
         const updated = { ...errors };
         delete updated[id];
@@ -3446,8 +3457,14 @@ export class GitKhronosService implements OnDestroy {
     ...options: MutationOptions<K>
   ): Promise<MutationResult> {
     const [extra = {}, preserveConflictOnFailure = false] = options;
+    const fetchRecovery = command === 'fetch_repository'
+      ? this.captureFetchRecovery(repo, 'remote' in extra && typeof extra.remote === 'string' ? extra.remote : null, false)
+      : command === 'fetch_branches' && 'options' in extra
+        ? this.captureFetchRecovery(repo, (extra.options as FetchOptions).remote, true)
+        : null;
     const finishHistoryBarrier = this.beginHistoryBarrier();
     const workspaceId = this.activeWorkspaceId();
+    const visit = this.workspaceVisit;
     const ownsRepository = () => this.activeWorkspaceId() === workspaceId
       && this.repositories().some(repository => repository.id === repo.id && repository.path === repo.path);
     let refreshError: string | null = null;
@@ -3455,6 +3472,7 @@ export class GitKhronosService implements OnDestroy {
     let failureKind: string | null = null;
     let ignoreFailure: string | null = null;
     let responseHeadOid: string | null = null;
+    let fetchRecoveryGeneration: number | null = null;
     const expectedBranchRefusal = () => command === 'delete_branch' && failureKind === 'branchNotMerged'
       && 'force' in extra && extra.force === false;
     try {
@@ -3507,6 +3525,7 @@ export class GitKhronosService implements OnDestroy {
           this.deferMetadataRefresh(repo.id);
         } else if (generation === this.statusGeneration(repo.id)) {
           this.storeMutationSnapshot(snapshot);
+          if (fetchRecovery) fetchRecoveryGeneration = this.statusGeneration(repo.id);
         } else {
           // Reply order need not match Git's mutation order. Read current state
           // instead of replacing a newer result with this action's snapshot.
@@ -3544,6 +3563,9 @@ export class GitKhronosService implements OnDestroy {
         const detail = `${failure} Repository refresh also failed: ${recoveryRefreshError}`;
         if (this.error() === failure) this.error.set(detail);
         failure = detail;
+      }
+      if (result === 'success' && this.workspaceVisit === visit && fetchRecoveryGeneration === this.statusGeneration(repo.id)) {
+        fetchRecovery?.();
       }
       // Fast snapshots skip untracked discovery; complete the status right away.
       if (ownsRepository()) {

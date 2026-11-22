@@ -1317,10 +1317,12 @@ obsolete cleanup cannot release a newer owner. Repository-keyed failure/timestam
 history, automatic authentication-retry suppression, history barriers, inbox
 pausing, and closed-repository reconciliation retain their existing owners.
 An older background result cannot set a timestamp or pause a reopened tab.
-A successful manual Fetch (including Fetch options) clears a retained pause
-only when it covers all remotes or the checkout's one configured remote.
-Success against one of several remotes does not prove that an earlier refusal
-was resolved.
+A confirmed manual Fetch clears only the failure record it began with, for
+the checkout that it actually fetched. This applies to Workspace Fetch as
+well as the toolbar. Auth and transport failures can be retried by covering
+all remotes or the checkout's one configured remote. A configured-scope
+refusal requires successful ordinary Fetch All; branch-only or named Fetch
+may succeed without checking the scope used by automatic Fetch.
 Foreground branch-mutation admission remains a separate lock. Recovery,
 post-write inspection, receipts, and warning delivery are not collapsed into
 the tracker.

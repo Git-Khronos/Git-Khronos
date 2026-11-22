@@ -25,13 +25,6 @@ export async function runWorkspaceRemote(
       strategy: operation.strategy,
       checkout: { headOid: repository.headOid, branch: repository.status.branch },
     });
-  if (result.status === 'success' && operation.kind === 'fetch') {
-    git.backgroundFetchErrors.update(errors => {
-      const updated = { ...errors };
-      delete updated[repository.id];
-      return updated;
-    });
-  }
   const error = result.refreshError
     ? [result.error, `${result.status === 'success' ? 'Operation completed, but repository reconciliation failed' : 'Repository reconciliation also failed'}: ${result.refreshError}`].filter(Boolean).join(' ')
     : result.error;

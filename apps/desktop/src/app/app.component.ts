@@ -6363,7 +6363,8 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.git.incomingRepositoryLinksPending()) return 'Incoming links pending';
     if (this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused) return 'Auto-fetch paused';
     if (this.git.backgroundFetchRepositoryId() === repositoryId) return 'Fetching…';
-    if (this.git.backgroundFetchErrors()[repositoryId]) return 'Fetch failed';
+    const failure = this.git.backgroundFetchErrors()[repositoryId];
+    if (failure) return failure.requiresFetchAll ? 'Fetch paused' : 'Fetch failed';
     const timestamp = this.git.backgroundFetchLastAt()[repositoryId];
     if (timestamp) {
       return `Fetched ${new Intl.DateTimeFormat(undefined, {
@@ -6379,7 +6380,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     if (repositoryId && this.git.repositoryLinkPolicies()[repositoryId]?.autoFetchPaused) return 'Automatic fetch is paused for this link session. Click to resume your configured schedule.';
     const error = repositoryId ? this.git.backgroundFetchErrors()[repositoryId] : null;
-    if (error) return `Automatic fetch failed: ${error}. Click to retry.`;
+    if (error) return `${error.requiresFetchAll ? 'Automatic fetch is paused' : 'Automatic fetch failed'}: ${error.message} Click to retry Fetch All.`;
     const timestamp = repositoryId ? this.git.backgroundFetchLastAt()[repositoryId] : null;
     if (timestamp) {
       return `Remote references last fetched at ${new Date(timestamp).toLocaleTimeString()}. Click to fetch now.`;
@@ -6391,7 +6392,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId) return 'Download remote references';
     if (this.git.backgroundFetchRepositoryId() === repositoryId) return 'Updating remote references';
-    if (this.git.backgroundFetchErrors()[repositoryId]) return 'Last fetch failed · click to retry';
+    const failure = this.git.backgroundFetchErrors()[repositoryId];
+    if (failure) return failure.requiresFetchAll ? 'Automatic fetch paused · retry Fetch All' : 'Last fetch failed · click to retry';
     const timestamp = this.git.backgroundFetchLastAt()[repositoryId];
     if (!timestamp) return 'Remote references not fetched this session';
     return `Last fetched at ${new Intl.DateTimeFormat(undefined, {

@@ -86,7 +86,10 @@ for (const scope of ['all remotes', 'one of two', 'only configured remote']) {
       const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
       const source = git.repository();
       if (onlyOne) git.repositories.set([{ ...source, remotes: source.remotes.filter((remote: any) => remote.name === 'origin') }]);
-      git.backgroundFetchErrors.set({ [source.id]: 'Owned previous authentication failure', other: 'Other tab failure' });
+      git.backgroundFetchFailures.set({
+        [source.id]: { message: 'Owned previous authentication failure', requiresFetchAll: false },
+        other: { message: 'Other tab failure', requiresFetchAll: false },
+      });
     }, scope === 'only configured remote');
     const background = page.locator('.auto-fetch-status');
     await expect(background).toHaveText('Fetch failed');
@@ -98,7 +101,7 @@ for (const scope of ['all remotes', 'one of two', 'only configured remote']) {
     if (scope === 'one of two') await expect(background).toHaveText('Fetch failed');
     else await expect(background).not.toHaveText('Fetch failed');
     expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root'))
-      .git.backgroundFetchErrors().other)).toBe('Other tab failure');
+      .git.backgroundFetchErrors().other?.message)).toBe('Other tab failure');
   });
 }
 
