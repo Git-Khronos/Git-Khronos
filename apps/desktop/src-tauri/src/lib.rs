@@ -261,6 +261,7 @@ struct SystemInfo {
     minimum_git_version: &'static str,
     windows_subsystem_for_linux: bool,
     windows_interop_available: bool,
+    repository_file_creation_available: bool,
 }
 
 #[derive(Serialize, specta::Type)]
@@ -290,6 +291,7 @@ fn system_info() -> SystemInfo {
         minimum_git_version: MINIMUM_GIT_VERSION,
         windows_subsystem_for_linux: display_environment::running_under_wsl(),
         windows_interop_available: windows_launcher::interop_available(),
+        repository_file_creation_available: cfg!(windows),
     }
 }
 

@@ -67,7 +67,10 @@ Repository files now has a flat, native-filtered view of tracked, untracked and
 ignored files with bounded pages. Empty-file creation is currently limited to
 root-level paths on Windows; it is refused on other platforms and in
 subdirectories because the selected worktree and nested-repository boundaries
-cannot be protected against concurrent replacement. Supported files can be
+cannot be protected against concurrent replacement. Repository Files uses the
+desktop's reported creation capability; unsupported builds keep browsing and
+refresh available and direct users to their editor or file manager. On Windows
+the form accepts a root filename, not a folder path. Supported files can be
 opened. Tracked-file deletion is disabled on
 non-Windows platforms: a confirmed Linux race lets Git's pathname-based `git
 rm` remove a file outside the worktree after concurrent parent replacement.

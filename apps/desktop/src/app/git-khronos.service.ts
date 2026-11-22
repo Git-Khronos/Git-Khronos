@@ -460,6 +460,7 @@ export class GitKhronosService implements OnDestroy {
         minimumGitVersion: '2.39.0',
         windowsSubsystemForLinux: false,
         windowsInteropAvailable: false,
+        repositoryFileCreationAvailable: false,
       });
       const activeWorkspace = this.activeWorkspace();
       const shouldShowPreview = activeWorkspace?.id === DEFAULT_WORKSPACE_ID

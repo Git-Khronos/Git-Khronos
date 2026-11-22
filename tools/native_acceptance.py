@@ -955,6 +955,10 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
     driver.click_scrolled_text(".workspace-menu-actions [role=menuitem]", "Repository files", wait_for_ready=True)
     driver.wait("""return [...document.querySelectorAll('gc-workspace-center .file-entry')]
       .some(row => row.querySelector('code')?.textContent === 'native-recovery-file.bin')""")
+    assert driver.invoke("system_info")["repositoryFileCreationAvailable"] is False
+    assert driver.script("""const workspace = document.querySelector('gc-workspace-center');
+      return !workspace.querySelector('.file-tools form')
+        && workspace.textContent.includes('Create files in your file manager or editor, then refresh this list.');""")
     driver.click_text("gc-workspace-center .file-entry button", "Delete with recovery")
     driver.wait("return !!document.querySelector('gc-workspace-center [role=alertdialog]')")
     assert "Recovery History" in driver.script(

@@ -7,11 +7,11 @@ async function open(page: Page, section: boolean | 'files' = false) {
   return page.getByRole('dialog', { name: 'Workspace center', exact: true });
 }
 
-async function installFileBrowser(page: Page) {
-  await page.evaluate(() => {
+async function installFileBrowser(page: Page, repositoryFileCreationAvailable = true) {
+  await page.evaluate((canCreate) => {
     const fixture = (window as any).__center;
     const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
-    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test', repositoryFileCreationAvailable: canCreate }));
     fixture.calls = [];
     fixture.files = [
       { path: 'a.txt', tracked: true, ignored: false, symbolicLink: false, deletable: true },
@@ -78,7 +78,7 @@ async function installFileBrowser(page: Page) {
       if (command === 'refresh_repository_status') return Promise.resolve(fixture.first.status);
       return Promise.reject(Error(`Unexpected command: ${command}`));
     } };
-  });
+  }, repositoryFileCreationAvailable);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -1234,6 +1234,8 @@ test('does not accept mixed checkout snapshots as a successful overview refresh'
 test('creates files and deletes files with explicit Git and recovery behavior', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    git.systemInfo.update((info: any) => ({ ...info, repositoryFileCreationAvailable: true }));
     fixture.files = {
       files: [
         { path: 'src/tracked.ts', tracked: true, ignored: false, symbolicLink: false, deletable: true },
@@ -1268,9 +1270,9 @@ test('creates files and deletes files with explicit Git and recovery behavior', 
   });
   const dialog = await open(page, 'files');
   await expect(dialog.getByRole('article')).toHaveCount(2);
-  await dialog.getByLabel('New repository-relative file path').fill('src/new.ts');
+  await dialog.getByLabel('New repository-relative file path').fill('new.ts');
   await dialog.getByRole('button', { name: 'Create file', exact: true }).click();
-  await expect(dialog).toContainText('Created src/new.ts');
+  await expect(dialog).toContainText('Created new.ts');
   await expect(dialog.getByRole('article')).toHaveCount(3);
 
   await dialog.getByRole('article').filter({ hasText: 'notes.txt' })
@@ -1288,7 +1290,7 @@ test('creates files and deletes files with explicit Git and recovery behavior', 
   await expect(dialog).toContainText('Staged deletion of src/tracked.ts');
   await expect(dialog.getByLabel('Filter files')).toBeFocused();
   const calls = await page.evaluate(() => (window as any).__center.calls);
-  expect(calls.some((call: any) => call.command === 'create_repository_file' && call.args.path === 'src/new.ts')).toBe(true);
+  expect(calls.some((call: any) => call.command === 'create_repository_file' && call.args.path === 'new.ts')).toBe(true);
   expect(calls.some((call: any) => call.command === 'delete_untracked_repository_file' && call.args.path === 'notes.txt')).toBe(true);
   expect(calls.some((call: any) => call.command === 'delete_repository_file' && call.args.path === 'src/tracked.ts')).toBe(true);
 });
@@ -1401,15 +1403,62 @@ test('does not present an incomplete or exhausted page as an empty repository', 
   await expect(dialog.getByText('No Git-visible files in this repository.')).toHaveCount(0);
 });
 
-test('preserves spaces in a new repository file path', async ({ page }) => {
+test('offers browsing but not creation when the native build cannot create files', async ({ page }) => {
+  await installFileBrowser(page, false);
+  const dialog = await open(page, 'files');
+  await expect(dialog.getByText('a.txt', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Create file', exact: true })).toHaveCount(0);
+  await expect(dialog).toContainText('Create files in your file manager or editor, then refresh this list.');
+  expect(await page.evaluate(async () => {
+    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    component.newFilePath.set('suppressed.txt');
+    await component.createFile();
+    return (window as any).__center.calls.some((call: any) => call.command === 'create_repository_file');
+  })).toBe(false);
+});
+
+test('refuses subdirectory creation and preserves spaces in a valid root file name', async ({ page }) => {
   await installFileBrowser(page);
   const dialog = await open(page, 'files');
-  const path = ' folder/new file .txt ';
-  await dialog.getByLabel('New repository-relative file path').fill(path);
-  await dialog.getByRole('button', { name: 'Create file', exact: true }).click();
+  const input = dialog.getByLabel('New repository-relative file path');
+  const create = dialog.getByRole('button', { name: 'Create file', exact: true });
+  for (const path of ['src/new.txt', 'src\\new.txt']) {
+    await input.fill(path);
+    await expect(create).toBeDisabled();
+    await expect(dialog).toContainText('Enter a file name without folders.');
+  }
+  expect(await page.evaluate(async () => {
+    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    await component.createFile();
+    return (window as any).__center.calls.some((call: any) => call.command === 'create_repository_file');
+  })).toBe(false);
+  const path = ' new file.txt';
+  await input.fill(path);
+  await create.click();
   await expect.poll(() => page.evaluate(() => (window as any).__center.calls
     .find((call: any) => call.command === 'create_repository_file')?.args.path)).toBe(path);
 });
+
+for (const returnToFirst of [false, true]) {
+  test(`does not submit a file creation draft after ${returnToFirst ? 'returning to the original checkout' : 'switching checkouts'}`, async ({ page }) => {
+    await installFileBrowser(page);
+    const dialog = await open(page, 'files');
+    await expect(dialog.getByText('a.txt', { exact: true })).toBeVisible();
+    const input = dialog.getByLabel('New repository-relative file path');
+    await input.fill('belongs-to-alpha.txt');
+    expect(await page.evaluate(async (returnToFirst) => {
+      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+      const first = app.git.activeRepositoryId();
+      app.git.activateRepository('clean-repo');
+      if (returnToFirst) app.git.activateRepository(first);
+      await component.createFile();
+      return (window as any).__center.calls.filter((call: any) => call.command === 'create_repository_file');
+    }, returnToFirst)).toEqual([]);
+    await expect(input).toHaveValue('');
+    await expect(dialog.getByRole('button', { name: 'Create file', exact: true })).toBeDisabled();
+  });
+}
 
 test('explains why tracked files can be unavailable for deletion', async ({ page }) => {
   await installFileBrowser(page);

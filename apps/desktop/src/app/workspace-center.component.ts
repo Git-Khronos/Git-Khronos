@@ -95,13 +95,19 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
         <p>Browse repository files, including ignored files. Git metadata, nested repositories and symbolic-link targets are excluded. Deleting ignored files is disabled because they are not covered by Git recovery. Tracked deletion requires a clean committed file without index flags that hide changes.</p>
         @if (fileError()) { <p role="alert">{{ fileError() }}</p> }
         @if (fileNotice()) { <p role="status">{{ fileNotice() }}</p> }
-        <p>Creating files is currently limited to root-level paths on Windows; other platforms and subdirectories are refused for safety.</p>
+        @if (git.systemInfo()?.repositoryFileCreationAvailable === false && hasFileCheckout()) {
+          <p>Create files in your file manager or editor, then refresh this list.</p>
+        }
         <div class="tools file-tools">
           <label>Filter files<input type="search" [value]="fileQuery()" (input)="changeFileQuery($any($event.target).value)" /></label>
-          <form (submit)="$event.preventDefault(); createFile()">
-            <label>Create an empty file<input aria-label="New repository-relative file path" maxlength="16384" [value]="newFilePath()" (input)="newFilePath.set($any($event.target).value)" placeholder="path/to/file.txt" /></label>
-            <button type="submit" [disabled]="git.busy() || fileMutating() || filesLoading() || !newFilePath()">Create file</button>
-          </form>
+          @if (canCreateFile()) {
+            <form (submit)="$event.preventDefault(); createFile()">
+              <label>Create an empty file<input aria-label="New repository-relative file path" aria-describedby="root-file-help" [attr.aria-invalid]="fileNameIncludesFolder() ? 'true' : null" maxlength="16384" [value]="newFilePath()" (input)="newFilePath.set($any($event.target).value)" placeholder="notes.txt" />
+                <small id="root-file-help">{{ fileNameIncludesFolder() ? 'Enter a file name without folders.' : 'Files are created in the repository’s top-level folder.' }}</small>
+              </label>
+              <button type="submit" [disabled]="git.busy() || fileMutating() || filesLoading() || !newFilePath() || fileNameIncludesFolder()">Create file</button>
+            </form>
+          }
           <button type="button" [disabled]="git.busy() || fileMutating() || filesLoading()" (click)="loadFiles()">{{ filesLoading() ? 'Loading…' : 'Refresh files' }}</button>
         </div>
         @if (filesLoading()) { <p role="status">Reading repository files…</p> }
@@ -256,6 +262,15 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly fileNotice = signal('');
   readonly fileQuery = signal('');
   readonly newFilePath = signal('');
+  readonly hasFileCheckout = computed(() => {
+    const repository = this.git.repository();
+    return !!repository && !repository.bare;
+  });
+  readonly canCreateFile = computed(() => this.hasFileCheckout() && this.git.systemInfo()?.repositoryFileCreationAvailable === true);
+  readonly fileNameIncludesFolder = computed(() => {
+    const name = this.newFilePath();
+    return name.includes('/') || name.includes('\\');
+  });
   readonly filePage = signal(0);
   readonly pendingFileDelete = signal<{ file: RepositoryFiles['files'][number]; repositoryId: string; path: string } | null>(null);
   readonly pendingTabsClose = signal<WorkspaceTabsCloseRequest | null>(null);
@@ -273,7 +288,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
   private fileCursors: (string | null)[] = [null];
   private fileQueryTimer: ReturnType<typeof setTimeout> | null = null;
   private filePanelActive = false;
-  private fileBinding: { repositoryId: string; path: string } | null = null;
+  private fileBinding: string | null = null;
   private locationRequest: object | null = null;
   private destroyed = false;
   readonly draftError = computed(() => {
@@ -293,13 +308,13 @@ export class WorkspaceCenterComponent implements OnDestroy {
     effect(() => this.panel.set(this.request().panel));
     effect(() => {
       const panel = this.panel();
-      const repositoryId = this.git.activeRepositoryId();
-      const path = this.git.repository()?.path ?? null;
+      const scope = this.git.activeRepositoryReadScope();
       untracked(() => {
         if (panel !== 'files') {
           this.filePanelActive = false;
+          this.newFilePath.set('');
           this.invalidateFileRequest();
-        } else if (!this.filePanelActive || this.fileBinding?.repositoryId !== repositoryId || this.fileBinding?.path !== path) {
+        } else if (!this.filePanelActive || this.fileBinding !== scope) {
           this.filePanelActive = true;
           this.fileCursors = [null];
           this.filePage.set(0);
@@ -369,18 +384,19 @@ export class WorkspaceCenterComponent implements OnDestroy {
   }
   async loadFiles(): Promise<boolean> {
     const request = ++this.fileRequest;
+    const scope = this.git.activeRepositoryReadScope();
     const repository = this.git.repository();
     const repositoryId = this.git.activeRepositoryId();
     const workspaceId = this.request().workspaceId;
+    if (this.fileBinding !== scope) {
+      this.fileBinding = scope;
+      this.newFilePath.set('');
+    }
     if (!repository || !repositoryId || repository.bare) {
       this.files.set(null);
       this.filesLoading.set(false);
       this.fileError.set('Open a non-bare repository to browse its files.');
       return false;
-    }
-    if (!this.fileBinding || this.fileBinding.repositoryId !== repositoryId || this.fileBinding.path !== repository.path) {
-      this.fileBinding = { repositoryId, path: repository.path };
-      this.files.set(null);
     }
     this.filesLoading.set(true);
     this.files.set(null);
@@ -391,12 +407,12 @@ export class WorkspaceCenterComponent implements OnDestroy {
         query: this.fileQuery().trim(),
         cursor: this.fileCursors[this.filePage()] ?? null,
       });
-      if (!this.destroyed && request === this.fileRequest && this.panel() === 'files' && workspaceId === this.git.activeWorkspaceId() && this.git.activeRepositoryId() === repositoryId && this.git.repository()?.path === repository.path) {
+      if (!this.destroyed && request === this.fileRequest && this.panel() === 'files' && workspaceId === this.git.activeWorkspaceId() && scope === this.git.activeRepositoryReadScope()) {
         this.files.set(result);
         return true;
       }
     } catch (error: unknown) {
-      if (!this.destroyed && request === this.fileRequest && workspaceId === this.git.activeWorkspaceId() && this.git.activeRepositoryId() === repositoryId && this.git.repository()?.path === repository.path) this.fileError.set(this.git.formatError(error));
+      if (!this.destroyed && request === this.fileRequest && workspaceId === this.git.activeWorkspaceId() && scope === this.git.activeRepositoryReadScope()) this.fileError.set(this.git.formatError(error));
     } finally {
       if (!this.destroyed && request === this.fileRequest) this.filesLoading.set(false);
     }
@@ -405,11 +421,14 @@ export class WorkspaceCenterComponent implements OnDestroy {
   async createFile(): Promise<void> {
     const repository = this.git.repository();
     const repositoryId = this.git.activeRepositoryId();
+    const scope = this.git.activeRepositoryReadScope();
     const path = this.newFilePath();
-    if (!repository || !repositoryId || !path || this.git.busy() || this.fileMutating() || this.filesLoading()) return;
+    if (!this.canCreateFile() || this.panel() !== 'files' || !repository || !repositoryId
+      || this.fileBinding !== scope
+      || !path || this.fileNameIncludesFolder() || this.git.busy() || this.fileMutating() || this.filesLoading()) return;
     const workspaceId = this.request().workspaceId;
-    const current = () => !this.destroyed && workspaceId === this.git.activeWorkspaceId()
-      && this.git.activeRepositoryId() === repositoryId && this.git.repository()?.path === repository.path;
+    const current = () => !this.destroyed && this.panel() === 'files' && workspaceId === this.git.activeWorkspaceId()
+      && scope === this.git.activeRepositoryReadScope();
     this.fileMutating.set(true);
     this.fileError.set('');
     this.fileNotice.set('');
