@@ -1199,7 +1199,7 @@ def main():
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
-        "commit-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact",
+        "commit-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch",
     )
     forced_inherited = ("environment",)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1455,6 +1455,9 @@ def main():
             elif args.suite == "branch-picker-exact":
                 from native_branch_picker_scenarios import branch_picker_exact
                 repository, repo_id = branch_picker_exact(driver, fixtures, report)
+            elif args.suite == "previous-branch":
+                from native_previous_branch_scenarios import previous_branch
+                repository, repo_id = previous_branch(driver, fixtures, report)
             elif args.suite == "tracked-file-search":
                 from native_tracked_file_search_scenarios import deleted_file_history_from_exact_path, tracked_file_search_during_merge
                 tracked_file_search_during_merge(driver, fixtures, report)

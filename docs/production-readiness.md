@@ -4217,3 +4217,29 @@ before the final focus guard, 11 targeted Chromium tests on the final
 renderer, and 162 native-harness unit tests. The production build passed
 at 1,305,070 raw initial bytes (+2,571 versus `6fea510`); the 900 kB
 warning remains. Receipts: `target/local-review/branch-picker-exact.kJQhONlZ/`.
+
+The Ubuntu 24.04 installer from `5dcf95c` passed five focused installed
+branch-picker scenarios on Git 2.43. They confirm that ambiguous Enter
+leaves the checkout alone, an exact local branch is not lost behind the
+80-row cap, and a qualified remote branch uses the displayed peer's tip
+and tracking ref.
+SHA-256: `b51c0e49563b698f3d82dcb92b87d0f64bf4ea45b424a2a1067ab46e97af4730`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/branch-picker-exact-release.I7tQAGIv/reports.json`.
+
+### Find the previous local branch
+
+Branch Options and the command palette can look up the previous local
+branch via Git's worktree-local checkout history. The palette shows the
+exact existing branch before the user chooses to switch. A deleted
+branch, a tag of the same name without a local branch, or a previously
+detached checkout does not produce a substitute action. Occupied branches
+still use the existing checkout navigation review.
+
+Three real-Git tests passed on Git 2.53 and 2.39.5, covering linked
+worktree isolation, tag-name collisions, deleted branches, detached
+history and unchanged working data. The production build, generated
+contract check, strict Git core Clippy and 162 native-harness unit tests
+passed. Chromium passed 122 regressions before the final focus handoff
+and 17 focused palette and lookup tests after it. The initial bundle
+warning remains. Receipts: `target/local-review/previous-branch.T9p6grFK/`.

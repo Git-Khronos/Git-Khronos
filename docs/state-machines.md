@@ -928,6 +928,15 @@ the toolbar picker: results and focus from a retired visit cannot act on the
 next repository. The existing native checkout and occupied-worktree reviews
 remain authoritative.
 
+**Find previous local branch…** opens a scoped palette visit and reads Git's
+previous-checkout entry for the selected worktree. The lookup presents only
+an existing local heads ref; detached checkout IDs, missing heads and
+tag-only matches are not substitutes. There is no checkout while the
+lookup is pending or lacks a result. Selecting the displayed branch uses
+ordinary checkout or the existing occupied-worktree review. Editing the
+search retires the lookup; leaving the palette or changing its checkout
+cannot reuse a late result or dispatch an outdated choice.
+
 ### Workspace clone queue
 
 Bulk clone takes up to 20 sources and one chosen parent folder. Reviewing the

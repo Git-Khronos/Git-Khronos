@@ -678,6 +678,12 @@ async fn search_tracked_files(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+async fn inspect_previous_local_branch(repo_id: String, app: AppHandle) -> Result<Option<String>, AppError> {
+    with_repository_background_read(repo_id, app, git_khronos_git_core::previous_local_branch).await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn load_reflog(repo_id: String, app: AppHandle) -> Result<ReflogPage, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -4378,6 +4384,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             repository_file_commands::delete_untracked_repository_file,
             repository_file_commands::read_repository_file_text,
             load_reflog,
+            inspect_previous_local_branch,
             load_more_changes,
             open_repository_in_file_manager,
             external_terminal::open_external_terminal,

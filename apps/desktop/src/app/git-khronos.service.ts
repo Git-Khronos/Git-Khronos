@@ -1771,6 +1771,10 @@ export class GitKhronosService implements OnDestroy {
     });
   }
 
+  inspectPreviousLocalBranch(repoId: string): Promise<string | null> {
+    return ipc.inspect_previous_local_branch({ repoId });
+  }
+
   async checkoutRemote(name: string): Promise<MutationResult | null> {
     return this.runBranchMutation(async () => {
       const repository = this.repository();

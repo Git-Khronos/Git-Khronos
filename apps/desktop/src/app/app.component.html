@@ -1937,7 +1937,8 @@
     @defer (on immediate) {
       <gc-command-palette [source]="commandPaletteActionSources" [scope]="commandPaletteScope()"
         [visit]="commandPaletteVisit()" [query]="commandQuery()" [recent]="recentCommandIds()" [shortcutKey]="primaryShortcutKey"
-        (closed)="closeCommandPalette()" (queryChanged)="commandQuery.set($event)"
+        [notice]="commandPaletteNotice()"
+        (closed)="closeCommandPalette()" (queryChanged)="updateCommandQuery($event)"
         (executed)="runCommand($event)" />
     } @loading {
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading commands" (keydown)="handleCommandPaletteLoaderKey($event)">

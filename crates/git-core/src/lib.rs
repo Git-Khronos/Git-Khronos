@@ -201,6 +201,8 @@ mod merge_rebase;
 pub use merge_rebase::{
     MergeRebasePlan, MergeRebaseRequest, execute_merge_rebase, prepare_merge_rebase,
 };
+mod previous_branch;
+pub use previous_branch::previous_local_branch;
 mod patch_exchange;
 pub use patch_exchange::{
     PatchRequest, PatchReview, PatchTarget, export_patch, export_revision_patch, import_patch,

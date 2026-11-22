@@ -2330,6 +2330,13 @@ the loaded repository catalog. Grouping, matching and keyboard behavior
 are application choices; the picker does not implement Git's general
 revision parser or copy its implementation.
 
+The previous-local-branch lookup uses
+[Git check-ref-format](https://git-scm.com/docs/git-check-ref-format) for
+`@{-1}` expansion and verifies the exact local heads ref with
+`show-ref --verify`. A detached checkout may resolve to an object ID;
+the app does not use one as a branch. The review and checkout handoff use
+project-owned logic. No external source code copied.
+
 
 ## Parallel renderer validation in GitHub Actions
 

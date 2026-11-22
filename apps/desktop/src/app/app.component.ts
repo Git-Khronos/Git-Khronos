@@ -180,6 +180,16 @@ import { buildRemoteNameOrder, compareRemoteNames } from './remote-order';
 import { PULL_STRATEGY_LABEL, type PullStrategy } from './pull-strategy';
 import { ResizePointer } from './resize-pointer';
 
+interface PreviousBranchLookup {
+  readonly visit: number;
+  readonly checkout: string;
+  readonly head: string | null;
+  readonly branch: string | null;
+  readonly message: string;
+  readonly hideActions: boolean;
+  readonly error?: boolean;
+}
+
 interface ActiveGraphLane {
   oid: string;
   color: number;
@@ -1540,6 +1550,18 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly commandQuery = signal('');
   protected readonly commandPaletteScope = signal<CommandPaletteScope>('all');
   protected readonly commandPaletteVisit = signal(0);
+  private readonly previousBranchLookup = signal<PreviousBranchLookup | null>(null);
+  protected readonly commandPaletteNotice = computed(() => {
+    const lookup = this.previousBranchLookup();
+    return lookup && this.ownsPreviousBranchLookup(lookup) ? lookup : null;
+  });
+  private readonly retirePreviousBranchLookup = effect(() => {
+    const lookup = this.previousBranchLookup();
+    if (lookup && !this.ownsPreviousBranchLookup(lookup)) {
+      if (this.commandPaletteOpen() && this.commandPaletteVisit() === lookup.visit) this.closeCommandPalette(false);
+      else this.previousBranchLookup.set(null);
+    }
+  });
   protected readonly recentCommandIds = signal(this.readRecentCommandIds());
   /** User multiplier; 100% is always the automatic default for the current screen. */
   protected readonly zoomPercent = signal(this.readStoredZoom() ?? DEFAULT_ZOOM);
@@ -1626,7 +1648,8 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'push': return { ...identity(kind, 'Push'), kind, destination: target(), ahead: this.currentBranchSync().ahead,
         hasUpstream: !!this.currentBranch()?.upstream, summary: this.pushToolbarLabel() };
       case 'branch': return { ...identity(kind, 'Branch'), kind, branchName: this.currentBranch()?.name ?? null,
-        head: this.checkoutDisplayName(), headState: this.currentBranchStateLabel(), branches: this.visibleBranches() };
+        head: this.checkoutDisplayName(), headState: this.currentBranchStateLabel(), branches: this.visibleBranches(),
+        previousAvailable: !!repo.headOid && !repo.bare && !this.git.browserPreview() };
       case 'stash': return { ...identity(kind, 'Stash'), kind, head: this.checkoutDisplayName(), changeCount: repo.status.entryCount };
       case 'lfs': return repo.lfs.enabled ? { ...identity(kind, 'Git LFS'), kind, lfs: repo.lfs } : null;
       case 'sparseCheckout': return repo.sparseCheckout.enabled
@@ -11529,6 +11552,53 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  private ownsPreviousBranchLookup(lookup: PreviousBranchLookup): boolean {
+    const repository = this.git.repository();
+    return this.commandPaletteOpen() && this.commandPaletteVisit() === lookup.visit
+      && this.git.activeRepositoryReadScope() === lookup.checkout
+      && !!repository && repository.headOid === lookup.head && repository.status.branch === lookup.branch;
+  }
+
+  private async findPreviousLocalBranch(returnFocus: HTMLElement | null): Promise<void> {
+    const repository = this.git.repository();
+    if (!repository?.headOid || repository.bare || this.git.busy() || this.git.browserPreview()) return;
+    this.openCommandPalette('', 'branches', returnFocus);
+    const lookup: PreviousBranchLookup = {
+      visit: this.commandPaletteVisit(), checkout: this.git.activeRepositoryReadScope(),
+      head: repository.headOid, branch: repository.status.branch,
+      message: 'Finding the previous local branch…', hideActions: true,
+    };
+    this.previousBranchLookup.set(lookup);
+    const current = () => this.previousBranchLookup() === lookup && this.ownsPreviousBranchLookup(lookup);
+    try {
+      const ref = await this.git.inspectPreviousLocalBranch(repository.id);
+      if (!current()) return;
+      if (!ref) {
+        this.previousBranchLookup.set({
+          ...lookup, message: 'No previous local branch is available. Type to search other branches.',
+        });
+        return;
+      }
+      const branch = this.git.repository()?.branches.find(candidate => !candidate.remote && candidate.fullName === ref);
+      this.commandQuery.set(ref);
+      this.previousBranchLookup.set({
+        ...lookup,
+        hideActions: !branch,
+        message: branch ? `Previous local branch: ${branch.name}. Choose it to switch.` :
+          'The previous branch is not in the current branch list. Refresh the repository and try again.',
+      });
+    } catch (error: unknown) {
+      if (current()) this.previousBranchLookup.set({ ...lookup, error: true, message: this.git.formatError(error) });
+    }
+  }
+
+  protected updateCommandQuery(query: string): void {
+    const lookup = this.previousBranchLookup();
+    if (lookup && !this.ownsPreviousBranchLookup(lookup)) return;
+    this.previousBranchLookup.set(null);
+    this.commandQuery.set(query);
+  }
+
   protected openCommandPalette(
     query = '',
     scope: CommandPaletteScope = 'all',
@@ -11538,17 +11608,19 @@ export class AppComponent implements OnInit, OnDestroy {
     this.commandPaletteOpener = returnFocus ?? (document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null);
+    this.previousBranchLookup.set(null);
     this.commandPaletteScope.set(scope);
     this.commandQuery.set(query);
     this.commandPaletteVisit.update(visit => visit + 1);
     this.commandPaletteOpen.set(true);
   }
 
-  protected closeCommandPalette(): void {
+  protected closeCommandPalette(restoreFocus = true): void {
     const opener = this.commandPaletteOpener;
     this.commandPaletteOpen.set(false);
+    this.previousBranchLookup.set(null);
     this.commandPaletteOpener = null;
-    queueMicrotask(() => {
+    if (restoreFocus) queueMicrotask(() => {
       if (opener?.isConnected) opener.focus();
     });
   }
@@ -11605,6 +11677,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async runCommand(action: CommandAction): Promise<void> {
     if (!action.enabled) return;
+    const previous = this.previousBranchLookup();
+    if (previous && (previous.hideActions || !this.ownsPreviousBranchLookup(previous))) return;
+    this.previousBranchLookup.set(null);
     this.rememberCommand(action.id);
     const paletteReturnFocus = this.commandPaletteOpener;
     this.commandPaletteOpen.set(false);
@@ -11619,7 +11694,15 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     if (action.id.startsWith('local-branch:')) {
-      await this.checkoutBranch(action.id.slice('local-branch:'.length));
+      const palette = previous ? document.querySelector('.command-palette') : null;
+      await this.checkoutBranch(action.id.slice('local-branch:'.length), paletteReturnFocus);
+      if (previous) requestAnimationFrame(() => {
+        if (!this.commandPaletteOpen() && !this.checkoutWorktreeRequest()
+          && this.git.activeRepositoryReadScope() === previous.checkout && this.canRestoreFocusFrom(palette)
+          && paletteReturnFocus?.isConnected && !paletteReturnFocus.matches(':disabled') && !paletteReturnFocus.closest('[inert]')) {
+          paletteReturnFocus.focus({ preventScroll: true });
+        }
+      });
       return;
     }
     if (action.id.startsWith('remote-branch:')) {
@@ -11706,6 +11789,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'refresh': await this.git.refresh(); break;
       case 'merge-preview': this.openMergePreview(paletteReturnFocus); break;
       case 'integrate-branch': this.openIntegrationDialog(undefined, paletteReturnFocus); break;
+      case 'previous-local-branch': await this.findPreviousLocalBranch(paletteReturnFocus); break;
       case 'maintenance': await this.git.performRepositoryMaintenance(); break;
       case 'undo': await this.git.undo(); break;
       case 'redo': await this.git.redo(); break;
@@ -11914,6 +11998,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'push': this.toolbarOverlays.close('push'); void this.pushCurrentBranch(); break;
       case 'forcePush': this.requestForcePush(); break;
       case 'createBranch': this.openBranchCreatorFromToolbarMenu(); break;
+      case 'previousBranch': this.toolbarOverlays.close('branch'); void this.findPreviousLocalBranch(opener ?? null); break;
       case 'integrate': this.openIntegrationFromToolbarMenu(); break;
       case 'stashAll': this.toolbarOverlays.close('stash'); void this.stashCurrentChanges(); break;
       case 'stashOptions': this.openStashOptionsFromToolbar(); break;

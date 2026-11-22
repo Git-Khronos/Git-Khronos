@@ -37,7 +37,9 @@ export class CommandPaletteComponent {
   readonly query = input.required<string>();
   readonly shortcutKey = input.required<string>();
   readonly recent = input.required<readonly string[]>();
-  readonly commandActions = computed(() => buildCommandActions(this.source(), this.query(), this.scope()));
+  readonly notice = input<{ readonly message: string; readonly hideActions: boolean; readonly error?: boolean } | null>(null);
+  readonly commandActions = computed(() => this.notice()?.hideActions ? [] :
+    buildCommandActions(this.source(), this.query(), this.scope()));
   protected readonly commands = computed(() => this.scope() === 'branches'
     ? this.commandActions() // Already matched against branch names, grouped aliases and full refs.
     : rankCommandActions(this.commandActions(), this.query(), this.recent()));

@@ -52,6 +52,9 @@
     <button type="button" role="menuitem" [disabled]="menu.busy" (click)="activate.emit('createBranch')"><gc-icon name="plus" [size]="13" /><span><strong>Create branch</strong><small>From the current HEAD</small></span></button>
     <button type="button" role="menuitem" [disabled]="menu.busy || !menu.branchName" (click)="activate.emit('integrate')"><gc-icon name="merge" [size]="13" /><span><strong>Merge or rebase into {{ menu.branchName ?? 'current branch' }}…</strong><small>Choose a branch and see what will happen</small></span></button>
     <div class="menu-separator"></div>
+    @if (menu.previousAvailable) {
+      <button type="button" role="menuitem" [disabled]="menu.busy" (click)="activate.emit('previousBranch')"><gc-icon name="history" [size]="13" /><span><strong>Find previous local branch…</strong><small>Look up the last checkout in this worktree</small></span></button>
+    }
     <div class="menu-caption">Local branches</div>
     @for (branch of menu.branches; track branch.fullName) {
       <button type="button" role="menuitem" [disabled]="menu.busy" (click)="activate.emit({ kind: 'checkout', branch })" [class.current]="branch.current">

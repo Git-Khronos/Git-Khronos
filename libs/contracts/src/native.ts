@@ -691,6 +691,7 @@ export const delete_repository_file: (args: { repoId: string; path: string }) =>
 export const delete_untracked_repository_file: (args: { repoId: string; path: string }) => Promise<RepositoryFileMutation> = /* @__PURE__ */ __bindCommand__("delete_untracked_repository_file");
 export const read_repository_file_text: (args: { repoId: string; path: string; operationId: string }) => Promise<string | null> = /* @__PURE__ */ __bindCommand__("read_repository_file_text");
 export const load_reflog: (args: { repoId: string }) => Promise<ReflogPage> = /* @__PURE__ */ __bindCommand__("load_reflog");
+export const inspect_previous_local_branch: (args: { repoId: string }) => Promise<string | null> = /* @__PURE__ */ __bindCommand__("inspect_previous_local_branch");
 export const load_more_changes: (args: { repoId: string }) => Promise<RepositoryStatus> = /* @__PURE__ */ __bindCommand__("load_more_changes");
 export const open_repository_in_file_manager: (args: { repoId: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("open_repository_in_file_manager");
 export const open_external_terminal: (args: { repoId: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("open_external_terminal");
@@ -977,6 +978,7 @@ export type CommandMap = {
   delete_untracked_repository_file: typeof delete_untracked_repository_file;
   read_repository_file_text: typeof read_repository_file_text;
   load_reflog: typeof load_reflog;
+  inspect_previous_local_branch: typeof inspect_previous_local_branch;
   load_more_changes: typeof load_more_changes;
   open_repository_in_file_manager: typeof open_repository_in_file_manager;
   open_external_terminal: typeof open_external_terminal;
