@@ -670,6 +670,12 @@ and logs progress periodically when scenarios finish. It is a progress
 snapshot, not release evidence; an interrupted run may leave it marked
 `running`. Only a completed `report.json` represents the suite outcome.
 
+For incoming repository links, `incomingDirectActivation` retains the
+owned secondary PID, its exit status or terminating signal, and the
+primary's private-bus ownership before and after launch when observable.
+A nonzero exit or timeout still fails the scenario even if the original
+primary survives. This diagnostic does not retry delivery or retain argv.
+
 For the bounded Git LFS counts regression, run
 `python3 tools/native_acceptance.py --suite lfs-counts --headless --package "$PACKAGE"`.
 Use a disposable runner with a Git LFS that supports `ls-files --json` on PATH,

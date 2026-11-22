@@ -1,7 +1,9 @@
+import signal
+import subprocess
 import unittest
 from unittest.mock import Mock, patch
 
-from native_incoming_link_scenarios import observe_settled_singleton, restore_incoming_link_session, singleton_owner_pid
+from native_incoming_link_scenarios import check_secondary_activation, observe_settled_singleton, restore_incoming_link_session, singleton_owner_pid
 
 
 class SingletonObservationTest(unittest.TestCase):
@@ -69,3 +71,46 @@ class IncomingLinkCleanupTest(unittest.TestCase):
         self.assertEqual(report['incomingLinkCleanup'], 'RuntimeError')
         with self.assertRaisesRegex(RuntimeError, 'invalid session id'):
             restore_incoming_link_session(driver, '/owned/repository', {}, during_failure=False)
+
+
+class SecondaryActivationEvidenceTest(unittest.TestCase):
+    def setUp(self):
+        self.owner = dict(ownerPid=42, processes=[dict(pid=42, state='S', onPrivateBus=True, ownsBusName=True)])
+
+    def test_signal_preserves_exit_and_original_primary_without_counting_success(self):
+        child = Mock(pid=90, returncode=-signal.SIGSEGV)
+        child.communicate.return_value = b'not retained', b''
+        evidence = {}
+        with self.assertRaisesRegex(AssertionError, '-11'):
+            check_secondary_activation(child, lambda: self.owner, evidence, 42)
+        self.assertEqual(evidence, dict(secondaryPid=90, exitCode=-signal.SIGSEGV,
+                                        terminationSignal='SIGSEGV', after=self.owner))
+        child.communicate.assert_called_once_with(timeout=15)
+        child.kill.assert_not_called()
+
+    def test_secondary_failure_takes_precedence_over_a_failed_post_exit_observation(self):
+        child = Mock(pid=90, returncode=2)
+        child.communicate.return_value = b'', b'owned launch refusal'
+        evidence = {}
+        with self.assertRaisesRegex(AssertionError, 'owned launch refusal'):
+            check_secondary_activation(child, Mock(side_effect=OSError('fixture unavailable')), evidence, 42)
+        self.assertEqual(evidence, dict(secondaryPid=90, exitCode=2, afterObservationError='OSError'))
+
+    def test_zero_exit_still_requires_the_original_primary_on_the_private_bus(self):
+        child = Mock(pid=90, returncode=0)
+        child.communicate.return_value = b'', b''
+        evidence = {}
+        check_secondary_activation(child, lambda: self.owner, evidence, 42)
+        self.assertEqual(evidence, dict(secondaryPid=90, exitCode=0, after=self.owner))
+        with self.assertRaises(AssertionError):
+            check_secondary_activation(child, lambda: dict(ownerPid=None, processes=[]), {}, 42)
+
+    def test_timeout_remains_a_failure_after_the_owned_child_is_reaped(self):
+        child = Mock(pid=90, returncode=-signal.SIGKILL)
+        child.communicate.side_effect = [subprocess.TimeoutExpired('owned app', 15), (b'', b'')]
+        evidence = {}
+        with self.assertRaisesRegex(AssertionError, 'did not terminate'):
+            check_secondary_activation(child, lambda: self.owner, evidence, 42)
+        child.kill.assert_called_once_with()
+        self.assertEqual(evidence, dict(secondaryPid=90, exitCode=-signal.SIGKILL, timedOut=True,
+                                        terminationSignal='SIGKILL', after=self.owner))

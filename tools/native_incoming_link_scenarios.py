@@ -2,6 +2,7 @@
 from contextlib import suppress
 import json
 import shlex
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -66,6 +67,35 @@ def observe_settled_singleton(probe, evidence, phase, *, timeout=.75):
     return owner if owner is not None and singleton_owner_pid(observation) == owner else None
 
 
+def check_secondary_activation(child, probe, evidence, original, *, timeout=15):
+    """Retain launch and ownership evidence even when the secondary fails."""
+    evidence['secondaryPid'] = child.pid
+
+    def observe_failure():
+        evidence['exitCode'] = child.returncode
+        if child.returncode is not None and child.returncode < 0:
+            with suppress(ValueError):
+                evidence['terminationSignal'] = signal.Signals(-child.returncode).name
+        try:
+            observe_settled_singleton(probe, evidence, 'after')
+        except Exception as error:
+            evidence['afterObservationError'] = type(error).__name__
+
+    try:
+        _, stderr = child.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as error:
+        evidence['timedOut'] = True
+        child.kill()
+        child.communicate()
+        observe_failure()
+        raise AssertionError('Secondary link delivery did not terminate') from error
+    if child.returncode != 0:
+        observe_failure()
+        raise AssertionError((child.returncode, stderr.decode(errors='replace')[-2000:]))
+    evidence['exitCode'] = child.returncode
+    assert observe_settled_singleton(probe, evidence, 'after') == original, evidence
+
+
 def incoming_repository_links(driver, fixtures, original_repository, report):
     git_config = Path(fixtures.env['GIT_CONFIG_GLOBAL'])
     original_git_config = git_config.read_bytes()
@@ -127,15 +157,7 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         child = subprocess.Popen([str(driver.executable), *arguments], env=fixtures.env,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  start_new_session=True)
-        try:
-            stdout, stderr = child.communicate(timeout=15)
-        except subprocess.TimeoutExpired:
-            child.kill()
-            child.communicate()
-            raise AssertionError('Secondary link delivery did not terminate')
-        assert child.returncode == 0, (child.returncode, stderr.decode(errors='replace')[-2000:])
-        observation['secondaryPid'] = child.pid
-        assert observe_settled_singleton(desktop_activation_processes, observation, 'after') == original, observation
+        check_secondary_activation(child, desktop_activation_processes, observation, original)
         report.setdefault('incomingLinkDeliveries', []).append(dict(primaryPid=original, secondaryPid=child.pid,
                                                                    exitCode=child.returncode, arguments=len(arguments)))
 
