@@ -8,13 +8,14 @@ async function setup(page: Page): Promise<void> {
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const fixture = { calls: [] as any[], fail: false, hold: false, resolve: null as any,
+      failure: null as any, holdDepth: false, resolveDepth: null as any, rejectDepth: null as any,
       shallow: { shallow: false, boundaryCommits: 0 } as any };
     (window as any).__fetchFixture = fixture;
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string, args: any) => {
         fixture.calls.push({ command, args });
         if (command === 'fetch_branches' || command === 'fetch_repository') {
-          if (fixture.fail) return Promise.reject({ kind: 'gitTransportFailure',
+          if (fixture.fail) return Promise.reject(fixture.failure ?? { kind: 'gitTransportFailure',
             message: "Fetch failed at remote 'origin'; earlier remotes may already be updated. Refresh and retry." });
           if (fixture.hold) return new Promise((_resolve, reject) => {
             fixture.resolve = () => reject({ kind: 'operationCancelled',
@@ -22,7 +23,13 @@ async function setup(page: Page): Promise<void> {
           });
           return Promise.resolve(git.repository());
         }
-        if (command === 'shallow_history_state') return Promise.resolve(fixture.shallow);
+        if (command === 'shallow_history_state') {
+          if (fixture.holdDepth) return new Promise((resolve, reject) => {
+            fixture.resolveDepth = resolve;
+            fixture.rejectDepth = reject;
+          });
+          return Promise.resolve(fixture.shallow);
+        }
         if (command === 'cancel_git_operation') {
           fixture.resolve?.();
           return Promise.resolve(true);
@@ -320,6 +327,60 @@ test('complete history hides depth choices; shallow history requires one remote 
   const call = await page.evaluate(() => (window as any).__fetchFixture.calls.find((call: any) => call.command === 'fetch_branches'));
   expect(call.args.options).toEqual({ remote: 'upstream', prune: false, history: { mode: 'deepen', commits: 25 } });
 });
+
+for (const ending of ['partial', 'complete'] as const) {
+  test(`depth review rechecks after a failed fetch and handles an updated ${ending} checkout`, async ({ page }) => {
+    await setup(page);
+    await page.evaluate(() => { (window as any).__fetchFixture.shallow = { shallow: true, boundaryCommits: 3 }; });
+    await openOptions(page);
+    const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
+    const controls = dialog.getByRole('group', { name: 'History depth' });
+    await controls.getByRole('radio', { name: /Deepen by/ }).check();
+    await controls.getByLabel('Commits to deepen by').fill('7');
+    await page.evaluate(() => {
+      const fixture = (window as any).__fetchFixture;
+      fixture.holdDepth = true;
+      fixture.fail = true;
+      fixture.failure = { kind: 'historyDepthPartial', message: 'Git extended only part of the shallow history.' };
+    });
+    const submit = dialog.getByRole('button', { name: 'Fetch and extend history' });
+    await submit.click();
+    await expect(dialog.getByText('Checking current history depth…')).toBeVisible();
+    await expect(submit).toBeDisabled();
+    await dialog.dispatchEvent('submit', { bubbles: true, cancelable: true });
+    const fetchOptions = () => page.evaluate(() => (window as any).__fetchFixture.calls
+      .filter(({ command }: any) => command === 'fetch_branches').map(({ args }: any) => args.options));
+    const first = { remote: 'origin', prune: false, history: { mode: 'deepen', commits: 7 } };
+    expect(await fetchOptions()).toEqual([first]);
+
+    if (ending === 'partial') {
+      await page.evaluate(() => (window as any).__fetchFixture.rejectDepth(new Error('Owned depth read failure')));
+      await expect(dialog.getByText('Current history depth could not be checked.', { exact: false })).toBeVisible();
+      await expect(controls).toContainText('At the last check, older commits were missing behind 3 boundary commits.');
+      await expect(submit).toBeDisabled();
+      await dialog.getByRole('button', { name: 'Check history depth again' }).click();
+      await expect(dialog.getByText('Checking current history depth…')).toBeVisible();
+    }
+    await page.evaluate(complete => {
+      const fixture = (window as any).__fetchFixture;
+      fixture.fail = false;
+      fixture.resolveDepth({ shallow: !complete, boundaryCommits: complete ? 0 : 1 });
+    }, ending === 'complete');
+    if (ending === 'complete') {
+      await expect(dialog.getByText('History is now complete.', { exact: false })).toBeVisible();
+      await expect(submit).toBeDisabled();
+      await dialog.getByRole('button', { name: 'Review fetch without changing depth' }).click();
+      expect(await fetchOptions()).toEqual([first]);
+      await dialog.getByRole('button', { name: 'Fetch branches', exact: true }).click();
+    } else {
+      await expect(controls).toContainText('Older commits are missing behind 1 boundary commit.');
+      await expect(controls.getByLabel('Commits to deepen by')).toHaveValue('7');
+      await submit.click();
+    }
+    await expect(dialog).toHaveCount(0);
+    expect(await fetchOptions()).toEqual([first, ending === 'partial' ? first : { remote: 'origin', prune: false }]);
+  });
+}
 
 test('a native shallow boundary is visible in history and opens depth review without fetching', async ({ page }) => {
   await setup(page);

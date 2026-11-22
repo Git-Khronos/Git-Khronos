@@ -72,10 +72,22 @@ export interface FetchDialogRequest {
               [ngModel]="prune()" (ngModelChange)="changePrune($event, target)" />Remove stale remote-tracking branches</label>
             <p>Pruning removes local tracking references that the selected remotes no longer advertise. Branches on the server stay unchanged.</p>
           }
+          @if (branchScope() === 'all') {
+          @if (checkingDepth()) { <p role="status">Checking current history depth…</p> }
+          @if (depthReadFailed()) {
+            @if (!checkingDepth()) { <p role="alert">Current history depth could not be checked. You can fetch branches without changing history depth.</p> }
+            <button type="button" [attr.aria-disabled]="checkingDepth() ? 'true' : null"
+              (click)="refreshDepth(target)">Check history depth again</button>
+          }
+          @if (!shallow() && history() !== 'keep' && !checkingDepth() && !depthReadFailed()) {
+            <p role="status">History is now complete. No depth change is needed.</p>
+            <button type="button" (click)="changeHistory('keep', target)">Review fetch without changing depth</button>
+          }
+          }
           @if (branchScope() === 'all' && shallow(); as state) {
             <fieldset [disabled]="git.busy()">
               <legend>History depth</legend>
-              <p id="fetch-history-scope">This repository has shallow history: older commits are missing behind {{ state.boundaryCommits }} boundary commit{{ state.boundaryCommits === 1 ? '' : 's' }}. Extending it downloads more commits from one remote; files and branches are unchanged.</p>
+              <p id="fetch-history-scope">{{ checkingDepth() || depthReadFailed() ? 'At the last check, older commits were missing' : 'Older commits are missing' }} behind {{ state.boundaryCommits }} boundary commit{{ state.boundaryCommits === 1 ? '' : 's' }}. Extending shallow history downloads more commits from one remote; files and branches are unchanged.</p>
               <label class="checkbox"><input type="radio" name="fetchHistory" value="keep" [ngModel]="history()" (ngModelChange)="changeHistory($event, target)" />Keep the current depth</label>
               <label class="checkbox"><input type="radio" name="fetchHistory" value="deepen" [ngModel]="history()" (ngModelChange)="changeHistory($event, target)" />Deepen by
                 <input type="number" name="deepenCommits" min="1" [attr.max]="1000000" aria-label="Commits to deepen by" [disabled]="history() !== 'deepen'"
@@ -123,7 +135,7 @@ export interface FetchDialogRequest {
     select, input[type=text] { box-sizing: border-box; width: 100%; padding: 8px; background: var(--inspector-row); color: var(--text); border: 1px solid var(--inspector-divider); }
     footer { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--inspector-divider); }
     button { padding: 8px 12px; border-radius: 4px; background: var(--inspector-row); color: var(--text); font-size: 13px; }
-    button:disabled, select:disabled, input:disabled { opacity: .5; cursor: not-allowed; }
+    button:disabled, button[aria-disabled=true], select:disabled, input:disabled { opacity: .5; cursor: not-allowed; }
     button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     [role=alert] { color: var(--danger); }
   `],
@@ -140,6 +152,8 @@ export class FetchOptionsDialogComponent {
   readonly branch = signal('');
   readonly cancelled = signal(false);
   readonly shallow = signal<ShallowHistoryState | null>(null);
+  readonly checkingDepth = signal(false);
+  readonly depthReadFailed = signal(false);
   readonly history = signal<'keep' | 'deepen' | 'complete'>('keep');
   readonly commits = signal<number | null>(50);
   private shallowGeneration = 0;
@@ -148,7 +162,7 @@ export class FetchOptionsDialogComponent {
   constructor() {
     effect(() => {
       const request = this.request();
-      const generation = ++this.shallowGeneration;
+      ++this.shallowGeneration;
       if (!request) return;
       this.remote.set(untracked(() => this.git.repository()?.remotes[0]?.name ?? ''));
       this.prune.set(false);
@@ -156,14 +170,11 @@ export class FetchOptionsDialogComponent {
       this.branch.set('');
       this.cancelled.set(false);
       this.shallow.set(null);
+      this.checkingDepth.set(false);
+      this.depthReadFailed.set(false);
       this.history.set('keep');
       this.commits.set(50);
-      // Best effort: without this state the dialog keeps the ordinary branch fetch only.
-      if (!request.fixedBranch && untracked(() => this.owns(request))) {
-        ipc.shallow_history_state({ repoId: request.repositoryId }).then((state) => {
-          if (this.owns(request) && generation === this.shallowGeneration && state.shallow) this.shallow.set(state);
-        }, () => undefined);
-      }
+      untracked(() => void this.refreshDepth(request));
       setTimeout(() => {
         if (this.owns(request)) this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-fetch-cancel]')?.focus();
       });
@@ -181,7 +192,25 @@ export class FetchOptionsDialogComponent {
 
   historyReady(): boolean {
     const history = this.history();
-    return history === 'keep' || (!!this.remote() && (history === 'complete' || this.validCommits()));
+    return history === 'keep' || (!!this.shallow() && !this.checkingDepth() && !this.depthReadFailed()
+      && !!this.remote() && (history === 'complete' || this.validCommits()));
+  }
+
+  async refreshDepth(target: FetchDialogRequest): Promise<void> {
+    if (!this.owns(target) || target.fixedBranch || this.checkingDepth()) return;
+    const generation = ++this.shallowGeneration;
+    this.checkingDepth.set(true);
+    const current = () => this.owns(target) && generation === this.shallowGeneration;
+    try {
+      const state = await ipc.shallow_history_state({ repoId: target.repositoryId });
+      if (!current()) return;
+      this.shallow.set(state.shallow ? state : null);
+      this.depthReadFailed.set(false);
+    } catch {
+      if (current()) this.depthReadFailed.set(true);
+    } finally {
+      if (current()) this.checkingDepth.set(false);
+    }
   }
 
   private owns(target: FetchDialogRequest | null): target is FetchDialogRequest {
@@ -240,7 +269,7 @@ export class FetchOptionsDialogComponent {
     const options: FetchOptions = fixed ? { remote: fixed.remote, branch: fixed.branch, prune: false }
       : { remote: this.remote() || null, prune: this.prune() };
     if (!fixed && this.branchScope() === 'one') options.branch = this.branch().trim();
-    const history = !fixed && this.shallow() ? this.history() : 'keep';
+    const history = !fixed && this.branchScope() === 'all' ? this.history() : 'keep';
     if (history === 'deepen') options.history = { mode: 'deepen', commits: Number(this.commits()) };
     if (history === 'complete') options.history = { mode: 'complete' };
     const result = await this.git.fetchBranches(options, target.repositoryId);
@@ -248,8 +277,9 @@ export class FetchOptionsDialogComponent {
     if (result === 'success') this.close(target);
     else {
       this.cancelled.set(result === 'cancelled');
+      if (history !== 'keep') void this.refreshDepth(target);
       setTimeout(() => {
-        if (this.owns(target)) this.dialog()?.nativeElement.querySelector<HTMLElement>('[role=alert],[role=status]')?.focus();
+        if (this.owns(target)) this.dialog()?.nativeElement.querySelector<HTMLElement>('[role][tabindex="-1"]')?.focus();
       });
     }
   }

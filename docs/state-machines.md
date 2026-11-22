@@ -529,6 +529,14 @@ cannot be reported as full success; the existing fetch failure flow
 refreshes the graph and retains the user's options. This is not a lock
 against independent Git processes.
 
+After a failed or cancelled depth fetch, the open dialog also obtains a
+new native depth observation for the same checkout visit. It retains the
+selected mode and count while checking, and labels the old count as
+historical. If the read fails, retrying the read does not fetch; a depth
+mutation remains unavailable until a new observation arrives. If the
+checkout is already complete, the dialog requires an explicit selection
+before the action can become a fetch without a depth change.
+
 ### Tag preview read ownership
 
 Pointer and keyboard tag previews belong to the active checkout visit. A
