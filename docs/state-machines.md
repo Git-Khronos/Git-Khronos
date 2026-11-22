@@ -494,6 +494,11 @@ Ordinary snapshot updates within the same view do not reset pinned results.
 The scope is checked after cancellation and native replies, not only when the
 renderer next runs its reset effect. `history-search-lifecycle.spec.ts`
 exercises same-checkout workspace switches and in-place snapshot refreshes.
+Repository history search keeps focus on its Search or Continue/Retry action
+while a page is pending. The actions ignore activation while unavailable.
+After a cancelled continuation settles, focus returns to Retry only if it
+would otherwise be lost with the Cancel button and the original search view
+still owns it. The same paging control reports when all matches are loaded.
 A file history starting point can differ from its owning diff revision. The
 owning revision and exact path determine whether the pane can resume existing
 results or a replacement pending cancellation. A replacement uses a fresh

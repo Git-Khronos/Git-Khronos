@@ -83,6 +83,38 @@ for (const action of ['Load older file history', 'Reload file history']) {
   });
 }
 
+for (const action of ['Search repository', 'Continue searching older history']) {
+  test(`repository history keeps keyboard focus on ${action} during and after a read`, async ({ page }) => {
+    await prepare(page, false);
+    const dialog = await showHistory(page, false);
+    const primary = action === 'Search repository';
+    await page.evaluate(async primary => {
+      const state = (window as any).__historyLifecycle;
+      state.holdNext = true;
+      state.finishInitial({ entries: [], cursor: primary ? null : { fixture: true }, complete: primary, scanned: 10 });
+      await state.initial;
+    }, primary);
+    const button = dialog.getByRole('button', { name: action, exact: true });
+    await expect(button).toBeEnabled();
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await expect(button).toHaveAttribute('aria-disabled', 'true');
+    await expect(button).toBeFocused();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Space');
+    const reads = await page.evaluate(() => {
+      const state = (window as any).__historyLifecycle;
+      state.finishNext({ entries: [], cursor: null, complete: true, scanned: 1 });
+      return state.reads.length;
+    });
+    expect(reads).toBe(2);
+    const finished = primary ? button : dialog.getByRole('button', { name: 'All matching history loaded' });
+    await expect(finished).toBeFocused();
+    if (primary) await expect(finished).toBeEnabled();
+    else await expect(finished).toBeDisabled();
+  });
+}
+
 test('file history keeps a pending alternate starting point only for the originating checkout and file', async ({ page }) => {
   await prepare(page, true);
   const result = await page.evaluate(async () => {

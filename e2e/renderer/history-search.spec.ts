@@ -332,8 +332,10 @@ test('retains results and cursor after real operation cancellation, reports inco
   await expect(dialog.getByRole('alert')).toContainText('discarded after cancellation was requested');
   await expect(dialog).toContainText('Search incomplete');
   await expect(dialog).toContainText('Older than every loaded graph page');
-  await dialog.getByRole('button', { name: 'Retry history page' }).click();
+  await expect(dialog.getByRole('button', { name: 'Retry history page' })).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(dialog).toContainText('search complete');
+  await expect(dialog.getByRole('button', { name: 'All matching history loaded' })).toBeFocused();
   const cursor = await page.evaluate(() => (window as any).__historyFixture.calls.filter((call: any) => call.command === 'search_repository_history').at(-1).args.cursor);
   expect(cursor.offset).toBe(200);
   await page.keyboard.press('Escape');

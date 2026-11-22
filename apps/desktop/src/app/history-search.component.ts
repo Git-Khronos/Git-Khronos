@@ -38,7 +38,7 @@ export interface HistorySearchOpenOptions {
             <ng-container [ngTemplateOutlet]="comparisonForm" />
           } @else {
           <section class="search-section" aria-label="Repository history search">
-            <form class="search-form" (ngSubmit)="history.search(query)">
+            <form class="search-form" (ngSubmit)="submitSearch()">
               <div class="primary-query">
                 <label class="message-field" for="history-message">Message contains</label>
                 <div class="search-control">
@@ -46,8 +46,8 @@ export interface HistorySearchOpenOptions {
                   <input #messageInput id="history-message" name="message" [(ngModel)]="query.message"
                     autocomplete="off" placeholder="Commit subject or description" />
                 </div>
-                <button #searchButton class="primary-action" type="submit" aria-label="Search repository" [disabled]="history.busy() && !history.cancellationRequested()">
-                  @if (history.busy() && !history.cancellationRequested()) { Searching… } @else { Search repository }
+                <button #searchButton class="primary-action" type="submit" aria-label="Search repository" [attr.aria-disabled]="searchBlocked() ? 'true' : null">
+                  @if (searchBlocked()) { Searching… } @else { Search repository }
                 </button>
               </div>
 
@@ -120,10 +120,10 @@ export interface HistorySearchOpenOptions {
               }
             </div>
 
-            @if (!history.complete() && !history.busy() && (history.cursor() || history.error())) {
-              <button class="load-more" type="button" (click)="history.next()">
+            @if (pagingStarted() || history.cursor() || history.error()) {
+              <button #pageButton class="load-more" type="button" [attr.aria-disabled]="canContinue() ? null : 'true'" (click)="continueSearch()">
                 <gc-icon name="history" [size]="15" />
-                {{ history.error() ? 'Retry history page' : 'Continue searching older history' }}
+                {{ history.complete() ? 'All matching history loaded' : history.error() ? 'Retry history page' : 'Continue searching older history' }}
               </button>
             }
             @if (history.complete() && !history.entries().length) {
@@ -234,7 +234,7 @@ export interface HistorySearchOpenOptions {
     button:disabled, button[aria-disabled=true] { opacity: .48; cursor: default; }
     :is(input, select, button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .primary-action { min-height: 34px; border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--border)); border-radius: 6px; padding: 6px 14px; color: var(--on-accent, #fff); background: var(--accent); font-weight: 650; white-space: nowrap; }
-    .primary-action:not(:disabled):hover { filter: brightness(1.08); }
+    .primary-action:not(:disabled, [aria-disabled=true]):hover { filter: brightness(1.08); }
     .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: var(--muted); }
     .icon-button:hover { color: var(--text); background: var(--hover); }
     details { min-width: 0; }
@@ -283,7 +283,7 @@ export interface HistorySearchOpenOptions {
     code { color: var(--accent); font-family: var(--font-mono, ui-monospace, monospace); font-size: inherit; }
     .result-arrow { color: var(--muted); }
     .load-more { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 32px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface); font-size: 12px; font-weight: 650; }
-    .load-more:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--hover); }
+    .load-more:not([aria-disabled=true]):hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--hover); }
     .empty-state { display: flex; align-items: center; gap: 12px; min-height: 74px; border: 1px dashed var(--border); border-radius: 7px; padding: 12px; }
     .empty-state strong { display: block; font-size: 12px; }
     .empty-state p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
@@ -325,6 +325,9 @@ export class HistorySearchComponent {
   readonly comparisonReady = output<void>();
   readonly opened = signal(false);
   readonly comparisonOnly = signal(false);
+  readonly searchBlocked = computed(() => this.history.busy() && !this.history.cancellationRequested());
+  readonly canContinue = computed(() => !this.history.busy() && !this.history.complete() && !!(this.history.cursor() || this.history.error()));
+  protected readonly pagingStarted = signal(false);
   readonly refOptionLimit = 100;
   readonly comparisonRefGroups = computed(() => {
     const repo = this.git.repository();
@@ -340,6 +343,7 @@ export class HistorySearchComponent {
   private readonly messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
   private readonly baseInput = viewChild<ElementRef<HTMLInputElement>>('baseInput');
   private readonly searchButton = viewChild<ElementRef<HTMLButtonElement>>('searchButton');
+  private readonly pageButton = viewChild<ElementRef<HTMLButtonElement>>('pageButton');
   private readonly cancelButton = viewChild<ElementRef<HTMLButtonElement>>('cancelButton');
   private wasBusy = false;
   private opener: HTMLElement | null = null;
@@ -362,9 +366,10 @@ export class HistorySearchComponent {
       const busy = this.history.busy();
       if (this.wasBusy && !busy && document.activeElement === this.cancelButton()?.nativeElement) {
         afterNextRender(() => {
-          if (this.opened() && !this.history.busy()
+          if (this.ownsSearchView() && !this.history.busy()
             && (document.activeElement === document.body || document.activeElement === this.dialog().nativeElement)) {
-            this.searchButton()?.nativeElement.focus();
+            const retry = this.pagingStarted() && this.canContinue() ? this.pageButton() : undefined;
+            (retry ?? this.searchButton())?.nativeElement.focus();
           }
         }, { injector: this.injector });
       }
@@ -377,6 +382,7 @@ export class HistorySearchComponent {
     this.opener = options.returnFocus;
     this.scope = options.scope;
     this.comparisonOnly.set(options.mode === 'compare');
+    this.pagingStarted.set(false);
     if (options.mode === 'compare' || this.lastFormScope !== options.scope) {
       this.base = options.base ?? 'HEAD~1';
       this.target = 'HEAD';
@@ -411,6 +417,24 @@ export class HistorySearchComponent {
     });
   }
   selectCommit(oid: string): void { this.commitSelected.emit(oid); this.close(); }
+
+  private ownsSearchView(): boolean {
+    return this.opened() && !this.comparisonOnly() && this.scope === this.git.activeRepositoryReadScope()
+      && this.dialog().nativeElement.open;
+  }
+
+  submitSearch(): void {
+    if (!this.ownsSearchView() || this.searchBlocked()) return;
+    this.pagingStarted.set(false);
+    void this.history.search(this.query);
+  }
+
+  continueSearch(): void {
+    if (!this.ownsSearchView() || !this.canContinue()) return;
+    // Retain the focused element when its cursor or retry error is cleared.
+    this.pagingStarted.set(true);
+    void this.history.next();
+  }
 
   activeFilterCount(): number {
     return [this.query.author, this.query.oid, this.query.since, this.query.until, this.query.path, this.query.scope]
