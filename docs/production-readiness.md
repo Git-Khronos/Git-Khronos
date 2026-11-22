@@ -3345,6 +3345,19 @@ harness reproduced the unguarded success in the installed named Fetch
 on `67c41dd`. That baseline receipt is in
 `target/local-review/fetch-local-branch-scope.SjadMvCY/installed-red/`.
 
+The exact `0a82a12` package passed 11 detached-checkout, 56 setup/keyboard,
+and 9 workspace-Pull scenarios on Ubuntu 24.04. This covers the refused
+ordinary and automatic Fetch mappings, ignored-file protection when local
+Rebase checks out its new base, and ignored-file preservation on actual
+Pull fast-forwards in all three strategies. For Pull, the installed test
+verified that tracking refs could refresh while the receiver, index,
+ignored file and config remained unchanged, then confirmed the retry after
+moving the file. The package and 76-scenario receipts are in
+`target/local-review/updater/jammy-builder/pull-ff-ignored-focused-release.C2nWElYU/`
+(SHA-256 `ab2fe51b688ca605fd2ac53d793a0898e900bcc6c35aab1513453938a50aa3f6`).
+This is focused installed evidence only; the complete-matrix handoff above
+is still `3320c2f`. No public release was made.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds
