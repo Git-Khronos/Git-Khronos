@@ -3755,6 +3755,10 @@ pub fn integrate_branch_with_review(
         (local_branch_ref_and_tip(path, name)?.0, None)
     };
     if strategy == "rebase" {
+        merge_checkout_guard::ensure_rebase_start_preserves_ignored_files(path, None, &operand)?;
+        if let Some((receiving_ref, receiving_oid)) = receiving.as_ref() {
+            ensure_review_receiving_checkout(path, receiving_ref, receiving_oid)?;
+        }
         // A reviewed integration authorizes rewriting the receiving branch,
         // not any sibling refs that happen to point into the replayed range.
         let args: &[&str] = if review.is_some() {
@@ -4466,9 +4470,27 @@ fn execute_interactive_rebase_impl(
         ));
     }
 
+    let source_ref = format!("refs/heads/{source}");
+    let target_ref = if let Some(destination) = onto_oid {
+        destination.to_owned()
+    } else if selection.is_some() {
+        plan.base.clone()
+    } else {
+        plan.tips.target_oid.clone()
+    };
+    if !root || onto_oid.is_some() {
+        // A branch explicitly passed to git rebase may itself need a checkout
+        // before Git changes to the base. Neither may clobber ignored files.
+        let checkout_source = (selection.is_none() && !root).then_some(source_ref.as_str());
+        merge_checkout_guard::ensure_rebase_start_preserves_ignored_files(
+            path,
+            checkout_source,
+            &target_ref,
+        )?;
+    }
     if !interactive_rebase_tips_match(
         path,
-        &format!("refs/heads/{source}"),
+        &source_ref,
         &format!("refs/heads/{target}"),
         &plan.tips,
     )? {
@@ -4561,13 +4583,6 @@ fn execute_interactive_rebase_impl(
         )
     })?;
     let sequence_editor = format!("sh {}", shell_quote(&editor_path.to_string_lossy()));
-    let target_ref = if let Some(destination) = onto_oid {
-        destination.to_owned()
-    } else if selection.is_some() {
-        plan.base.clone()
-    } else {
-        plan.tips.target_oid.clone()
-    };
     let mut command = git_in(path);
     if selection.is_some() || root {
         command.args([

@@ -235,6 +235,84 @@ fn reviewed_branch_integration_honors_selected_mode_over_squash_defaults() {
 }
 
 #[test]
+fn rebase_preserves_ignored_files_in_the_way_of_the_new_base() {
+    for reviewed in [false, true] {
+        let fixture = Fixture::new();
+        fixture.diverge(1, 1);
+        let review = integration_review(&fixture);
+        fs::write(fixture.path().join(".git/info/exclude"), "/feature-0\n").unwrap();
+        fs::write(fixture.path().join("feature-0"), "Owned ignored settings\n").unwrap();
+        let index = fs::read(fixture.path().join(".git/index")).unwrap();
+        let error = integrate_branch_with_review(
+            fixture.path(),
+            "feature",
+            "rebase",
+            reviewed.then_some(&review),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind, "rebaseLocalPathObstruction");
+        assert!(error.message.contains("feature-0"));
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), review.receiving_oid);
+        assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/main");
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read_to_string(fixture.path().join("feature-0")).unwrap(),
+            "Owned ignored settings\n"
+        );
+        assert!(!read_status(fixture.path()).unwrap().rebase_in_progress);
+    }
+}
+
+#[test]
+fn interactive_rebase_checks_both_the_source_checkout_and_the_base() {
+    for (source, target) in [("main", "feature"), ("feature", "main")] {
+        let fixture = Fixture::new();
+        fixture.diverge(1, 1);
+        // An incoming file must not replace a directory of ignored files.
+        fs::create_dir(fixture.path().join("feature-0")).unwrap();
+        fs::write(fixture.path().join(".git/info/exclude"), "/feature-0/\n").unwrap();
+        let local = fixture.path().join("feature-0/only-copy");
+        fs::write(&local, "Owned ignored directory\n").unwrap();
+        let plan = prepare_interactive_rebase(fixture.path(), source, target).unwrap();
+        let steps = plan
+            .commits
+            .iter()
+            .map(|commit| InteractiveRebaseStep {
+                oid: commit.oid.clone(),
+                action: "pick".into(),
+                message: None,
+            })
+            .collect::<Vec<_>>();
+        let refs = fixture.git(&["for-each-ref"]);
+        let index = fs::read(fixture.path().join(".git/index")).unwrap();
+
+        let error = execute_interactive_rebase(fixture.path(), source, target, &steps).unwrap_err();
+
+        assert_eq!(error.kind, "rebaseLocalPathObstruction", "{source}");
+        assert!(error.message.contains("feature-0/only-copy"));
+        assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/main");
+        assert_eq!(fixture.git(&["for-each-ref"]), refs);
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        assert_eq!(fs::read_to_string(local).unwrap(), "Owned ignored directory\n");
+    }
+}
+
+#[test]
+fn rebase_preserves_ignored_files_outside_the_initial_base_changes() {
+    let fixture = Fixture::new();
+    fixture.diverge(1, 1);
+    fs::write(fixture.path().join(".git/info/exclude"), "/local.cfg\n").unwrap();
+    fs::write(fixture.path().join("local.cfg"), "Owned unrelated settings\n").unwrap();
+    let review = integration_review(&fixture);
+    integrate_branch_with_review(fixture.path(), "feature", "rebase", Some(&review)).unwrap();
+    assert_eq!(fixture.git(&["rev-parse", "HEAD^"]), review.source_oid);
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("local.cfg")).unwrap(),
+        "Owned unrelated settings\n"
+    );
+}
+
+#[test]
 fn integrate_exact_local_branch_even_when_a_tag_shadows_its_name() {
     for (strategy, ahead) in [("merge", 1), ("ff-only", 0), ("squash", 1), ("rebase", 1)] {
         let fixture = Fixture::new();

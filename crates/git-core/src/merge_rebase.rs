@@ -165,6 +165,11 @@ pub fn execute_merge_rebase(path: &Path, request: &MergeRebaseRequest) -> Result
             Some("Reload and review the complete topology before starting."),
         ));
     }
+    merge_checkout_guard::ensure_rebase_start_preserves_ignored_files(
+        path,
+        None,
+        &request.target_oid,
+    )?;
     preserve_reference(
         path,
         &request.source_oid,

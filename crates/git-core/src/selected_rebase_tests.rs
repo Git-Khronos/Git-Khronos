@@ -85,6 +85,30 @@ fn picks(plan: &InteractiveRebasePlan) -> Vec<InteractiveRebaseStep> {
 }
 
 #[test]
+fn merge_preserving_rebase_refuses_an_ignored_base_collision_before_recovery() {
+    let repository = Repository::new();
+    repository.git(&["checkout", "-b", "destination"]);
+    repository.edit("settings.local", b"incoming\n", "Track settings");
+    repository.git(&["checkout", "main"]);
+    repository.git(&["checkout", "-b", "side"]);
+    repository.edit("side", b"side\n", "Side");
+    repository.git(&["checkout", "main"]);
+    repository.edit("main", b"main\n", "Main");
+    repository.git(&["merge", "--no-ff", "-m", "Reviewed merge", "side"]);
+    let original = repository.oid();
+    let local = repository.0.join("settings.local");
+    fs::write(repository.0.join(".git/info/exclude"), "/settings.local\n").unwrap();
+    fs::write(&local, b"owned ignored settings\n").unwrap();
+    let plan = prepare_merge_rebase(&repository.0, "main", "destination").unwrap();
+
+    let error = execute_merge_rebase(&repository.0, &plan.request).unwrap_err();
+
+    assert_eq!(error.kind, "rebaseLocalPathObstruction");
+    repository.unchanged(&original);
+    assert_eq!(fs::read(local).unwrap(), b"owned ignored settings\n");
+}
+
+#[test]
 fn merge_preserving_rebase_recreates_two_parent_topology_without_moving_other_refs() {
     let repository = Repository::new();
     let base = repository.oid();

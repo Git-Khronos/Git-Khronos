@@ -104,6 +104,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-stale-local-checkout-does-not-recreate-remote-tracking-branch',
     'native-branch-and-detached-checkout-preserve-an-ignored-local-file',
     'native-reviewed-merge-refuses-to-overwrite-an-ignored-local-file',
+    'native-reviewed-rebase-refuses-an-ignored-file-at-the-new-base',
     'native-local-branch-delete-refuses-a-moved-tip',
     'native-context-rebase-preserves-unreviewed-sibling-branches',
     'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',

@@ -1,11 +1,11 @@
-//! Check prospective merge paths against ignored data before Git updates the
-//! checkout. Some Git versions do not apply --no-overwrite-ignore in ort.
+//! Check prospective checkout writes against ignored data. Some Git versions
+//! do not apply --no-overwrite-ignore in ort, and rebase has no such flag.
 use super::*;
 use std::collections::BTreeSet;
 
 const PATH_LIMIT: usize = 4 * 1024 * 1024;
 
-fn unavailable() -> AppError {
+fn merge_unavailable() -> AppError {
     AppError::new(
         "mergeIgnoredPathsUnverified",
         "Could not verify that this merge will preserve ignored local files. No merge was started.",
@@ -15,7 +15,17 @@ fn unavailable() -> AppError {
     )
 }
 
-fn bounded(path: &Path, args: &[&str]) -> Result<Output, AppError> {
+fn rebase_unavailable() -> AppError {
+    AppError::new(
+        "rebaseIgnoredPathsUnverified",
+        "Could not check the initial rebase checkout for ignored local files. No rebase was started.",
+        Some("Move or back up ignored files before retrying."),
+    )
+}
+
+type Unavailable = fn() -> AppError;
+
+fn bounded(path: &Path, args: &[&str], unavailable: Unavailable) -> Result<Output, AppError> {
     let (result, truncated) = run_git_with_stdout_limit(path, args, PATH_LIMIT)?;
     if truncated {
         return Err(unavailable());
@@ -23,7 +33,7 @@ fn bounded(path: &Path, args: &[&str]) -> Result<Output, AppError> {
     Ok(result)
 }
 
-fn paths(bytes: &[u8]) -> Result<impl Iterator<Item = &[u8]>, AppError> {
+fn paths(bytes: &[u8], unavailable: Unavailable) -> Result<impl Iterator<Item = &[u8]>, AppError> {
     let entries = if bytes.is_empty() {
         bytes
     } else {
@@ -51,7 +61,7 @@ fn obstructions<'a>(ignored: &'a BTreeSet<Vec<u8>>, target: &[u8]) -> Option<&'a
         .map(Vec::as_slice)
 }
 
-fn receiving_head(path: &Path) -> Result<Option<String>, AppError> {
+fn receiving_head(path: &Path, unavailable: Unavailable) -> Result<Option<String>, AppError> {
     let result = run_git(path, &["symbolic-ref", "--quiet", "HEAD"])?;
     match result.status.code() {
         Some(0) => std::str::from_utf8(&result.stdout)
@@ -75,14 +85,15 @@ fn check_branch_options(path: &Path, branch: &str) -> Result<(), AppError> {
             "--get-all",
             &format!("branch.{branch}.mergeOptions"),
         ],
+        merge_unavailable,
     )?;
     if config.status.code() == Some(1) && config.stdout.is_empty() {
         return Ok(());
     }
     if !config.status.success() {
-        return Err(unavailable());
+        return Err(merge_unavailable());
     }
-    for option in paths(&config.stdout)?.flat_map(|entry| {
+    for option in paths(&config.stdout, merge_unavailable)?.flat_map(|entry| {
         entry
             .split(|byte| byte.is_ascii_whitespace())
             .filter(|word| !word.is_empty())
@@ -102,21 +113,35 @@ fn check_branch_options(path: &Path, branch: &str) -> Result<(), AppError> {
                 | b"--commit"
                 | b"--no-commit"
         ) {
-            return Err(unavailable());
+            return Err(merge_unavailable());
         }
     }
     Ok(())
 }
 
-pub(crate) fn ensure_ignored_files_preserved(path: &Path, source: &str) -> Result<(), AppError> {
-    ensure_ignored_files_preserved_with_limit(path, source, PATH_LIMIT)
+struct IgnoredPaths {
+    entries: BTreeSet<Vec<u8>>,
+    ignore_case: bool,
+    summarized: bool,
 }
 
-pub(super) fn ensure_ignored_files_preserved_with_limit(
+fn normalize(raw: &[u8], ignore_case: bool) -> Vec<u8> {
+    if ignore_case {
+        // Non-UTF-8 filenames still get case protection for their ASCII bytes.
+        std::str::from_utf8(raw).map_or_else(
+            |_| raw.to_ascii_lowercase(),
+            |path| path.to_lowercase().into_bytes(),
+        )
+    } else {
+        raw.to_vec()
+    }
+}
+
+fn ignored_paths(
     path: &Path,
-    source: &str,
     ignored_limit: usize,
-) -> Result<(), AppError> {
+    unavailable: Unavailable,
+) -> Result<Option<IgnoredPaths>, AppError> {
     let (ignored, large_checkout) = run_git_with_stdout_limit(
         path,
         &[
@@ -144,6 +169,7 @@ pub(super) fn ensure_ignored_files_preserved_with_limit(
                 "--directory",
                 "-z",
             ],
+            unavailable,
         )?;
         if !summary.status.success() || summary.stdout.is_empty() {
             return Err(unavailable());
@@ -153,9 +179,82 @@ pub(super) fn ensure_ignored_files_preserved_with_limit(
         ignored
     };
     if ignored.stdout.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
 
+    let casing = run_git(path, &["config", "--type=bool", "--get", "core.ignorecase"])?;
+    let ignore_case = match (casing.status.code(), casing.stdout.trim_ascii()) {
+        (Some(0), b"true") => true,
+        (Some(0), b"false") | (Some(1), b"") => cfg!(any(windows, target_os = "macos")),
+        _ => return Err(unavailable()),
+    };
+    let entries = paths(&ignored.stdout, unavailable)?
+        .map(|raw| normalize(raw.strip_suffix(b"/").unwrap_or(raw), ignore_case))
+        .collect();
+    Ok(Some(IgnoredPaths {
+        entries,
+        ignore_case,
+        summarized: large_checkout,
+    }))
+}
+
+fn checkout_obstruction(
+    path: &Path,
+    ignored: &IgnoredPaths,
+    head: &str,
+    tree: &str,
+    unavailable: Unavailable,
+) -> Result<Option<String>, AppError> {
+    let result = bounded(
+        path,
+        &[
+            "diff-tree",
+            "-r",
+            "-z",
+            "--no-commit-id",
+            "--no-ext-diff",
+            "--ignore-submodules=none",
+            "--no-relative",
+            "--name-only",
+            "--no-renames",
+            "--diff-filter=AMRT",
+            head,
+            tree,
+            "--",
+        ],
+        unavailable,
+    )?;
+    if !result.status.success() {
+        return Err(unavailable());
+    }
+    for target in paths(&result.stdout, unavailable)? {
+        if let Some(blocked) =
+            obstructions(&ignored.entries, &normalize(target, ignored.ignore_case))
+        {
+            // A summarized directory can contain unrelated data; do not
+            // claim that an exact collision was proved.
+            if ignored.summarized {
+                return Err(unavailable());
+            }
+            return Ok(Some(String::from_utf8_lossy(blocked).into_owned()));
+        }
+    }
+    Ok(None)
+}
+
+pub(crate) fn ensure_ignored_files_preserved(path: &Path, source: &str) -> Result<(), AppError> {
+    ensure_ignored_files_preserved_with_limit(path, source, PATH_LIMIT)
+}
+
+pub(super) fn ensure_ignored_files_preserved_with_limit(
+    path: &Path,
+    source: &str,
+    ignored_limit: usize,
+) -> Result<(), AppError> {
+    let unavailable = merge_unavailable;
+    let Some(ignored) = ignored_paths(path, ignored_limit, unavailable)? else {
+        return Ok(());
+    };
     // A preflight must not run a configured merge driver or fetch missing
     // promisor objects. Strategy-changing options can produce a different tree.
     let custom = bounded(
@@ -165,35 +264,15 @@ pub(super) fn ensure_ignored_files_preserved_with_limit(
             "--get-regexp",
             r"^(extensions\.partialclone|remote\..*\.promisor|merge\..*\.(driver|recursive)|merge\.(default|renormalize)|pull\.twohead)$",
         ],
+        unavailable,
     )?;
     if custom.status.code() != Some(1) || !custom.stdout.is_empty() {
         return Err(unavailable());
     }
-    let receiver = receiving_head(path)?;
+    let receiver = receiving_head(path, unavailable)?;
     if let Some(branch) = receiver.as_deref() {
         check_branch_options(path, branch)?;
     }
-    let casing = run_git(path, &["config", "--type=bool", "--get", "core.ignorecase"])?;
-    let ignore_case = match (casing.status.code(), casing.stdout.trim_ascii()) {
-        (Some(0), b"true") => true,
-        (Some(0), b"false") | (Some(1), b"") => cfg!(any(windows, target_os = "macos")),
-        _ => return Err(unavailable()),
-    };
-    let normalize = |raw: &[u8]| {
-        if ignore_case {
-            // Non-UTF-8 filenames still get case protection for their ASCII bytes.
-            std::str::from_utf8(raw).map_or_else(
-                |_| raw.to_ascii_lowercase(),
-                |path| path.to_lowercase().into_bytes(),
-            )
-        } else {
-            raw.to_vec()
-        }
-    };
-    let ignored: BTreeSet<_> = paths(&ignored.stdout)?
-        .map(|raw| normalize(raw.strip_suffix(b"/").unwrap_or(raw)))
-        .collect();
-
     without_lazy_fetch(|| {
         let head = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
         let tip = reference_tip(path, source).ok_or_else(unavailable)?;
@@ -208,55 +287,88 @@ pub(super) fn ensure_ignored_files_preserved_with_limit(
                 &head,
                 &tip,
             ],
+            unavailable,
         )?;
         if !matches!(merge.status.code(), Some(0 | 1)) {
             return Err(unavailable());
         }
         // On conflicts Git still returns a tree with the paths it would write.
-        let tree = paths(&merge.stdout)?.next().ok_or_else(unavailable)?;
+        let tree = paths(&merge.stdout, unavailable)?
+            .next()
+            .ok_or_else(unavailable)?;
         let tree = std::str::from_utf8(tree).map_err(|_| unavailable())?;
         validate_commit_oid(tree).map_err(|_| unavailable())?;
-        let result = bounded(
-            path,
-            &[
-                "diff-tree",
-                "-r",
-                "-z",
-                "--no-commit-id",
-                "--no-ext-diff",
-                "--name-only",
-                "--no-renames",
-                "--diff-filter=AMRT",
-                &head,
-                tree,
-                "--",
-            ],
-        )?;
-        if !result.status.success() {
+        if let Some(blocked) = checkout_obstruction(path, &ignored, &head, tree, unavailable)? {
+            return Err(AppError::new(
+                "mergeLocalPathObstruction",
+                format!("The merge would overwrite ignored local contents at '{blocked}'."),
+                Some(
+                    "Move the ignored file or directory out of the way, then review the merge again.",
+                ),
+            ));
+        }
+        if reference_tip(path, "HEAD").as_deref() != Some(head.as_str())
+            || reference_tip(path, source).as_deref() != Some(tip.as_str())
+            || receiving_head(path, unavailable)? != receiver
+        {
             return Err(unavailable());
         }
-        for target in paths(&result.stdout)? {
-            if let Some(blocked) = obstructions(&ignored, &normalize(target)) {
-                if large_checkout {
-                    // A summarized directory can contain unrelated data;
-                    // do not claim that an exact collision was proved.
-                    return Err(unavailable());
-                }
+        Ok(())
+    })
+}
+
+/// Check the worktree transitions before replay starts, not the result of
+/// applying later commits. Git may check out a source branch before the base.
+pub(super) fn ensure_rebase_start_preserves_ignored_files(
+    path: &Path,
+    pre_rebase_source: Option<&str>,
+    onto: &str,
+) -> Result<(), AppError> {
+    let unavailable = rebase_unavailable;
+    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+        return Ok(());
+    };
+    // Older supported Git can lazily fetch missing objects even when
+    // GIT_NO_LAZY_FETCH is set. No transport belongs in this preflight.
+    let promisor = bounded(
+        path,
+        &[
+            "config",
+            "--get-regexp",
+            r"^(extensions\.partialclone|remote\..*\.promisor)$",
+        ],
+        unavailable,
+    )?;
+    if promisor.status.code() != Some(1) || !promisor.stdout.is_empty() {
+        return Err(unavailable());
+    }
+    let receiver = receiving_head(path, unavailable)?;
+    without_lazy_fetch(|| {
+        let head = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
+        let tip = reference_tip(path, onto).ok_or_else(unavailable)?;
+        // Diff against the original HEAD: the ignored files belong to this
+        // worktree, regardless of any intermediate source checkout.
+        let source_tip = pre_rebase_source
+            .map(|source| reference_tip(path, source).ok_or_else(unavailable))
+            .transpose()?;
+        for target in source_tip.iter().chain(std::iter::once(&tip)) {
+            if let Some(blocked) = checkout_obstruction(path, &ignored, &head, target, unavailable)?
+            {
                 return Err(AppError::new(
-                    "mergeLocalPathObstruction",
+                    "rebaseLocalPathObstruction",
                     format!(
-                        "The merge would overwrite ignored local contents at '{}'.",
-                        String::from_utf8_lossy(blocked)
+                        "The initial rebase checkout could overwrite ignored local contents at '{blocked}'."
                     ),
                     Some(
-                        "Move the ignored file or directory out of the way, then review the merge again.",
+                        "Move the ignored file or directory out of the way, then review the rebase again.",
                     ),
                 ));
             }
         }
-        if reference_tip(path, "HEAD").as_deref() != Some(head.as_str())
-            || reference_tip(path, source).as_deref() != Some(tip.as_str())
-            || receiving_head(path)? != receiver
+        if reference_tip(path, "HEAD").as_ref() != Some(&head)
+            || reference_tip(path, onto).as_ref() != Some(&tip)
+            || pre_rebase_source.is_some_and(|source| reference_tip(path, source) != source_tip)
+            || receiving_head(path, unavailable)? != receiver
         {
             return Err(unavailable());
         }

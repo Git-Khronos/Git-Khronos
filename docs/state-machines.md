@@ -739,8 +739,11 @@ enables it. A saved branch option cannot substitute one mode for another.
 The native command runs on a background worker using the existing repository
 mutation lock. It rechecks the reviewed receiver after the preflight and still
 integrates the exact reviewed source commit. These checks do not lock external
-Git clients or file edits between the preflight and Git startup. The
-ignored-file preflight does not apply to rebase or Pull integrations.
+Git clients or file edits between the preflight and Git startup. Local
+Rebase and interactive Rebase with an explicit or known base separately
+check the initial checkout against ignored paths, including a source-branch
+checkout if needed. This check does not predict paths created during replay,
+cover whole-history replay without a destination, or protect Pull integration.
 Merge, squash, fast-forward, and rebase from the branch context menu carry a
 separate review tied to that menu opening, the repository visit, and both
 branch tips. Their labels retain the selected receiver instead of mutating

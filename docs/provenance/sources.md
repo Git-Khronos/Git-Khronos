@@ -1562,6 +1562,14 @@ Committed attribute lookup uses Git's documented
 option. This feature requires Git 2.43+ explicitly rather than allowing an older
 Git to silently ignore attributes through an unrecognized environment variable.
 
+## Initial checkout in local rebase
+
+The public [Git rebase manual](https://git-scm.com/docs/git-rebase) and
+[diff-tree manual](https://git-scm.com/docs/git-diff-tree) informed the
+initial checkout and raw tree-path inspection. Separate, owned Git fixtures
+demonstrated overwrite during local rebase and verified the new refusal.
+No upstream code was copied.
+
 ## Workspace, identity, hosted collaboration and agent capabilities
 
 Public workflow references (capability discovery only):
