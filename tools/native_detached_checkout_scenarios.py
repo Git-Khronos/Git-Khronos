@@ -661,6 +661,13 @@ def bisect_reports_inconclusive_candidates(driver, fixtures, report):
     assert not (repository / '.git/BISECT_START').exists()
     assert checkout_footprint(fixtures, repository) == before
     report['scenarios'].append('native-bisect-inconclusive-keeps-possible-results-and-refuses-extra-votes')
+    return repository, repo_id
+
+
+def bisect_voting_and_results(driver, fixtures, report):
+    bisect_can_vote_using_native_terms(driver, fixtures, report)
+    bisect_reports_the_first_bad_commit(driver, fixtures, report)
+    return bisect_reports_inconclusive_candidates(driver, fixtures, report)
 
 
 def replay_recovery_preserves_ignored_files(driver, fixtures, report):
@@ -731,9 +738,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
     bisect_can_start_without_switching_dirty_checkout(driver, fixtures, report)
     bisect_vote_binds_the_test_candidate(driver, fixtures, report)
-    bisect_can_vote_using_native_terms(driver, fixtures, report)
-    bisect_reports_the_first_bad_commit(driver, fixtures, report)
-    bisect_reports_inconclusive_candidates(driver, fixtures, report)
+    bisect_voting_and_results(driver, fixtures, report)
     replay_recovery_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')

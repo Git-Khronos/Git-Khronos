@@ -1197,7 +1197,7 @@ def main():
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
-        "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
+        "repository-open-scope", "detached-checkout", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
         "commit-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
     )
@@ -1492,6 +1492,9 @@ def main():
             elif args.suite == "detached-checkout":
                 from native_detached_checkout_scenarios import reviewed_detached_checkout
                 repository, repo_id = reviewed_detached_checkout(driver, fixtures, report)
+            elif args.suite == "bisect-voting":
+                from native_detached_checkout_scenarios import bisect_voting_and_results
+                repository, repo_id = bisect_voting_and_results(driver, fixtures, report)
             elif args.suite == "checkout-snapshot":
                 from native_checkout_snapshot_scenarios import coherent_checkout_snapshot
                 repository, repo_id = coherent_checkout_snapshot(driver, fixtures, report)

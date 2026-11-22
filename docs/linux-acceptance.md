@@ -608,6 +608,11 @@ with the package digest, process results and scenario verification. A green
 process exit alone does not satisfy a requested scenario. For example,
 `branch-workflow-ui` checks setup/start/finish, whereas
 `branch-workflow-recovery` checks a paused merge, conflicts, restart and stop.
+The `bisect-voting` suite runs the same custom-term, unique-result, and
+inconclusive-result scenarios as the detached-checkout gate, without
+running unrelated checkout and recovery scenarios. Use the complete Git
+runtime for the target distribution, including the scripted helper on Git
+2.39; a copied executable alone is not equivalent.
 
 To check whether the retained reports cover every required Linux runtime
 suite for one release candidate, add `--release-matrix` before the package
