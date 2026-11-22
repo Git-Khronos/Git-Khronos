@@ -630,6 +630,8 @@ pub struct TagDetails {
 pub struct CommitSummary {
     pub oid: String,
     pub parents: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shallow_boundary: Option<bool>,
     pub author_name: String,
     pub author_email: String,
     pub authored_at: String,
@@ -9774,8 +9776,54 @@ fn read_commits_with_arguments(path: &Path, args: &[&str]) -> Result<Vec<CommitS
             }
         }
     }
+    mark_shallow_boundaries(path, &mut commits);
     original_references::decorate(path, &mut commits)?;
     Ok(commits)
+}
+
+fn mark_shallow_boundaries(path: &Path, commits: &mut [CommitSummary]) {
+    // Ordinary history needs no additional read. Git can also use this
+    // decoration for legacy grafts or a branch literally named "grafted".
+    if !commits.iter().any(|commit| {
+        commit.parents.is_empty() && commit.decorations.iter().any(|name| name == "grafted")
+    }) {
+        return;
+    }
+    // Resolve the shared metadata path through Git. The visual marker is
+    // optional; an unreadable or unusually large file must not break history.
+    let Ok(location) = run_git(
+        path,
+        &[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-path",
+            "shallow",
+        ],
+    ) else {
+        return;
+    };
+    if !location.status.success() {
+        return;
+    }
+    let Ok(file) = git_absolute_path(&location.stdout) else {
+        return;
+    };
+    const MAX_BYTES: u64 = 1024 * 1024;
+    if !fs::metadata(file).is_ok_and(|metadata| metadata.is_file() && metadata.len() <= MAX_BYTES) {
+        return;
+    }
+    let mut contents = String::new();
+    if fs::File::open(file)
+        .and_then(|file| file.take(MAX_BYTES + 1).read_to_string(&mut contents))
+        .is_ok_and(|size| size as u64 <= MAX_BYTES)
+    {
+        let oids = contents.lines().collect::<HashSet<_>>();
+        for commit in commits {
+            if commit.parents.is_empty() && oids.contains(commit.oid.as_str()) {
+                commit.shallow_boundary = Some(true);
+            }
+        }
+    }
 }
 
 fn decode_nul_record<'a, const N: usize>(bytes: &mut &'a [u8]) -> Option<[&'a [u8]; N]> {
@@ -9823,6 +9871,7 @@ fn parse_history_records(mut bytes: &[u8]) -> Result<Vec<CommitSummary>, AppErro
         commits.push(CommitSummary {
             oid: oid.to_owned(),
             parents,
+            shallow_boundary: None,
             author_name: fields[2].to_string(),
             author_email: fields[3].to_string(),
             authored_at: fields[4].to_string(),
@@ -11905,6 +11954,8 @@ esac
         repository.git(&["cat-file", "-e", &complete[3].oid]);
         let expected = read_commits(&repository.path, 20).unwrap();
         assert_eq!(expected.len(), 2);
+        assert_eq!(expected[0].shallow_boundary, None);
+        assert_eq!(expected[1].shallow_boundary, Some(true));
         assert!(expected[1].parents.is_empty());
         let mut cursor = CommitHistoryCursor::default();
         cursor.reset(&repository.path, &expected[..1]).unwrap();
@@ -11919,11 +11970,36 @@ esac
             "History crossed the shallow boundary"
         );
         assert_eq!(page.commits[0].oid, *boundary);
+        assert_eq!(page.commits[0].shallow_boundary, Some(true));
         assert!(
             page.commits[0].parents.is_empty(),
             "Shallow commit exposed grafted-away parents"
         );
         assert!(!page.history_truncated);
+    }
+
+    #[test]
+    fn a_legacy_graft_or_branch_named_grafted_is_not_a_shallow_boundary() {
+        let repository = TestRepository::new();
+        repository.git(&["commit", "--allow-empty", "-m", "Initial commit"]);
+        let root = read_commits(&repository.path, 1).unwrap().remove(0).oid;
+        repository.git(&["branch", "grafted", &root]);
+        repository.write("history.txt", "graft fixture\n");
+        repository.git(&["add", "history.txt"]);
+        repository.git(&["commit", "-m", "Legacy graft fixture"]);
+        let tip = read_commits(&repository.path, 1).unwrap().remove(0).oid;
+        fs::write(repository.path.join(".git/info/grafts"), format!("{tip}\n")).unwrap();
+        let history = read_commits(&repository.path, 20).unwrap();
+        assert!(
+            history
+                .iter()
+                .any(|commit| commit.decorations.iter().any(|dec| dec == "grafted"))
+        );
+        assert!(
+            history
+                .iter()
+                .all(|commit| commit.shallow_boundary.is_none())
+        );
     }
 
     #[test]
@@ -11954,6 +12030,10 @@ esac
                 }
                 let expected = read_commits(path, 20).unwrap();
                 assert_eq!(expected.len(), visible);
+                assert_eq!(
+                    expected.last().unwrap().shallow_boundary,
+                    (visible < 5).then_some(true)
+                );
                 cursor.reset(path, &expected[..1]).unwrap();
                 assert!(
                     cursor.walk.is_some(),
@@ -12183,6 +12263,7 @@ esac
                 };
                 CommitSummary {
                     oid: oid.clone(),
+                    shallow_boundary: None,
                     parents: field("%P")
                         .split_ascii_whitespace()
                         .map(str::to_owned)

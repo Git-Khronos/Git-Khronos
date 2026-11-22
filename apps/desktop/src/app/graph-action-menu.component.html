@@ -35,6 +35,11 @@
       }
       @if (menu.kind === 'commit') {
         <button type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="view.compareContextCommitWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
+        @if (view.contextShallowBoundary(menu)) {
+          <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length"
+            [title]="view.git.repository()?.remotes?.length ? 'Review fetch options without downloading yet' : 'Configure a remote to download older history'"
+            (click)="view.reviewContextHistoryDepth(menu)"><span><gc-icon name="history" [size]="13" /></span>Review history depth…</button>
+        }
       }
       @if (menu.kind === 'branch' && menu.label !== view.git.repository()?.status?.branch && view.git.repository()?.status?.entryCount) {
         <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openStashOptions('switch')"><span><gc-icon name="archive" [size]="13" /></span>Stash changes and checkout…</button>

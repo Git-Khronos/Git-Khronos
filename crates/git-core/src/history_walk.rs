@@ -197,7 +197,8 @@ impl HistoryWalk {
         let text = |value: &BStr| decode_text(value, latin1);
 
         let mut parents = decoded.parents().collect::<Vec<_>>();
-        if self.shallow_oids.contains(&oid) {
+        let shallow = self.shallow_oids.contains(&oid);
+        if shallow {
             parents.clear();
         }
         if self.stash_oids.contains(&oid) {
@@ -226,7 +227,7 @@ impl HistoryWalk {
         let mut decorations = self.decorations.get(&oid).cloned().unwrap_or_default();
         // The CLI tip list already carries this marker when a shallow commit
         // is a ref tip. Boundaries reached only by traversal need it as well.
-        if self.shallow_oids.contains(&oid) && decorations.is_empty() {
+        if shallow && decorations.is_empty() {
             decorations.push("grafted".to_owned());
         }
 
@@ -236,6 +237,7 @@ impl HistoryWalk {
             summary: CommitSummary {
                 oid: oid.to_string(),
                 parents: parents.iter().map(ObjectId::to_string).collect(),
+                shallow_boundary: shallow.then_some(true),
                 author_name,
                 author_email,
                 authored_at,

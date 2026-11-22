@@ -73,6 +73,8 @@
 .wip-node { width: 22px; height: 18px; border: 0; background: var(--orange); color: #2a1809; font-size: 12px; font-weight: 900; }
 .multi-lane .wip-node { top: 13px; display: grid; place-items: center; background: var(--orange) !important; }
 .commit-main { container: commit-message / inline-size; display: flex; min-width: 0; align-items: center; padding: 0 8px; }
+.shallow-boundary-label { flex: 0 0 auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 7px; padding: 1px 4px; border: 1px solid currentColor; border-radius: 3px; color: var(--graph-row-muted); font-size: var(--font-size-caption); }
+.commit-row.selected .shallow-boundary-label { color: var(--nav-text); }
 .commit-copy { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 8px; }
 .subject { max-width: 82%; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--font-size-body); font-weight: 650; }
 .subject:only-child { max-width: 100%; }

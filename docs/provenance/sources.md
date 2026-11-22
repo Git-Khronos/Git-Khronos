@@ -391,7 +391,9 @@ third-party implementation copied.
 Sources: [git-fetch](https://git-scm.com/docs/git-fetch) (`--deepen`,
 `--unshallow`), [git-rev-parse](https://git-scm.com/docs/git-rev-parse) and
 [gitrepository-layout](https://git-scm.com/docs/gitrepository-layout) (the
-`shallow` file). Behavior confirmed with original real-Git fixtures; no
+`shallow` file), and [Git's shallow history notes](https://git-scm.com/docs/shallow)
+for marking real boundaries rather than ordinary roots or legacy grafts.
+Behavior confirmed with original real-Git fixtures; no
 third-party implementation copied.
 
 ## Repository states on open

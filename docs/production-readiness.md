@@ -3963,6 +3963,17 @@ recovery checks. The rerun used the new focused suite from `70a419f` without
 rebuilding the installer. Focused receipt:
 `target/local-review/updater/jammy-builder/workflow-conflict-recheck.fpJr85WC/reports.json`.
 
+### Installed exact single-branch fetch
+
+The local test-publisher installer from `92fc2fb` passed 60 installed
+setup/keyboard scenarios on Ubuntu 24.04. Independent Git checks confirmed
+that fetching an explicitly selected branch created only its tracking ref
+without pruning other refs, switching the checkout or changing working files.
+SHA-256: `f2dfc43f15c8355b7e6faf3de8afb4e03cff81fb0aeea428f9ad5a374f527b43`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/single-branch-fetch-release.zjv1CLVG/reports.json`.
+This is not full release qualification and predates the context-menu shortcut.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard

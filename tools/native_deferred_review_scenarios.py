@@ -174,7 +174,16 @@ def deferred_review_workflows(driver, fixtures, report):
     assert fixtures.git(shallow, 'rev-list', '--count', 'HEAD') == '1'
     shallow_before = checkout_footprint(fixtures, shallow, ('fixture.txt', 'untracked-note.txt'))
     shallow_refs = fixtures.git(shallow, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/tags')
-    open_fetch(shallow)
+    boundary = shallow_before['head']
+    row_selector = f'[data-commit-oid="{boundary}"]'
+    row_query = 'document.querySelector(' + json.dumps(row_selector) + ')'
+    driver.wait(f"return {row_query}?.getAttribute('aria-label')?.includes('shallow history boundary')")
+    driver.context_click(row_selector + ' .shallow-boundary-label')
+    driver.click_scrolled_text('.commit-context-menu button[role=menuitem]',
+                               'Review history depth…', wait_for_ready=True)
+    driver.wait('return !!document.querySelector(' + json.dumps(fetch_modal) + ')')
+    assert fixtures.git(shallow, 'rev-list', '--count', 'HEAD') == '1'
+    preserved(shallow_before, checkout_footprint(fixtures, shallow, ('fixture.txt', 'untracked-note.txt')))
     choose(fetch_modal + ' input[name=fetchHistory][value=deepen]')
     driver.wait('return document.querySelector(' + json.dumps(fetch_modal + ' input[name=deepenCommits]') + ')?.disabled === false')
     driver.script('''const field = document.querySelector('input[name=deepenCommits]');
@@ -182,6 +191,10 @@ def deferred_review_workflows(driver, fixtures, report):
     confirm_fetch('Fetch and extend history')
     assert fixtures.git(shallow, 'rev-list', '--count', 'HEAD') == '2'
     assert fixtures.git(shallow, 'rev-parse', '--is-shallow-repository') == 'true'
+    new_boundary = fixtures.git(shallow, 'rev-parse', 'HEAD^')
+    new_query = 'document.querySelector(' + json.dumps(f'[data-commit-oid="{new_boundary}"]') + ')'
+    driver.wait(f"""return {row_query}?.getAttribute('aria-label')?.includes('shallow history boundary') === false
+        && {new_query}?.getAttribute('aria-label')?.includes('shallow history boundary')""")
     after_deepen = checkout_footprint(fixtures, shallow, ('fixture.txt', 'untracked-note.txt'))
     preserved(shallow_before, after_deepen)
     assert fixtures.git(shallow, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/tags') == shallow_refs
@@ -192,12 +205,14 @@ def deferred_review_workflows(driver, fixtures, report):
     choose(fetch_modal + ' input[name=fetchHistory][value=complete]')
     confirm_fetch('Fetch and extend history')
     assert fixtures.git(shallow, 'rev-parse', '--is-shallow-repository') == 'false'
+    driver.wait(f"return !!{row_query} && !document.querySelector('.shallow-boundary-label')")
     assert fixtures.git(shallow, 'rev-list', 'HEAD') == fixtures.git(remote, 'rev-list', 'refs/heads/main')
     after_complete = checkout_footprint(fixtures, shallow, ('fixture.txt', 'untracked-note.txt'))
     preserved(shallow_before, after_complete)
     assert fixtures.git(shallow, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads', 'refs/tags') == shallow_refs
     assert fixtures.git(remote, 'show-ref') == remote_refs
     report['scenarios'].append('native-reviewed-complete-history-matches-owned-remote-and-preserves-local-files-and-tags')
+    report['scenarios'].append('native-shallow-graph-markers-follow-depth-and-open-review-without-fetching')
     evidence.append({'source': str(shallow), 'before': shallow_before, 'afterDeepen': after_deepen,
                      'afterComplete': after_complete, 'completeCommitCount': fixtures.git(shallow, 'rev-list', '--count', 'HEAD')})
     report['deferredFetchReviews'] = {'networkRemoteUsed': False, 'cases': evidence}

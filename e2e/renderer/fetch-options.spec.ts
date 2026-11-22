@@ -321,6 +321,42 @@ test('complete history hides depth choices; shallow history requires one remote 
   expect(call.args.options).toEqual({ remote: 'upstream', prune: false, history: { mode: 'deepen', commits: 25 } });
 });
 
+test('a native shallow boundary is visible in history and opens depth review without fetching', async ({ page }) => {
+  await setup(page);
+  const { boundary, graft } = await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const repo = git.repository();
+    (window as any).__fetchFixture.shallow = { shallow: true, boundaryCommits: 1 };
+    const [first, second] = repo.commits.filter((commit: any) =>
+      !repo.stashes.some((stash: any) => stash.oid === commit.oid));
+    git.repositories.update((items: any[]) => items.map(item => item !== repo ? item : {
+      ...repo, commits: repo.commits.map((commit: any) => commit === first
+        ? { ...commit, parents: [], shallowBoundary: true }
+        : commit === second ? { ...commit, decorations: [...commit.decorations, 'grafted'] } : commit),
+    }));
+    return { boundary: first.oid, graft: second.oid };
+  });
+  const row = page.locator(`[data-commit-oid="${boundary}"]`);
+  await expect(row).toHaveAttribute('aria-label', /shallow history boundary/);
+  await expect(row.getByText('Shallow boundary', { exact: true })).toBeVisible();
+  await row.getByText('Shallow boundary', { exact: true }).click({ button: 'right' });
+  const menu = page.locator('.commit-context-menu');
+  await menu.getByRole('menuitem', { name: 'Review history depth…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
+  await expect(dialog.getByRole('group', { name: 'History depth' })).toBeVisible();
+  await expect(dialog.getByRole('radio', { name: 'Keep the current depth' })).toBeChecked();
+  expect(await page.evaluate(() => (window as any).__fetchFixture.calls.some((call: any) =>
+    call.command === 'fetch_branches' || call.command === 'fetch_repository'))).toBe(false);
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(row).toBeFocused();
+
+  const legacy = page.locator(`[data-commit-oid="${graft}"]`);
+  await expect(legacy.getByText('Shallow boundary', { exact: true })).toHaveCount(0);
+  await legacy.locator('.commit-main').click({ button: 'right' });
+  await expect(menu.getByRole('menuitem', { name: 'Checkout this commit' })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Review history depth…' })).toHaveCount(0);
+});
+
 test('complete-history choice discloses size and a shallow source, then reopens at the current depth', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => { (window as any).__fetchFixture.shallow = { shallow: true, boundaryCommits: 3 }; });

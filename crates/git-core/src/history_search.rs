@@ -818,6 +818,7 @@ pub fn history_commit(
     Ok(CommitSummary {
         oid,
         parents: fields[1].split_whitespace().map(str::to_owned).collect(),
+        shallow_boundary: None,
         author_name: fields[2].clone(),
         author_email: fields[3].clone(),
         authored_at: fields[4].clone(),

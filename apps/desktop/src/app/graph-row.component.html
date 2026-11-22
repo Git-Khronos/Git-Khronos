@@ -17,7 +17,7 @@
   [class.search-match]="view.commitSearchMatchOids().has(row.commit.oid)"
   [class.search-active]="view.activeCommitSearchOid() === row.commit.oid"
   [class.search-dimmed]="!!view.commitFilter().trim() && !view.commitSearchMatchOids().has(row.commit.oid)"
-  [attr.aria-label]="(row.commit.subject || 'No commit message') + ', by ' + row.commit.authorName"
+  [attr.aria-label]="(row.commit.subject || 'No commit message') + ', by ' + row.commit.authorName + (row.commit.shallowBoundary ? ', shallow history boundary' : '')"
   [attr.aria-pressed]="!view.changesOpen() && view.selectedCommits().includes(row.commit.oid)"
   (mouseenter)="view.previewCommit(row.commit.oid)"
   (mouseleave)="view.previewCommit(null); view.releaseReferenceStack(row.commit.oid)"
@@ -159,6 +159,9 @@
     <i class="column-resizer graph-row-resizer" style="top: 0; bottom: 0" aria-hidden="true" title="Drag to resize graph · Double-click to fit all branch paths" (pointerdown)="view.beginColumnResize('graph', $event)" (click)="view.handleGraphRowResizerClick($event, row.commit.oid)" (dblclick)="view.fitGraphColumnToBranches($event)"></i>
   </span> }
   @if (view.showMessageColumn()) { <span class="commit-main" [style.order]="view.graphColumnPosition('message')" [class.trailing-cell]="view.trailingGraphColumn() === 'message'" [title]="row.commit.subject + (row.commit.description ? '\n' + row.commit.description : '')">
+    @if (row.commit.shallowBoundary) {
+      <span class="shallow-boundary-label" aria-hidden="true" title="This line of history stops here because the repository is shallow">Shallow boundary</span>
+    }
     <span class="commit-copy">
       @if (view.stashForOid(row.commit.oid); as stash) {
         <span class="subject">@for (segment of (stash.message | searchHighlight: view.commitFilter()); track $index) { @if (segment.matched) { <mark>{{ segment.text }}</mark> } @else { {{ segment.text }} } }</span><span class="commit-description">Stashed changes</span>

@@ -3565,6 +3565,8 @@ export class AppComponent implements OnInit, OnDestroy {
     openContextIntegration: this.openContextIntegration.bind(this),
     fixedFetchTarget: this.fixedFetchTarget.bind(this),
     openContextFetchBranch: this.openContextFetchBranch.bind(this),
+    contextShallowBoundary: this.contextShallowBoundary.bind(this),
+    reviewContextHistoryDepth: this.reviewContextHistoryDepth.bind(this),
     openContextTagCreator: this.openContextTagCreator.bind(this),
     openContextWorktreeDialog: this.openContextWorktreeDialog.bind(this),
     openInteractiveRebaseFromContext: this.openInteractiveRebaseFromContext.bind(this),
@@ -6426,6 +6428,20 @@ export class AppComponent implements OnInit, OnDestroy {
     this.dismissGraphActionMenu();
     this.git.dismissError();
     this.fetchRequest.set({ ...owner, repositoryVisit: this.git.activeRepositoryReadScope(), returnFocus, fixedBranch });
+  }
+
+  protected contextShallowBoundary(menu: ContextMenuState): boolean {
+    return menu.kind === 'commit' && menu.oids.length === 1 && this.contextMenu() === menu
+      && menu.repositoryVisit === this.git.activeRepositoryReadScope()
+      && this.graphCommitByOid().get(menu.oid)?.shallowBoundary === true;
+  }
+
+  protected reviewContextHistoryDepth(menu: ContextMenuState): void {
+    if (!this.contextShallowBoundary(menu) || this.git.busy() || !this.git.repository()?.remotes.length) return;
+    const returnFocus = this.captureSecondaryConfirmationOpener(this.contextMenuReturnFocus);
+    this.dismissGraphActionMenu();
+    this.git.dismissError();
+    this.openFetchOptions(returnFocus);
   }
 
   protected openFetchOptionsFromToolbar(): void {

@@ -27,6 +27,13 @@ and graph filters do not alter subsequent pages. Restart search to include new
 history. These pins are read cursors, not persistent recovery refs: externally
 pruned objects produce a visible Git failure. Searches see only locally
 available history, including the shallow boundary if the repository is shallow.
+
+The graph labels **Shallow boundary** on commits where Git stops following
+parents because of the clone's depth. It does not label an ordinary initial
+commit or a legacy graft as shallow. Right-click that commit and choose
+**Review history depth…** to open the fetch review. Nothing is downloaded
+until you select a depth option and confirm; the marker follows the new
+boundary after a successful deepen and disappears after unshallowing.
 An unborn repository with no commit refs has an empty local history.
 
 Selecting a result opens commit details even when that commit has never been
