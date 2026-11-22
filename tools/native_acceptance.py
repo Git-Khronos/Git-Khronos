@@ -1201,7 +1201,7 @@ def main():
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
-        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
+        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
         "commit-responsiveness", "ignore-responsiveness",
     ), default="smoke")
     parser.add_argument("--headless", action="store_true")
@@ -1386,6 +1386,11 @@ def main():
                 repository = fixtures.repository()
                 repo_id = open_ui(driver, repository)
                 branch_workflow_desktop(driver, fixtures, repository, report)
+            elif args.suite == "branch-workflow-recovery":
+                from native_scenarios import branch_workflow_restart_and_abort
+                repository = fixtures.repository()
+                repo_id = open_ui(driver, repository)
+                branch_workflow_restart_and_abort(driver, fixtures, repository, report)
             elif args.suite == "hosted-fork-ui":
                 from native_scenarios import hosted_fork_requests
                 repository = fixtures.repository()
