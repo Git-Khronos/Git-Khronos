@@ -4429,6 +4429,18 @@ did not receive focus. This is a negative control, not a qualification
 report for the correction. Receipt:
 `target/local-review/updater/jammy-builder/worktree-focus-negative.vT7QlqTm/lane/results/`.
 
+The test-publisher `234e186` package passed all 62 installed
+`setup-keyboard` scenarios on the same distro and Git version. At a
+900-pixel native viewport the Branch name field kept focus and Escape
+returned focus to the visible references launcher without changing the
+checkout. Its bisect-voting and merge-preview reports also match the
+package digest `995ddc106c8c1f2fdfd039983fa849d34dd0c5225a86acce6e0300b6a4d97c37`.
+Receipt:
+`target/local-review/updater/jammy-builder/worktree-focus-release.l1yascrg/reports.json`.
+The exact bytes are staged under `target/local-preview/0.1.6-debian12-234e186/`
+with a verified checksum and the scope of the three focused suites. This is
+a test-publisher preview, not an automatic upgrade path or publication.
+
 ### Wrapped diff rendering
 
 The wrapped split regression was reproduced on the older renderer: the
@@ -4473,3 +4485,13 @@ were unchanged throughout. The same report also passed the two inherited
 Git-context checks. No signed offer, download, or installation was exercised.
 Exact-package receipt:
 `target/local-review/updater/jammy-builder/installed-update-consent.VTlWYy4j/reports.json`.
+
+### Compact history-search focus
+
+The older renderer failed the smallest-toolbar journey when Escape closed
+the advanced history dialog: its original toolbar button remained connected
+but was hidden. Three focused regressions reproduced the hidden launcher,
+the same problem while the chunk was still loading, and a focus return that
+overrode another control. After `cc233bd`, all 63 history-search/lifecycle
+tests and the complete smallest-toolbar journey passed. The exact older
+renderer cannot be reclassified using those newer UI results.
