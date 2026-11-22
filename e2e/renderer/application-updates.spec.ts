@@ -356,6 +356,40 @@ test('a held poll cannot re-enable installation after a native activity update a
   await expect(install).toBeEnabled();
 });
 
+test('Updates keeps polling for install eligibility after a timed-out read is superseded by a live event', async ({ page }) => {
+  await page.clock.install();
+  await page.evaluate(() => (window as any).__updates.replace({
+    offerId: 'owned-ready', offeredVersion: '0.2.0', verified: true, phase: 'ready',
+    canCheck: false, canInstall: true, message: 'Owned verified package ready',
+  }));
+  const dialog = await open(page);
+  const install = dialog.getByRole('button', { name: 'Install verified update', exact: true });
+  await expect(install).toBeEnabled();
+  await page.evaluate(() => { (window as any).__updates.holdStatus = true; });
+  await dialog.getByRole('button', { name: 'Refresh status', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__updates.finishStatus)).toBe('function');
+  await page.evaluate(() => {
+    const fixture = (window as any).__updates;
+    fixture.status = { ...fixture.status, canInstall: false, installBlocker: 'Wait for active Git work.' };
+    fixture.emit();
+  });
+  await expect(dialog.getByText('Wait for active Git work.')).toBeVisible();
+  await expect(install).toBeDisabled();
+  await page.evaluate(() => {
+    const fixture = (window as any).__updates;
+    fixture.holdStatus = false;
+    // Git activity ended without another updater event or revision change.
+    fixture.status = { ...fixture.status, canInstall: true, installBlocker: null, message: 'Owned Git work finished' };
+  });
+  await page.clock.fastForward(7000);
+  await page.clock.fastForward(1500);
+  await expect(dialog).toContainText('Owned Git work finished');
+  await expect(install).toBeEnabled();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__updates.calls
+    .filter((call: any) => /^(check_|download_|install_|set_automatic_)/.test(call.command)))).toEqual([]);
+});
+
 test('Updates explains what blocks a verified package without hiding the earlier installer outcome', async ({ page }) => {
   await page.evaluate(() => (window as any).__updates.replace({
     offerId: 'owned-refused', offeredVersion: '0.2.0', phase: 'refused', verified: true,

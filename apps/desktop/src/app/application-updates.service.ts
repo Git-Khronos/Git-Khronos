@@ -90,12 +90,13 @@ export class ApplicationUpdatesService {
         if (this.disposed) return;
         if (value !== STATUS_READ_TIMEOUT) { this.accept(value, generation); return; }
 
-        // Abandon this view's read, not the native updater. Don't let the
-        // dialog timer keep queuing requests into an unresponsive bridge.
+        // A newer native event already superseded this read. An obsolete
+        // timeout must not silently stop observing current install eligibility.
+        if (generation !== this.acceptedStatusGeneration) return;
+        // Still the latest read: don't let the dialog timer keep queuing
+        // requests into an unresponsive bridge.
         this.statusPollingPaused = true;
-        if (generation === this.acceptedStatusGeneration) {
-          this.statusError.set('Native update status did not respond in time. Select Refresh status to retry.');
-        }
+        this.statusError.set('Native update status did not respond in time. Select Refresh status to retry.');
       },
       () => {
         if (!this.disposed && generation === this.acceptedStatusGeneration) {

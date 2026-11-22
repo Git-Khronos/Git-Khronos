@@ -88,23 +88,47 @@ describe('native-owned application updates service', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it('a timeout cannot invalidate newer native events or replay an updater action', async () => {
+  it('a superseded timeout cannot freeze install eligibility or replay an updater action', async () => {
     vi.useFakeTimers();
     try {
-      bridge.status.mockReturnValueOnce(new Promise(() => {}));
+      const retired = deferred<ApplicationUpdateStatus>();
+      bridge.status.mockReturnValueOnce(retired.promise);
       const service = create();
-      emit(state({ revision: 3, automatic: true }));
+      const ready = state({ revision: 3, phase: 'ready', offerId: 'owned', verified: true,
+        canInstall: false, installBlocker: 'Finish active Git work.' });
+      emit(ready);
       await vi.advanceTimersByTimeAsync(7000);
-      expect(service.state()?.automatic).toBe(true);
+      expect(service.state()?.canInstall).toBe(false);
       expect(service.statusError()).toBe('');
-      await service.pollStatus();
-      expect(bridge.status).toHaveBeenCalledTimes(1);
-      emit(state({ revision: 4, automatic: false }));
-      bridge.status.mockResolvedValueOnce(state({ revision: 4, automatic: false }));
+      // Finishing Git work changes native eligibility, not the updater
+      // revision. No new updater event tells a stopped poll to resume.
+      bridge.status.mockResolvedValueOnce({ ...ready, canInstall: true, installBlocker: null });
       await service.pollStatus();
       expect(bridge.status).toHaveBeenCalledTimes(2);
+      expect(service.state()?.canInstall).toBe(true);
+      retired.resolve({ ...ready, revision: 90 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.state()?.revision).toBe(3);
+
+      // The recovery read does not remove the guard on a current timeout.
+      bridge.status.mockReturnValueOnce(new Promise(() => {}));
+      const unanswered = service.pollStatus();
+      await vi.advanceTimersByTimeAsync(7000);
+      await unanswered;
+      expect(service.statusError()).toContain('did not respond in time');
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(3);
+      // An event after a genuine timeout still resumes polling.
+      const newer = { ...ready, revision: 4 };
+      emit(newer);
+      bridge.status.mockResolvedValueOnce(newer);
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(4);
+      expect(service.statusError()).toBe('');
       expect(bridge.check).not.toHaveBeenCalled();
+      expect(bridge.download).not.toHaveBeenCalled();
       expect(bridge.install).not.toHaveBeenCalled();
+      expect(bridge.automatic).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
 
