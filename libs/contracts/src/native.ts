@@ -37,6 +37,7 @@ export type AppError = { kind: string; message: string; hint: string | null }
 export type ApplicationUpdateChanged = { state: ApplicationUpdateStatus }
 export type ApplicationUpdateStatus = { revision: number; phase: UpdatePhase; runningVersion: string; installedVersion: string | null; packageFormat: string | null; configured: boolean; automatic: boolean; offerId: string | null; offeredVersion: string | null; notes: string; verified: boolean; downloadedBytes: number; totalBytes: number | null; message: string; storageError: string | null; installBlocker?: string | null; canCheck: boolean; canDownload: boolean; canInstall: boolean; canInspect: boolean }
 export type AppliedDiscardRecovery = { status: RepositoryStatus; affectedToolbar: boolean }
+export type BisectCandidate = { oid: string; noCheckout: boolean }
 export type BisectStartReview = { badOid: string; goodOid: string; branch: string | null }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; upstreamTarget: UpstreamTarget | null; tracking: string | null }
@@ -465,7 +466,7 @@ rebaseSplit: RebaseSplitStatus | null;
 /**
  * @deprecated Read operations instead.
  */
-mailPatchInProgress: boolean; bisectInProgress: boolean;
+mailPatchInProgress: boolean; bisectInProgress: boolean; bisectCandidate?: BisectCandidate | null;
 /**
  * This read intentionally omitted file discovery; zero is not a clean result.
  */
@@ -851,7 +852,7 @@ export const load_operation_recoveries: (args: { repoId: string }) => Promise<Op
 export const restore_operation_recovery: (args: { repoId: string; id: string; branch: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("restore_operation_recovery");
 export const forget_operation_recovery: (args: { repoId: string; id: string }) => Promise<null> = /* @__PURE__ */ __bindCommand__("forget_operation_recovery");
 export const start_bisect: (args: { repoId: string; review: BisectStartReview }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("start_bisect");
-export const mark_bisect: (args: { repoId: string; verdict: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("mark_bisect");
+export const mark_bisect: (args: { repoId: string; verdict: string; candidate: BisectCandidate }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("mark_bisect");
 export const reset_bisect: (args: { repoId: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("reset_bisect");
 export const move_head: (args: { repoId: string; expectedOid: string; targetOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("move_head");
 export const inspect_commit: (args: { repoId: string; oid: string }) => Promise<CommitDetails> = /* @__PURE__ */ __bindCommand__("inspect_commit");

@@ -1078,10 +1078,15 @@
           </div>
         }
         @if (operationState.bisectInProgress) {
+          @let target = bisectVoteTarget();
           <div class="bisect-progress" role="status" aria-label="Git bisect in progress">
             <span><gc-icon name="history" [size]="13" /><strong>BISECT IN PROGRESS</strong></span>
-            <small>Test commit {{ shortOid(repo.headOid || '') }}, then classify the result</small>
-            <div><button class="good" type="button" [disabled]="git.busy()" (click)="markBisect('good')">Good</button><button class="bad" type="button" [disabled]="git.busy()" (click)="markBisect('bad')">Bad</button><button type="button" [disabled]="git.busy()" (click)="markBisect('skip')">Skip</button><button type="button" [disabled]="git.busy()" (click)="resetBisect()">Reset</button></div>
+            @if (target) {
+              <small [title]="target.candidate.oid">Test commit {{ shortOid(target.candidate.oid) }}, then classify the result. @if (target.candidate.noCheckout) { Checkout unchanged. }</small>
+            } @else {
+              <small>Candidate unavailable. Refresh the repository before voting.</small>
+            }
+            <div><button class="good" type="button" [disabled]="git.busy() || !target" (click)="markBisect('good', target)">Good</button><button class="bad" type="button" [disabled]="git.busy() || !target" (click)="markBisect('bad', target)">Bad</button><button type="button" [disabled]="git.busy() || !target" (click)="markBisect('skip', target)">Skip</button><button type="button" [disabled]="git.busy()" (click)="resetBisect()">Reset</button></div>
           </div>
         }
         @if (smartBranchVisibility() || soloBranches().length || hiddenBranches().length) {

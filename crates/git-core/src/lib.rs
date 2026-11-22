@@ -500,6 +500,8 @@ pub struct RepositoryStatus {
     /// @deprecated Read operations instead.
     pub mail_patch_in_progress: bool,
     pub bisect_in_progress: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bisect_candidate: Option<BisectCandidate>,
     /// This read intentionally omitted file discovery; zero is not a clean result.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files_unscanned: Option<bool>,
@@ -6557,7 +6559,37 @@ fn start_bisect_at(
     )
 }
 
-pub fn mark_bisect(path: &Path, verdict: &str) -> Result<(), AppError> {
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BisectCandidate {
+    pub oid: String,
+    pub no_checkout: bool,
+}
+
+fn read_bisect_candidate(path: &Path) -> Result<BisectCandidate, AppError> {
+    let unavailable = || AppError::new(
+        "bisectCandidateUnavailable",
+        "Git could not verify the current bisect candidate.",
+        Some("Refresh the repository before classifying a commit."),
+    );
+    // Use exact ref queries: reftable may not have a BISECT_HEAD file
+    // and a tag of that name must not be treated as a no-checkout session.
+    let pseudo = run_git(path, &["show-ref", "--verify", "--quiet", "BISECT_HEAD"])?;
+    let (oid, no_checkout) = match pseudo.status.code() {
+        Some(0) => {
+            let output = run_git(path, &["show-ref", "--verify", "--hash", "BISECT_HEAD"])?;
+            if !output.status.success() { return Err(unavailable()); }
+            let value = std::str::from_utf8(&output.stdout).map_err(|_| unavailable())?;
+            (value.trim_end_matches(['\r', '\n']).to_owned(), true)
+        }
+        Some(1) => (reference_tip(path, "HEAD").ok_or_else(unavailable)?, false),
+        _ => return Err(unavailable()),
+    };
+    validate_commit_oid(&oid).map_err(|_| unavailable())?;
+    Ok(BisectCandidate { oid, no_checkout })
+}
+
+pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Result<(), AppError> {
     if !repository_operation_state(path)?.bisect {
         return Err(AppError::new(
             "bisectNotInProgress",
@@ -6577,7 +6609,17 @@ pub fn mark_bisect(path: &Path, verdict: &str) -> Result<(), AppError> {
             ));
         }
     };
-    run_mutation(path, &["bisect", verdict], "advance bisect")
+    validate_commit_oid(&expected.oid)?;
+    if &read_bisect_candidate(path)? != expected {
+        return Err(AppError::new(
+            "staleBisectCandidate",
+            "The candidate changed since this bisect result was shown. No verdict was recorded.",
+            Some("Refresh the repository and test the current candidate before marking it."),
+        ));
+    }
+    // Pass the exact revision. Never allow native bisect to resolve the
+    // target implicitly after the check if another client advances it.
+    run_mutation(path, &["bisect", verdict, &expected.oid], "advance bisect")
 }
 
 pub fn reset_bisect(path: &Path) -> Result<(), AppError> {
@@ -8447,6 +8489,9 @@ fn read_status_with_limit_mode(
         overflow,
     );
     status.files_unscanned = (untracked_files == "no").then_some(true);
+    if status.bisect_in_progress {
+        status.bisect_candidate = read_bisect_candidate(path).ok();
+    }
     Ok(status)
 }
 
@@ -8549,8 +8594,10 @@ fn read_head_status(path: &Path) -> Result<RepositoryStatus, AppError> {
         None
     };
     let operations = repository_operation_state(path)?;
+    let bisect_candidate = if operations.bisect { read_bisect_candidate(path).ok() } else { None };
     Ok(RepositoryStatus {
         branch,
+        bisect_candidate,
         ..operations.into_status()?
     })
 }
@@ -18328,18 +18375,61 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             .to_owned();
 
         start_bisect(&repository.path, &bad_oid, &good_oid).expect("start bisect session");
-        assert!(
-            snapshot(&repository.path)
-                .expect("snapshot active bisect")
-                .status
-                .bisect_in_progress
-        );
-
-        mark_bisect(&repository.path, "good").expect("mark current revision good");
+        let progress = snapshot(&repository.path).expect("snapshot active bisect");
+        assert!(progress.status.bisect_in_progress);
+        let candidate = progress.status.bisect_candidate.expect("bisect candidate");
+        mark_bisect(&repository.path, "good", &candidate).expect("mark current revision good");
         reset_bisect(&repository.path).expect("reset bisect session");
         let reset = snapshot(&repository.path).expect("snapshot reset bisect");
         assert!(!reset.status.bisect_in_progress);
         assert_eq!(reset.head_oid.as_deref(), Some(bad_oid.as_str()));
+    }
+
+    #[test]
+    fn bisect_rechecks_and_explicitly_votes_for_the_current_native_candidate() {
+        for no_checkout in [false, true] {
+            let repo = TestRepository::new();
+            let path = &repo.path;
+            for number in 0..12 {
+                repo.write("test.txt", &format!("step {number}\n"));
+                stage_all(path).unwrap();
+                commit(path, "Step").unwrap();
+            }
+            let original = reference_tip(path, "HEAD").unwrap();
+            let good = reference_tip(path, "HEAD~11").unwrap();
+            let mut args = vec!["bisect", "start"];
+            if no_checkout {
+                args.push("--no-checkout");
+            } else {
+                repo.git(&["tag", "BISECT_HEAD", &good]);
+            }
+            args.extend([original.as_str(), good.as_str()]);
+            repo.git(&args);
+            let first = read_status(path).unwrap().bisect_candidate.unwrap();
+            assert_eq!(first.no_checkout, no_checkout);
+            let expected_ref = if no_checkout { "BISECT_HEAD" } else { "HEAD" };
+            assert_eq!(reference_tip(path, expected_ref).as_deref(), Some(first.oid.as_str()));
+            repo.git(&["bisect", "good", &first.oid]);
+            let next = read_status(path).unwrap().bisect_candidate.unwrap();
+            assert_ne!(next.oid, first.oid);
+            let before_head = reference_tip(path, "HEAD");
+            let index = fs::read(path.join(".git/index")).unwrap();
+            let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
+            assert_eq!(mark_bisect(path, "bad", &first).unwrap_err().kind, "staleBisectCandidate");
+            assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
+            assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+            assert_eq!(reference_tip(path, "HEAD"), before_head);
+            assert_eq!(read_status(path).unwrap().bisect_candidate, Some(next.clone()));
+
+            mark_bisect(path, "good", &next).unwrap();
+            assert_eq!(reference_tip(path, &format!("refs/bisect/good-{}", next.oid)).as_deref(), Some(next.oid.as_str()));
+            if no_checkout {
+                assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(original.as_str()));
+                assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+            }
+            reset_bisect(path).unwrap();
+            assert!(read_status(path).unwrap().bisect_candidate.is_none());
+        }
     }
 
     #[test]

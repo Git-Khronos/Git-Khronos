@@ -2,7 +2,7 @@ import { RepositorySetupDialogComponent, type RepositoryEditorOwner, type Reposi
 import { WorkspaceEditDialogsComponent } from './workspace-edit-dialogs.component';
 import { BranchDropMenuComponent, type BranchDropAdvice, type BranchDropStrategy } from './branch-drop-menu.component';
 import { ConflictEditorComponent, type ConflictEditorAction } from './conflict-editor.component';
-import type { ConflictDetails } from '@git-khronos/contracts';
+import type { BisectCandidate, ConflictDetails } from '@git-khronos/contracts';
 import type { PushDestinationReview } from '@git-khronos/contracts';
 import { MainMenuContentComponent } from './main-menu-content.component';
 import { CompactRepositoryActionsComponent, type CompactRepositoryAction, type CompactRepositoryActionsView } from './compact-repository-actions.component';
@@ -437,6 +437,12 @@ export interface CommandAction {
   enabled: boolean;
   icon: IconName;
   stashTarget?: { repositoryId: string; stash: StashEntry };
+  bisectTarget?: BisectVoteTarget | null;
+}
+
+interface BisectVoteTarget {
+  checkoutScope: string;
+  candidate: BisectCandidate;
 }
 
 interface PendingBisectStart {
@@ -1300,6 +1306,10 @@ export class AppComponent implements OnInit, OnDestroy {
       && repo.status.branch === review.checkout.branch;
   });
   protected readonly pendingBisectStart = signal<PendingBisectStart | null>(null);
+  protected readonly bisectVoteTarget = computed<BisectVoteTarget | null>(() => {
+    const candidate = this.git.bisectCandidate();
+    return candidate ? { checkoutScope: this.git.activeRepositoryReadScope(), candidate } : null;
+  });
   protected readonly pendingBranchRename = signal<PendingBranchRename | null>(null);
   private readonly branchRenameInput = viewChild<ElementRef<HTMLInputElement>>('branchRenameInput');
   protected readonly pendingBranchAction = signal<PendingBranchAction | null>(null);
@@ -3970,6 +3980,7 @@ export class AppComponent implements OnInit, OnDestroy {
   // sees a read-only facade for selecting and ranking its command options.
   protected readonly commandPaletteActionSources = {
     git: this.git,
+    bisectVoteTarget: () => this.bisectVoteTarget(),
     primaryShortcutKey: this.primaryShortcutKey,
     alternateShortcutKey: this.alternateShortcutKey,
     undoShortcut: this.undoShortcut,
@@ -11583,9 +11594,9 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'history-operation-abort': await this.controlHistoryOperation('abort'); break;
       case 'history-operation-quit': await this.controlHistoryOperation('quit'); break;
       case 'bisect-start': this.requestBisectFromSelection(); break;
-      case 'bisect-good': await this.git.markBisect('good'); break;
-      case 'bisect-bad': await this.git.markBisect('bad'); break;
-      case 'bisect-skip': await this.git.markBisect('skip'); break;
+      case 'bisect-good': await this.markBisect('good', action.bisectTarget ?? null); break;
+      case 'bisect-bad': await this.markBisect('bad', action.bisectTarget ?? null); break;
+      case 'bisect-skip': await this.markBisect('skip', action.bisectTarget ?? null); break;
       case 'bisect-reset': await this.git.resetBisect(); break;
       case 'left-panel': this.setPanelVisibility('left-panel', !this.sidebarVisible()); break;
       case 'commit-panel': this.setPanelVisibility('commit-panel', !this.detailsVisible()); break;
@@ -14082,8 +14093,11 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.git.startBisect({ badOid: review.badOid, goodOid: review.goodOid, branch: review.branch });
   }
 
-  protected async markBisect(verdict: 'good' | 'bad' | 'skip'): Promise<void> {
-    await this.git.markBisect(verdict);
+  protected async markBisect(verdict: 'good' | 'bad' | 'skip', target: BisectVoteTarget | null): Promise<void> {
+    const current = this.bisectVoteTarget();
+    if (this.git.busy() || !target || !current || current.checkoutScope !== target.checkoutScope
+      || current.candidate.oid !== target.candidate.oid || current.candidate.noCheckout !== target.candidate.noCheckout) return;
+    await this.git.markBisect(verdict, target.candidate);
   }
 
   protected async resetBisect(): Promise<void> {

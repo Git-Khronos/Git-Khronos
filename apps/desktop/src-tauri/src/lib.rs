@@ -2739,9 +2739,10 @@ fn start_bisect(
 fn mark_bisect(
     repo_id: String,
     verdict: String,
+    candidate: git_khronos_git_core::BisectCandidate,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_mark_bisect(path, &verdict))
+    mutate_and_refresh(&repo_id, &state, |path| git_mark_bisect(path, &verdict, &candidate))
 }
 
 #[tauri::command(rename_all = "camelCase")]

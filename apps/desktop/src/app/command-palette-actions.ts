@@ -29,6 +29,8 @@ function commandMatchScore(query: string, action: CommandAction): number {
 export function buildCommandActions(source: CommandPaletteActionSources, search: string, scope: CommandPaletteScope): CommandAction[] {
   const repository = source.git.repository();
   const busy = source.git.busy();
+  const bisectTarget = source.bisectVoteTarget();
+  const bisectOid = bisectTarget ? bisectTarget.candidate.oid.slice(0, 7) : 'unavailable';
   const actions: CommandAction[] = [
     ...source.git.workspaces().map((workspace, index): CommandAction => {
       const current = workspace.id === source.git.activeWorkspaceId();
@@ -108,9 +110,9 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
       ...(source.repositoryOperation().historyNoCommit ? [{ id: 'history-operation-quit', group: 'History', label: 'Finish No-commit Replay Manually', detail: 'End the saved sequence while retaining all current files and staged changes', enabled: !busy, icon: 'check' as IconName }] : []),
     ] : []),
     ...((repository && source.repositoryOperation().bisectInProgress) ? [
-      { id: 'bisect-good', group: 'History', label: 'Bisect: Mark Current Commit Good', detail: 'Continue the search using the current commit as a known-good result', enabled: !busy, icon: 'check' as IconName },
-      { id: 'bisect-bad', group: 'History', label: 'Bisect: Mark Current Commit Bad', detail: 'Continue the search using the current commit as a known-bad result', enabled: !busy, icon: 'warning' as IconName },
-      { id: 'bisect-skip', group: 'History', label: 'Bisect: Skip Current Commit', detail: 'Continue without classifying the current commit', enabled: !busy, icon: 'redo' as IconName },
+      { id: 'bisect-good', group: 'History', label: 'Bisect: Mark Current Commit Good', detail: `Mark candidate ${bisectOid} as known good`, enabled: !busy && !!bisectTarget, icon: 'check' as IconName, bisectTarget },
+      { id: 'bisect-bad', group: 'History', label: 'Bisect: Mark Current Commit Bad', detail: `Mark candidate ${bisectOid} as known bad`, enabled: !busy && !!bisectTarget, icon: 'warning' as IconName, bisectTarget },
+      { id: 'bisect-skip', group: 'History', label: 'Bisect: Skip Current Commit', detail: `Continue without classifying candidate ${bisectOid}`, enabled: !busy && !!bisectTarget, icon: 'redo' as IconName, bisectTarget },
       { id: 'bisect-reset', group: 'History', label: 'Bisect: Reset', detail: 'Stop the search and restore the original branch', enabled: !busy, icon: 'reset' as IconName },
     ] : [
       { id: 'bisect-start', group: 'History', label: 'Start Bisect from Selected Commit', detail: 'Treat the selected commit as good and the current HEAD as bad', enabled: !!source.selectedCommitData() && source.selectedCommitData()?.oid !== repository?.headOid && !repository?.status.entryCount && !(repository && source.repositoryOperation().rebaseInProgress) && !busy, icon: 'history' as IconName },

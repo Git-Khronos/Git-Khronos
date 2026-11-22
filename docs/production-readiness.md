@@ -3647,6 +3647,11 @@ the index, HEAD, stash and original bytes; moving the ignored file permits
 a retry with the chosen index behavior. The new installed gate checks the
 same refusal and retry on all three commands. The guard does not predict
 paths an arbitrary divergent merge might create by relocating changes.
+The `6288f44` installer passed all six focused scenarios covering both
+collision types on Ubuntu 24.04. Its exact verified result is under
+`target/local-review/updater/jammy-builder/stash-tracked-ignored-release.CE4murjB/reports.json`
+(package SHA-256
+`e0e83569efb660858ac62c1b505cef7ee8c6ef19eba699098e6c867d20add5a8`).
 
 ### Bisect start verifies the displayed range and checkout
 
@@ -3659,6 +3664,16 @@ verify branch and tip refusals with no bisect marker, index or ref changes.
 Fresh requests still start and Reset returns to the original checkout.
 Focused renderer, core and contract evidence is retained under
 `target/local-review/bisect-reviewed-start.tvOGLrHc/`.
+
+Bisect voting also pins the displayed candidate and rejects a retired
+banner or palette action. In an external no-checkout session, the
+candidate now follows `BISECT_HEAD` even when HEAD and all file statuses
+stay unchanged. Git receives the exact candidate OID; the native stale
+refusal leaves the index, HEAD and bisect log unchanged. Fifteen focused
+Chromium cases and five real-Git bisect cases passed. Startup and advance
+still inherit Git's normal checkout behavior for ignored files. The new
+installed detached-checkout gate requires the no-checkout case. Source
+and renderer evidence is under `target/local-review/bisect-vote-scope.wyWXmfb4/`.
 
 ### Manual and automatic Fetch recovery
 

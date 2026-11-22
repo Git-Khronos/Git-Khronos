@@ -363,6 +363,42 @@ def bisect_start_rejects_a_stale_checkout(driver, fixtures, report):
     report['scenarios'].append('native-bisect-start-refuses-a-stale-branch-at-the-same-tip')
 
 
+def bisect_vote_binds_the_test_candidate(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-vote-review', commits=12)
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~11')
+    fixtures.git(repository, 'bisect', 'start', '--no-checkout', head, good)
+    repo_id = open_ui(driver, repository)
+    first = driver.invoke('refresh_repository_status', repoId=repo_id)['bisectCandidate']
+    assert first['noCheckout'] and first['oid'] != head
+    assert first['oid'] == fixtures.git(repository, 'rev-parse', 'BISECT_HEAD')
+    driver.wait(
+        "return !!document.querySelector('.bisect-progress small')?.textContent.includes('Checkout unchanged')"
+        " && document.querySelector('.bisect-progress small').title === " + json.dumps(first['oid'])
+    )
+    fixtures.git(repository, 'bisect', 'good', first['oid'])
+    before = checkout_footprint(fixtures, repository)
+    log = repository / '.git/BISECT_LOG'
+    state = log.read_bytes()
+    try:
+        driver.invoke('mark_bisect', repoId=repo_id, verdict='bad', candidate=first)
+    except RuntimeError as error:
+        detail = json.loads(str(error))
+        assert detail['kind'] == 'staleBisectCandidate', detail
+    else:
+        raise AssertionError('Git Khronos classified an obsolete candidate')
+    assert log.read_bytes() == state and checkout_footprint(fixtures, repository) == before
+    current = driver.invoke('refresh_repository_status', repoId=repo_id)['bisectCandidate']
+    assert current['noCheckout'] and current['oid'] != first['oid']
+    driver.invoke('mark_bisect', repoId=repo_id, verdict='good', candidate=current)
+    assert fixtures.git(repository, 'rev-parse', 'refs/bisect/good-' + current['oid']) == current['oid']
+    after = checkout_footprint(fixtures, repository)
+    assert all(after[key] == before[key] for key in ('head', 'branch', 'status', 'indexSha256', 'files'))
+    driver.invoke('reset_bisect', repoId=repo_id)
+    assert not (repository / '.git/BISECT_START').exists()
+    report['scenarios'].append('native-bisect-vote-rejects-an-obsolete-no-checkout-candidate')
+
+
 def replay_recovery_preserves_ignored_files(driver, fixtures, report):
     for operation, action in [('revert', 'skip'), ('cherry-pick', 'abort')]:
         multi = operation == 'cherry-pick'
@@ -426,6 +462,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     mail_recovery_preserves_ignored_files(driver, fixtures, report)
     bisect_reset_preserves_ignored_files(driver, fixtures, report)
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
+    bisect_vote_binds_the_test_candidate(driver, fixtures, report)
     replay_recovery_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')

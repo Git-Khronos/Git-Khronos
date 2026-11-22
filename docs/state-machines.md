@@ -785,7 +785,14 @@ Starting a bisect binds both displayed commit IDs and the original checkout
 visit, path and branch to the confirmation. A stale review cannot substitute
 the latest HEAD for the displayed bad commit. Native start validates the
 actual branch and HEAD again before Git can record its initial state. This
-does not change Git's candidate selection or how ongoing sessions are marked.
+does not change Git's candidate selection.
+Good, Bad, and Skip capture the displayed candidate and checkout visit,
+whether invoked from the banner or palette. For Git's no-checkout mode,
+the candidate is the exact `BISECT_HEAD` ref and is independent of HEAD.
+Native validation compares the current candidate and checkout mode before
+recording an explicit OID, never relying on Git's implicit default.
+An unavailable candidate disables votes but does not disable Reset.
+Neither guard predicts checkout obstructions when Git advances the search.
 Cherry-pick and Revert Skip check the current HEAD reset, while Abort
 checks the native sequencer's original commit for a multi-commit replay.
 Single-step and app-owned no-commit Abort check the current, original HEAD.
