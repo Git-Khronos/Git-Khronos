@@ -3579,6 +3579,17 @@ Brotli bytes. No new lazy request was introduced and the 900 kB warning
 remains. These are measurements of emitted assets, not startup timing.
 Receipts are in `target/local-review/ipc-binding-weight.tyGpqbBR/`.
 
+### Workspace menu at high zoom
+
+The Workspaces menu now fits the available window height and can scroll
+to its actions independently of the repository list. On narrow Welcome
+windows it opens inside the viewport instead of extending to the left
+of the screen. The original failed the viewport check with 12 workspaces
+at 360–390 × 280 CSS pixels. The three new cases cover Home/End, Escape
+focus return, wheel scrolling and opening Identity Profiles on both
+screens. All 21 focused Chromium cases passed; evidence is in
+`target/local-review/short-workspace-menu.twkqe2W0/`.
+
 ### Cancellable Git process latency
 
 The process coordinator now wakes when both output readers finish instead

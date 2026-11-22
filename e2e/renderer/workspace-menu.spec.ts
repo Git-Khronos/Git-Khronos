@@ -102,3 +102,52 @@ test('workspace pointer dismissal preserves inside controls, toggle and Escape f
   await expect(menu).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'New Workspace', exact: true })).toBeVisible();
 });
+
+for (const { welcome, width } of [
+  { welcome: false, width: 390 },
+  { welcome: true, width: 390 },
+  { welcome: true, width: 360 },
+]) {
+  test(`workspace actions stay reachable in a short ${welcome ? 'welcome' : 'repository'} window at ${width}px`, async ({ page }) => {
+    // 200% zoom on a minimum-size desktop window produces a 390×280 CSS
+    // viewport. Also exercise the welcome menu's narrower fixed placement.
+    await page.setViewportSize({ width, height: 280 });
+    await page.addInitScript(() => localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify(
+      Array.from({ length: 12 }, (_, index) => ({
+        id: index ? `workspace-${index}` : 'default',
+        name: index ? `Workspace ${index}` : 'Default',
+        repositoryPaths: [],
+        activeRepositoryPath: null,
+      })),
+    )));
+    await page.goto(welcome ? '/?welcome-preview' : '/');
+    await expect(page.locator(welcome ? 'gc-welcome-launcher' : '.commit-row').first()).toBeVisible();
+    const toggle = page.getByRole('button', { name: 'Workspace: Default', exact: true });
+    const menu = page.getByRole('menu', { name: 'Workspaces', exact: true });
+    const identities = menu.getByRole('menuitem', { name: 'Identity profiles', exact: true });
+    const first = menu.getByRole('menuitemradio').first();
+    await toggle.click();
+    await expect(first).toBeFocused();
+    await expect(menu.getByRole('menuitemradio')).toHaveCount(12);
+    await expect(menu).toBeInViewport({ ratio: 1 });
+    await expect(identities).not.toBeInViewport();
+
+    await page.keyboard.press('End');
+    await expect(menu.getByRole('menuitem').filter({ hasText: welcome ? 'Identity profiles' : 'Reviews and checks' })).toBeFocused();
+    await expect(identities).toBeInViewport({ ratio: 1 });
+    await page.keyboard.press('Home');
+    await expect(first).toBeFocused();
+    await expect(first).toBeInViewport({ ratio: 1 });
+    await page.keyboard.press('Escape');
+    await expect(toggle).toBeFocused();
+
+    await toggle.click();
+    await expect(first).toBeFocused();
+    await menu.locator('header').hover();
+    await page.mouse.wheel(0, 1000);
+    await expect(identities).toBeInViewport({ ratio: 1 });
+    await identities.click();
+    await expect(menu).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: 'Workspace center' })).toBeVisible();
+  });
+}

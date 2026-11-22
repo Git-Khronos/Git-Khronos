@@ -112,8 +112,16 @@
   /* The workspace control is supplied by the shell’s template. */
   .welcome-workspace-control { height: 31px; margin: 0; }
   .welcome-workspace-control .workspace-toggle { height: 31px; border-color: var(--border); background: color-mix(in srgb, var(--surface) 82%, transparent); }
-  .welcome-workspace-control .workspace-menu { right: 0; left: auto; text-align: left; }
+  .welcome-workspace-control .workspace-menu {
+    --workspace-menu-viewport-reserve: 74px;
+    right: 0; left: auto; text-align: left;
+  }
+  @media (max-width: 800px) {
+    /* The welcome switcher sits before the other header actions. Its right
+       edge can be too far left to anchor a full-width menu inside the window. */
+    .welcome-workspace-control .workspace-menu { position: fixed; top: 65px; right: 28px; }
+  }
   @media (max-width: 380px) {
-    .welcome-workspace-control .workspace-menu { top: 65px; right: 10px; left: 10px; }
+    .welcome-workspace-control .workspace-menu { right: 10px; left: 10px; }
   }
 }
