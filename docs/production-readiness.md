@@ -4285,3 +4285,17 @@ environment. The exact-package verifier matched all three passing reports.
 Receipt:
 `target/local-review/updater/jammy-builder/revision-inspector-release.f4vdJyTy/reports.json`.
 This is focused evidence, not full matrix or production signing evidence.
+
+In the full matrix for the same bytes, Debian 12's first incoming-links
+attempt failed: the second warm activation process exited with SIGSEGV
+and no stderr. The private session bus still had the primary process
+before that launch. A fresh, unchanged Debian 12 recheck passed all 26
+incoming-link scenarios, including four successful secondary activations.
+An independent smoke probe also passed 60 warm launches with an inert
+argument. The smoke probe does not exercise link delivery, and neither
+result establishes a cause or a fix for the first failure. Preserve that
+report alongside the passing evidence.
+
+- First attempt: `target/local-review/updater/jammy-builder/revision-inspector-matrix.mzBP6S7J/compatibility/bookworm/results/incoming-links/incoming-links-1795337830197984323/report.json`.
+- Exact recheck: `target/local-review/updater/jammy-builder/revision-inspector-bookworm-recheck.uOAUgXWZ/results/incoming-links/incoming-links-1795337907342303873/report.json`.
+- Diagnostic probe: `target/local-review/updater/jammy-builder/bookworm-singleton-stress.JKKvaRtA/native.log`.
