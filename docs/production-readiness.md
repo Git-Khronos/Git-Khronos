@@ -3894,3 +3894,22 @@ three-pair comparison, the median of 60 short Git processes fell from
 733 ms to 235 ms. The real-Git release-finish test fell from a median of
 9.53 s to 4.76 s. These timings are local debug runs; logs are under
 `target/local-review/ready-git-pipes.nUy31LmV/`.
+
+### Local 0.1.6 test-publisher candidate with bisect results
+
+The exact Jammy-built installer from source `dc4d3fa` passed all 37 release
+gates with 53 installed reports on Ubuntu 22.04, 24.04 and 26.04, and
+Debian 12 and 13. The same package passed the test-publisher preflight.
+Installer SHA-256:
+`dfeb6024258119f7a63563d9b58db80cc88419a7d8ea0bd555a5a91389180ba7`.
+The local artifact, checksums, source identity and verification receipt
+are in `target/local-review/qualified-0.1.6-dc4d3fa/`.
+
+The subsequent inconclusive-bisect package from `e71a885` passed 25
+installed detached-checkout scenarios on Ubuntu 24.04, including viewing
+the candidate list and refusing extra votes. Its SHA-256 is
+`1b4d8000056378b2eb0d1a61a714c15c7577d72cfc5ff66b29fe5f5c7a96f863`;
+the focused result is in
+`target/local-review/updater/jammy-builder/bisect-inconclusive-release.rRW4pVhk/`.
+The focused result is not a second full release qualification. Neither
+package is a production-key build or a published release.
