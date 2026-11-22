@@ -1188,10 +1188,7 @@ def performance(driver, fixtures, report):
 
 
 def main():
-    version, expected_package_name = expected_debian_package()
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--package", type=Path, default=ROOT / "target/release/bundle/deb" / expected_package_name)
-    parser.add_argument("--suite", choices=(
+    suites = (
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
@@ -1203,7 +1200,13 @@ def main():
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
         "commit-responsiveness", "ignore-responsiveness",
-    ), default="smoke")
+    )
+    forced_inherited = ("environment",)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--package", type=Path)
+    parser.add_argument("--suite", choices=suites, default="smoke")
+    parser.add_argument("--describe-runner", action="store_true",
+                        help="Print the local distribution and suite capabilities as JSON without running a test")
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--installed", action="store_true",
                         help="Verify the installed executable and desktop entry before running the app (CI only)")
@@ -1211,6 +1214,13 @@ def main():
                         help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
     args = parser.parse_args()
+    if args.describe_runner:
+        print(json.dumps({"distribution": linux_distribution(), "suites": suites,
+                          "forcedInheritedGitEnvironment": forced_inherited}))
+        return
+    version, expected_package_name = expected_debian_package()
+    if args.package is None:
+        args.package = ROOT / "target/release/bundle/deb" / expected_package_name
     workspace_picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate", "workspace-locate-nearby")
     owned_picker_suite = workspace_picker_suite or args.suite == "repository-creation-scope"
     if owned_picker_suite and not args.headless:
@@ -1220,8 +1230,9 @@ def main():
     output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
     output.mkdir(parents=True)
     progress = ScenarioProgress(output, args.suite)
+    inherited_git_environment = args.suite in forced_inherited or args.inherited_git_environment
     report = {"suite": args.suite, "scenarios": progress, "passed": False,
-              "inheritedGitEnvironment": args.suite == "environment" or args.inherited_git_environment,
+              "inheritedGitEnvironment": inherited_git_environment,
               "platform": platform.platform(), "linuxDistribution": linux_distribution(),
               "artifactsDirectory": str(output)}
     print(f"Native acceptance: starting {args.suite}. Evidence: {output}", file=sys.stderr, flush=True)
@@ -1245,7 +1256,7 @@ def main():
         temporary_directory = tempfile.TemporaryDirectory(prefix="git-khronos-native-")
         fixtures = Fixtures(temporary_directory.name)
         outside = None
-        if args.suite == "environment" or args.inherited_git_environment:
+        if inherited_git_environment:
             outside = fixtures.repository("inherited-environment-outside", 1)
             fixtures.git(outside, "config", "user.name", "Unselected outside identity")
             fixtures.git(outside, "config", "user.email", "outside@example.test")

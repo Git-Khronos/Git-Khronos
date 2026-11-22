@@ -261,6 +261,11 @@ export function parseFocusedAcceptance(request) {
   });
 }
 
+export async function readFocusedAcceptancePlan(path) {
+  const request = await readBoundedJson(resolve(path), 'focused acceptance plan', 256 * 1024);
+  return { version: 1, checks: parseFocusedAcceptance(request) };
+}
+
 export function summarizeInstalledReport(candidate, report) {
   if (report?.packageSha256 !== candidate.packageSha256) {
     throw new Error('The report is for a different Debian package');
@@ -464,9 +469,7 @@ async function main(args) {
         (!releaseMatrix && !releaseProgress && focusedPlan === undefined && !reportInputs.length)) {
       throw new Error(usage);
     }
-    const focusedRequest = focusedPlan === undefined ? undefined
-      : await readBoundedJson(resolve(focusedPlan), 'focused acceptance plan', 256 * 1024);
-    if (focusedPlan !== undefined) parseFocusedAcceptance(focusedRequest);
+    const focusedRequest = focusedPlan === undefined ? undefined : await readFocusedAcceptancePlan(focusedPlan);
     const reportPaths = await expandAcceptanceReports(reportInputs, {
       allowEmptyDirectories: releaseProgress || focusedPlan !== undefined,
     });

@@ -3953,6 +3953,16 @@ is in `target/local-review/updater/jammy-builder/deleted-file-history-matrix.j6m
 This qualifies only those installer bytes, not later `dev` commits or any
 production-key build. No production signing or publication was performed.
 
+### Installed branch workflow recovery
+
+Ubuntu 24.04 verified the conflict-file handoff, restart/continue and
+reviewed stop on the unchanged package from `8f8e052` (five scenarios).
+SHA-256: `71c31702a686eb467383f231d8750fe5c7a481fcf3512e87584e9ba6705ca077`.
+The first suite selected setup/start/finish, which did not include the
+recovery checks. The rerun used the new focused suite from `70a419f` without
+rebuilding the installer. Focused receipt:
+`target/local-review/updater/jammy-builder/workflow-conflict-recheck.fpJr85WC/reports.json`.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard

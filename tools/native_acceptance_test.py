@@ -228,13 +228,24 @@ class PackageIdentityTests(unittest.TestCase):
             with patch("native_acceptance.ROOT", root):
                 self.assertEqual(expected_debian_package(), ("2.3.4", "Git-Khronos_2.3.4_amd64.deb"))
 
+    def test_runner_description_needs_no_package_or_webdriver(self):
+        with patch("sys.argv", ["native_acceptance.py", "--describe-runner"]), \
+                patch("native_acceptance.expected_debian_package") as package, \
+                patch("native_acceptance.Driver") as driver, patch("builtins.print") as output:
+            self.assertIsNone(main())
+        package.assert_not_called()
+        driver.assert_not_called()
+        description = json.loads(output.call_args.args[0])
+        self.assertIn("branch-workflow-recovery", description["suites"])
+        self.assertEqual(description["forcedInheritedGitEnvironment"], ["environment"])
+
     def test_package_with_wrong_version_is_rejected_before_launch(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             version, filename = expected_debian_package()
             package = root / filename
             package.write_bytes(b"package fixture")
-            args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke",
+            args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke", describe_runner=False,
                                    headless=False, inherited_git_environment=False, installed=False)
             with patch("native_acceptance.argparse.ArgumentParser.parse_args", return_value=args), \
                     patch("native_acceptance.shutil.which", return_value="/fixture/tool"), \
@@ -997,7 +1008,7 @@ class FixtureTests(unittest.TestCase):
             def private_bus(_fixtures, children, _log):
                 children.append(bus)
                 return {'pid': 123, 'private': True, 'hostServiceActivation': False}
-            args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke",
+            args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke", describe_runner=False,
                                    headless=False, inherited_git_environment=False, installed=False)
             with ExitStack() as mocks:
                 for target, value in {

@@ -573,6 +573,23 @@ The output is labeled `focused-installed-acceptance`, includes the exact
 package digest and the matched report for each check, and is not a release
 qualification or publisher receipt.
 
+Inside a disposable, already provisioned Linux runner with the reviewed
+package installed, the same plan can drive both dispatch and verification:
+
+```sh
+python3 tools/native_acceptance.py --describe-runner
+node tools/run-focused-installed-acceptance.mjs focused-plan.json "$PACKAGE" "$NEW_RESULTS"
+```
+
+Use one distribution per plan. Before starting any suite, the runner refuses
+an unknown suite, a different distribution, or an impossible Git environment.
+It never installs or publishes a package. It requires a new output directory,
+retains the validated plan and each lane's evidence, and writes `run.json`
+with the package digest, process results and scenario verification. A green
+process exit alone does not satisfy a requested scenario. For example,
+`branch-workflow-ui` checks setup/start/finish, whereas
+`branch-workflow-recovery` checks a paused merge, conflicts, restart and stop.
+
 To check whether the retained reports cover every required Linux runtime
 suite for one release candidate, add `--release-matrix` before the package
 path. The JSON lists the matching report or `null` for each required
