@@ -2011,18 +2011,18 @@
     @defer (on immediate) {
       <gc-repository-link-dialog [request]="request" (opening)="saveCommitDraft()" (opened)="finishRepositoryLink($event)" (closed)="closeRepositoryLink()" />
     } @loading {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening repository link controls" (keydown)="handleRepositoryLinkLoaderKey($event)"><p role="status">Opening link controls…</p><button #repositoryLinkLoaderClose type="button" (click)="closeRepositoryLink()">Cancel</button></section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'repositoryLink', owner: request, failed: false }" />
     } @error {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Repository link controls unavailable" (keydown)="handleRepositoryLinkLoaderKey($event)"><p role="alert">Link controls could not open. Preserve drafts and restart to try again.</p><button #repositoryLinkLoaderClose type="button" (click)="closeRepositoryLink()">Close</button></section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'repositoryLink', owner: request, failed: true }" />
     }
   }
   @if (editorDraftRecoveryOpen()) {
     @defer (on immediate) {
       <gc-editor-draft-recovery (closed)="closeEditorDraftRecovery()" (openRequested)="reviewEditorDraft($event)" />
     } @loading {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading editor draft recovery" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="status">Loading recovery controls…</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Cancel</button></section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'editorDrafts', owner: null, failed: false }" />
     } @error {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Editor draft recovery unavailable" (keydown)="handleEditorDraftRecoveryLoaderKey($event)"><p role="alert">Recovery controls could not load. Stored copies were preserved. Restart to try again.</p><button #editorDraftRecoveryLoaderClose type="button" (click)="closeEditorDraftRecovery()">Close</button></section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'editorDrafts', owner: null, failed: true }" />
     }
   }
   @if (applicationUpdatesRequest(); as request) {
@@ -2038,33 +2038,27 @@
     @defer (on immediate) {
       <gc-windows-launcher (closed)="closeWindowsLauncher()" />
     } @loading {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading Windows taskbar shortcut check" (keydown)="handleWindowsLauncherLoaderKey($event)"><p role="status">Loading shortcut check…</p><button #windowsLauncherLoaderClose type="button" (click)="closeWindowsLauncher()">Cancel</button></section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'windowsLauncher', owner: null, failed: false }" />
     } @error {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Windows taskbar shortcut check unavailable" (keydown)="handleWindowsLauncherLoaderKey($event)"><p role="alert">The shortcut check could not load. No shortcuts were changed. Restart to try again.</p><button #windowsLauncherLoaderClose type="button" (click)="closeWindowsLauncher()">Close</button></section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'windowsLauncher', owner: null, failed: true }" />
     }
   }
   @for (tool of fileToolsDialog() ? [fileToolsDialog()!] : []; track tool.id) {
     @defer (on immediate) {
       <gc-file-tools-dialog [request]="tool" (closed)="closeFileTools()" (changed)="fileToolsChanged($event)" />
     } @placeholder {
-      <div class="confirmation-backdrop" style="z-index:175"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening external file tools" (keydown)="handleFileToolsLoaderKey($event)"><p role="status">Opening file tools…</p><button #fileToolsLoaderClose type="button" (click)="closeFileTools()">Cancel</button></section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'fileTools', owner: tool, failed: false }" />
     } @error {
-      <div class="confirmation-backdrop" style="z-index:175"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="External file tools unavailable" (keydown)="handleFileToolsLoaderKey($event)"><p role="alert">File tools could not load. Save your work before restarting the application.</p><button #fileToolsLoaderClose type="button" (click)="closeFileTools()">Close</button></section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'fileTools', owner: tool, failed: true }" />
     }
   }
   @if (fileContentDialog(); as request) {
     @defer (on immediate) {
       <gc-file-content-dialog [request]="request" (closed)="closeFileContentDialog()" (changed)="fileToolsChanged($event)" />
     } @loading {
-      <div class="confirmation-backdrop" style="z-index:170"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Opening file content" (keydown)="handleFileContentLoaderKey($event)">
-        <p role="status">Opening file content…</p>
-        <button #fileContentLoaderClose type="button" (click)="closeFileContentDialog()">Cancel</button>
-      </section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'fileContent', owner: request, failed: false }" />
     } @error {
-      <div class="confirmation-backdrop" style="z-index:170"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="File content unavailable" (keydown)="handleFileContentLoaderKey($event)">
-        <p role="alert">File content could not open. Preserve drafts and restart to try again.</p>
-        <button #fileContentLoaderClose type="button" (click)="closeFileContentDialog()">Close</button>
-      </section></div>
+      <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'fileContent', owner: request, failed: true }" />
     }
   }
   @if (fileActionMenu(); as request) {
@@ -2482,9 +2476,9 @@
   @defer (on immediate) {
     <gc-integrate-branch-dialog [request]="request" (closed)="integrationRequest.set(null)" (chosen)="handleIntegrationChoice($event)" />
   } @placeholder {
-    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading merge and rebase options"><p role="status">Loading…</p><footer><button type="button" (click)="integrationRequest.set(null)">Close</button></footer></section></div>
+    <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'integration', owner: request, failed: false }" />
   } @error {
-    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Merge and rebase options unavailable"><p role="alert">Could not load merge and rebase options. Close and reopen to retry.</p><footer><button type="button" (click)="integrationRequest.set(null)">Close</button></footer></section></div>
+    <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'integration', owner: request, failed: true }" />
   }
 }
 
@@ -2492,9 +2486,9 @@
   @defer (on immediate) {
     <gc-merge-preview-dialog [request]="request" (closed)="mergePreviewRequest.set(null)" />
   } @placeholder {
-    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading merge preview" (keydown)="handleMergePreviewLoaderKey($event)"><p role="status">Loading merge preview…</p><footer><button #mergePreviewLoaderClose type="button" (click)="closeMergePreviewLoader()">Close</button></footer></section></div>
+    <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'mergePreview', owner: request, failed: false }" />
   } @error {
-    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Merge preview unavailable" (keydown)="handleMergePreviewLoaderKey($event)"><p role="alert">Could not load merge preview. Close and reopen to retry.</p><footer><button #mergePreviewLoaderClose type="button" (click)="closeMergePreviewLoader()">Close</button></footer></section></div>
+    <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'mergePreview', owner: request, failed: true }" />
   }
 }
 
@@ -2502,9 +2496,9 @@
   @defer (on immediate) {
     <gc-workspace-center [request]="request" [pullStrategy]="pullStrategy()" [suspended]="!!fileContentDialog()" [openRepository]="openWorkspaceRepository" [closeRepositories]="closeWorkspaceRepositories" (closed)="workspaceCenterRequest.set(null)" (repositorySelected)="selectRepositoryTab($event)" (savedRepositoryRequested)="openRepositoryPath($event)" (openFileRequested)="openWorkspaceFile($event)" />
   } @placeholder {
-    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading workspace center" (keydown)="handleWorkspaceCenterLoaderKey($event)"><p role="status">Loading workspace center…</p><button #workspaceCenterLoaderClose type="button" (click)="closeWorkspaceCenterLoader()">Close</button></section></div>
+    <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'workspaceCenter', owner: request, failed: false }" />
   } @error {
-    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Workspace center unavailable" (keydown)="handleWorkspaceCenterLoaderKey($event)"><p role="alert">Could not load workspace center. Close and reopen to retry.</p><button #workspaceCenterLoaderClose type="button" (click)="closeWorkspaceCenterLoader()">Close</button></section></div>
+    <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'workspaceCenter', owner: request, failed: true }" />
   }
 }
 
@@ -2512,11 +2506,28 @@
   @defer (on immediate) {
     <gc-branch-workflow-dialog [request]="request" (closed)="branchWorkflowRequest.set(null)" (featureRebaseRequested)="openWorkflowFeatureRebase(request, $event)" (conflictsRequested)="showWorkflowConflicts(request, $event)" />
   } @placeholder {
-    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Loading branch workflows" (keydown)="handleBranchWorkflowLoaderKey($event)"><p role="status">Loading branch workflows…</p><button #branchWorkflowLoaderClose type="button" (click)="closeBranchWorkflowLoader()">Close</button></section></div>
+    <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'branchWorkflow', owner: request, failed: false }" />
   } @error {
-    <div class="confirmation-backdrop"><section class="confirmation-dialog saved-discards-dialog" role="dialog" aria-modal="true" aria-label="Branch workflows unavailable" (keydown)="handleBranchWorkflowLoaderKey($event)"><p role="alert">Could not load branch workflows. Close and reopen to retry.</p><button #branchWorkflowLoaderClose type="button" (click)="closeBranchWorkflowLoader()">Close</button></section></div>
+    <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'branchWorkflow', owner: request, failed: true }" />
   }
 }
+
+<ng-template #dialogFallback let-kind="kind" let-owner="owner" let-failed="failed">
+  @let copy = dialogFallbackCopy(kind);
+  @let text = failed ? copy.unavailable : copy.loading;
+  @let buttonText = failed ? 'Close' : copy.loadingButton ?? 'Cancel';
+  <div class="confirmation-backdrop" [style.z-index]="copy.layer">
+    <section class="confirmation-dialog" [class.saved-discards-dialog]="copy.wide" role="dialog" aria-modal="true"
+      [attr.aria-label]="text[0]" [attr.data-dialog-fallback]="kind" (keydown)="handleDialogFallbackKey($event, kind, owner)">
+      <p [attr.role]="failed ? 'alert' : 'status'">{{ text[1] }}</p>
+      @if (copy.footer) {
+        <footer><button type="button" gcDialogFallbackFocus (click)="dismissDialogFallback(kind, owner)">{{ buttonText }}</button></footer>
+      } @else {
+        <button type="button" gcDialogFallbackFocus (click)="dismissDialogFallback(kind, owner)">{{ buttonText }}</button>
+      }
+    </section>
+  </div>
+</ng-template>
 
 <ng-template #referenceEditorFallback let-kind="kind" let-failed="failed">
   <div class="confirmation-backdrop">

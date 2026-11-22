@@ -899,6 +899,18 @@ existing repository-creation recovery saves its location in the originating
 workspace rather than opening a tab in the unowned view. No queue or retry
 intent survives restart.
 
+### Deferred task-dialog shell
+
+Nine on-demand task dialogs share an eager loading/error shell. It offers
+only dismissal: Tab stays on that control, Escape dismisses the owning
+request, and keyboard chords cannot reach the application's Git shortcuts.
+The shell preserves each dialog's layer, status/alert announcement, and
+opener. Request-backed shells cannot dismiss a replacement request, and
+completed module loading cannot reopen an already closed request. The actual
+task and its Git authority stay in the deferred component. Reopening after a
+chunk error does not reload it in the
+same renderer; the fallback tells the user to restart.
+
 ### Shared deferred fetch and worktree review ownership
 
 Fetch options and linked-worktree move/repair capture the checkout ID/path and

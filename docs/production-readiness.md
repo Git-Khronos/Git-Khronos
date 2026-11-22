@@ -4012,6 +4012,33 @@ leaving the index, files, active tab, and workspace layout unchanged.
 SHA-256: `92e751ab2f9d5830a9fec1f75732b3b0b50f2c42a875f5978aaab55f69bf9587`.
 Focused receipt:
 `target/local-review/updater/jammy-builder/saved-checkout-status-release.IpHx9U57/reports.json`.
+
+### Installed workspace batch clone
+
+The Ubuntu 24.04 installer from `8713fc1` passed six scenarios across the
+batch-clone and saved-status suites. The real GTK chooser selected the parent;
+an occupied destination was left intact, the subsequent clone proceeded, and
+the original tab stayed active. Independent Git verified the cloned tips and
+origin URLs. The first run failed before selecting a folder because its
+fixture did not meet the chooser's owned-home rule. The correction reran
+against the unchanged installer.
+SHA-256: `4f0a2daad5743b0cf0c77110064b93a469aa5fcdfd50aa79f71600080284fdd8`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/workspace-bulk-clone-recheck.2p92nl0r/reports.json`.
+
+### Shared loading and error shell for deferred dialogs
+
+Nine task dialogs share one loading/error template and its keyboard
+handling. With the same production build settings, emitted initial assets
+fell from 1,311,801 bytes at `8713fc1` to 1,306,960 bytes (−4,841 JavaScript
+bytes; CSS unchanged). Gzip is 14 bytes smaller and Brotli is 139 bytes
+larger; this is a raw-size and maintenance improvement, not a compressed
+delivery or launch-time claim. No threshold was changed. The 900 kB
+warning still applies; the 1,450,000-byte hard limit has 143,040 bytes of
+headroom. Build and comparison receipts:
+`target/local-review/shared-dialog-loading.GrICc3Y3/`.
+All 233 focused Chromium cases passed, including held, failed, and dismissed
+chunks and the existing workspace, integration, and file-dialog flows.
 This check does not include the later external-fetch watcher regression.
 
 ### Deferred Worktree and Submodule sidebar actions

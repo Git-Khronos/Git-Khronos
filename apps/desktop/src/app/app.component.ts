@@ -1,3 +1,4 @@
+import { DIALOG_FALLBACKS, DialogFallbackFocusDirective, type DialogFallbackCopy, type DialogFallbackKind } from './dialog-fallback';
 import { RepositorySetupDialogComponent, type RepositoryEditorOwner, type RepositorySetupRequest, type RepositorySetupView, type RemoteDialogMode, type RemoteLocationIcon } from './repository-setup-dialog.component';
 import { WorkspaceEditDialogsComponent } from './workspace-edit-dialogs.component';
 import { BranchDropMenuComponent, type BranchDropAdvice, type BranchDropStrategy } from './branch-drop-menu.component';
@@ -708,13 +709,14 @@ function stableAuthorColor(identity: string): string {
 
 @Component({
   selector: 'gc-root',
-  imports: [WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
+  imports: [DialogFallbackFocusDirective, WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, CommitReferenceStripComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
     GraphActionMenuComponent, SidebarItemActionsComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, CommitSignatureComponent, CommitEditFormComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AppComponent implements OnInit, OnDestroy {
+  protected readonly dialogFallbackCopy = (kind: DialogFallbackKind): DialogFallbackCopy => DIALOG_FALLBACKS[kind];
   protected readonly authenticationLoadErrorDismissed = signal(false);
   private readonly appMenuToggle = viewChild<ElementRef<HTMLButtonElement>>('appMenuToggle');
   private readonly workspaceToggle = viewChild<ElementRef<HTMLButtonElement>>('workspaceToggle');
@@ -738,10 +740,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly lfsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('lfsLoaderClose');
   private readonly documentationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('documentationLoaderClose');
   private readonly worktreeReviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('worktreeReviewLoaderClose');
-  private readonly repositoryLinkLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('repositoryLinkLoaderClose');
-  private readonly repositoryLinkLoaderFocus = afterRenderEffect(() => this.repositoryLinkLoaderClose()?.nativeElement.focus());
-  private readonly fileContentLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('fileContentLoaderClose');
-  private readonly fileContentLoaderFocus = afterRenderEffect(() => this.fileContentLoaderClose()?.nativeElement.focus());
   private readonly actionLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('actionLoaderClose');
   private readonly stashDeleteLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('stashDeleteLoaderClose');
   private readonly stashDeleteLoaderFocus = afterRenderEffect(() => this.stashDeleteLoaderClose()?.nativeElement.focus());
@@ -749,12 +747,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly confirmationLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('confirmationLoaderClose');
   private readonly confirmationLoaderFocus = afterRenderEffect(() => this.confirmationLoaderClose()?.nativeElement.focus());
   private readonly historyLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('historyLoaderClose');
-  private readonly workspaceCenterLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('workspaceCenterLoaderClose');
-  private readonly workspaceCenterLoaderFocus = afterRenderEffect(() => this.workspaceCenterLoaderClose()?.nativeElement.focus());
-  private readonly branchWorkflowLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('branchWorkflowLoaderClose');
-  private readonly branchWorkflowLoaderFocus = afterRenderEffect(() => this.branchWorkflowLoaderClose()?.nativeElement.focus());
-  private readonly mergePreviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('mergePreviewLoaderClose');
-  private readonly mergePreviewLoaderFocus = afterRenderEffect(() => this.mergePreviewLoaderClose()?.nativeElement.focus());
   private readonly rebaseLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('rebaseLoaderClose');
   private readonly historyReviewLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('historyReviewLoaderClose');
   private readonly branchSearch = viewChild<ElementRef<HTMLInputElement>>('branchSearch');
@@ -1048,7 +1040,6 @@ export class AppComponent implements OnInit, OnDestroy {
     return active?.kind === 'context' ? active.value : null;
   });
   protected readonly fileToolsDialog = signal<FileToolsDialogRequest | null>(null);
-  private readonly fileToolsLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('fileToolsLoaderClose');
   protected openFileTools(action: FileToolsDialogRequest['action'] = null, returnFocus: HTMLElement | null = null): void {
     const repoId = this.git.activeRepositoryId();
     if (!repoId || this.git.busy() || this.fileContentDialog()) return;
@@ -1060,20 +1051,13 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = this.fileToolsDialog()?.returnFocus; this.fileToolsDialog.set(null);
     queueMicrotask(() => { if (!this.fileToolsDialog() && opener?.isConnected && !opener.closest('[inert]')) opener.focus(); });
   }
-  protected handleFileToolsLoaderKey(event: KeyboardEvent): void {
-    event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.closeFileTools(); }
-    else if (event.key === 'Tab') { event.preventDefault(); this.fileToolsLoaderClose()?.nativeElement.focus(); }
-  }
-  protected fileToolsChanged(repoId: string): void { this.scheduleRepositoryRefresh(repoId); }
+ protected fileToolsChanged(repoId: string): void { this.scheduleRepositoryRefresh(repoId); }
   protected readonly fileContentDialog = signal<FileContentDialogRequest | null>(null);
   protected readonly editorDraftRecoveryOpen = signal(false);
   private editorDraftRecoveryReturnFocus: HTMLElement | null = null;
-  private readonly editorDraftRecoveryLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('editorDraftRecoveryLoaderClose');
   protected readonly windowsLauncherOpen = signal(false);
   protected readonly windowsLauncherAvailable = computed(() => this.git.systemInfo()?.windowsSubsystemForLinux === true && this.git.systemInfo()?.windowsInteropAvailable === true && !this.git.browserPreview());
   private windowsLauncherReturnFocus: HTMLElement | null = null;
-  private readonly windowsLauncherLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('windowsLauncherLoaderClose');
   protected readonly repositoryLinkDialog = signal<RepositoryLinkDialogRequest | null>(null);
   protected readonly fileActionMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
@@ -2314,7 +2298,6 @@ export class AppComponent implements OnInit, OnDestroy {
         untracked(() => this.dismissBranchDropMenu(true));
       }
     });
-    afterRenderEffect(() => this.fileToolsLoaderClose()?.nativeElement.focus());
     effect(() => {
       const request = this.fileContentDialog();
       if (request && !request.editing() && request.selection.repoId !== this.git.activeRepositoryId()) {
@@ -4386,25 +4369,48 @@ export class AppComponent implements OnInit, OnDestroy {
     void this.runAutoFetchCycle(false);
   }
 
+  protected handleDialogFallbackKey(event: KeyboardEvent, kind: DialogFallbackKind, owner: object | null): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.dismissDialogFallback(kind, owner);
+    } else if (event.key === 'Tab') {
+      event.preventDefault();
+      (event.currentTarget as HTMLElement).querySelector('button')?.focus();
+    } else if (event.key === 'Enter' && (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat || event.isComposing)) {
+      event.preventDefault();
+    }
+  }
+
+  protected dismissDialogFallback(kind: DialogFallbackKind, owner: object | null): void {
+    switch (kind) {
+      case 'repositoryLink': if (owner && this.repositoryLinkDialog() === owner) this.closeRepositoryLink(); break;
+      case 'fileTools': if (owner && this.fileToolsDialog() === owner) this.closeFileTools(); break;
+      case 'fileContent': if (owner && this.fileContentDialog() === owner) this.closeFileContentDialog(); break;
+      case 'editorDrafts': if (this.editorDraftRecoveryOpen()) this.closeEditorDraftRecovery(); break;
+      case 'windowsLauncher': if (this.windowsLauncherOpen()) this.closeWindowsLauncher(); break;
+      default: {
+        const requestSignal = kind === 'integration' ? this.integrationRequest : kind === 'mergePreview' ? this.mergePreviewRequest
+          : kind === 'workspaceCenter' ? this.workspaceCenterRequest : this.branchWorkflowRequest;
+        const request = requestSignal();
+        if (!request || request !== owner) return;
+        requestSignal.set(null);
+        setTimeout(() => {
+          if (requestSignal() || document.activeElement !== document.body) return;
+          const opener = request.returnFocus;
+          if (opener?.isConnected && opener.getClientRects().length && !opener.closest('[inert]')) opener.focus();
+          else if (kind === 'mergePreview') document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
+          else this.workspaceToggle()?.nativeElement.focus();
+        });
+      }
+    }
+  }
+
   protected openMergePreview(returnFocus: HTMLElement | null = null, source?: string, target?: string): void {
     const repository = this.git.repository();
     if (!repository?.headOid || this.git.busy()) return;
     this.actionOverlays.close('context');
     this.mergePreviewRequest.set({ repositoryId: repository.id, source, target, returnFocus });
-  }
-
-  protected handleMergePreviewLoaderKey(event: KeyboardEvent): void {
-    if (event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); this.mergePreviewLoaderClose()?.nativeElement.focus(); }
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.closeMergePreviewLoader(); }
-  }
-
-  protected closeMergePreviewLoader(): void {
-    const opener = this.mergePreviewRequest()?.returnFocus;
-    this.mergePreviewRequest.set(null);
-    setTimeout(() => {
-      if (opener?.isConnected && opener.getClientRects().length) opener.focus();
-      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
-    });
   }
 
   protected openIntegrationDialog(source?: string, returnFocus: HTMLElement | null = null, target?: string): void {
@@ -4553,7 +4559,7 @@ export class AppComponent implements OnInit, OnDestroy {
       }
       else if (event.key === 'Tab' && !(event.target instanceof Element && event.target.closest('gc-repository-link-dialog'))) {
         event.preventDefault();
-        (document.querySelector<HTMLElement>('gc-repository-link-dialog [role=dialog] button:not(:disabled)') ?? this.repositoryLinkLoaderClose()?.nativeElement)?.focus();
+        (document.querySelector<HTMLElement>('gc-repository-link-dialog [role=dialog] button:not(:disabled)') ?? document.querySelector<HTMLElement>('[data-dialog-fallback="repositoryLink"] button'))?.focus();
       }
       return;
     }
@@ -6386,12 +6392,6 @@ export class AppComponent implements OnInit, OnDestroy {
     const request = this.repositoryLinkDialog();
     this.repositoryLinkDialog.set(null);
     setTimeout(() => { if (!this.repositoryLinkDialog()) (request?.returnFocus?.isConnected ? request.returnFocus : document.querySelector<HTMLElement>('.workspace-toggle'))?.focus({ preventScroll: true }); });
-  }
-
-  protected handleRepositoryLinkLoaderKey(event: KeyboardEvent): void {
-    event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.closeRepositoryLink(); }
-    else if (event.key === 'Tab') { event.preventDefault(); this.repositoryLinkLoaderClose()?.nativeElement.focus(); }
   }
 
   protected finishRepositoryLink(oid: string | null): void {
@@ -11038,23 +11038,6 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected closeBranchWorkflowLoader(): void {
-    const opener = this.branchWorkflowRequest()?.returnFocus;
-    this.branchWorkflowRequest.set(null);
-    setTimeout(() => { if (opener?.isConnected && opener.getClientRects().length) opener.focus(); else this.workspaceToggle()?.nativeElement.focus(); });
-  }
-
-  protected handleBranchWorkflowLoaderKey(event: KeyboardEvent): void {
-    if (event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); this.branchWorkflowLoaderClose()?.nativeElement.focus(); }
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.closeBranchWorkflowLoader(); }
-  }
-
-  protected closeWorkspaceCenterLoader(): void {
-    const opener = this.workspaceCenterRequest()?.returnFocus;
-    this.workspaceCenterRequest.set(null);
-    setTimeout(() => { if (opener?.isConnected && opener.getClientRects().length) opener.focus(); else this.workspaceToggle()?.nativeElement.focus(); });
-  }
-
   protected dismissBackgroundOperationWarningFallback(operationId: string, event: MouseEvent): void {
     const button = event.currentTarget;
     if (button instanceof HTMLButtonElement && document.activeElement === button) {
@@ -11066,11 +11049,6 @@ export class AppComponent implements OnInit, OnDestroy {
       (next ?? fallback)?.focus();
     }
     this.git.dismissBackgroundOperationWarning(operationId);
-  }
-
-  protected handleWorkspaceCenterLoaderKey(event: KeyboardEvent): void {
-    if (event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); this.workspaceCenterLoaderClose()?.nativeElement.focus(); }
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.closeWorkspaceCenterLoader(); }
   }
 
   protected openWorkspaceCenter(panel: 'overview' | 'identities' | 'hosting' | 'files', returnFocus: HTMLElement | null = null): void {
@@ -13129,12 +13107,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.fileContentDialog.set({ selection, returnFocus, editing: signal(false), recovery: { ...request.reference } });
   }
 
-  protected handleEditorDraftRecoveryLoaderKey(event: KeyboardEvent): void {
-    event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.closeEditorDraftRecovery(); }
-    else if (event.key === 'Tab') { event.preventDefault(); this.editorDraftRecoveryLoaderClose()?.nativeElement.focus(); }
-  }
-
   protected openApplicationUpdates(): void {
     if (this.applicationUpdatesRequest() || this.fileContentDialog()) return;
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -13174,18 +13146,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.windowsLauncherOpen.set(false);
     const target = this.windowsLauncherReturnFocus; this.windowsLauncherReturnFocus = null;
     queueMicrotask(() => { if (target?.isConnected) target.focus({ preventScroll: true }); });
-  }
-
-  protected handleWindowsLauncherLoaderKey(event: KeyboardEvent): void {
-    event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.closeWindowsLauncher(); }
-    else if (event.key === 'Tab') { event.preventDefault(); this.windowsLauncherLoaderClose()?.nativeElement.focus(); }
-  }
-
-  protected handleFileContentLoaderKey(event: KeyboardEvent): void {
-    event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); this.closeFileContentDialog(); }
-    else if (event.key === 'Tab') { event.preventDefault(); this.fileContentLoaderClose()?.nativeElement.focus(); }
   }
 
   protected closeFileContentDialog(): void {
