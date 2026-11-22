@@ -235,6 +235,86 @@ fn reviewed_branch_integration_honors_selected_mode_over_squash_defaults() {
 }
 
 #[test]
+fn abort_rebase_preserves_ignored_data_and_uses_the_original_state_for_both_backends() {
+    for backend in ["--merge", "--apply"] {
+        let fixture = Fixture::new();
+        fixture.commit_file("restore", "Original tracked file");
+        fixture.commit_file("conflict", "Original text");
+        fixture.commit_file("shared", "Tracked in both rebase trees");
+        fixture.git(&["switch", "-c", "upstream"]);
+        fixture.git(&["rm", "restore"]);
+        fixture.commit_file("conflict", "Upstream text");
+        fixture.git(&["switch", "main"]);
+        fixture.commit_file("conflict", "Local text");
+        let original = fixture.git(&["rev-parse", "HEAD"]);
+        run_mutation(
+            fixture.path(),
+            &["rebase", backend, "upstream"],
+            "begin owned rebase",
+        )
+        .unwrap_err();
+        let before = fixture.git(&["rev-parse", "HEAD"]);
+        assert_ne!(before, original);
+        fixture.git(&["update-ref", "ORIG_HEAD", &before]);
+        // shared is present in both commits but is untracked during the abort.
+        fixture.git(&["rm", "--cached", "shared"]);
+        fs::write(
+            fixture.path().join(".git/info/exclude"),
+            "/restore\n/shared\n",
+        )
+        .unwrap();
+        fs::write(fixture.path().join("restore"), "Ignored-only copy\n").unwrap();
+        fs::write(fixture.path().join("shared"), "Another ignored-only copy\n").unwrap();
+        let status = read_status(fixture.path()).unwrap();
+        assert!(status.rebase_in_progress, "{backend}");
+        assert!(!status.mail_patch_in_progress, "{backend}");
+        let index = fs::read(fixture.path().join(".git/index")).unwrap();
+        let state = if backend == "--merge" {
+            ".git/rebase-merge/orig-head"
+        } else {
+            ".git/rebase-apply/orig-head"
+        };
+        let state = fixture.path().join(state);
+        let saved_state = fs::read(&state).unwrap();
+        fs::write(&state, "not an object id\n").unwrap();
+        assert_eq!(
+            abort_rebase(fixture.path()).unwrap_err().kind,
+            "rebaseAbortIgnoredPathsUnverified"
+        );
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), before);
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        fs::write(state, saved_state).unwrap();
+
+        for name in ["restore", "shared"] {
+            let error = abort_rebase(fixture.path()).unwrap_err();
+            assert_eq!(error.kind, "rebaseAbortLocalPathObstruction", "{backend}");
+            assert!(error.message.contains(name), "{} {name}", error.message);
+            assert_eq!(fixture.git(&["rev-parse", "HEAD"]), before);
+            assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+            assert!(read_status(fixture.path()).unwrap().rebase_in_progress);
+            fs::rename(
+                fixture.path().join(name),
+                fixture.path().join(format!("{name}.kept")),
+            )
+            .unwrap();
+        }
+
+        abort_rebase(fixture.path()).unwrap();
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), original);
+        assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/main");
+        assert!(!read_status(fixture.path()).unwrap().rebase_in_progress);
+        assert_eq!(
+            fs::read_to_string(fixture.path().join("restore.kept")).unwrap(),
+            "Ignored-only copy\n"
+        );
+        assert_eq!(
+            fs::read_to_string(fixture.path().join("shared.kept")).unwrap(),
+            "Another ignored-only copy\n"
+        );
+    }
+}
+
+#[test]
 fn rebase_preserves_ignored_files_in_the_way_of_the_new_base() {
     for reviewed in [false, true] {
         let fixture = Fixture::new();

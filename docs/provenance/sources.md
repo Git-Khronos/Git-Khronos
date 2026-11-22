@@ -1568,6 +1568,9 @@ The public [Git rebase manual](https://git-scm.com/docs/git-rebase) and
 [diff-tree manual](https://git-scm.com/docs/git-diff-tree) informed the
 initial checkout and raw tree-path inspection. Separate, owned Git fixtures
 demonstrated overwrite during local rebase and verified the new refusal.
+The same rebase manual describes Abort and the limits of `ORIG_HEAD`.
+Owned merge- and apply-backend fixtures identified the original tip and
+active markers and reproduced ignored-file loss during Abort.
 No upstream code was copied.
 
 ## Fast-forward Pull and ignored files

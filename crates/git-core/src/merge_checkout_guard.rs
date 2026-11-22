@@ -23,6 +23,14 @@ fn rebase_unavailable() -> AppError {
     )
 }
 
+fn rebase_abort_unavailable() -> AppError {
+    AppError::new(
+        "rebaseAbortIgnoredPathsUnverified",
+        "Could not check which ignored local files Abort Rebase might replace. The rebase was not aborted.",
+        Some("Move or back up ignored local files, then retry Abort."),
+    )
+}
+
 type Unavailable = fn() -> AppError;
 
 fn bounded(path: &Path, args: &[&str], unavailable: Unavailable) -> Result<Output, AppError> {
@@ -227,7 +235,15 @@ fn checkout_obstruction(
     if !result.status.success() {
         return Err(unavailable());
     }
-    for target in paths(&result.stdout, unavailable)? {
+    obstructing_path(ignored, &result.stdout, unavailable)
+}
+
+fn obstructing_path(
+    ignored: &IgnoredPaths,
+    target_paths: &[u8],
+    unavailable: Unavailable,
+) -> Result<Option<String>, AppError> {
+    for target in paths(target_paths, unavailable)? {
         if let Some(blocked) =
             obstructions(&ignored.entries, &normalize(target, ignored.ignore_case))
         {
@@ -240,6 +256,118 @@ fn checkout_obstruction(
         }
     }
     Ok(None)
+}
+
+fn rebase_original_tip(directory: &Path) -> Result<String, AppError> {
+    let unavailable = rebase_abort_unavailable;
+    // The operation's own metadata is authoritative. ORIG_HEAD can be changed
+    // by Git commands that run after the rebase started.
+    #[cfg(unix)]
+    let file = {
+        use rustix::fs::{Mode, OFlags, open, openat};
+        let directory = open(
+            directory,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|_| unavailable())?;
+        let file = openat(
+            directory,
+            "orig-head",
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|_| unavailable())?;
+        fs::File::from(file)
+    };
+    #[cfg(not(unix))]
+    let file = {
+        let path = directory.join("orig-head");
+        operation_storage::file(&path).map_err(|_| unavailable())?;
+        let mut opts = fs::OpenOptions::new();
+        opts.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+            opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        }
+        opts.open(path).map_err(|_| unavailable())?
+    };
+    let metadata = file.metadata().map_err(|_| unavailable())?;
+    const LIMIT: u64 = 66; // SHA-256 hex with optional CRLF.
+    if !metadata.file_type().is_file() || metadata.len() > LIMIT {
+        return Err(unavailable());
+    }
+    let mut bytes = Vec::new();
+    file.take(LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| unavailable())?;
+    if bytes.len() as u64 > LIMIT {
+        return Err(unavailable());
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|_| unavailable())?;
+    let oid = text
+        .strip_suffix("\r\n")
+        .or_else(|| text.strip_suffix('\n'))
+        .unwrap_or(text);
+    validate_commit_oid(oid).map_err(|_| unavailable())?;
+    Ok(oid.to_owned())
+}
+
+pub(super) fn ensure_rebase_abort_preserves_ignored_files(path: &Path) -> Result<(), AppError> {
+    let unavailable = rebase_abort_unavailable;
+    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+        return Ok(());
+    };
+    let merge = operation_storage::git_entry(path, "rebase-merge")?;
+    let apply = merge.with_file_name("rebase-apply");
+    operation_storage::directory(&merge).map_err(|_| unavailable())?;
+    operation_storage::directory(&apply).map_err(|_| unavailable())?;
+    let apply_rebase = apply.is_dir()
+        && operation_storage::file(&apply.join("applying"))
+            .map_err(|_| unavailable())?
+            .is_none();
+    let directory = match (merge.is_dir(), apply_rebase) {
+        (false, false) => return Ok(()), // Let Git report its ordinary no-rebase error.
+        (true, false) => merge,
+        (false, true) => apply,
+        (true, true) => return Err(unavailable()),
+    };
+    let original = rebase_original_tip(&directory)?;
+    without_lazy_fetch(|| {
+        let head = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
+        // Abort restores the original tree against the current index, not
+        // against HEAD's tree. A path in both commits may now be untracked.
+        let listing = bounded(
+            path,
+            &[
+                "ls-tree",
+                "-r",
+                "--full-tree",
+                "--name-only",
+                "-z",
+                &format!("{original}^{{commit}}"),
+            ],
+            unavailable,
+        )?;
+        if !listing.status.success() {
+            return Err(unavailable());
+        }
+        if let Some(blocked) = obstructing_path(&ignored, &listing.stdout, unavailable)? {
+            return Err(AppError::new(
+                "rebaseAbortLocalPathObstruction",
+                format!("Abort Rebase could overwrite ignored local contents at '{blocked}'."),
+                Some("Move the ignored file or directory out of the way, then retry Abort."),
+            ));
+        }
+        if reference_tip(path, "HEAD").as_deref() != Some(&head)
+            || rebase_original_tip(&directory)? != original
+        {
+            return Err(unavailable());
+        }
+        Ok(())
+    })
 }
 
 pub(crate) fn ensure_ignored_files_preserved(path: &Path, source: &str) -> Result<(), AppError> {

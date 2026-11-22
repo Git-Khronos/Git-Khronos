@@ -2072,7 +2072,7 @@ export class GitKhronosService implements OnDestroy {
   }
 
   async continueRebase(): Promise<void> {
-    await this.mutate('continue_rebase', 'Continuing interactive rebase…', snapshot => this.rebaseActivity(snapshot));
+    await this.mutate('continue_rebase', 'Continuing rebase…', snapshot => this.rebaseActivity(snapshot));
   }
 
   async prepareMergeRebase(repositoryId: string, source: string, target: string): Promise<MergeRebasePlan | null> {
@@ -2109,11 +2109,11 @@ export class GitKhronosService implements OnDestroy {
   private rebaseActivity(snapshot: RepositorySnapshot): string {
     if (repositoryOperationState(snapshot.status).rebaseSplit) return 'Rebase paused for splitting. Commit every part explicitly, then Continue; or Abort.';
     if (repositoryOperationState(snapshot.status).rebaseEditStopped && !snapshot.status.conflicted) return 'Rebase paused for Edit. Amend the replayed commit, then Continue; or Continue unchanged.';
-    return repositoryOperationState(snapshot.status).rebaseInProgress ? 'Rebase remains in progress. Review the current stop before continuing.' : 'Interactive rebase complete';
+    return repositoryOperationState(snapshot.status).rebaseInProgress ? 'Rebase remains in progress. Review the current stop before continuing.' : 'Rebase complete';
   }
 
   async abortRebase(): Promise<void> {
-    await this.mutate('abort_rebase', 'Aborting interactive rebase…', 'Interactive rebase aborted');
+    await this.mutate('abort_rebase', 'Aborting rebase…', 'Rebase aborted');
   }
 
   async continueMerge(): Promise<void> {

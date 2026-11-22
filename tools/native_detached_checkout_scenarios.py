@@ -1,5 +1,6 @@
 """Exercise reviewed detached HEAD with packaged controls and independent Git oracles."""
 import json
+import subprocess
 
 from native_acceptance import open_ui
 from native_worktree_scenarios import checkout_footprint
@@ -107,9 +108,50 @@ def context_rebase_preserves_sibling(driver, fixtures, report):
     report['scenarios'].append('native-context-rebase-preserves-unreviewed-sibling-branches')
 
 
+def abort_apply_rebase_preserves_ignored_settings(driver, fixtures, report):
+    repository = fixtures.repository('owned-apply-rebase-stop', commits=2)
+    settings = repository / 'settings.local'
+    settings.write_text('Tracked settings on the original branch.\n')
+    fixtures.git(repository, 'add', '--', settings.name)
+    fixtures.git(repository, 'commit', '-qm', 'Add tracked settings')
+    fixtures.git(repository, 'switch', '-qc', 'upstream')
+    fixtures.git(repository, 'rm', '--', settings.name)
+    (repository / 'fixture.txt').write_text('Upstream version.\n')
+    fixtures.git(repository, 'commit', '-qam', 'Change upstream text')
+    fixtures.git(repository, 'switch', 'main')
+    (repository / 'fixture.txt').write_text('Topic version.\n')
+    fixtures.git(repository, 'commit', '-qam', 'Change topic text')
+    original = fixtures.git(repository, 'rev-parse', 'HEAD')
+    stopped = subprocess.run(
+        ['git', '-C', str(repository), 'rebase', '--apply', 'upstream'],
+        env=fixtures.env, capture_output=True, timeout=20,
+    )
+    assert stopped.returncode != 0 and (repository / '.git/rebase-apply/rebasing').is_file(), stopped.stderr
+    assert not settings.exists()
+    (repository / '.git/info/exclude').write_text('/settings.local\n')
+    settings.write_text('Only copy of ignored local settings.\n')
+    open_ui(driver, repository)
+    driver.wait('return !!document.querySelector(\'.rebase-progress[aria-label="Git rebase in progress"]\')')
+    before = checkout_footprint(fixtures, repository, ('fixture.txt', settings.name))
+    driver.click_scrolled_text('.rebase-progress button', 'Abort', wait_for_ready=True)
+    driver.wait("return document.querySelector('.error-toast')?.textContent.includes('Abort Rebase could overwrite ignored local contents')")
+    assert checkout_footprint(fixtures, repository, ('fixture.txt', settings.name)) == before
+    assert (repository / '.git/rebase-apply/rebasing').is_file()
+    saved = repository / 'saved-settings'
+    settings.rename(saved)
+    driver.click_scrolled_text('.rebase-progress button', 'Abort', wait_for_ready=True)
+    driver.wait("return !document.querySelector('.rebase-progress') && document.querySelector('.activity-status')?.textContent.includes('Rebase aborted')")
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == original
+    assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+    assert settings.read_text() == 'Tracked settings on the original branch.\n'
+    assert saved.read_text() == 'Only copy of ignored local settings.\n'
+    report['scenarios'].append('native-abort-apply-rebase-preserves-ignored-file-and-allows-safe-retry')
+
+
 def reviewed_detached_checkout(driver, fixtures, report):
     guarded_checkout_targets(driver, fixtures, report)
     context_rebase_preserves_sibling(driver, fixtures, report)
+    abort_apply_rebase_preserves_ignored_settings(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')
     head = fixtures.git(repository, 'rev-parse', 'HEAD')

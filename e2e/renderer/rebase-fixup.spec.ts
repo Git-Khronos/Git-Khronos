@@ -143,7 +143,7 @@ test('Edit keyboard action sends the explicit stop and displays truthful pause a
   await status.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(status).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root'))
-    .git.activity())).toBe('Interactive rebase complete');
+    .git.activity())).toBe('Rebase complete');
   expect(await page.evaluate(() => (window as any).__rebaseCalls.some((call: any) => call.command === 'commit_changes'))).toBe(false);
 });
 

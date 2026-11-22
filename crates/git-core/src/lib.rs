@@ -4626,7 +4626,7 @@ fn execute_interactive_rebase_impl(
 }
 
 pub fn continue_rebase(path: &Path) -> Result<(), AppError> {
-    run_rebase_control(path, "--continue", "continue the interactive rebase")
+    run_rebase_control(path, "--continue", "continue the rebase")
 }
 
 pub fn skip_rebase(path: &Path) -> Result<(), AppError> {
@@ -4634,8 +4634,9 @@ pub fn skip_rebase(path: &Path) -> Result<(), AppError> {
 }
 
 pub fn abort_rebase(path: &Path) -> Result<(), AppError> {
+    merge_checkout_guard::ensure_rebase_abort_preserves_ignored_files(path)?;
     let output = run_git(path, &["rebase", "--abort"])?;
-    let result = ensure_success("abort the interactive rebase", &output).map_err(|mut error| {
+    let result = ensure_success("abort the rebase", &output).map_err(|mut error| {
         if rebase_support_dir(path).is_ok_and(|directory| directory.join("split.json").is_file()) {
             error.hint = Some("Git refused to restore the branch; no force-reset is attempted. Preserve current changes. If split-created untracked files obstruct Abort, review and stage only those files, or move them safely outside the repository, then retry Abort.".into());
         }
@@ -9585,7 +9586,7 @@ fn run_rebase_control(path: &Path, action: &str, operation: &str) -> Result<(), 
     if !rebase_in_progress(path)? {
         return Err(AppError::new(
             "noRebaseInProgress",
-            "There is no interactive rebase in progress.",
+            "There is no rebase in progress.",
             None,
         ));
     }
@@ -9724,8 +9725,9 @@ fn repository_operation_state(path: &Path) -> Result<RepositoryOperationState, A
     } else {
         native_history_sequence(directory)?
     };
-    let rebase_edit =
-        directory.join("rebase-merge").is_dir() && directory.join("rebase-merge/amend").is_file();
+    let merge_rebase = directory.join("rebase-merge").is_dir();
+    let apply_rebase = directory.join("rebase-apply/rebasing").is_file();
+    let rebase_edit = merge_rebase && directory.join("rebase-merge/amend").is_file();
     Ok(RepositoryOperationState {
         merge: directory.join("MERGE_HEAD").is_file(),
         history: if history_no_commit || directory.join("CHERRY_PICK_HEAD").is_file() {
@@ -9737,12 +9739,12 @@ fn repository_operation_state(path: &Path) -> Result<RepositoryOperationState, A
         },
         history_no_commit,
         revert_head_present: directory.join("REVERT_HEAD").is_file(),
-        rebase: directory.join("rebase-merge").is_dir(),
+        rebase: merge_rebase || apply_rebase,
         rebase_edit,
         rebase_split: rebase_split::inspect(
             path,
             directory,
-            directory.join("rebase-merge").is_dir(),
+            merge_rebase,
             rebase_edit,
         )?,
         mail_patch: directory.join("rebase-apply/applying").is_file(),
