@@ -700,6 +700,20 @@ The unchanged 900 kB warning remains. See
 `target/local-review/lazy-diff-projection.*` for the production build
 reports and Chromium request probe. Startup latency was not measured.
 
+Moving the welcome launcher and remaining file-insight rules to their
+existing lazy components cut initial CSS by 14,276 bytes
+(124,233 → 109,957); initial JavaScript was unchanged. The initial total is
+1,296,447 bytes, still 396,447 bytes over the unchanged 900 kB warning.
+Independently compressing the initial files saved 2,673 gzip and 2,315
+Brotli bytes. On the production Chromium preview, the diff styles were
+requested only on first opening the diff. The welcome chunk was still
+requested during repository startup in that preview, so counting that
+chunk with the initial files yields only 1,116 fewer raw bytes. The
+compact workspace menu and sampled diff layout and hunk controls kept
+their computed styles. The build comparison and browser request probe are
+in `target/local-review/lazy-feature-styles.dQF1Tebn/`. This is not a
+startup-latency measurement.
+
 Deferring the commit editor and its private styles reduced the initial
 renderer from **1,333,972 to 1,331,513 bytes**. A production Chromium probe
 requested the form chunk only when the editor opened and confirmed focus

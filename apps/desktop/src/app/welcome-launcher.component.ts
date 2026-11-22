@@ -9,6 +9,7 @@ import {
   output,
   signal,
   TemplateRef,
+  ViewEncapsulation,
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
@@ -21,6 +22,9 @@ import type { RepositoryDialogMode } from './repository-dialog.component';
   selector: 'gc-welcome-launcher',
   imports: [NgTemplateOutlet, IconComponent],
   templateUrl: './welcome-launcher.component.html',
+  styleUrl: './welcome-launcher.component.scss',
+  // The workspace menu is stamped from a template owned by the app shell.
+  encapsulation: ViewEncapsulation.None,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WelcomeLauncherComponent {

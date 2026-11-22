@@ -28,3 +28,20 @@ test('preserves natural document focus when repository history is available', as
   await expect(page.getByRole('button', { name: /Open repository/ })).not.toBeFocused();
   await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe('BODY');
 });
+
+test('styles the shell-owned workspace menu inside the compact welcome launcher', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  await page.goto('/?welcome-preview');
+
+  const welcome = page.locator('gc-welcome-launcher');
+  const workspace = welcome.getByRole('button', { name: /^Workspace: / });
+  await expect(welcome.locator('.hero-actions')).toHaveCSS('display', 'grid');
+  await expect(welcome.getByRole('button', { name: 'Switch application theme' })).toHaveCSS('width', '31px');
+  await expect(workspace).toHaveCSS('max-width', '145px');
+  await workspace.click();
+
+  const menu = welcome.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await expect(menu).toHaveCSS('position', 'fixed');
+  await expect(menu).toHaveCSS('top', '65px');
+});
