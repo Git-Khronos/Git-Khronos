@@ -789,14 +789,16 @@ Switching to candidates requires a clean working tree. An explicit
 **Keep current checkout** choice passes Git's no-checkout option instead;
 staged, unstaged and untracked work can stay in place. The banner names
 the candidate independently of HEAD and can open its commit details.
-Neither mode changes Git's candidate selection.
+An independent first-parent choice passes Git's own first-parent option:
+merges are tested on the primary line, not as individual commits on
+the merged branch.
 Good, Bad, and Skip capture the displayed candidate and checkout visit,
 whether invoked from the banner or palette. For Git's no-checkout mode,
 the candidate is the exact `BISECT_HEAD` ref and is independent of HEAD.
 The banner and palette use the native session's terms, including old/new
 or custom terms from a session started outside the application.
-Native validation compares the current candidate, checkout mode and terms
-before voting for an explicit OID. Invalid or ambiguous terms do not
+Native validation compares the current candidate, checkout mode,
+first-parent setting and terms before voting for an explicit OID. Invalid or ambiguous terms do not
 authorize a native vote.
 An unavailable candidate disables votes but does not disable Reset.
 When Git records a unique result, the banner shows that exact commit
@@ -811,10 +813,12 @@ a new vote.
 In switching mode, starting or voting checks ignored paths against a
 bounded superset of the candidate trees before Git moves or records a
 vote. The check includes possible merge bases and, when voting, the
-original checkout that Git can restore. It does not replicate Git's
-candidate selection. Beyond the per-tree limit, Git can still prove
+original checkout that Git can restore. First-parent searches can use
+a smaller candidate set when the known-good revisions are ancestors;
+possible merge bases still need the conservative check. The app does
+not replicate Git's candidate selection. Beyond the per-tree limit, Git can still prove
 that none of the ignored top-level names ever appeared in the candidate
-ancestry. This proof follows all merge parents and includes Git links;
+ancestry. This proof follows the eligible merge parents and includes Git links;
 the original checkout is verified separately. A collision or exhausted
 verification deadline or data bound leaves the current checkout and
 bisect state unchanged. No-checkout mode does not need this tree scan.

@@ -914,6 +914,8 @@ Source:
 - [Git merge-base](https://git-scm.com/docs/git-merge-base),
   [git rev-list](https://git-scm.com/docs/git-rev-list), and
   [git ls-tree](https://git-scm.com/docs/git-ls-tree) plumbing documentation
+- [Upstream Git 2.53 bisection source](https://github.com/git/git/blob/v2.53.0/bisect.c),
+  consulted to distinguish the merge-base check from the first-parent walk.
 
 Used for:
 
@@ -923,6 +925,9 @@ Used for:
   layout and exact ref names on supported Git versions.
 - Starting with Git's documented no-checkout option when the user needs
   to keep their existing index and working files in place.
+- Passing the documented first-parent mode for integration searches.
+  Owned merge histories verified the session marker and the selected
+  candidates on two supported Git versions.
 - Reporting the exact `BISECT_HEAD` ref in no-checkout mode and supplying
   a reviewed revision explicitly to good, bad, or skip.
 - Presenting Git's first matching commit. Owned Git fixtures verified that

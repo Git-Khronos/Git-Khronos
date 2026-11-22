@@ -3922,6 +3922,14 @@ and casting both votes with custom native terms. This is focused evidence,
 not a new full release qualification. Receipt:
 `target/local-review/updater/jammy-builder/bisect-modes-release.aO1y8ieO/reports.json`.
 
+The installer from `08b1e19` passed 28 installed detached-checkout
+scenarios on Ubuntu 24.04. The added regression exercises guarded bisect
+start and voting against an ignored path and confirms recovery without
+a lost file or partial vote. Installer SHA-256:
+`529d38d31f34e8d971829d3b0eb3c4b3530baad8e453128a122e906b59c84074`.
+Receipt: `target/local-review/updater/jammy-builder/bisect-ignored-paths-release.92qsml8r/reports.json`.
+This evidence does not qualify later changes.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard

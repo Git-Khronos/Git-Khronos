@@ -1083,7 +1083,7 @@
             } @else if (result?.kind === 'ambiguous') {
               <small title="Skipped revisions prevent Git from identifying a single result.">{{ result.possibleOids.length }} possible first {{ result.term }} commits; some revisions were skipped.</small>
             } @else if (target) {
-              <small [title]="target.candidate.oid">@if (target.candidate.noCheckout) { Checkout unchanged. } Test commit {{ shortOid(target.candidate.oid) }}, then classify the result.</small>
+              <small [title]="target.candidate.oid">@if (target.candidate.noCheckout) { Checkout unchanged. } @if (target.candidate.firstParent) { First-parent history. } Test commit {{ shortOid(target.candidate.oid) }}, then classify the result.</small>
             } @else {
               <small>Candidate unavailable. Refresh the repository before voting.</small>
             }
@@ -2343,6 +2343,8 @@
               Git temporarily checks out each candidate. Keep the working tree clean; Reset restores the original checkout.
             }
           </p>
+          <label class="bisect-mode"><input #firstParent id="bisect-first-parent-option" type="checkbox" [checked]="bisectFirstParent()" aria-describedby="bisect-first-parent-note" (change)="bisectFirstParent.set(firstParent.checked)" /> First-parent history only</label>
+          <p class="bisect-note" id="bisect-first-parent-note">Test each merge as one step instead of testing individual commits from the merged branch.</p>
           @if (!bisectStartReviewCurrent(bisect)) {
             <p role="alert">The checkout changed. Close this review and choose the bisect range again.</p>
           }

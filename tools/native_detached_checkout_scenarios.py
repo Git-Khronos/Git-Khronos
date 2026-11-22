@@ -417,6 +417,52 @@ def bisect_large_range_allows_unrelated_ignored_data(driver, fixtures, report):
     report['scenarios'].append('native-bisect-large-range-allows-unrelated-ignored-data')
 
 
+def bisect_first_parent_keeps_the_search_on_the_primary_line(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-first-parent', commits=3)
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~2')
+    fixtures.git(repository, 'switch', '-qc', 'topic', good)
+    (repository / 'settings.local').write_text('Only tracked on the side branch.\n')
+    fixtures.git(repository, 'add', '--', 'settings.local')
+    fixtures.git(repository, 'commit', '-qm', 'Side branch settings')
+    fixtures.git(repository, 'switch', 'main')
+    fixtures.git(repository, 'merge', '--no-ff', '-s', 'ours', '-m', 'Integrate the topic', 'topic')
+    integration = fixtures.git(repository, 'rev-parse', 'HEAD')
+    fixtures.git(repository, 'commit', '--allow-empty', '-qm', 'After integration')
+    bad = fixtures.git(repository, 'rev-parse', 'HEAD')
+    (repository / '.git/info/exclude').write_text('/settings.local\n')
+    local = repository / 'settings.local'
+    local.write_text('Only ignored copy.\n')
+
+    repo_id = open_ui(driver, repository)
+    driver.context_click(f'.commit-row[data-commit-oid="{good}"]')
+    driver.click_scrolled_text('[role="menuitem"]', 'Start bisect from here…', wait_for_ready=True)
+    dialog = '[role="alertdialog"][aria-labelledby="bisect-dialog-title"]'
+    driver.click_visible(dialog + ' #bisect-first-parent-option')
+    driver.click_scrolled_text(dialog + ' button', 'Start Bisect', wait_for_ready=True)
+
+    banner = '[aria-label="Git bisect in progress"]'
+    driver.wait("return document.querySelector(" + json.dumps(banner) + ")?.textContent.includes('First-parent history.')")
+    first_parent = set(fixtures.git(repository, 'rev-list', '--first-parent', bad, '^' + good).splitlines())
+    for _ in range(5):
+        status = driver.invoke('refresh_repository_status', repoId=repo_id)
+        if status.get('bisectResult'):
+            assert status['bisectResult'] == {'kind': 'found', 'oid': integration, 'term': 'bad'}, status
+            break
+        candidate = status['bisectCandidate']
+        assert candidate['firstParent'] and not candidate['noCheckout']
+        oid = candidate['oid']
+        assert oid in first_parent and fixtures.git(repository, 'rev-parse', 'HEAD') == oid
+        tested = 'bad' if integration in fixtures.git(repository, 'rev-list', '--first-parent', oid).splitlines() else 'good'
+        driver.invoke('mark_bisect', repoId=repo_id, verdict=tested, candidate=candidate)
+    else:
+        raise AssertionError('First-parent bisect did not report the integration commit')
+    driver.invoke('reset_bisect', repoId=repo_id)
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == bad
+    assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+    assert local.read_text() == 'Only ignored copy.\n'
+    report['scenarios'].append('native-bisect-first-parent-reports-the-merge-and-keeps-ignored-side-paths')
+
+
 def bisect_start_rejects_a_stale_checkout(driver, fixtures, report):
     repository = fixtures.repository('owned-bisect-start-review', commits=6)
     repo_id = open_ui(driver, repository)
@@ -681,6 +727,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     bisect_reset_preserves_ignored_files(driver, fixtures, report)
     bisect_checkout_protects_ignored_contents(driver, fixtures, report)
     bisect_large_range_allows_unrelated_ignored_data(driver, fixtures, report)
+    bisect_first_parent_keeps_the_search_on_the_primary_line(driver, fixtures, report)
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
     bisect_can_start_without_switching_dirty_checkout(driver, fixtures, report)
     bisect_vote_binds_the_test_candidate(driver, fixtures, report)

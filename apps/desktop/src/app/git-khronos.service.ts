@@ -1,5 +1,5 @@
 import type { PushDestinationReview } from '@git-khronos/contracts';
-import { sameBisectCandidate } from './bisect-candidate';
+import { bisectPreviewHistory, sameBisectCandidate } from './bisect-candidate';
 import { PREPARED_MERGE_LABEL, repositoryOperationState } from './repository-operation';
 import { AsyncStateController } from './async-state';
 import { OperationTracker } from './operation-tracker';
@@ -2693,17 +2693,18 @@ export class GitKhronosService implements OnDestroy {
 
   async startBisect(review: BisectStartReview): Promise<void> {
     const repository = this.repository();
-    const { badOid, goodOid, branch, noCheckout = false } = review;
+    const { badOid, goodOid, branch, noCheckout = false, firstParent = false } = review;
     if (!repository || repository.headOid !== badOid || repository.status.branch !== branch || goodOid === badOid) return;
     if (this.browserPreview()) {
       this.previewBisectStarts.set(repository.id, { head: badOid, branch });
-      const goodIndex = repository.commits.findIndex((commit) => commit.oid === goodOid);
+      const history = bisectPreviewHistory(repository.commits, badOid, firstParent);
+      const goodIndex = history.findIndex((commit) => commit.oid === goodOid);
       const candidateIndex = Math.max(1, Math.floor(Math.max(1, goodIndex) / 2));
-      const candidate = repository.commits[candidateIndex] ?? repository.commits[1] ?? repository.commits[0];
+      const candidate = history[candidateIndex] ?? history[1] ?? history[0];
       this.repositories.update((repositories) => repositories.map((item) => item.id === repository.id
         ? { ...item, headOid: noCheckout ? badOid : candidate?.oid ?? badOid,
           status: { ...item.status, branch: noCheckout ? branch : null, bisectInProgress: true,
-            bisectCandidate: candidate ? { oid: candidate.oid, noCheckout } : undefined } }
+            bisectCandidate: candidate ? { oid: candidate.oid, noCheckout, firstParent } : undefined } }
         : item));
       this.activity.set('Bisect started');
       return;
@@ -2728,11 +2729,13 @@ export class GitKhronosService implements OnDestroy {
     const candidate = this.bisectCandidate();
     if (!repository || !candidate || !sameBisectCandidate(candidate, expected)) return;
     if (this.browserPreview()) {
-      const currentIndex = repository.commits.findIndex((commit) => commit.oid === expected.oid);
-      const candidate = repository.commits[Math.min(repository.commits.length - 1, Math.max(0, currentIndex + 1))];
+      const start = this.previewBisectStarts.get(repository.id)?.head ?? expected.oid;
+      const history = bisectPreviewHistory(repository.commits, start, !!expected.firstParent);
+      const currentIndex = history.findIndex((commit) => commit.oid === expected.oid);
+      const candidate = history[Math.min(history.length - 1, Math.max(0, currentIndex + 1))];
       this.repositories.update((repositories) => repositories.map((item) => item.id === repository.id
         ? { ...item, headOid: expected.noCheckout ? item.headOid : candidate?.oid ?? item.headOid,
-          status: { ...item.status, bisectCandidate: candidate ? { oid: candidate.oid, noCheckout: expected.noCheckout } : expected } }
+          status: { ...item.status, bisectCandidate: candidate ? { ...expected, oid: candidate.oid } : expected } }
         : item));
       this.activity.set(`Bisect marked ${verdict}`);
       return;

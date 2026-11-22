@@ -3651,7 +3651,8 @@ test('guides a bisect search from a known-good commit and restores the branch', 
   await expect(confirmation).toContainText('KNOWN BAD');
   await expect(confirmation.locator('.bisect-endpoints small').first()).toHaveCSS('font-size', '12px');
   await expect(confirmation.locator('.bisect-endpoints code').first()).toHaveCSS('font-size', '12px');
-  await expect(confirmation.locator('.bisect-note')).toHaveCSS('font-size', '12px');
+  await expect(confirmation.locator('#bisect-checkout-note')).toHaveCSS('font-size', '12px');
+  await expect(confirmation.locator('#bisect-first-parent-note')).toHaveCSS('font-size', '12px');
   await confirmation.getByRole('button', { name: 'Start Bisect' }).click();
 
   const progress = page.getByRole('status', { name: 'Git bisect in progress' });

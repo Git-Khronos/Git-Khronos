@@ -1337,6 +1337,7 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   protected readonly pendingBisectStart = signal<PendingBisectStart | null>(null);
   protected readonly bisectKeepCheckout = signal(false);
+  protected readonly bisectFirstParent = signal(false);
   protected readonly bisectCheckoutNeedsCleanFiles = computed(() => {
     const status = this.git.repository()?.status;
     return !!(status?.entryCount || status?.filesUnscanned || status?.entriesTruncated);
@@ -14145,6 +14146,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!repository?.headOid) return;
     const head = repository.commits.find((commit) => commit.oid === repository.headOid);
     this.bisectKeepCheckout.set(false);
+    this.bisectFirstParent.set(false);
     this.pendingBisectStart.set({
       checkoutScope: this.git.activeRepositoryReadScope(),
       repositoryId: repository.id,
@@ -14170,10 +14172,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmBisectStart(review: PendingBisectStart): Promise<void> {
     const noCheckout = this.bisectKeepCheckout();
+    const firstParent = this.bisectFirstParent();
     if (this.pendingBisectStart() !== review || this.git.busy() || !this.bisectStartReviewCurrent(review)
       || (!noCheckout && this.bisectCheckoutNeedsCleanFiles())) return;
     this.dismissBisectStart(review);
-    await this.git.startBisect({ badOid: review.badOid, goodOid: review.goodOid, branch: review.branch, noCheckout });
+    await this.git.startBisect({
+      badOid: review.badOid, goodOid: review.goodOid, branch: review.branch, noCheckout, firstParent,
+    });
   }
 
   protected async markBisect(verdict: 'good' | 'bad' | 'skip', target: BisectVoteTarget | null): Promise<void> {

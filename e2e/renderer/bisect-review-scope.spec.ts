@@ -22,7 +22,7 @@ async function openReview(page: import('@playwright/test').Page, dirty = false) 
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     return {
       repoId: repository.id,
-      review: { badOid: pending.badOid, goodOid: pending.goodOid, branch: repository.status.branch, noCheckout: false },
+      review: { badOid: pending.badOid, goodOid: pending.goodOid, branch: repository.status.branch, noCheckout: false, firstParent: false },
     };
   });
   return { dialog, start: dialog.getByRole('button', { name: 'Start Bisect', exact: true }), expected };
@@ -75,6 +75,24 @@ test('start bisect on a dirty checkout requires an explicit no-checkout choice',
   await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__bisectReview.calls)).toEqual([
     { ...expected, review: { ...expected.review, noCheckout: true } },
+  ]);
+});
+
+test('first-parent bisect and keeping the checkout are independent start options', async ({ page }) => {
+  const { dialog, start, expected } = await openReview(page);
+  const firstParent = dialog.getByRole('checkbox', { name: 'First-parent history only' });
+  const checkout = dialog.getByRole('checkbox', { name: 'Keep current checkout' });
+  await expect(firstParent).not.toBeChecked();
+  await firstParent.check();
+  await expect(checkout).not.toBeChecked();
+  await checkout.check();
+  await firstParent.uncheck();
+  await expect(checkout).toBeChecked();
+  await firstParent.check();
+  await start.click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__bisectReview.calls)).toEqual([
+    { ...expected, review: { ...expected.review, noCheckout: true, firstParent: true } },
   ]);
 });
 
@@ -174,6 +192,25 @@ test('a background refresh keeps a no-checkout candidate change even when HEAD d
     await owned.git.refreshStatusInBackground();
   });
   await expect(banner).toContainText('Test commit fffffff');
+});
+
+test('a first-parent setting change retires an old vote even when the commit still matches', async ({ page }) => {
+  const { banner, expected } = await openVote(page, true);
+  await banner.getByRole('button', { name: 'Good', exact: true }).evaluate((button: HTMLButtonElement) => {
+    const state = (window as any).__bisectVote;
+    const { git } = state;
+    const status = git.repository().status;
+    state.nextStatus = { ...status, bisectCandidate: { ...status.bisectCandidate, firstParent: true } };
+    git.repositories.update((items: any[]) => items.map(item => item.id === git.activeRepositoryId()
+      ? { ...item, status: state.nextStatus } : item));
+    button.click();
+  });
+  expect(await page.evaluate(() => (window as any).__bisectVote.calls)).toEqual([]);
+  await expect(banner).toContainText('First-parent history.');
+  await banner.getByRole('button', { name: 'Good', exact: true }).click();
+  expect(await page.evaluate(() => (window as any).__bisectVote.calls)).toEqual([
+    { ...expected, candidate: { ...expected.candidate, firstParent: true } },
+  ]);
 });
 
 test('an old palette action cannot vote after a different candidate appears', async ({ page }) => {

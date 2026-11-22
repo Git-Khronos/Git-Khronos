@@ -659,11 +659,12 @@ fn bisect_ignored_roots_were_never_tracked(
     path: &Path,
     bad: &str,
     roots: &BTreeSet<&str>,
+    first_parent_only: bool,
     unavailable: Unavailable,
 ) -> Result<bool, AppError> {
     // If any root existed in the traversed history, either a root commit
     // introduced it or some parent-to-child change introduced it. Follow
-    // every merge parent and include Git links in those comparisons.
+    // every eligible parent and include Git links in those comparisons.
     let mut args = vec![
         "--literal-pathspecs",
         "rev-list",
@@ -671,9 +672,11 @@ fn bisect_ignored_roots_were_never_tracked(
         "--root",
         "--ignore-submodules=none",
         "--max-count=1",
-        bad,
-        "--",
     ];
+    if first_parent_only {
+        args.push("--first-parent");
+    }
+    args.extend([bad, "--"]);
     args.extend(roots.iter().copied());
     let output = bounded(path, &args, unavailable)?;
     if !output.status.success() {
@@ -688,12 +691,13 @@ fn bisect_range_obstruction(
     bad: &str,
     good: &[String],
     original: Option<&str>,
+    first_parent: bool,
     unavailable: Unavailable,
 ) -> Result<Option<String>, AppError> {
     // Git may test a merge base first when an old boundary is not an
     // ancestor. In that case don't exclude any history from the bad tip.
-    // With only ancestor bounds, normal, path-limited and first-parent
-    // searches can only choose a revision within this superset.
+    // With only ancestor bounds, first-parent mode can use Git's
+    // narrower walk. Otherwise include all possible merge bases.
     const MAX_COMMITS: usize = 512;
     const MAX_TREE_BYTES: usize = 24 * 1024 * 1024;
     let mut ancestors = vec!["merge-base", "--independent", bad];
@@ -703,6 +707,7 @@ fn bisect_range_obstruction(
         return Err(unavailable());
     }
     let exclude = minimal.stdout.trim_ascii() == bad.as_bytes();
+    let first_parent_only = first_parent && exclude;
 
     let limit = format!("--max-count={}", MAX_COMMITS + 1);
     let excluded: Vec<_> = if exclude {
@@ -715,8 +720,11 @@ fn bisect_range_obstruction(
         "--format=format:%T",
         "--no-commit-header",
         &limit,
-        bad,
     ];
+    if first_parent_only {
+        args.push("--first-parent");
+    }
+    args.push(bad);
     args.extend(excluded.iter().map(String::as_str));
     args.push("--");
     let output = bounded(path, &args, unavailable)?;
@@ -740,7 +748,13 @@ fn bisect_range_obstruction(
     });
     let trees = if trees.lines().count() > MAX_COMMITS {
         let roots = roots.as_ref().ok_or_else(unavailable)?;
-        if !bisect_ignored_roots_were_never_tracked(path, bad, roots, unavailable)? {
+        if !bisect_ignored_roots_were_never_tracked(
+            path,
+            bad,
+            roots,
+            first_parent_only,
+            unavailable,
+        )? {
             return Err(unavailable());
         }
         // The original checkout may be outside this ancestry and still
@@ -784,15 +798,22 @@ pub(super) fn ensure_bisect_start_preserves_ignored_files(
     path: &Path,
     bad: &str,
     good: &str,
+    first_parent: bool,
 ) -> Result<bool, AppError> {
     let unavailable = bisect_start_unverified;
     inspect_bisect_checkout(unavailable, || {
         let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
             return Ok(false);
         };
-        if let Some(name) =
-            bisect_range_obstruction(path, &ignored, bad, &[good.to_owned()], None, unavailable)?
-        {
+        if let Some(name) = bisect_range_obstruction(
+            path,
+            &ignored,
+            bad,
+            &[good.to_owned()],
+            None,
+            first_parent,
+            unavailable,
+        )? {
             return Err(AppError::new(
                 "bisectStartLocalPathObstruction",
                 format!("A bisect checkout could overwrite ignored local contents at '{name}'."),
@@ -898,9 +919,15 @@ pub(super) fn ensure_bisect_vote_preserves_ignored_files(
         };
         // Git can also restore the original checkout when a session ends.
         let original = bisect_original_checkout(path, unavailable)?;
-        if let Some(name) =
-            bisect_range_obstruction(path, &ignored, bad, &good, Some(&original), unavailable)?
-        {
+        if let Some(name) = bisect_range_obstruction(
+            path,
+            &ignored,
+            bad,
+            &good,
+            Some(&original),
+            candidate.first_parent,
+            unavailable,
+        )? {
             return Err(AppError::new(
                 "bisectVoteLocalPathObstruction",
                 format!(
