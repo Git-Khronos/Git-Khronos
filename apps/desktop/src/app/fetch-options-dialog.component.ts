@@ -8,7 +8,9 @@ import { GitHelpComponent } from './git-help.component';
 export interface FetchDialogRequest {
   repositoryId: string;
   repositoryPath: string;
+  repositoryVisit: string;
   returnFocus: HTMLElement | null;
+  fixedBranch?: { remote: string; branch: string; fetchUrl: string };
 }
 
 @Component({
@@ -20,15 +22,23 @@ export interface FetchDialogRequest {
       <div class="backdrop" (click)="close(target)">
         <form #dialog role="dialog" aria-modal="true" aria-labelledby="fetch-options-title" aria-describedby="fetch-options-scope"
           (click)="$event.stopPropagation()" (submit)="$event.preventDefault(); confirm(target)" (keydown)="handleKey($event, target)">
-          <h2 id="fetch-options-title">Fetch branches with options</h2>
+          <h2 id="fetch-options-title">{{ target.fixedBranch ? 'Fetch remote branch' : 'Fetch branches with options' }}</h2>
           <p id="fetch-options-scope">Download branch tips into remote-tracking branches. Local branches, tags, index and working files are unchanged.</p>
           <p class="destination">Checkout: <code>{{ target.repositoryPath }}</code></p>
           @if (target.repositoryId !== git.activeRepositoryId() || target.repositoryPath !== git.repository()?.path) {
             <p role="alert">The active repository changed. Close this dialog and review the intended repository.</p>
           }
-          @if (!git.repository()?.remotes?.length) {
+          @if (!target.fixedBranch && !git.repository()?.remotes?.length) {
             <p role="alert">No remotes are configured. Close this dialog and add a remote before fetching.</p>
           }
+          @if (target.fixedBranch; as fixed) {
+            <p class="destination">Only this tracking branch is updated: <code>{{ fixed.remote }}/{{ fixed.branch }}</code></p>
+            <p class="destination">Fetch URL: {{ fixed.fetchUrl }}</p>
+            <p>This does not check out the branch, prune other branches, or change history depth.</p>
+            @if (!fixedDestinationMatches(target)) {
+              <p role="alert">The remote or its fetch URL changed. Cancel and reopen the review.</p>
+            }
+          } @else {
           <label for="fetch-options-remote">Fetch from</label>
           <select id="fetch-options-remote" name="fetchRemote" [disabled]="git.busy()"
             [ngModel]="remote()" (ngModelChange)="changeRemote($event, target)">
@@ -76,6 +86,7 @@ export interface FetchDialogRequest {
               @if (history() === 'complete') { <p>Complete history can be large. If the chosen remote is itself shallow, Git Khronos reports that history is still incomplete.</p> }
             </fieldset>
           }
+          }
           <details class="form-disclosure">
             <summary>Advanced scope</summary>
             <div class="form-disclosure-body"><ul>
@@ -84,13 +95,13 @@ export interface FetchDialogRequest {
               <li>Shared tracking destinations are refused; symbolic destinations are checked.</li>
             </ul></div>
           </details>
-          @if (cancelled()) { <p role="status" tabindex="-1">Fetch was cancelled. Earlier remotes may already be updated. Review the refreshed graph before retrying.</p> }
+          @if (cancelled()) { <p role="status" tabindex="-1">Fetch was cancelled. {{ target.fixedBranch || branchScope() === 'one' ? 'The tracking branch may already have updated.' : 'Earlier remotes may already be updated.' }} Review the refreshed graph before retrying.</p> }
           @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
           <gc-git-help topic="fetch" label="Learn about fetch and remote-tracking pruning…" />
           <footer>
             @if (git.busy() && git.activeActivity()?.operationId) { <button type="button" [disabled]="git.activeOperationCancelling()" (click)="cancelOperation(target)">Cancel operation</button> }
             <button type="button" data-fetch-cancel [disabled]="git.busy()" (click)="close(target)">Cancel</button>
-            <button type="submit" [disabled]="!canConfirm(target)">{{ branchScope() === 'one' ? 'Fetch this branch' : history() === 'keep' ? 'Fetch branches' : 'Fetch and extend history' }}</button>
+            <button type="submit" [disabled]="!canConfirm(target)">{{ target.fixedBranch || branchScope() === 'one' ? 'Fetch this branch' : history() === 'keep' ? 'Fetch branches' : 'Fetch and extend history' }}</button>
           </footer>
         </form>
       </div>
@@ -148,7 +159,7 @@ export class FetchOptionsDialogComponent {
       this.history.set('keep');
       this.commits.set(50);
       // Best effort: without this state the dialog keeps the ordinary branch fetch only.
-      if (untracked(() => this.owns(request))) {
+      if (!request.fixedBranch && untracked(() => this.owns(request))) {
         ipc.shallow_history_state({ repoId: request.repositoryId }).then((state) => {
           if (this.owns(request) && generation === this.shallowGeneration && state.shallow) this.shallow.set(state);
         }, () => undefined);
@@ -210,18 +221,26 @@ export class FetchOptionsDialogComponent {
 
   canConfirm(target = this.request()): boolean {
     if (!this.owns(target) || this.git.busy()) return false;
+    if (target.fixedBranch) return this.fixedDestinationMatches(target);
     const remotes = this.git.repository()?.remotes ?? [];
     const remote = this.remote();
     if (!remotes.length || (remote && !remotes.some(candidate => candidate.name === remote))) return false;
     return this.branchScope() === 'one' ? !!remote && !!this.branch().trim() : this.historyReady();
   }
 
+  fixedDestinationMatches(target: FetchDialogRequest): boolean {
+    const fixed = target.fixedBranch;
+    return !!fixed && !!this.git.repository()?.remotes.some(remote => remote.name === fixed.remote && remote.fetchUrl === fixed.fetchUrl);
+  }
+
   async confirm(target = this.request()): Promise<void> {
     if (!this.owns(target) || !this.canConfirm(target)) return;
     this.cancelled.set(false);
-    const options: FetchOptions = { remote: this.remote() || null, prune: this.prune() };
-    if (this.branchScope() === 'one') options.branch = this.branch().trim();
-    const history = this.shallow() ? this.history() : 'keep';
+    const fixed = target.fixedBranch;
+    const options: FetchOptions = fixed ? { remote: fixed.remote, branch: fixed.branch, prune: false }
+      : { remote: this.remote() || null, prune: this.prune() };
+    if (!fixed && this.branchScope() === 'one') options.branch = this.branch().trim();
+    const history = !fixed && this.shallow() ? this.history() : 'keep';
     if (history === 'deepen') options.history = { mode: 'deepen', commits: Number(this.commits()) };
     if (history === 'complete') options.history = { mode: 'complete' };
     const result = await this.git.fetchBranches(options, target.repositoryId);

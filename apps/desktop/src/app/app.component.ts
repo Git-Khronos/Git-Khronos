@@ -1399,7 +1399,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
     if (sparseReview && !this.ownsRepositoryScope(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
     if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
-    if (fetch && !this.ownsRepositoryScope(fetch)) untracked(() => this.closeFetchOptions(fetch, false));
+    if (fetch && !this.ownsFetchOptions(fetch)) untracked(() => this.closeFetchOptions(fetch, false));
     if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
     if (stash && !this.ownsRepositoryScope(stash)) untracked(() => this.closeStashDialog(stash, false));
     if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
@@ -1503,7 +1503,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly conflictOutput = signal('');
   protected readonly fetchRequest = signal<FetchDialogRequest | null>(null);
   protected readonly ownsFetchOptions = (request: FetchDialogRequest): boolean =>
-    this.fetchRequest() === request && this.ownsRepositoryScope(request);
+    this.fetchRequest() === request && request.repositoryVisit === this.git.activeRepositoryReadScope();
   protected readonly deferredGitActionLease = computed<DeferredGitActionLease>(() => ({
     reference: this.referenceAction(), fetch: this.fetchRequest(), worktree: this.worktreeMoveRequest(), stash: this.stashDialog(),
   }));
@@ -1514,7 +1514,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const focusLease = this.deferredGitActionLease();
     if (restoreFocus) queueMicrotask(() => {
       const opener = request.returnFocus;
-      if (this.canRestoreDeferredFocus(focusLease, request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+      if (request.repositoryVisit === this.git.activeRepositoryReadScope() && this.canRestoreDeferredFocus(focusLease, request)
+        && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
     });
   }
   private conflictReturnFocus: HTMLElement | null = null;
@@ -3562,6 +3563,8 @@ export class AppComponent implements OnInit, OnDestroy {
     isBranchSoloed: this.isBranchSoloed.bind(this),
     openContextBranchCreator: this.openContextBranchCreator.bind(this),
     openContextIntegration: this.openContextIntegration.bind(this),
+    fixedFetchTarget: this.fixedFetchTarget.bind(this),
+    openContextFetchBranch: this.openContextFetchBranch.bind(this),
     openContextTagCreator: this.openContextTagCreator.bind(this),
     openContextWorktreeDialog: this.openContextWorktreeDialog.bind(this),
     openInteractiveRebaseFromContext: this.openInteractiveRebaseFromContext.bind(this),
@@ -6402,7 +6405,27 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!owner || this.git.busy()) return;
     const opener = returnFocus ?? document.querySelector<HTMLButtonElement>('button[aria-label="Pull options"]');
     this.toolbarOverlays.close('pull');
-    this.fetchRequest.set({ ...owner, returnFocus: opener });
+    this.fetchRequest.set({ ...owner, repositoryVisit: this.git.activeRepositoryReadScope(), returnFocus: opener });
+  }
+
+  protected fixedFetchTarget(menu: ContextMenuState): FetchDialogRequest['fixedBranch'] {
+    if (menu.kind !== 'remote' || this.contextMenu() !== menu || this.git.busy()
+      || menu.repositoryVisit !== this.git.activeRepositoryReadScope()) return undefined;
+    const remotes = this.git.repository()?.remotes ?? [];
+    const remote = remotes.find(candidate => candidate.name === this.remoteLocationName(menu.label));
+    const branch = this.remoteBranchLabel(menu.label);
+    return remote && menu.label === `${remote.name}/${branch}` && branch && branch !== 'HEAD' && !branch.startsWith('refs/')
+      ? { remote: remote.name, branch, fetchUrl: remote.fetchUrl } : undefined;
+  }
+
+  protected openContextFetchBranch(menu: ContextMenuState): void {
+    const fixedBranch = this.fixedFetchTarget(menu);
+    const owner = this.captureRepositoryEditorOwner();
+    if (!fixedBranch || !owner) return;
+    const returnFocus = this.captureSecondaryConfirmationOpener(this.contextMenuReturnFocus);
+    this.dismissGraphActionMenu();
+    this.git.dismissError();
+    this.fetchRequest.set({ ...owner, repositoryVisit: this.git.activeRepositoryReadScope(), returnFocus, fixedBranch });
   }
 
   protected openFetchOptionsFromToolbar(): void {

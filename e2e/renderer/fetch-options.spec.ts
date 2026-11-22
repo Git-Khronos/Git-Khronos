@@ -99,6 +99,60 @@ test('fetches one named branch without pruning, changing depth, or clearing a wh
   await expect(page.locator('.auto-fetch-status')).toHaveText('Fetch failed');
 });
 
+async function openRemoteBranchFetch(page: Page) {
+  const actions = page.getByRole('button', { name: 'Remote branch actions for origin/docs', exact: true });
+  await actions.focus();
+  await actions.press('Enter');
+  const menu = page.getByRole('menu', { name: 'Actions for remote branch origin/docs' });
+  await menu.getByRole('menuitem', { name: 'Fetch this branch only…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Fetch remote branch', exact: true });
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  return { actions, dialog };
+}
+
+test('remote branch action reviews an exact fetch without a checkout or editable target', async ({ page }) => {
+  await setup(page);
+  const { actions, dialog } = await openRemoteBranchFetch(page);
+  await expect(dialog).toContainText('origin/docs');
+  await expect(dialog).toContainText('This does not check out the branch');
+  await expect(dialog.getByRole('combobox')).toHaveCount(0);
+  await expect(dialog.getByRole('textbox')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__fetchFixture.calls.filter((call: any) =>
+    /fetch|checkout|shallow_history_state/.test(call.command)))).toEqual([]);
+  await dialog.getByRole('button', { name: 'Fetch this branch' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(actions).toBeFocused();
+  const commands = await page.evaluate(() => (window as any).__fetchFixture.calls.filter((call: any) =>
+    /fetch|checkout/.test(call.command)).map((call: any) => ({ command: call.command, options: call.args.options })));
+  expect(commands).toEqual([{ command: 'fetch_branches', options: { remote: 'origin', branch: 'docs', prune: false } }]);
+});
+
+for (const change of ['fetch URL', 'workspace'] as const) {
+  test(`remote branch fetch refuses an old click after changing the ${change}`, async ({ page }) => {
+    await setup(page);
+    const { dialog } = await openRemoteBranchFetch(page);
+    await dialog.getByRole('button', { name: 'Fetch this branch' }).evaluate((button: HTMLButtonElement, change) => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const repo = git.repository();
+      if (change === 'workspace') {
+        git.activeWorkspaceId.set('other-workspace-same-fetch-checkout');
+      } else {
+        git.repositories.update((repos: any[]) => repos.map(candidate => candidate.id !== repo.id ? candidate : {
+          ...candidate, remotes: candidate.remotes.map((remote: any) => remote.name === 'origin'
+            ? { ...remote, fetchUrl: '/owned/replacement.git' } : remote),
+        }));
+      }
+      button.click();
+    }, change);
+    if (change === 'workspace') await expect(dialog).toHaveCount(0);
+    else {
+      await expect(dialog.getByRole('alert')).toContainText('fetch URL changed');
+      await expect(dialog.getByRole('button', { name: 'Fetch this branch' })).toBeDisabled();
+    }
+    expect(await page.evaluate(() => (window as any).__fetchFixture.calls.some((call: any) => call.command === 'fetch_branches'))).toBe(false);
+  });
+}
+
 test('all-remotes pruning requires opt-in and discloses branch-only and partial completion scope', async ({ page }) => {
   await setup(page);
   await openOptions(page);

@@ -21,6 +21,11 @@
       <button type="button" role="menuitem" [disabled]="(menu.kind !== 'tag' && view.git.busy()) || (menu.kind === 'commit' && menu.oids.length > 1) || (menu.kind === 'branch' && menu.label === view.git.repository()?.status?.branch)" (click)="view.checkoutContextTarget()">
         <span><gc-icon [name]="menu.kind === 'tag' ? 'tag' : menu.kind === 'remote' ? 'remote' : menu.kind === 'branch' ? (menu.label === view.git.repository()?.status?.branch ? 'check' : 'branch') : 'git-commit'" [size]="13" /></span>{{ menu.kind === 'commit' ? 'Checkout this commit' : menu.kind === 'tag' ? 'View tagged commit' : menu.kind === 'remote' ? 'Fetch and check out local branch' : menu.label === view.git.repository()?.status?.branch ? 'Current branch' : 'Checkout branch' }}
       </button>
+      @if (menu.kind === 'remote') {
+        <button type="button" role="menuitem" [disabled]="!view.fixedFetchTarget(menu)" (click)="view.openContextFetchBranch(menu)">
+          <span><gc-icon name="refresh" [size]="13" /></span>Fetch this branch only…
+        </button>
+      }
       <button type="button" role="menuitem" [disabled]="view.git.busy() || view.git.browserPreview() || (menu.kind === 'commit' && menu.oids.length !== 1)" (click)="view.shareRepositoryContext()"><span><gc-icon name="copy" [size]="13" /></span>Share repository context…</button>
       <button type="button" role="menuitem" (click)="view.copyContextValue(menu.kind === 'commit' ? menu.oids.join('\n') : menu.label)">
         <span><gc-icon name="copy" [size]="13" /></span>Copy {{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'commit SHA' : menu.oids.length + ' commit SHAs') : menu.kind === 'tag' ? 'tag name' : menu.kind === 'remote' ? 'remote branch name' : 'branch name' }}

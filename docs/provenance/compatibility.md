@@ -888,6 +888,10 @@ configured pruning defaults. It uses fetch URLs, not separate push destinations.
 The **One branch** option selects one configured remote and one literal branch
 name. It fetches into the matching remote-tracking branch, even if that branch
 has never been fetched locally. It cannot prune or change shallow depth.
+For a visible remote branch, **Fetch this branch only…** opens a fixed review
+of the same action without checking out the branch. The review shows the
+selected remote and fetch URL and rejects a changed destination visible in
+the refreshed repository state.
 The selected tracking destination must not itself be a symbolic alias, even
 to another reference in that remote's namespace.
 Nested/overlapping remote names, potentially shared custom tracking mappings

@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
     } };
     state.open = (kind: string) => {
       const owner = { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null };
-      if (kind === 'fetch') app.fetchRequest.set(owner);
+      if (kind === 'fetch') app.fetchRequest.set({ ...owner, repositoryVisit: git.activeRepositoryReadScope() });
       else app.worktreeMoveRequest.set({ ...owner, repair: kind === 'repair', worktree: {
         ...repository.worktrees[0], current: false, locked: false, prunable: kind === 'repair',
         path: '/owned/reviewed-linked', branch: 'owned-topic', oid: repository.headOid,

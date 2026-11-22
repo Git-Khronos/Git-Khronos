@@ -876,6 +876,10 @@ not only possibly stale child inputs. Scope changes retire the review; outgoing
 confirm/cancel/field events cannot act on its replacement. Keyed form views
 prevent obsolete ngModel state from surviving a request reset. Busy native work
 freezes the submitted payload; successful native outcomes govern dismissal.
+Fetch also belongs to the originating workspace visit, so showing the same
+checkout in a new workspace does not inherit its review. A selected remote
+branch opens a fixed fetch-only review. A changed fetch URL in the current
+snapshot disables confirmation rather than retargeting the action.
 
 Directory selection has a separate generation and source predicate. Replacing a
 request releases its presentation-level choosing state, without letting an old
