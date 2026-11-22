@@ -1383,6 +1383,8 @@ No proprietary source code, assets, wording collections, or visual implementatio
 Documented behavior:
 
 - Focused graph rows expose their action menus through the standard Menu key or Shift+F10.
+- Shift+Enter on a focused local branch requests the same checkout as a double-click;
+  plain Enter remains a read-only jump to its tip.
 - Local branches, remote branches, and tags expose the same actions from every interactive reference surface.
 - Directional keys move through enabled actions, while Escape closes the menu and restores graph focus.
 

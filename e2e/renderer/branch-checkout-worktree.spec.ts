@@ -147,6 +147,21 @@ async function requestCheckout(page: Page, branch: string) {
   return page.getByRole('dialog', { name: 'Branch is open in another checkout' });
 }
 
+test('Shift+Enter on an occupied sidebar branch reviews its existing checkout without running Git', async ({ page }) => {
+  const fixture = await setup(page);
+  const branch = page.getByRole('list', { name: 'Local branches' })
+    .getByRole('button', { name: 'Local branch ' + fixture.branch, exact: false }).first();
+  await branch.press('Shift+Enter');
+  const dialog = page.getByRole('dialog', { name: 'Branch is open in another checkout' });
+  await expect(dialog).toContainText(fixture.ownerPath);
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(branch).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls.filter(
+    (entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toEqual([]);
+});
+
 test('a checkout review closes when another workspace opens the same checkout', async ({ page }) => {
   const fixture = await setup(page);
   const dialog = await requestCheckout(page, fixture.branch);

@@ -1066,6 +1066,35 @@ test('double-clicking a single graph branch checks it out without checking out o
     .toBe('feature/partial-staging');
 });
 
+test('Shift+Enter checks out a focused graph branch while Enter only views its tip', async ({ page }) => {
+  await installBackend(page);
+  const pill = page.locator('.commit-row .branch-column .ref-pill.local', { hasText: 'feature/partial-staging' });
+  await pill.press('Enter');
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await pill.press('Shift+Enter');
+  await expect.poll(() => page.evaluate(() => window.__branchCalls))
+    .toEqual([{ command: 'checkout_branch', name: 'feature/partial-staging' }]);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+    .toBe('feature/partial-staging');
+  await expect(pill).not.toHaveAttribute('aria-keyshortcuts', 'Shift+Enter');
+});
+
+test('Shift+Enter ignores a repeating key or a branch rendered for a retired checkout', async ({ page }) => {
+  await installBackend(page);
+  const pill = page.locator('.commit-row .branch-column .ref-pill.local', { hasText: 'feature/partial-staging' });
+  await expect(pill).toHaveAttribute('aria-keyshortcuts', 'Shift+Enter');
+  await pill.dispatchEvent('keydown', { key: 'Enter', shiftKey: true, repeat: true });
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+  await pill.evaluate(element => {
+    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const other = { ...structuredClone(git.repository()), id: 'new-keyboard-checkout', path: '/owned/new-keyboard-checkout' };
+    git.repositories.update((repositories: any[]) => [...repositories, other]);
+    git.activeRepositoryId.set(other.id);
+    element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }));
+  });
+  expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
+});
+
 test('double-clicking a collapsed graph reference checks out its non-current local branch', async ({ page }) => {
   await installBackend(page);
   const releaseStack = page.locator('.commit-ref-stack', { has: page.locator('.reference-stack-trigger', { hasText: 'release' }) });

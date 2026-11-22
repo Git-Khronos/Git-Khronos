@@ -128,6 +128,7 @@ export class KeyboardShortcutsDialogComponent {
         { label: 'Undo repository action', keys: chord(labels.undo) },
         { label: 'Redo repository action', keys: chord(labels.redo) },
         { label: 'Create branch', keys: [labels.primary, 'B'] },
+        { label: 'Check out focused local branch', keys: ['Shift', 'Enter'] },
         { label: 'Fetch all', keys: [labels.primary, 'L'] },
         { label: 'Stage selected file', keys: ['S'] },
         { label: 'Stage all', keys: [labels.primary, 'Shift', 'S'] },

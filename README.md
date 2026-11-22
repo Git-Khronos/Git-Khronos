@@ -484,6 +484,10 @@ editing keys. The picker, branch options, and context-menu checkout return focus
 unless it has moved elsewhere; branch mutations are disabled while another
 repository operation is running. Creating a branch at a selected commit or
 reference from its context menu also retains a failed draft for retry.
+Focus a local branch in the graph, reference sidebar, or commit inspector and
+press **Shift+Enter** to check it out. Plain Enter still views the branch tip.
+If the branch belongs to another worktree, the shortcut opens the same
+existing-checkout review as a double-click instead of forcing a switch.
 Double-click a remote branch, press Enter, or choose **Fetch and check out local
 branch** from its menu to fetch that branch and check out its local counterpart.
 The action creates a tracking branch when needed and otherwise updates only by

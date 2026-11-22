@@ -60,7 +60,8 @@
           [attr.aria-label]="'Graph reference ' + branch.name + ', local branch' + (branch.current ? ', current' : '')"
           [attr.role]="decorations.length > 1 ? 'menuitem' : null"
           aria-haspopup="menu"
-          title="{{ decoration }}{{ branch.tracking ? ' · ' + branch.tracking : '' }} · Double-click to checkout · Drag onto another branch · Drop a commit here to cherry-pick"
+          [attr.aria-keyshortcuts]="branch.current ? null : 'Shift+Enter'"
+          title="{{ decoration }}{{ branch.tracking ? ' · ' + branch.tracking : '' }}{{ branch.current ? ' · Current branch' : ' · Double-click or press Shift+Enter to check out' }} · Drag onto another branch · Drop a commit here to cherry-pick"
           draggable="true"
           (click)="view.jumpToReference($event, branch.oid)"
           (dblclick)="$event.preventDefault(); $event.stopPropagation(); branch.current ? null : view.checkoutBranch(branch.name)"
@@ -68,7 +69,7 @@
           (dragover)="view.allowBranchDrop($event, branch.name)"
           (drop)="view.dropBranch($event, branch.name)"
           (dragend)="view.finishBranchDrag()"
-          (keydown)="view.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)"
+          (keydown)="view.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid, branch)"
           (contextmenu)="view.openBranchMenu($event, branch.name, branch.oid)"
         ><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="9" />{{ view.decorationLabel(decoration) }}@if (branch.tracking) { <small class="ref-sync" [class.gone]="branch.tracking === 'gone'">{{ view.branchTrackingLabel(branch.tracking) }}</small> }</button>
       } @else if (view.decorationKind(decoration) === 'remote') {
@@ -104,7 +105,7 @@
             <span class="grouped-reference-locations">
               @for (location of group.locations; track location.decoration) {
                 @if (view.branchForDecoration(location.decoration); as branch) {
-                  <button class="grouped-reference-location local lane-color-{{ row.color }}" type="button" role="menuitem" [attr.aria-label]="(branch.current ? 'Current local branch ' : 'Local branch ') + branch.name" [title]="branch.current ? 'Current local branch' : 'Local branch · Double-click to checkout'" draggable="true" (click)="view.jumpToReference($event, branch.oid)" (dblclick)="$event.preventDefault(); $event.stopPropagation(); branch.current ? null : view.checkoutBranch(branch.name)" (dragstart)="view.startBranchDrag($event, branch.name)" (dragover)="view.allowBranchDrop($event, branch.name)" (drop)="view.dropBranch($event, branch.name)" (dragend)="view.finishBranchDrag()" (keydown)="view.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)" (contextmenu)="view.openBranchMenu($event, branch.name, branch.oid)"><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="10" /></button>
+                  <button class="grouped-reference-location local lane-color-{{ row.color }}" type="button" role="menuitem" [attr.aria-label]="(branch.current ? 'Current local branch ' : 'Local branch ') + branch.name" [attr.aria-keyshortcuts]="branch.current ? null : 'Shift+Enter'" [title]="branch.current ? 'Current local branch' : 'Local branch · Double-click or press Shift+Enter to check out'" draggable="true" (click)="view.jumpToReference($event, branch.oid)" (dblclick)="$event.preventDefault(); $event.stopPropagation(); branch.current ? null : view.checkoutBranch(branch.name)" (dragstart)="view.startBranchDrag($event, branch.name)" (dragover)="view.allowBranchDrop($event, branch.name)" (drop)="view.dropBranch($event, branch.name)" (dragend)="view.finishBranchDrag()" (keydown)="view.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid, branch)" (contextmenu)="view.openBranchMenu($event, branch.name, branch.oid)"><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="10" /></button>
                 } @else if (location.kind === 'remote') {
                   <button class="grouped-reference-location remote" type="button" role="menuitem" aria-label="Remote branch {{ location.label }}" title="Remote {{ location.remote }} · Double-click to fetch and check out the local branch" (click)="view.jumpToReference($event, row.commit.oid)" (keydown)="view.handleReferenceActionKeydown($event, 'remote', location.label, row.commit.oid)" (keydown.enter)="view.checkoutRemoteBranch($event, location.label)" (dblclick)="view.checkoutRemoteBranch($event, location.label)" (contextmenu)="view.openRemoteMenu($event, location.label, row.commit.oid)"><gc-icon [name]="view.remoteIconForDecoration(location.decoration)" [size]="10" /></button>
                 } @else if (location.kind === 'tag') {

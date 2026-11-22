@@ -1412,6 +1412,10 @@ failure and late/failed editor imports.
 source path, requested branch, registered owner path and return-focus target.
 Sidebar, graph, picker, palette and local-branch context actions share this
 review. Current branches are no-ops; available branches still use native Git.
+Shift+Enter on a local branch in the sidebar, graph, or inspector uses the
+same review. It does not fire for repeating keys or rendered branch entries
+that no longer belong to the live checkout; plain Enter remains a read-only
+branch-tip jump.
 Compound checkout-then-integrate and reviewed history mutations retain their
 original checkout semantics; navigation must not silently continue those writes
 in another repository.

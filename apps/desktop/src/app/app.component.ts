@@ -13193,7 +13193,20 @@ export class AppComponent implements OnInit, OnDestroy {
     kind: 'branch' | 'remote' | 'tag' | 'checkpoint' | 'original',
     name: string,
     oid: string,
+    renderedBranch?: Branch,
   ): void {
+    if (kind === 'branch' && event.key === 'Enter' && event.shiftKey
+      && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing) {
+      event.preventDefault();
+      event.stopPropagation();
+      // A renderer row may still be painted while a snapshot or checkout is
+      // changing. Only an entry owned by the live branch inventory is actionable.
+      if (!event.repeat && renderedBranch && !renderedBranch.current && !renderedBranch.remote
+        && this.graphBranches().includes(renderedBranch)) {
+        void this.checkoutBranch(renderedBranch.name, event.currentTarget as HTMLElement);
+      }
+      return;
+    }
     if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
     event.preventDefault();
     event.stopPropagation();

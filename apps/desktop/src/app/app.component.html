@@ -648,7 +648,8 @@
                     draggable="true"
                     [attr.aria-label]="'Local branch ' + branch.name + (branch.current ? ', current' : '') + (branch.tracking ? ', ' + branch.tracking : '')"
                     aria-haspopup="menu"
-                    [title]="'Local branch ' + branch.name + (branch.current ? ' · Current branch' : '') + (branch.upstream ? ' · Tracking ' + branch.upstream : '') + (branch.tracking ? ' · ' + branch.tracking : '') + ' · Click to view branch tip · Double-click to checkout · Drop a commit here to cherry-pick'"
+                    [attr.aria-keyshortcuts]="branch.current ? null : 'Shift+Enter'"
+                    [title]="'Local branch ' + branch.name + (branch.current ? ' · Current branch' : '') + (branch.upstream ? ' · Tracking ' + branch.upstream : '') + (branch.tracking ? ' · ' + branch.tracking : '') + ' · Click to view branch tip' + (branch.current ? '' : ' · Double-click or press Shift+Enter to check out') + ' · Drop a commit here to cherry-pick'"
                     (mouseenter)="previewReference(branch.oid)"
                     (mouseleave)="previewReference(null)"
                     (click)="jumpToReference($event, branch.oid)"
@@ -657,7 +658,7 @@
                     (dragover)="allowBranchDrop($event, branch.name)"
                     (drop)="dropBranch($event, branch.name)"
                     (dragend)="finishBranchDrag()"
-                    (keydown)="handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)"
+                    (keydown)="handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid, branch)"
                     (contextmenu)="openBranchMenu($event, branch.name, branch.oid)"
                   >
                     <span class="branch-glyph"><gc-icon name="branch" [size]="13" /></span><span>{{ branch.name }}</span>

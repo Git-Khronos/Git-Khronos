@@ -22,10 +22,11 @@
         [attr.tabindex]="commit.decorations.length > 1 ? -1 : null"
         [attr.role]="commit.decorations.length > 1 ? 'menuitem' : null"
         aria-haspopup="menu"
-        title="{{ branch.current ? 'Current branch ' + branch.name : 'Double-click to checkout ' + branch.name }}{{ branch.tracking ? ' · ' + branch.tracking : '' }}"
+        [attr.aria-keyshortcuts]="branch.current ? null : 'Shift+Enter'"
+        title="{{ branch.current ? 'Current branch ' + branch.name : 'Double-click or press Shift+Enter to check out ' + branch.name }}{{ branch.tracking ? ' · ' + branch.tracking : '' }}"
         (click)="references.jumpToReference($event, branch.oid)"
         (dblclick)="branch.current ? null : references.checkoutBranch(branch.name)"
-        (keydown)="references.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)"
+        (keydown)="references.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid, branch)"
         (contextmenu)="references.openBranchMenu($event, branch.name, branch.oid)"
       ><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="9" />{{ references.decorationLabel(decoration) }}@if (branch.tracking) { <small class="ref-sync" [class.gone]="branch.tracking === 'gone'">{{ references.branchTrackingLabel(branch.tracking) }}</small> }</button>
     } @else if (references.decorationKind(decoration) === 'remote') {
@@ -61,7 +62,7 @@
           <span class="grouped-reference-locations">
             @for (location of group.locations; track location.decoration) {
               @if (references.branchForDecoration(location.decoration); as branch) {
-                <button class="grouped-reference-location local lane-color-{{ references.graphLaneColor(commit.oid) }}" type="button" role="menuitem" [attr.aria-label]="(branch.current ? 'Current local branch ' : 'Local branch ') + branch.name" [title]="branch.current ? 'Current local branch' : 'Local branch · Double-click to checkout'" (click)="references.jumpToReference($event, branch.oid)" (dblclick)="branch.current ? null : references.checkoutBranch(branch.name)" (keydown)="references.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid)" (contextmenu)="references.openBranchMenu($event, branch.name, branch.oid)"><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="10" /></button>
+                <button class="grouped-reference-location local lane-color-{{ references.graphLaneColor(commit.oid) }}" type="button" role="menuitem" [attr.aria-label]="(branch.current ? 'Current local branch ' : 'Local branch ') + branch.name" [attr.aria-keyshortcuts]="branch.current ? null : 'Shift+Enter'" [title]="branch.current ? 'Current local branch' : 'Local branch · Double-click or press Shift+Enter to check out'" (click)="references.jumpToReference($event, branch.oid)" (dblclick)="branch.current ? null : references.checkoutBranch(branch.name)" (keydown)="references.handleReferenceActionKeydown($event, 'branch', branch.name, branch.oid, branch)" (contextmenu)="references.openBranchMenu($event, branch.name, branch.oid)"><gc-icon [name]="branch.current ? 'check' : 'branch'" [size]="10" /></button>
               } @else if (location.kind === 'remote') {
                 <button class="grouped-reference-location remote" type="button" role="menuitem" aria-label="Remote branch {{ location.label }}" title="Remote {{ location.remote }} · Double-click to fetch and check out the local branch" (click)="references.jumpToReference($event, commit.oid)" (keydown)="references.handleReferenceActionKeydown($event, 'remote', location.label, commit.oid)" (keydown.enter)="references.checkoutRemoteBranch($event, location.label)" (dblclick)="references.checkoutRemoteBranch($event, location.label)" (contextmenu)="references.openRemoteMenu($event, location.label, commit.oid)"><gc-icon [name]="references.remoteIconForDecoration(location.decoration)" [size]="10" /></button>
               } @else if (location.kind === 'tag') {
