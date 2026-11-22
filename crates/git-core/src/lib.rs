@@ -6528,27 +6528,36 @@ fn start_bisect_at(
             None,
         ));
     }
-    let operations = repository_operation_state(path)?;
-    if operations.rebase {
-        return Err(AppError::new(
-            "rebaseInProgress",
-            "Finish or abort the current rebase before starting bisect.",
-            None,
-        ));
-    }
-    if operations.bisect {
-        return Err(AppError::new(
-            "bisectInProgress",
-            "A bisect session is already in progress.",
-            Some("Mark the current commit or reset the active bisect session."),
-        ));
-    }
+    let ensure_available = || {
+        let operations = repository_operation_state(path)?;
+        if operations.rebase {
+            return Err(AppError::new(
+                "rebaseInProgress",
+                "Finish or abort the current rebase before starting bisect.",
+                None,
+            ));
+        }
+        if operations.bisect {
+            return Err(AppError::new(
+                "bisectInProgress",
+                "A bisect session is already in progress.",
+                Some("Mark the current commit or reset the active bisect session."),
+            ));
+        }
+        Ok(())
+    };
+    ensure_available()?;
     if !no_checkout && read_status(path)?.entry_count > 0 {
         return Err(AppError::new(
             "workingTreeNotClean",
             "Commit or stash working directory changes before switching to bisect candidates.",
             Some("Choose Keep current checkout to bisect without switching files."),
         ));
+    }
+    if !no_checkout
+        && merge_checkout_guard::ensure_bisect_start_preserves_ignored_files(path, bad_oid, good_oid)?
+    {
+        ensure_available()?;
     }
     if let Some(branch) = reviewed_branch {
         reviewed_commit_head(path, bad_oid, branch).map_err(|error| {
@@ -6784,29 +6793,39 @@ pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Re
         }
     };
     validate_commit_oid(&expected.oid)?;
-    if let Some(result) = read_bisect_result(path)? {
-        let (kind, message) = match result {
-            BisectResult::Found { .. } => (
-                "bisectResultAlreadyFound",
-                "Git has already found the result for this bisect.",
-            ),
-            BisectResult::Ambiguous { .. } => (
-                "bisectResultAmbiguous",
-                "Git has already ended this bisect without a unique result.",
-            ),
-        };
-        return Err(AppError::new(
-            kind,
-            message,
-            Some("Refresh to see the result, or reset the search to finish."),
-        ));
-    }
-    if &read_bisect_candidate(path)? != expected {
-        return Err(AppError::new(
-            "staleBisectCandidate",
-            "The candidate or its terms changed since it was shown. No verdict was recorded.",
-            Some("Refresh the repository and test the current candidate before marking it."),
-        ));
+    let verify_review = || {
+        if let Some(result) = read_bisect_result(path)? {
+            let (kind, message) = match result {
+                BisectResult::Found { .. } => (
+                    "bisectResultAlreadyFound",
+                    "Git has already found the result for this bisect.",
+                ),
+                BisectResult::Ambiguous { .. } => (
+                    "bisectResultAmbiguous",
+                    "Git has already ended this bisect without a unique result.",
+                ),
+            };
+            return Err(AppError::new(
+                kind,
+                message,
+                Some("Refresh to see the result, or reset the search to finish."),
+            ));
+        }
+        if &read_bisect_candidate(path)? != expected {
+            return Err(AppError::new(
+                "staleBisectCandidate",
+                "The candidate or its terms changed since it was shown. No verdict was recorded.",
+                Some("Refresh the repository and test the current candidate before marking it."),
+            ));
+        }
+        Ok(())
+    };
+    verify_review()?;
+    if merge_checkout_guard::ensure_bisect_vote_preserves_ignored_files(path, expected, verdict)? {
+        if !repository_operation_state(path)?.bisect {
+            return Err(AppError::new("bisectNotInProgress", "No bisect session is in progress.", None));
+        }
+        verify_review()?;
     }
     let term = match (&expected.terms, verdict) {
         (Some(terms), "good") => terms.old.as_str(),
@@ -18950,6 +18969,167 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         reset_bisect(path).unwrap();
         assert!(!path.join(".git/BISECT_START").exists());
         assert_checkout_unchanged();
+    }
+
+    #[test]
+    fn bisect_start_preserves_ignored_paths_and_allows_no_checkout() {
+        let repo = TestRepository::new();
+        let path = &repo.path;
+        let ignored = "settings[1].local";
+        fs::create_dir(path.join("work")).unwrap();
+        let mut commits = Vec::new();
+        for point in 0..7 {
+            repo.write("step", &format!("{point}\n"));
+            repo.write("work/used.txt", "tracked sibling\n");
+            if point == 0 {
+                repo.write("before-good.local", "old tracked content\n");
+            } else if point == 1 {
+                fs::remove_file(path.join("before-good.local")).unwrap();
+            } else if point == 3 {
+                repo.write(ignored, "historical configuration\n");
+            } else if point == 5 {
+                fs::remove_file(path.join(ignored)).unwrap();
+            }
+            stage_all(path).unwrap();
+            commit(path, &format!("Point {point}")).unwrap();
+            commits.push(reference_tip(path, "HEAD").unwrap());
+        }
+        let good = &commits[1];
+        let bad = &commits[6];
+        repo.write(".git/info/exclude", "*.local\n");
+        repo.write(ignored, "only ignored copy\n");
+        repo.write("before-good.local", "outside the searched history\n");
+        repo.write("work/unrelated.local", "ignored sibling of a tracked file\n");
+        let index = fs::read(path.join(".git/index")).unwrap();
+        let assert_preserved = || {
+            assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(bad.as_str()));
+            assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+            assert_eq!(fs::read_to_string(path.join(ignored)).unwrap(), "only ignored copy\n");
+        };
+
+        let error = start_bisect(path, bad, good).unwrap_err();
+        assert_eq!(error.kind, "bisectStartLocalPathObstruction");
+        assert!(error.message.contains(ignored));
+        assert!(!path.join(".git/BISECT_START").exists());
+        assert!(run_git(path, &["for-each-ref", "refs/bisect/"]).unwrap().stdout.is_empty());
+        assert_preserved();
+
+        start_reviewed_bisect(path, &BisectStartReview {
+            bad_oid: bad.clone(), good_oid: good.clone(), branch: Some("main".into()), no_checkout: true,
+        }).unwrap();
+        assert!(read_head_status(path).unwrap().bisect_candidate.unwrap().no_checkout);
+        assert_preserved();
+        reset_bisect(path).unwrap();
+        fs::rename(path.join(ignored), path.join("saved.local")).unwrap();
+        start_bisect(path, bad, good).unwrap();
+        assert_ne!(reference_tip(path, "HEAD").as_deref(), Some(bad.as_str()));
+        assert_eq!(fs::read_to_string(path.join("saved.local")).unwrap(), "only ignored copy\n");
+        reset_bisect(path).unwrap();
+    }
+
+    #[test]
+    fn bisect_start_checks_merge_bases_outside_the_ordinary_range() {
+        let repo = TestRepository::new();
+        let path = &repo.path;
+        repo.write("local-settings", "tracked at the merge base\n");
+        stage_all(path).unwrap();
+        commit(path, "Merge base").unwrap();
+        repo.git(&["switch", "-c", "old-side"]);
+        repo.git(&["commit", "--allow-empty", "-m", "Known good on other side"]);
+        let good = reference_tip(path, "HEAD").unwrap();
+        repo.git(&["switch", "main"]);
+        repo.git(&["rm", "local-settings"]);
+        commit(path, "Known bad on main").unwrap();
+        let bad = reference_tip(path, "HEAD").unwrap();
+        repo.write(".git/info/exclude", "/local-settings\n");
+        repo.write("local-settings", "only ignored copy\n");
+
+        assert_eq!(start_bisect(path, &bad, &good).unwrap_err().kind, "bisectStartLocalPathObstruction");
+        assert!(!path.join(".git/BISECT_START").exists());
+        assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(bad.as_str()));
+        assert_eq!(fs::read_to_string(path.join("local-settings")).unwrap(), "only ignored copy\n");
+    }
+
+    #[test]
+    fn bisect_vote_refuses_an_ignored_obstruction_before_writing_the_custom_vote() {
+        let repo = TestRepository::new();
+        let path = &repo.path;
+        let mut commits = Vec::new();
+        for point in 0..7 {
+            repo.write("step", &format!("{point}\n"));
+            if point == 5 {
+                fs::create_dir(path.join("settings")).unwrap();
+                repo.write("settings/remote", "historical configuration\n");
+            } else if point == 6 {
+                fs::remove_file(path.join("settings/remote")).unwrap();
+                fs::remove_dir(path.join("settings")).unwrap();
+            }
+            stage_all(path).unwrap();
+            commit(path, &format!("Point {point}")).unwrap();
+            commits.push(reference_tip(path, "HEAD").unwrap());
+        }
+        repo.git(&["bisect", "start", "--term-old=fast", "--term-new=slow", &commits[6], &commits[0]]);
+        let candidate = read_head_status(path).unwrap().bisect_candidate.unwrap();
+        assert!(!candidate.no_checkout && candidate.oid == commits[3]);
+        repo.write(".git/info/exclude", "/settings\n/saved.local\n");
+        repo.write("settings", "ignored file in place of a candidate directory\n");
+
+        let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
+        let index = fs::read(path.join(".git/index")).unwrap();
+        let refs = || run_git(path, &["for-each-ref", "refs/bisect/"]).unwrap().stdout;
+        let before = refs();
+        let error = mark_bisect(path, "good", &candidate).unwrap_err();
+        assert_eq!(error.kind, "bisectVoteLocalPathObstruction");
+        assert!(error.message.contains("'settings'"));
+        assert_eq!(refs(), before);
+        assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
+        assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+        assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(candidate.oid.as_str()));
+        assert_eq!(fs::read_to_string(path.join("settings")).unwrap(), "ignored file in place of a candidate directory\n");
+
+        fs::rename(path.join("settings"), path.join("saved.local")).unwrap();
+        mark_bisect(path, "good", &candidate).unwrap();
+        assert!(bisect_ref_matches(path, &format!("fast-{}", candidate.oid), &candidate.oid).unwrap());
+        assert_ne!(reference_tip(path, "HEAD").as_deref(), Some(candidate.oid.as_str()));
+        reset_bisect(path).unwrap();
+    }
+
+    #[test]
+    fn bisect_refuses_unverified_ignored_paths_over_the_commit_scan_bound() {
+        let repo = TestRepository::new();
+        let path = &repo.path;
+        let mut history = String::new();
+        for index in 0..514 {
+            history.push_str(&format!(
+                "commit refs/heads/main\nmark :{}\ncommitter Test <test@example.test> 1700000000 +0000\ndata 4\nstep\n",
+                index + 1,
+            ));
+            if index > 0 {
+                history.push_str(&format!("from :{index}\n"));
+            }
+            history.push('\n');
+        }
+        run_git_with_input(
+            path,
+            &["fast-import", "--quiet"],
+            history.as_bytes(),
+            "create bounded bisect fixture",
+        ).unwrap();
+        let bad = reference_tip(path, "HEAD").unwrap();
+        let good = reference_tip(path, "HEAD~513").unwrap();
+        repo.write(".git/info/exclude", "/settings.local\n");
+        repo.write("settings.local", "only ignored copy\n");
+
+        let error = start_bisect(path, &bad, &good).unwrap_err();
+        assert_eq!(error.kind, "bisectStartIgnoredPathsUnverified");
+        assert!(!path.join(".git/BISECT_START").exists());
+        start_reviewed_bisect(path, &BisectStartReview {
+            bad_oid: bad.clone(), good_oid: good, branch: Some("main".into()), no_checkout: true,
+        }).unwrap();
+        assert!(read_head_status(path).unwrap().bisect_candidate.unwrap().no_checkout);
+        reset_bisect(path).unwrap();
+        assert_eq!(reference_tip(path, "HEAD").unwrap(), bad);
+        assert_eq!(fs::read_to_string(path.join("settings.local")).unwrap(), "only ignored copy\n");
     }
 
     #[test]

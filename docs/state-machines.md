@@ -808,7 +808,13 @@ bad/new or skipped references. Git's exit code 2 counts as a recorded
 vote only when both the inconclusive result and the reviewed vote's ref
 are verified. An unreadable or inconsistent result does not authorize
 a new vote.
-Neither guard predicts checkout obstructions when Git advances the search.
+In switching mode, starting or voting checks ignored paths against a
+bounded superset of the candidate trees before Git moves or records a
+vote. The check includes possible merge bases and, when voting, the
+original checkout that Git can restore. It does not replicate Git's
+candidate selection. A collision or exhausted verification bound leaves
+the current checkout and bisect state unchanged; no-checkout mode does
+not need this tree scan.
 Cherry-pick and Revert Skip check the current HEAD reset, while Abort
 checks the native sequencer's original commit for a multi-commit replay.
 Single-step and app-owned no-commit Abort check the current, original HEAD.

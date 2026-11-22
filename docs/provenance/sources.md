@@ -911,6 +911,9 @@ The tests use standard documented APIs. No third-party implementation was copied
 Source:
 
 - [Git bisect documentation](https://git-scm.com/docs/git-bisect)
+- [Git merge-base](https://git-scm.com/docs/git-merge-base),
+  [git rev-list](https://git-scm.com/docs/git-rev-list), and
+  [git ls-tree](https://git-scm.com/docs/git-ls-tree) plumbing documentation
 
 Used for:
 
@@ -928,6 +931,10 @@ Used for:
 - Explaining when skipped revisions prevent a unique result. Owned Git
   fixtures verified the terminal list of possible commits and the vote
   ref recorded by the command even when Git returns exit code 2.
+- Checking possible switch destinations without copying Git's bisect
+  algorithm. Owned Git fixtures showed that ordinary start and voting
+  can replace ignored files; bounded ancestry and tree listings support
+  refusing these writes before recording a bisect change.
 - Restoring the original branch and commit with Git's reset operation.
 
 No source code was copied.

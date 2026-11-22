@@ -168,6 +168,7 @@ fn check_branch_options(path: &Path, branch: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+#[derive(PartialEq, Eq)]
 struct LocalPaths {
     entries: BTreeSet<Vec<u8>>,
     ignore_case: bool,
@@ -622,6 +623,253 @@ pub(super) fn exact_bisect_head(path: &Path) -> Result<Option<String>, AppError>
     }
 }
 
+fn bisect_start_unverified() -> AppError {
+    AppError::new(
+        "bisectStartIgnoredPathsUnverified",
+        "Could not check every potential bisect checkout for ignored local files. Bisect was not started.",
+        Some(
+            "Move or back up the ignored files, narrow the range, or choose Keep current checkout.",
+        ),
+    )
+}
+
+fn bisect_vote_unverified() -> AppError {
+    AppError::new(
+        "bisectVoteIgnoredPathsUnverified",
+        "Could not check every potential bisect checkout for ignored local files. No vote was recorded.",
+        Some("Move or back up the ignored files and refresh before retrying."),
+    )
+}
+
+fn bisect_range_obstruction(
+    path: &Path,
+    ignored: &LocalPaths,
+    bad: &str,
+    good: &[String],
+    original: Option<&str>,
+    unavailable: Unavailable,
+) -> Result<Option<String>, AppError> {
+    // Git may test a merge base first when an old boundary is not an
+    // ancestor. In that case don't exclude any history from the bad tip.
+    // With only ancestor bounds, normal, path-limited and first-parent
+    // searches can only choose a revision within this superset.
+    const MAX_COMMITS: usize = 512;
+    const MAX_TREE_BYTES: usize = 24 * 1024 * 1024;
+    let mut ancestors = vec!["merge-base", "--independent", bad];
+    ancestors.extend(good.iter().map(String::as_str));
+    let minimal = bounded(path, &ancestors, unavailable)?;
+    if !minimal.status.success() {
+        return Err(unavailable());
+    }
+    let exclude = minimal.stdout.trim_ascii() == bad.as_bytes();
+
+    let limit = format!("--max-count={}", MAX_COMMITS + 1);
+    let excluded: Vec<_> = if exclude {
+        good.iter().map(|oid| format!("^{oid}")).collect()
+    } else {
+        Vec::new()
+    };
+    let mut args = vec![
+        "rev-list",
+        "--format=format:%T",
+        "--no-commit-header",
+        &limit,
+        bad,
+    ];
+    args.extend(excluded.iter().map(String::as_str));
+    args.push("--");
+    let output = bounded(path, &args, unavailable)?;
+    if !output.status.success() {
+        return Err(unavailable());
+    }
+    let trees = std::str::from_utf8(&output.stdout).map_err(|_| unavailable())?;
+    if trees.lines().count() > MAX_COMMITS {
+        return Err(unavailable());
+    }
+
+    // Usually all ignored paths are under a few generated directories.
+    // Restrict the tree listings to those literal top-level names when
+    // byte-exact matching is possible; otherwise inspect the entire tree.
+    let roots: Option<BTreeSet<_>> = ignored
+        .entries
+        .iter()
+        .map(|entry| std::str::from_utf8(entry.split(|c| *c == b'/').next()?).ok())
+        .collect();
+    let roots = roots.filter(|roots| {
+        !ignored.ignore_case
+            && roots.len() <= 512
+            && roots.iter().map(|root| root.len() + 1).sum::<usize>() <= 64 * 1024
+    });
+    let mut seen = HashSet::new();
+    let mut remaining = MAX_TREE_BYTES;
+    for tree in original.into_iter().chain(trees.lines()) {
+        validate_commit_oid(tree).map_err(|_| unavailable())?;
+        if !seen.insert(tree) {
+            continue;
+        }
+        let mut args = vec![
+            "--literal-pathspecs",
+            "ls-tree",
+            "-r",
+            "--full-tree",
+            "--name-only",
+            "-z",
+            tree,
+            "--",
+        ];
+        args.extend(roots.iter().flat_map(|roots| roots.iter().copied()));
+        let (output, truncated) =
+            run_git_with_stdout_limit(path, &args, remaining.min(PATH_LIMIT))?;
+        if truncated || !output.status.success() {
+            return Err(unavailable());
+        }
+        remaining -= output.stdout.len();
+        if let Some(name) = obstructing_path(ignored, &output.stdout, unavailable)? {
+            return Ok(Some(name));
+        }
+    }
+    Ok(None)
+}
+
+pub(super) fn ensure_bisect_start_preserves_ignored_files(
+    path: &Path,
+    bad: &str,
+    good: &str,
+) -> Result<bool, AppError> {
+    let unavailable = bisect_start_unverified;
+    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+        return Ok(false);
+    };
+    without_lazy_fetch(|| {
+        if let Some(name) =
+            bisect_range_obstruction(path, &ignored, bad, &[good.to_owned()], None, unavailable)?
+        {
+            return Err(AppError::new(
+                "bisectStartLocalPathObstruction",
+                format!("A bisect checkout could overwrite ignored local contents at '{name}'."),
+                Some("Move or back up the ignored contents, or choose Keep current checkout."),
+            ));
+        }
+        if ignored_paths(path, PATH_LIMIT, unavailable)?.as_ref() != Some(&ignored) {
+            return Err(unavailable());
+        }
+        Ok(true)
+    })
+}
+
+fn bisect_boundaries(path: &Path, unavailable: Unavailable) -> Result<Vec<u8>, AppError> {
+    let output = bounded(
+        path,
+        &[
+            "for-each-ref",
+            "--format=%(objectname) %(refname)",
+            "refs/bisect/",
+        ],
+        unavailable,
+    )?;
+    if !output.status.success() {
+        return Err(unavailable());
+    }
+    Ok(output.stdout)
+}
+
+fn bisect_original_checkout(path: &Path, unavailable: Unavailable) -> Result<String, AppError> {
+    let marker = operation_storage::git_entry(path, "BISECT_START")?;
+    let directory = marker.parent().ok_or_else(unavailable)?;
+    let start = bounded_state_line(directory, "BISECT_START", 4096, unavailable)?
+        .ok_or_else(unavailable)?;
+    resolve_bisect_original_checkout(path, &start, unavailable)
+}
+
+fn resolve_bisect_original_checkout(
+    path: &Path,
+    start: &str,
+    unavailable: Unavailable,
+) -> Result<String, AppError> {
+    let branch = format!("refs/heads/{start}");
+    let local = reference_tip(path, &format!("{branch}^{{commit}}"));
+    if validate_commit_oid(start).is_ok() {
+        // OID-shaped local branch names make Git's restore target ambiguous.
+        if local.is_some() {
+            return Err(unavailable());
+        }
+        return reference_tip(path, &format!("{start}^{{commit}}")).ok_or_else(unavailable);
+    }
+    validate_branch_name(path, start).map_err(|_| unavailable())?;
+    local.ok_or_else(unavailable)
+}
+
+pub(super) fn ensure_bisect_vote_preserves_ignored_files(
+    path: &Path,
+    candidate: &BisectCandidate,
+    verdict: &str,
+) -> Result<bool, AppError> {
+    if candidate.no_checkout {
+        return Ok(false);
+    }
+    let unavailable = bisect_vote_unverified;
+    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+        return Ok(false);
+    };
+    without_lazy_fetch(|| {
+        let refs = bisect_boundaries(path, unavailable)?;
+        let text = std::str::from_utf8(&refs).map_err(|_| unavailable())?;
+        let old = candidate
+            .terms
+            .as_ref()
+            .map_or("good", |terms| terms.old.as_str());
+        let new = candidate
+            .terms
+            .as_ref()
+            .map_or("bad", |terms| terms.new.as_str());
+        let new_name = format!("refs/bisect/{new}");
+        let old_prefix = format!("refs/bisect/{old}-");
+        let mut bad = None;
+        let mut good = Vec::new();
+        for line in text.lines() {
+            let (oid, name) = line.split_once(' ').ok_or_else(unavailable)?;
+            validate_commit_oid(oid).map_err(|_| unavailable())?;
+            if name == new_name {
+                bad = Some(oid);
+            } else if let Some(suffix) = name.strip_prefix(&old_prefix) {
+                if suffix != oid || good.len() >= 512 {
+                    return Err(unavailable());
+                }
+                good.push(oid.to_owned());
+            }
+        }
+        if verdict == "good" {
+            good.push(candidate.oid.clone());
+        }
+        // If incomplete, use the reviewed candidate as a conservative root.
+        let bad = if verdict == "bad" {
+            &candidate.oid
+        } else {
+            bad.unwrap_or(&candidate.oid)
+        };
+        // Git can also restore the original checkout when a session ends.
+        let original = bisect_original_checkout(path, unavailable)?;
+        if let Some(name) =
+            bisect_range_obstruction(path, &ignored, bad, &good, Some(&original), unavailable)?
+        {
+            return Err(AppError::new(
+                "bisectVoteLocalPathObstruction",
+                format!(
+                    "A bisect checkout could overwrite ignored local contents at '{name}'. No vote was recorded."
+                ),
+                Some("Move or back up the ignored contents, then retry the vote."),
+            ));
+        }
+        if ignored_paths(path, PATH_LIMIT, unavailable)?.as_ref() != Some(&ignored)
+            || bisect_boundaries(path, unavailable)? != refs
+            || bisect_original_checkout(path, unavailable)? != original
+        {
+            return Err(unavailable());
+        }
+        Ok(true)
+    })
+}
+
 pub(super) fn ensure_bisect_reset_preserves_ignored_files(path: &Path) -> Result<(), AppError> {
     let unavailable = || {
         AppError::new(
@@ -643,20 +891,7 @@ pub(super) fn ensure_bisect_reset_preserves_ignored_files(path: &Path) -> Result
         return Ok(());
     }
     without_lazy_fetch(|| {
-        let target = || {
-            let branch = format!("refs/heads/{start}");
-            let local = reference_tip(path, &format!("{branch}^{{commit}}"));
-            if validate_commit_oid(&start).is_ok() {
-                // An OID-shaped local branch is ambiguous to checkout.
-                if local.is_some() {
-                    return Err(unavailable());
-                }
-                return reference_tip(path, &format!("{start}^{{commit}}")).ok_or_else(unavailable);
-            }
-            validate_branch_name(path, &start).map_err(|_| unavailable())?;
-            // A same-named tag/remote must not substitute for a local branch.
-            local.ok_or_else(unavailable)
-        };
+        let target = || resolve_bisect_original_checkout(path, &start, unavailable);
         let receiver = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
         let original = target()?;
         if let Some(blocked) = restore_obstruction(path, &ignored, &original, unavailable)? {

@@ -548,6 +548,7 @@ test('installed detached checkout requires safe switches and ignored-file recove
     'native-mail-patch-skip-preserves-ignored-reset-file',
     'native-mail-patch-abort-preserves-ignored-reset-file',
     'native-bisect-reset-preserves-ignored-file-and-allows-safe-retry',
+    'native-bisect-checkouts-refuse-ignored-data-loss-before-starting-or-voting',
     'native-bisect-start-refuses-a-stale-branch-at-the-same-tip',
     'native-bisect-start-keeps-dirty-checkout-unchanged-through-vote-and-reset',
     'native-bisect-vote-rejects-an-obsolete-no-checkout-candidate',

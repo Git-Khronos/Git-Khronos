@@ -337,6 +337,63 @@ def bisect_reset_preserves_ignored_files(driver, fixtures, report):
     report['scenarios'].append('native-bisect-reset-preserves-ignored-file-and-allows-safe-retry')
 
 
+def bisect_checkout_protects_ignored_contents(driver, fixtures, report):
+    for phase, tracked_at in [('start', 3), ('vote', 5)]:
+        repository = fixtures.repository(f'owned-bisect-ignored-{phase}', commits=1)
+        good = fixtures.git(repository, 'rev-parse', 'HEAD')
+        local = repository / 'settings[1].local'
+        for point in range(1, 7):
+            (repository / 'fixture.txt').write_text(f'Point {point}\n')
+            if point == tracked_at:
+                local.write_text('Tracked settings in a candidate.\n')
+            elif point == tracked_at + 1:
+                local.unlink()
+            fixtures.git(repository, 'add', '-A')
+            fixtures.git(repository, 'commit', '-qm', f'Point {point}')
+        head = fixtures.git(repository, 'rev-parse', 'HEAD')
+        (repository / '.git/info/exclude').write_text('/*.local\n')
+        if phase == 'vote':
+            fixtures.git(repository, 'bisect', 'start', '--term-old=fast', '--term-new=slow', head, good)
+        local.write_text('Only ignored copy.\n')
+        files = ('fixture.txt', local.name)
+        before = checkout_footprint(fixtures, repository, files)
+        repo_id = open_ui(driver, repository)
+        log = repository / '.git/BISECT_LOG'
+        if phase == 'start':
+            assert not log.exists()
+            review = {'badOid': head, 'goodOid': good, 'branch': 'main', 'noCheckout': False}
+            kind = 'bisectStartLocalPathObstruction'
+        else:
+            state = log.read_bytes()
+            candidate = driver.invoke('refresh_repository_status', repoId=repo_id)['bisectCandidate']
+            assert not candidate['noCheckout'] and candidate['terms'] == {'old': 'fast', 'new': 'slow'}
+            kind = 'bisectVoteLocalPathObstruction'
+        try:
+            if phase == 'start':
+                driver.invoke('start_bisect', repoId=repo_id, review=review)
+            else:
+                driver.invoke('mark_bisect', repoId=repo_id, verdict='good', candidate=candidate)
+        except RuntimeError as error:
+            detail = json.loads(str(error))
+            assert detail['kind'] == kind and local.name in detail['message'], detail
+        else:
+            raise AssertionError(f'Bisect {phase} accepted an ignored path obstruction')
+        assert checkout_footprint(fixtures, repository, files) == before
+        if phase == 'start':
+            assert not log.exists() and not (repository / '.git/BISECT_START').exists()
+            driver.invoke('start_bisect', repoId=repo_id, review={**review, 'noCheckout': True})
+            driver.invoke('reset_bisect', repoId=repo_id)
+            assert checkout_footprint(fixtures, repository, files) == before
+        else:
+            assert log.read_bytes() == state
+            local.rename(repository / 'saved.local')
+            driver.invoke('mark_bisect', repoId=repo_id, verdict='good', candidate=candidate)
+            assert fixtures.git(repository, 'rev-parse', 'refs/bisect/fast-' + candidate['oid']) == candidate['oid']
+            assert (repository / 'saved.local').read_text() == 'Only ignored copy.\n'
+            driver.invoke('reset_bisect', repoId=repo_id)
+    report['scenarios'].append('native-bisect-checkouts-refuse-ignored-data-loss-before-starting-or-voting')
+
+
 def bisect_start_rejects_a_stale_checkout(driver, fixtures, report):
     repository = fixtures.repository('owned-bisect-start-review', commits=6)
     repo_id = open_ui(driver, repository)
@@ -599,6 +656,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     recovery_reset_preserves_ignored_files(driver, fixtures, report)
     mail_recovery_preserves_ignored_files(driver, fixtures, report)
     bisect_reset_preserves_ignored_files(driver, fixtures, report)
+    bisect_checkout_protects_ignored_contents(driver, fixtures, report)
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
     bisect_can_start_without_switching_dirty_checkout(driver, fixtures, report)
     bisect_vote_binds_the_test_candidate(driver, fixtures, report)

@@ -3914,6 +3914,14 @@ the focused result is in
 The focused result is not a second full release qualification. Neither
 package is a production-key build or a published release.
 
+The subsequent package from `17e9ddb`, SHA-256
+`75e1a8463d0c1a334681ade8481606cd562b1d2d0b799b1f4e3a46022686e79b`,
+passed 27 installed detached-checkout scenarios on Ubuntu 24.04.
+The scenarios include starting bisect with local edits and no checkout,
+and casting both votes with custom native terms. This is focused evidence,
+not a new full release qualification. Receipt:
+`target/local-review/updater/jammy-builder/bisect-modes-release.aO1y8ieO/reports.json`.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard
