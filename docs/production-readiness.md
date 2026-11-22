@@ -4322,3 +4322,17 @@ same-commit annotation replacement and refusal to substitute a packed
 descendant tag. Receipt:
 `target/local-review/updater/jammy-builder/tag-preview-release.Bb3pXE9p/reports.json`.
 This package predates the shallow-history correction.
+
+The Ubuntu 22.04 installer from `86900ea`, SHA-256
+`2c6d3243b7b41461b8755237b9775b10452a78e25b730223fe1e31ffdec969f7`,
+passed 15 focused installed scenarios with Git 2.56.1 and the inherited
+Git environment. This includes fetching the extra tracking branch while
+advancing HEAD by exactly one commit, moving the shallow marker,
+completing history, preserving the dirty checkout, and rechecking tags.
+The first focused runner could not start Python on this image. Adding the
+image's existing Python shim to PATH made the suites run on the unchanged
+package; the first attempt was a runner failure, not pass evidence.
+Receipt:
+`target/local-review/updater/jammy-builder/shallow-depth-recheck.TSdoTcex/reports.json`.
+This package predates the Fetch dialog's retry-status update. The full
+release matrix and production signing are separate.
