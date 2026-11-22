@@ -1306,6 +1306,11 @@ export class AppComponent implements OnInit, OnDestroy {
       && repo.status.branch === review.checkout.branch;
   });
   protected readonly pendingBisectStart = signal<PendingBisectStart | null>(null);
+  protected readonly bisectKeepCheckout = signal(false);
+  protected readonly bisectCheckoutNeedsCleanFiles = computed(() => {
+    const status = this.git.repository()?.status;
+    return !!(status?.entryCount || status?.filesUnscanned || status?.entriesTruncated);
+  });
   protected readonly bisectVoteTarget = computed<BisectVoteTarget | null>(() => {
     const candidate = this.git.bisectCandidate();
     return candidate ? { checkoutScope: this.git.activeRepositoryReadScope(), candidate } : null;
@@ -8583,7 +8588,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected viewBisectCommit(oid: string): void {
     const result = this.git.bisectResult();
-    if (!result || (result.kind === 'found' ? result.oid !== oid : !result.possibleOids.includes(oid))) return;
+    const candidate = this.git.bisectCandidate();
+    const canView = result ? (result.kind === 'found' ? result.oid === oid : result.possibleOids.includes(oid))
+      : candidate?.noCheckout && candidate.oid === oid;
+    if (!canView) return;
     // A bisect revision may be outside the loaded graph or on an unlisted
     // ref. The details panel can inspect the exact commit without paging.
     this.selectCommit(oid);
@@ -14052,7 +14060,6 @@ export class AppComponent implements OnInit, OnDestroy {
     const repository = this.git.repository();
     return !!repository?.headOid
       && oid !== repository.headOid
-      && !repository.status.entryCount
       && !this.repositoryOperation().rebaseInProgress
       && !this.repositoryOperation().bisectInProgress
       && !this.git.busy();
@@ -14075,6 +14082,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const repository = this.git.repository();
     if (!repository?.headOid) return;
     const head = repository.commits.find((commit) => commit.oid === repository.headOid);
+    this.bisectKeepCheckout.set(false);
     this.pendingBisectStart.set({
       checkoutScope: this.git.activeRepositoryReadScope(),
       repositoryId: repository.id,
@@ -14099,9 +14107,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async confirmBisectStart(review: PendingBisectStart): Promise<void> {
-    if (this.pendingBisectStart() !== review || this.git.busy() || !this.bisectStartReviewCurrent(review)) return;
+    const noCheckout = this.bisectKeepCheckout();
+    if (this.pendingBisectStart() !== review || this.git.busy() || !this.bisectStartReviewCurrent(review)
+      || (!noCheckout && this.bisectCheckoutNeedsCleanFiles())) return;
     this.dismissBisectStart(review);
-    await this.git.startBisect({ badOid: review.badOid, goodOid: review.goodOid, branch: review.branch });
+    await this.git.startBisect({ badOid: review.badOid, goodOid: review.goodOid, branch: review.branch, noCheckout });
   }
 
   protected async markBisect(verdict: 'good' | 'bad' | 'skip', target: BisectVoteTarget | null): Promise<void> {

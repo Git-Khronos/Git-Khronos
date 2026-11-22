@@ -784,8 +784,12 @@ native reset behavior. Starting or advancing a bisect is separate.
 Starting a bisect binds both displayed commit IDs and the original checkout
 visit, path and branch to the confirmation. A stale review cannot substitute
 the latest HEAD for the displayed bad commit. Native start validates the
-actual branch and HEAD again before Git can record its initial state. This
-does not change Git's candidate selection.
+actual branch and HEAD again before Git can record its initial state.
+Switching to candidates requires a clean working tree. An explicit
+**Keep current checkout** choice passes Git's no-checkout option instead;
+staged, unstaged and untracked work can stay in place. The banner names
+the candidate independently of HEAD and can open its commit details.
+Neither mode changes Git's candidate selection.
 Good, Bad, and Skip capture the displayed candidate and checkout visit,
 whether invoked from the banner or palette. For Git's no-checkout mode,
 the candidate is the exact `BISECT_HEAD` ref and is independent of HEAD.

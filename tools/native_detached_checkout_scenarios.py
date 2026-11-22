@@ -363,6 +363,42 @@ def bisect_start_rejects_a_stale_checkout(driver, fixtures, report):
     report['scenarios'].append('native-bisect-start-refuses-a-stale-branch-at-the-same-tip')
 
 
+def bisect_can_start_without_switching_dirty_checkout(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-keep-checkout', commits=7)
+    bad = fixtures.git(repository, 'rev-parse', 'HEAD')
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~6')
+    (repository / 'staged.txt').write_text('Keep this exact index content.\n')
+    fixtures.git(repository, 'add', '--', 'staged.txt')
+    (repository / 'fixture.txt').write_text('Keep my uncommitted work.\n')
+    (repository / 'untracked.txt').write_text('Keep this untracked file.\n')
+    files = ('fixture.txt', 'staged.txt', 'untracked.txt')
+    before = checkout_footprint(fixtures, repository, files)
+    repo_id = open_ui(driver, repository)
+    driver.wait("return document.querySelector('.commit-row[data-commit-oid=" + json.dumps(good) + "]') !== null")
+    driver.context_click(f'.commit-row[data-commit-oid="{good}"]')
+    driver.click_scrolled_text('[role="menuitem"]', 'Start bisect from here…', wait_for_ready=True)
+    dialog = '[role="alertdialog"][aria-labelledby="bisect-dialog-title"]'
+    driver.wait("return document.querySelector(" + json.dumps(dialog + ' .confirm-action') + ")?.disabled")
+    driver.click_visible(dialog + ' input[type="checkbox"]')
+    driver.click_scrolled_text(dialog + ' button', 'Start Bisect', wait_for_ready=True)
+    banner = '[aria-label="Git bisect in progress"]'
+    driver.wait("return document.querySelector(" + json.dumps(banner + ' small') + ")?.textContent.includes('Checkout unchanged.')")
+    candidate = driver.invoke('refresh_repository_status', repoId=repo_id)['bisectCandidate']
+    assert candidate['noCheckout'] and candidate['oid'] != bad
+    driver.click_scrolled_text(banner + ' button', 'View candidate', wait_for_ready=True)
+    driver.wait("return document.querySelector('.commit-row.selected')?.dataset.commitOid === " + json.dumps(candidate['oid']))
+    driver.click_scrolled_text(banner + ' button', 'Good', wait_for_ready=True)
+    driver.wait("return document.querySelector(" + json.dumps(banner + ' small') + ")?.title !== " + json.dumps(candidate['oid'])
+                + " && document.querySelector('.activity-status')?.textContent.includes('Commit marked good')")
+    after = checkout_footprint(fixtures, repository, files)
+    assert all(after[key] == before[key] for key in before if key != 'references')
+    driver.click_scrolled_text(banner + ' button', 'Reset', wait_for_ready=True)
+    driver.wait("return !document.querySelector('.bisect-progress')")
+    assert not (repository / '.git/BISECT_START').exists()
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-bisect-start-keeps-dirty-checkout-unchanged-through-vote-and-reset')
+
+
 def bisect_vote_binds_the_test_candidate(driver, fixtures, report):
     repository = fixtures.repository('owned-bisect-vote-review', commits=12)
     head = fixtures.git(repository, 'rev-parse', 'HEAD')
@@ -540,6 +576,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     mail_recovery_preserves_ignored_files(driver, fixtures, report)
     bisect_reset_preserves_ignored_files(driver, fixtures, report)
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
+    bisect_can_start_without_switching_dirty_checkout(driver, fixtures, report)
     bisect_vote_binds_the_test_candidate(driver, fixtures, report)
     bisect_reports_the_first_bad_commit(driver, fixtures, report)
     bisect_reports_inconclusive_candidates(driver, fixtures, report)

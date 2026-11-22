@@ -1087,7 +1087,7 @@
             } @else if (result?.kind === 'ambiguous') {
               <small title="Skipped revisions prevent Git from identifying a single result.">{{ result.possibleOids.length }} possible first {{ result.term }} commits; some revisions were skipped.</small>
             } @else if (target) {
-              <small [title]="target.candidate.oid">Test commit {{ shortOid(target.candidate.oid) }}, then classify the result. @if (target.candidate.noCheckout) { Checkout unchanged. }</small>
+              <small [title]="target.candidate.oid">@if (target.candidate.noCheckout) { Checkout unchanged. } Test commit {{ shortOid(target.candidate.oid) }}, then classify the result.</small>
             } @else {
               <small>Candidate unavailable. Refresh the repository before voting.</small>
             }
@@ -1102,6 +1102,9 @@
                 </select>
                 <button type="button" (click)="viewBisectCommit(possibleResult.value)">View commit</button>
               } @else {
+                @if (target && target.candidate.noCheckout) {
+                  <button type="button" (click)="viewBisectCommit(target.candidate.oid)">View candidate</button>
+                }
                 <button class="good" type="button" [disabled]="git.busy() || !target" (click)="markBisect('good', target)">Good</button><button class="bad" type="button" [disabled]="git.busy() || !target" (click)="markBisect('bad', target)">Bad</button><button type="button" [disabled]="git.busy() || !target" (click)="markBisect('skip', target)">Skip</button>
               }
               <button type="button" [disabled]="git.busy()" (click)="resetBisect()">Reset</button>
@@ -2325,17 +2328,26 @@
         <div class="confirmation-copy">
           <span>Start binary search</span>
           <h2 id="bisect-dialog-title">Find the commit that introduced a problem</h2>
-          <p>Git will temporarily check out commits between these two points. Test each one, then mark it Good, Bad, or Skip.</p>
+          <p>Test commits between these points, then mark each one Good, Bad, or Skip.</p>
           <div class="bisect-endpoints">
             <div><small>KNOWN GOOD</small><strong>{{ bisect.goodLabel }}</strong><code>{{ shortOid(bisect.goodOid) }}</code></div>
             <div><small>KNOWN BAD</small><strong>{{ bisect.badLabel }}</strong><code>{{ shortOid(bisect.badOid) }}</code></div>
           </div>
-          <p class="bisect-note">Your working tree must stay clean during the search. Reset Bisect restores the original checkout.</p>
+          <label class="bisect-mode"><input #keepCheckout type="checkbox" [checked]="bisectKeepCheckout()" aria-describedby="bisect-checkout-note" (change)="bisectKeepCheckout.set(keepCheckout.checked)" /> Keep current checkout</label>
+          <p class="bisect-note" id="bisect-checkout-note">
+            @if (bisectKeepCheckout()) {
+              Git records each candidate without checking it out. Use View candidate to inspect it; the files on disk stay at the current checkout.
+            } @else if (bisectCheckoutNeedsCleanFiles()) {
+              Git needs a clean working tree to switch commits. Select Keep current checkout to continue without switching.
+            } @else {
+              Git temporarily checks out each candidate. Keep the working tree clean; Reset restores the original checkout.
+            }
+          </p>
           @if (!bisectStartReviewCurrent(bisect)) {
             <p role="alert">The checkout changed. Close this review and choose the bisect range again.</p>
           }
         </div>
-        <footer><button type="button" (click)="dismissBisectStart(bisect)">Cancel</button><button class="confirm-action" type="button" [disabled]="git.busy() || !bisectStartReviewCurrent(bisect)" (click)="confirmBisectStart(bisect)">Start Bisect</button></footer>
+        <footer><button type="button" (click)="dismissBisectStart(bisect)">Cancel</button><button class="confirm-action" type="button" [disabled]="git.busy() || !bisectStartReviewCurrent(bisect) || (!bisectKeepCheckout() && bisectCheckoutNeedsCleanFiles())" (click)="confirmBisectStart(bisect)">Start Bisect</button></footer>
       </section>
     </div>
   }

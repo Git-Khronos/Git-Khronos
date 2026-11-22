@@ -427,7 +427,7 @@ export class GitKhronosService implements OnDestroy {
   private repositoryRestoration: RepositoryRestoration | null = null;
   private tagDetailsRequest = 0;
   private readonly tagDetailsCache = new Map<string, TagDetails>();
-  private readonly previewBisectOriginalHeads = new Map<string, string>();
+  private readonly previewBisectStarts = new Map<string, { head: string; branch: string | null }>();
   private fileRequest = 0;
   private workingTreeRequest = 0;
   private fileInsightRequest = 0;
@@ -2693,15 +2693,17 @@ export class GitKhronosService implements OnDestroy {
 
   async startBisect(review: BisectStartReview): Promise<void> {
     const repository = this.repository();
-    const { badOid, goodOid, branch } = review;
+    const { badOid, goodOid, branch, noCheckout = false } = review;
     if (!repository || repository.headOid !== badOid || repository.status.branch !== branch || goodOid === badOid) return;
     if (this.browserPreview()) {
-      this.previewBisectOriginalHeads.set(repository.id, badOid);
+      this.previewBisectStarts.set(repository.id, { head: badOid, branch });
       const goodIndex = repository.commits.findIndex((commit) => commit.oid === goodOid);
       const candidateIndex = Math.max(1, Math.floor(Math.max(1, goodIndex) / 2));
       const candidate = repository.commits[candidateIndex] ?? repository.commits[1] ?? repository.commits[0];
       this.repositories.update((repositories) => repositories.map((item) => item.id === repository.id
-        ? { ...item, headOid: candidate?.oid ?? badOid, status: { ...item.status, branch: null, bisectInProgress: true } }
+        ? { ...item, headOid: noCheckout ? badOid : candidate?.oid ?? badOid,
+          status: { ...item.status, branch: noCheckout ? branch : null, bisectInProgress: true,
+            bisectCandidate: candidate ? { oid: candidate.oid, noCheckout } : undefined } }
         : item));
       this.activity.set('Bisect started');
       return;
@@ -2729,7 +2731,8 @@ export class GitKhronosService implements OnDestroy {
       const currentIndex = repository.commits.findIndex((commit) => commit.oid === expected.oid);
       const candidate = repository.commits[Math.min(repository.commits.length - 1, Math.max(0, currentIndex + 1))];
       this.repositories.update((repositories) => repositories.map((item) => item.id === repository.id
-        ? { ...item, headOid: candidate?.oid ?? item.headOid }
+        ? { ...item, headOid: expected.noCheckout ? item.headOid : candidate?.oid ?? item.headOid,
+          status: { ...item.status, bisectCandidate: candidate ? { oid: candidate.oid, noCheckout: expected.noCheckout } : expected } }
         : item));
       this.activity.set(`Bisect marked ${verdict}`);
       return;
@@ -2741,11 +2744,12 @@ export class GitKhronosService implements OnDestroy {
     const repository = this.repository();
     if (!(repository && repositoryOperationState(repository.status).bisectInProgress)) return;
     if (this.browserPreview()) {
-      const originalHead = this.previewBisectOriginalHeads.get(repository.id) ?? repository.headOid;
-      const branch = repository.branches.find((candidate) => candidate.current)?.name ?? 'main';
-      this.previewBisectOriginalHeads.delete(repository.id);
+      const original = this.previewBisectStarts.get(repository.id);
+      this.previewBisectStarts.delete(repository.id);
       this.repositories.update((repositories) => repositories.map((item) => item.id === repository.id
-        ? { ...item, headOid: originalHead, status: { ...item.status, branch, bisectInProgress: false } }
+        ? { ...item, headOid: original?.head ?? item.headOid,
+          status: { ...item.status, branch: original ? original.branch : item.status.branch, bisectInProgress: false,
+            bisectCandidate: undefined, bisectResult: undefined } }
         : item));
       this.activity.set('Bisect reset');
       return;

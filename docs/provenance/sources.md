@@ -916,6 +916,8 @@ Used for:
 
 - Starting a binary search from explicit known-bad and known-good revisions.
 - Classifying candidates with Git's documented good, bad, and skip terms.
+- Starting with Git's documented no-checkout option when the user needs
+  to keep their existing index and working files in place.
 - Reporting the exact `BISECT_HEAD` ref in no-checkout mode and supplying
   a reviewed revision explicitly to good, bad, or skip.
 - Presenting Git's first matching commit. Owned Git fixtures verified that

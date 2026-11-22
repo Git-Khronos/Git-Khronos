@@ -865,6 +865,8 @@ code, kbd { font-family: var(--font-mono); }
 .bisect-endpoints small { grid-column: 1 / -1; color: #6fbfae; font-size: 12px; font-weight: 750; letter-spacing: .08em; }
 .bisect-endpoints strong { overflow: hidden; color: #d8e7e3; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .bisect-endpoints code { color: #899e9a; font-size: 12px; }
+.bisect-mode { display: flex; align-items: center; gap: 6px; margin-block: 12px 6px; font-size: 13px; }
+.bisect-mode input { accent-color: #69d2bd; }
 .bisect-note { color: #9497a8 !important; font-size: 12px !important; }
 .branch-column { position: relative; min-width: 0; display: flex; align-content: center; align-items: center; justify-content: flex-end; overflow: visible; padding: 0 4px 0 5px; }
 .workspace-focus-region:focus-visible { position: relative; z-index: 2; outline: 2px solid var(--graph-row-focus); outline-offset: -2px; }

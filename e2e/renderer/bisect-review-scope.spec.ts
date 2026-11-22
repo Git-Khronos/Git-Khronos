@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-async function openReview(page: import('@playwright/test').Page) {
-  await page.goto('/?clean-preview');
+async function openReview(page: import('@playwright/test').Page, dirty = false) {
+  await page.goto(dirty ? '/' : '/?clean-preview');
   const knownGood = page.locator('[data-commit-oid="7c17b9d37d6a36dc9477e611109136f86477041a"]');
   await knownGood.click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Start bisect from here…' }).click();
@@ -22,7 +22,7 @@ async function openReview(page: import('@playwright/test').Page) {
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     return {
       repoId: repository.id,
-      review: { badOid: pending.badOid, goodOid: pending.goodOid, branch: repository.status.branch },
+      review: { badOid: pending.badOid, goodOid: pending.goodOid, branch: repository.status.branch, noCheckout: false },
     };
   });
   return { dialog, start: dialog.getByRole('button', { name: 'Start Bisect', exact: true }), expected };
@@ -57,6 +57,68 @@ test('start bisect sends exactly the two reviewed commits and checkout branch', 
   await start.click();
   await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__bisectReview.calls)).toEqual([expected]);
+});
+
+test('start bisect on a dirty checkout requires an explicit no-checkout choice', async ({ page }) => {
+  const { dialog, start, expected } = await openReview(page, true);
+  const keep = dialog.getByRole('checkbox', { name: 'Keep current checkout' });
+  await expect(keep).not.toBeChecked();
+  await expect(start).toBeDisabled();
+  await expect(dialog).toContainText('Git needs a clean working tree to switch commits.');
+  await keep.check();
+  await expect(start).toBeEnabled();
+  await expect(dialog).toContainText('Git records each candidate without checking it out.');
+  await keep.uncheck();
+  await expect(start).toBeDisabled();
+  await keep.check();
+  await start.click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__bisectReview.calls)).toEqual([
+    { ...expected, review: { ...expected.review, noCheckout: true } },
+  ]);
+});
+
+test('start bisect rechecks the switch mode when new edits arrive before repaint', async ({ page }) => {
+  const { dialog, start } = await openReview(page);
+  await expect(start).toBeEnabled();
+  await start.evaluate((button: HTMLButtonElement) => {
+    const { git, repository } = (window as any).__bisectReview;
+    git.repositories.update((items: any[]) => items.map(item => item.id === repository.id
+      ? { ...item, status: { ...item.status, entryCount: 1 } } : item));
+    button.click();
+  });
+  await expect(dialog).toBeVisible();
+  await expect(start).toBeDisabled();
+  expect(await page.evaluate(() => (window as any).__bisectReview.calls)).toEqual([]);
+});
+
+test('no-checkout bisect preview keeps HEAD and files unchanged through voting and reset', async ({ page }) => {
+  await page.goto('/');
+  const current = () => page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { headOid, status } = app.git.repository();
+    return { headOid, branch: status.branch, entries: status.entries };
+  });
+  const knownGood = page.locator('[data-commit-oid="7c17b9d37d6a36dc9477e611109136f86477041a"]');
+  await knownGood.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Start bisect from here…' }).click();
+  const checkout = await current();
+  expect(checkout.entries.length).toBeGreaterThan(0);
+  const dialog = page.getByRole('alertdialog', { name: 'Find the commit that introduced a problem' });
+  await dialog.getByRole('checkbox', { name: 'Keep current checkout' }).check();
+  await dialog.getByRole('button', { name: 'Start Bisect' }).click();
+  const banner = page.getByRole('status', { name: 'Git bisect in progress' });
+  await expect(banner).toContainText('Checkout unchanged.');
+  const first = await banner.locator('small').getAttribute('title');
+  expect(first).not.toBe(checkout.headOid);
+  await banner.getByRole('button', { name: 'View candidate' }).click();
+  await expect(page.locator('.commit-row.selected')).toHaveAttribute('data-commit-oid', first!);
+  await banner.getByRole('button', { name: 'Good', exact: true }).click();
+  await expect(banner.locator('small')).not.toHaveAttribute('title', first!);
+  expect(await current()).toEqual(checkout);
+  await banner.getByRole('button', { name: 'Reset', exact: true }).click();
+  await expect(banner).toHaveCount(0);
+  expect(await current()).toEqual(checkout);
 });
 
 async function openVote(page: import('@playwright/test').Page, noCheckout = false) {

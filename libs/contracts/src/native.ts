@@ -39,7 +39,7 @@ export type ApplicationUpdateStatus = { revision: number; phase: UpdatePhase; ru
 export type AppliedDiscardRecovery = { status: RepositoryStatus; affectedToolbar: boolean }
 export type BisectCandidate = { oid: string; noCheckout: boolean }
 export type BisectResult = { kind: "found"; oid: string; term: string } | { kind: "ambiguous"; possibleOids: string[]; term: string }
-export type BisectStartReview = { badOid: string; goodOid: string; branch: string | null }
+export type BisectStartReview = { badOid: string; goodOid: string; branch: string | null; noCheckout?: boolean }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; upstreamTarget: UpstreamTarget | null; tracking: string | null }
 /**

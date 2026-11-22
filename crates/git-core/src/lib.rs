@@ -6494,14 +6494,22 @@ pub struct BisectStartReview {
     pub bad_oid: String,
     pub good_oid: String,
     pub branch: Option<String>,
+    #[serde(default)]
+    pub no_checkout: bool,
 }
 
 pub fn start_bisect(path: &Path, bad_oid: &str, good_oid: &str) -> Result<(), AppError> {
-    start_bisect_at(path, bad_oid, good_oid, None)
+    start_bisect_at(path, bad_oid, good_oid, None, false)
 }
 
 pub fn start_reviewed_bisect(path: &Path, review: &BisectStartReview) -> Result<(), AppError> {
-    start_bisect_at(path, &review.bad_oid, &review.good_oid, Some(review.branch.as_deref()))
+    start_bisect_at(
+        path,
+        &review.bad_oid,
+        &review.good_oid,
+        Some(review.branch.as_deref()),
+        review.no_checkout,
+    )
 }
 
 fn start_bisect_at(
@@ -6509,6 +6517,7 @@ fn start_bisect_at(
     bad_oid: &str,
     good_oid: &str,
     reviewed_branch: Option<Option<&str>>,
+    no_checkout: bool,
 ) -> Result<(), AppError> {
     validate_commit_oid(bad_oid)?;
     validate_commit_oid(good_oid)?;
@@ -6534,11 +6543,11 @@ fn start_bisect_at(
             Some("Mark the current commit or reset the active bisect session."),
         ));
     }
-    if read_status(path)?.entry_count > 0 {
+    if !no_checkout && read_status(path)?.entry_count > 0 {
         return Err(AppError::new(
             "workingTreeNotClean",
-            "Commit or stash working directory changes before starting bisect.",
-            None,
+            "Commit or stash working directory changes before switching to bisect candidates.",
+            Some("Choose Keep current checkout to bisect without switching files."),
         ));
     }
     if let Some(branch) = reviewed_branch {
@@ -6554,11 +6563,12 @@ fn start_bisect_at(
             }
         })?;
     }
-    run_mutation(
-        path,
-        &["bisect", "start", bad_oid, good_oid],
-        "start bisect",
-    )
+    let mut args = vec!["bisect", "start"];
+    if no_checkout {
+        args.push("--no-checkout");
+    }
+    args.extend([bad_oid, good_oid]);
+    run_mutation(path, &args, "start bisect")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
@@ -18726,6 +18736,7 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             bad_oid: reference_tip(path, "HEAD").unwrap(),
             good_oid,
             branch: Some("main".into()),
+            no_checkout: false,
         };
         repo.git(&["switch", "-c", "same-tip"]);
         for moved_head in [false, true] {
@@ -18748,6 +18759,73 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         reset_bisect(path).unwrap();
         assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(review.bad_oid.as_str()));
         assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn reviewed_no_checkout_bisect_can_search_while_local_files_are_dirty() {
+        let repo = TestRepository::new();
+        let path = &repo.path;
+        repo.write("test.txt", "0\n");
+        stage_all(path).unwrap();
+        commit(path, "Known good").unwrap();
+        let good = reference_tip(path, "HEAD").unwrap();
+        for step in 1..6 {
+            repo.write("test.txt", &format!("{step}\n"));
+            repo.write("candidate-settings.local", &format!("settings {step}\n"));
+            stage_all(path).unwrap();
+            commit(path, "Bisect step with tracked settings").unwrap();
+        }
+        repo.git(&["rm", "candidate-settings.local"]);
+        commit(path, "Do not track local settings at the current tip").unwrap();
+
+        repo.write("staged.txt", "index bytes\n");
+        repo.git(&["add", "staged.txt"]);
+        repo.write("staged.txt", "different working bytes\n");
+        repo.write("untracked.txt", "local\n");
+        repo.write(".git/info/exclude", "/candidate-settings.local\n");
+        repo.write("candidate-settings.local", "only ignored copy\n");
+
+        let bad = reference_tip(path, "HEAD").unwrap();
+        let mut review = BisectStartReview {
+            bad_oid: bad.clone(),
+            good_oid: good,
+            branch: Some("main".into()),
+            no_checkout: false,
+        };
+        let index = fs::read(path.join(".git/index")).unwrap();
+        let assert_checkout_unchanged = || {
+            assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(bad.as_str()));
+            assert_eq!(read_head_status(path).unwrap().branch.as_deref(), Some("main"));
+            assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
+            for (file, expected) in [
+                ("staged.txt", "different working bytes\n"),
+                ("untracked.txt", "local\n"),
+                ("candidate-settings.local", "only ignored copy\n"),
+                ("test.txt", "5\n"),
+            ] {
+                assert_eq!(fs::read_to_string(path.join(file)).unwrap(), expected);
+            }
+        };
+        assert_eq!(start_reviewed_bisect(path, &review).unwrap_err().kind, "workingTreeNotClean");
+        assert!(!path.join(".git/BISECT_START").exists());
+        assert_checkout_unchanged();
+
+        review.no_checkout = true;
+        review.branch = Some("same-tip".into());
+        assert_eq!(start_reviewed_bisect(path, &review).unwrap_err().kind, "staleBisectStart");
+        assert!(!path.join(".git/BISECT_START").exists());
+        review.branch = Some("main".into());
+        start_reviewed_bisect(path, &review).unwrap();
+        let candidate = read_head_status(path).unwrap().bisect_candidate.unwrap();
+        assert!(candidate.no_checkout && candidate.oid != bad);
+        let historical_file = format!("{}:candidate-settings.local", candidate.oid);
+        assert!(run_git(path, &["cat-file", "-e", &historical_file]).unwrap().status.success());
+        assert_checkout_unchanged();
+        mark_bisect(path, "good", &candidate).unwrap();
+        assert_checkout_unchanged();
+        reset_bisect(path).unwrap();
+        assert!(!path.join(".git/BISECT_START").exists());
+        assert_checkout_unchanged();
     }
 
     #[test]

@@ -117,7 +117,7 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
       ] : []),
       { id: 'bisect-reset', group: 'History', label: 'Bisect: Reset', detail: 'Stop the search and restore the original branch', enabled: !busy, icon: 'reset' as IconName },
     ] : [
-      { id: 'bisect-start', group: 'History', label: 'Start Bisect from Selected Commit', detail: 'Treat the selected commit as good and the current HEAD as bad', enabled: !!source.selectedCommitData() && source.selectedCommitData()?.oid !== repository?.headOid && !repository?.status.entryCount && !(repository && source.repositoryOperation().rebaseInProgress) && !busy, icon: 'history' as IconName },
+      { id: 'bisect-start', group: 'History', label: 'Start Bisect from Selected Commit', detail: 'Treat the selected commit as good and the current HEAD as bad', enabled: !!source.selectedCommitData() && source.selectedCommitData()?.oid !== repository?.headOid && !(repository && source.repositoryOperation().rebaseInProgress) && !busy, icon: 'history' as IconName },
     ]),
     { id: 'left-panel', group: 'View', label: 'Toggle Left Panel', detail: 'Show or hide repository references', shortcut: `${source.primaryShortcutKey} J`, enabled: !!repository, icon: 'panel-left' },
     { id: 'commit-panel', group: 'View', label: 'Toggle Commit Panel', detail: 'Show or hide commit details', shortcut: `${source.primaryShortcutKey} K`, enabled: !!repository, icon: 'panel-right' },
