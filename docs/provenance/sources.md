@@ -918,6 +918,9 @@ Used for:
 - Classifying candidates with Git's documented good, bad, and skip terms.
 - Reporting the exact `BISECT_HEAD` ref in no-checkout mode and supplying
   a reviewed revision explicitly to good, bad, or skip.
+- Presenting Git's first matching commit. Owned Git fixtures verified that
+  the terminal replay-log record matches the exact bad/new ref for both
+  default terms and a custom term.
 - Restoring the original branch and commit with Git's reset operation.
 
 No source code was copied.

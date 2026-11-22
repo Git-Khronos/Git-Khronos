@@ -318,59 +318,9 @@ fn bounded_state_line(
     limit: u64,
     unavailable: Unavailable,
 ) -> Result<Option<String>, AppError> {
-    #[cfg(unix)]
-    let file = {
-        use rustix::{
-            fs::{Mode, OFlags, open, openat},
-            io::Errno,
-        };
-        let directory = open(
-            directory,
-            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|_| unavailable())?;
-        match openat(
-            directory,
-            name,
-            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
-            Mode::empty(),
-        ) {
-            Ok(file) => fs::File::from(file),
-            Err(Errno::NOENT) => return Ok(None),
-            Err(_) => return Err(unavailable()),
-        }
+    let Some(bytes) = operation_storage::read_bounded(directory, name, limit, unavailable)? else {
+        return Ok(None);
     };
-    #[cfg(not(unix))]
-    let file = {
-        let path = directory.join(name);
-        if operation_storage::file(&path)
-            .map_err(|_| unavailable())?
-            .is_none()
-        {
-            return Ok(None);
-        }
-        let mut opts = fs::OpenOptions::new();
-        opts.read(true);
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-            opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
-        }
-        opts.open(path).map_err(|_| unavailable())?
-    };
-    let metadata = file.metadata().map_err(|_| unavailable())?;
-    if !metadata.file_type().is_file() || metadata.len() > limit {
-        return Err(unavailable());
-    }
-    let mut bytes = Vec::new();
-    file.take(limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|_| unavailable())?;
-    if bytes.len() as u64 > limit {
-        return Err(unavailable());
-    }
     let text = std::str::from_utf8(&bytes).map_err(|_| unavailable())?;
     let line = text
         .strip_suffix("\r\n")

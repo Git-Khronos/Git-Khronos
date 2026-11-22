@@ -792,6 +792,10 @@ the candidate is the exact `BISECT_HEAD` ref and is independent of HEAD.
 Native validation compares the current candidate and checkout mode before
 recording an explicit OID, never relying on Git's implicit default.
 An unavailable candidate disables votes but does not disable Reset.
+When Git records a unique result, the banner shows that exact commit
+instead of presenting another test candidate. Only View result and Reset
+remain. A bounded terminal log record must match the current bad/new ref;
+an unreadable or inconsistent result does not authorize a new vote.
 Neither guard predicts checkout obstructions when Git advances the search.
 Cherry-pick and Revert Skip check the current HEAD reset, while Abort
 checks the native sequencer's original commit for a multi-commit replay.

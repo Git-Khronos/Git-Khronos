@@ -12,6 +12,7 @@ import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationO
 import { open } from '@tauri-apps/plugin-dialog';
 import type {
   BisectCandidate,
+  BisectResult,
   BisectStartReview,
   BranchIntegrationReview,
   CommitAuthorInput,
@@ -170,6 +171,8 @@ function sameRepositoryStatus(left: RepositoryStatus, right: RepositoryStatus): 
     && leftOperation.bisectInProgress === rightOperation.bisectInProgress
     && left.bisectCandidate?.oid === right.bisectCandidate?.oid
     && left.bisectCandidate?.noCheckout === right.bisectCandidate?.noCheckout
+    && left.bisectResult?.oid === right.bisectResult?.oid
+    && left.bisectResult?.term === right.bisectResult?.term
     && left.entryCount === right.entryCount
     && left.entriesTruncated === right.entriesTruncated
     && left.entries.length === right.entries.length
@@ -2701,9 +2704,14 @@ export class GitKhronosService implements OnDestroy {
 
   readonly bisectCandidate = computed<BisectCandidate | null>(() => {
     const repository = this.repository();
-    if (!repository || !repositoryOperationState(repository.status).bisectInProgress) return null;
+    if (!repository || !repositoryOperationState(repository.status).bisectInProgress || repository.status.bisectResult) return null;
     return repository.status.bisectCandidate ?? (this.browserPreview() && repository.headOid
       ? { oid: repository.headOid, noCheckout: false } : null);
+  });
+
+  readonly bisectResult = computed<BisectResult | null>(() => {
+    const status = this.repository()?.status;
+    return status?.bisectInProgress ? status.bisectResult ?? null : null;
   });
 
   async markBisect(verdict: 'good' | 'bad' | 'skip', expected: BisectCandidate): Promise<void> {

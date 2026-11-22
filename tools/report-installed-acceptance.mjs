@@ -122,6 +122,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-bisect-reset-preserves-ignored-file-and-allows-safe-retry',
     'native-bisect-start-refuses-a-stale-branch-at-the-same-tip',
     'native-bisect-vote-rejects-an-obsolete-no-checkout-candidate',
+    'native-bisect-result-reports-first-bad-and-prevents-extra-votes',
     'native-cherry-pick-abort-preserves-ignored-reset-file',
     'native-revert-skip-preserves-ignored-reset-file',
     'native-detached-checkout-review-cancel-preserves-branch-index-and-working-files',

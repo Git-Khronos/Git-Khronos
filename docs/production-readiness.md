@@ -3688,6 +3688,16 @@ Debian 12 Git binary and Git 2.53. The separate Git 2.53 reftable probe
 verified the case with no loose file. A tag named `BISECT_HEAD` does not
 substitute for the actual no-checkout candidate.
 
+When Git finds the first bad (or custom-term) commit, the app now
+shows that result and offers View result and Reset instead of another
+vote. Readback uses a bounded, non-link-following read of the saved
+terminal record and requires its exact object ID to match Git's result
+ref. Missing or conflicting metadata cannot authorize a vote. The
+renderer regression failed on the old banner and passed in the 16-case
+focused run. The installed detached-checkout gate now checks result
+display, native vote refusal and Reset on the packaged app. Evidence:
+`target/local-review/bisect-found.IKznkr7r/`.
+
 ### Manual and automatic Fetch recovery
 
 Successful manual Fetch options now re-enable an automatic Fetch paused

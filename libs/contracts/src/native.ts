@@ -38,6 +38,7 @@ export type ApplicationUpdateChanged = { state: ApplicationUpdateStatus }
 export type ApplicationUpdateStatus = { revision: number; phase: UpdatePhase; runningVersion: string; installedVersion: string | null; packageFormat: string | null; configured: boolean; automatic: boolean; offerId: string | null; offeredVersion: string | null; notes: string; verified: boolean; downloadedBytes: number; totalBytes: number | null; message: string; storageError: string | null; installBlocker?: string | null; canCheck: boolean; canDownload: boolean; canInstall: boolean; canInspect: boolean }
 export type AppliedDiscardRecovery = { status: RepositoryStatus; affectedToolbar: boolean }
 export type BisectCandidate = { oid: string; noCheckout: boolean }
+export type BisectResult = { oid: string; term: string }
 export type BisectStartReview = { badOid: string; goodOid: string; branch: string | null }
 export type BlameNavigation = { oid: string; path: string; parents: string[]; parentPath: string | null }
 export type Branch = { fullName: string; name: string; oid: string; current: boolean; remote: boolean; upstream: string | null; upstreamTarget: UpstreamTarget | null; tracking: string | null }
@@ -466,7 +467,7 @@ rebaseSplit: RebaseSplitStatus | null;
 /**
  * @deprecated Read operations instead.
  */
-mailPatchInProgress: boolean; bisectInProgress: boolean; bisectCandidate?: BisectCandidate | null;
+mailPatchInProgress: boolean; bisectInProgress: boolean; bisectCandidate?: BisectCandidate | null; bisectResult?: BisectResult | null;
 /**
  * This read intentionally omitted file discovery; zero is not a clean result.
  */

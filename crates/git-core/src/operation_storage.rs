@@ -51,3 +51,66 @@ pub(super) fn file(path: &Path) -> Result<Option<fs::Metadata>, AppError> {
         ))),
     }
 }
+
+/// Read a small, regular Git state entry without following links or a FIFO.
+pub(super) fn read_bounded(
+    directory: &Path,
+    name: &str,
+    limit: u64,
+    unavailable: impl Fn() -> AppError,
+) -> Result<Option<Vec<u8>>, AppError> {
+    #[cfg(unix)]
+    let file = {
+        use rustix::{
+            fs::{Mode, OFlags, open, openat},
+            io::Errno,
+        };
+        let directory = open(
+            directory,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .map_err(|_| unavailable())?;
+        match openat(
+            directory,
+            name,
+            OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+            Mode::empty(),
+        ) {
+            Ok(file) => fs::File::from(file),
+            Err(Errno::NOENT) => return Ok(None),
+            Err(_) => return Err(unavailable()),
+        }
+    };
+    #[cfg(not(unix))]
+    let file = {
+        let path = directory.join(name);
+        if operation_storage::file(&path)
+            .map_err(|_| unavailable())?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let mut opts = fs::OpenOptions::new();
+        opts.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+            opts.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        }
+        opts.open(path).map_err(|_| unavailable())?
+    };
+    let metadata = file.metadata().map_err(|_| unavailable())?;
+    if !metadata.file_type().is_file() || metadata.len() > limit {
+        return Err(unavailable());
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| unavailable())?;
+    if bytes.len() as u64 > limit {
+        return Err(unavailable());
+    }
+    Ok(Some(bytes))
+}

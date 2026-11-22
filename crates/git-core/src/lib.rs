@@ -502,6 +502,8 @@ pub struct RepositoryStatus {
     pub bisect_in_progress: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bisect_candidate: Option<BisectCandidate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bisect_result: Option<BisectResult>,
     /// This read intentionally omitted file discovery; zero is not a clean result.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub files_unscanned: Option<bool>,
@@ -6566,6 +6568,69 @@ pub struct BisectCandidate {
     pub no_checkout: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BisectResult {
+    pub oid: String,
+    pub term: String,
+}
+
+fn read_bisect_result(path: &Path) -> Result<Option<BisectResult>, AppError> {
+    let unavailable = || AppError::new(
+            "bisectLogUnavailable",
+            "The bisect log could not be read within its supported bounds.",
+            Some("Inspect the result with git bisect log or reset the search."),
+    );
+    let marker = operation_storage::git_entry(path, "BISECT_LOG")?;
+    let directory = marker.parent().ok_or_else(unavailable)?;
+    let log = operation_storage::read_bounded(directory, "BISECT_LOG", 256 * 1024, unavailable)?
+        .ok_or_else(unavailable)?;
+    let log = log.strip_suffix(b"\n").ok_or_else(unavailable)?;
+    // Git records the terminal result at the end of the replayable log.
+    // Do not treat a line embedded in a commit subject, an earlier result,
+    // or an incomplete write as the current result.
+    let Some(line) = log.rsplit(|byte| *byte == b'\n').next()
+        .and_then(|last| last.strip_prefix(b"# first "))
+    else { return Ok(None); };
+    let inconsistent = || AppError::new(
+        "bisectResultUnverified",
+        "The final bisect log record does not match the current Git result.",
+        Some("Refresh after other Git operations finish, or reset the search."),
+    );
+    let delimiter = b" commit: [";
+    let Some(split) = line.windows(delimiter.len()).position(|part| part == delimiter) else {
+        return Err(inconsistent());
+    };
+    let after = &line[split + delimiter.len()..];
+    let Some(end) = after.iter().position(|byte| *byte == b']') else { return Err(inconsistent()); };
+    let (Ok(term), Ok(oid)) = (std::str::from_utf8(&line[..split]), std::str::from_utf8(&after[..end])) else {
+        return Err(inconsistent());
+    };
+    if term.is_empty() || validate_commit_oid(oid).is_err() {
+        return Err(inconsistent());
+    }
+    // Corroborate the record against the exact current bad/new reference,
+    // including native sessions that use a custom term.
+    let target = format!("refs/bisect/{term}");
+    let observed = run_git(path, &["show-ref", "--verify", "--hash", &target])?;
+    if !observed.status.success() || observed.stdout.trim_ascii() != oid.as_bytes() {
+        return Err(inconsistent());
+    }
+    Ok(Some(BisectResult { oid: oid.to_owned(), term: term.to_owned() }))
+}
+
+fn add_bisect_progress(path: &Path, status: &mut RepositoryStatus) {
+    if !status.bisect_in_progress {
+        return;
+    }
+    match read_bisect_result(path) {
+        Ok(Some(result)) => status.bisect_result = Some(result),
+        Ok(None) => status.bisect_candidate = read_bisect_candidate(path).ok(),
+        // Leave Reset available if the current round cannot be verified.
+        Err(_) => (),
+    }
+}
+
 fn read_bisect_candidate(path: &Path) -> Result<BisectCandidate, AppError> {
     if let Some(oid) = merge_checkout_guard::exact_bisect_head(path)? {
         return Ok(BisectCandidate { oid, no_checkout: true });
@@ -6601,6 +6666,13 @@ pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Re
         }
     };
     validate_commit_oid(&expected.oid)?;
+    if read_bisect_result(path)?.is_some() {
+        return Err(AppError::new(
+            "bisectResultAlreadyFound",
+            "Git has already found the result for this bisect.",
+            Some("Refresh to see the result, or reset the search to finish."),
+        ));
+    }
     if &read_bisect_candidate(path)? != expected {
         return Err(AppError::new(
             "staleBisectCandidate",
@@ -8480,9 +8552,7 @@ fn read_status_with_limit_mode(
         overflow,
     );
     status.files_unscanned = (untracked_files == "no").then_some(true);
-    if status.bisect_in_progress {
-        status.bisect_candidate = read_bisect_candidate(path).ok();
-    }
+    add_bisect_progress(path, &mut status);
     Ok(status)
 }
 
@@ -8585,12 +8655,12 @@ fn read_head_status(path: &Path) -> Result<RepositoryStatus, AppError> {
         None
     };
     let operations = repository_operation_state(path)?;
-    let bisect_candidate = if operations.bisect { read_bisect_candidate(path).ok() } else { None };
-    Ok(RepositoryStatus {
+    let mut status = RepositoryStatus {
         branch,
-        bisect_candidate,
         ..operations.into_status()?
-    })
+    };
+    add_bisect_progress(path, &mut status);
+    Ok(status)
 }
 
 #[derive(Default)]
@@ -18374,6 +18444,56 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         let reset = snapshot(&repository.path).expect("snapshot reset bisect");
         assert!(!reset.status.bisect_in_progress);
         assert_eq!(reset.head_oid.as_deref(), Some(bad_oid.as_str()));
+    }
+
+    #[test]
+    fn completed_bisect_reports_the_native_result_instead_of_accepting_another_vote() {
+        for (opts, term) in [
+            (&[][..], "bad"),
+            (&["--no-checkout", "--term-old=fast", "--term-new=slow"][..], "slow"),
+        ] {
+            let repo = TestRepository::new();
+            let path = &repo.path;
+            repo.write("test.txt", "old\n");
+            stage_all(path).unwrap();
+            commit(path, "Base").unwrap();
+            let good = reference_tip(path, "HEAD").unwrap();
+            repo.write("test.txt", "new\n");
+            stage_all(path).unwrap();
+            commit(path, "First changed commit").unwrap();
+            let bad = reference_tip(path, "HEAD").unwrap();
+            let mut args = vec!["bisect", "start"];
+            args.extend(opts);
+            args.extend([bad.as_str(), good.as_str()]);
+            repo.git(&args);
+            let status = read_head_status(path).unwrap();
+            assert!(status.bisect_in_progress);
+            assert!(status.bisect_candidate.is_none());
+            assert_eq!(status.bisect_result, Some(BisectResult { oid: bad.clone(), term: term.into() }));
+            let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
+            let vote = BisectCandidate { oid: bad, no_checkout: !opts.is_empty() };
+            assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectResultAlreadyFound");
+            assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
+
+            let forged = format!("# first {term} commit: [{good}] Mismatched log record\n");
+            fs::write(path.join(".git/BISECT_LOG"), [log.as_slice(), forged.as_bytes()].concat()).unwrap();
+            let unverified = read_status(path).unwrap();
+            assert!(unverified.bisect_in_progress && unverified.bisect_result.is_none() && unverified.bisect_candidate.is_none());
+            assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectResultUnverified");
+            #[cfg(unix)]
+            {
+                let entry = path.join(".git/BISECT_LOG");
+                let elsewhere = path.join(".git/other-bisect-log");
+                fs::remove_file(&entry).unwrap();
+                fs::write(&elsewhere, &log).unwrap();
+                std::os::unix::fs::symlink(&elsewhere, &entry).unwrap();
+                assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectLogUnavailable");
+                fs::remove_file(entry).unwrap();
+            }
+            fs::write(path.join(".git/BISECT_LOG"), log).unwrap();
+            reset_bisect(path).unwrap();
+            assert!(read_head_status(path).unwrap().bisect_result.is_none());
+        }
     }
 
     #[test]

@@ -399,6 +399,37 @@ def bisect_vote_binds_the_test_candidate(driver, fixtures, report):
     report['scenarios'].append('native-bisect-vote-rejects-an-obsolete-no-checkout-candidate')
 
 
+def bisect_reports_the_first_bad_commit(driver, fixtures, report):
+    repository = fixtures.repository('owned-bisect-result', commits=2)
+    bad = fixtures.git(repository, 'rev-parse', 'HEAD')
+    good = fixtures.git(repository, 'rev-parse', 'HEAD~1')
+    fixtures.git(repository, 'switch', '--detach', good)
+    fixtures.git(repository, 'bisect', 'start', '--no-checkout', bad, good)
+    repo_id = open_ui(driver, repository)
+    status = driver.invoke('refresh_repository_status', repoId=repo_id)
+    assert status['bisectResult'] == {'oid': bad, 'term': 'bad'} and not status.get('bisectCandidate')
+    selector = '[aria-label="Git bisect result found"]'
+    assert driver.wait("return document.querySelector(" + json.dumps(selector) + ")?.querySelector('small')?.title") == bad
+    actions = driver.script("return [...document.querySelectorAll(" + json.dumps(selector + ' button') +
+                            ")].map(button => button.textContent.trim())")
+    assert actions == ['View result', 'Reset'], actions
+    before = checkout_footprint(fixtures, repository)
+    log = repository / '.git/BISECT_LOG'
+    state = log.read_bytes()
+    try:
+        driver.invoke('mark_bisect', repoId=repo_id, verdict='good', candidate={'oid': bad, 'noCheckout': True})
+    except RuntimeError as error:
+        assert json.loads(str(error))['kind'] == 'bisectResultAlreadyFound'
+    else:
+        raise AssertionError('The native command accepted another vote after declaring the result')
+    assert checkout_footprint(fixtures, repository) == before and log.read_bytes() == state
+    driver.click_scrolled_text(selector + ' button', 'Reset', wait_for_ready=True)
+    driver.wait("return !document.querySelector('.bisect-progress')")
+    assert not (repository / '.git/BISECT_START').exists()
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == good
+    report['scenarios'].append('native-bisect-result-reports-first-bad-and-prevents-extra-votes')
+
+
 def replay_recovery_preserves_ignored_files(driver, fixtures, report):
     for operation, action in [('revert', 'skip'), ('cherry-pick', 'abort')]:
         multi = operation == 'cherry-pick'
@@ -463,6 +494,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     bisect_reset_preserves_ignored_files(driver, fixtures, report)
     bisect_start_rejects_a_stale_checkout(driver, fixtures, report)
     bisect_vote_binds_the_test_candidate(driver, fixtures, report)
+    bisect_reports_the_first_bad_commit(driver, fixtures, report)
     replay_recovery_preserves_ignored_files(driver, fixtures, report)
     repository = fixtures.repository('detached-checkout-review', commits=3)
     target = fixtures.git(repository, 'rev-parse', 'HEAD^^')

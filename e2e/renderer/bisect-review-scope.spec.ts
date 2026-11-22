@@ -128,3 +128,25 @@ test('an old palette action cannot vote after a different candidate appears', as
   });
   expect(await page.evaluate(() => (window as any).__bisectVote.calls)).toEqual([]);
 });
+
+test('a found bisect result replaces the test candidate and stops offering votes', async ({ page }) => {
+  await openVote(page, true);
+  await page.evaluate(() => {
+    const state = (window as any).__bisectVote;
+    const { app, git } = state;
+    state.viewed = [];
+    app.jumpToCommit = (oid: string) => state.viewed.push(oid);
+    git.repositories.update((items: any[]) => items.map(item => item.id === git.activeRepositoryId()
+      ? { ...item, status: { ...item.status, bisectCandidate: undefined,
+        bisectResult: { oid: 'c'.repeat(40), term: 'bad' } } } : item));
+  });
+  const banner = page.getByRole('status', { name: 'Git bisect result found' });
+  await expect(banner).toContainText('First bad commit ccccccc');
+  await expect(banner).not.toContainText('Test commit');
+  for (const name of ['Good', 'Bad', 'Skip']) {
+    await expect(banner.getByRole('button', { name, exact: true })).toHaveCount(0);
+  }
+  await expect(banner.getByRole('button', { name: 'Reset', exact: true })).toBeEnabled();
+  await banner.getByRole('button', { name: 'View result', exact: true }).click();
+  expect(await page.evaluate(() => (window as any).__bisectVote.viewed)).toEqual(['c'.repeat(40)]);
+});
