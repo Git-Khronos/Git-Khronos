@@ -3560,6 +3560,12 @@ one conflicted path; filtering out only Git's `U` record is insufficient.
 The installed recap gate now exercises this overflow case. The failing
 baseline, conflict probe, and source checks are retained under
 `target/local-review/recap-status-overflow.6NLZbVz1/`.
+The exact `59f90fe` package passed 12 installed recap and six stash
+scenarios on Ubuntu 24.04. The packaged app measured the exact `+3 −1`
+unstaged recap with a 4,569,052-byte status stream. The verified report is
+`target/local-review/updater/jammy-builder/recap-status-fallback-release.DqStkysq/reports.json`,
+with package SHA-256
+`f1d40de345038ec91dc7ca5b6388d080ce573cf3d0f8f69d5c6c98b9ac9d3fb7`.
 
 An unavailable recap now offers a scoped Retry without refreshing the
 repository. It keeps a valid sibling count for the same snapshot and
@@ -3674,6 +3680,13 @@ Chromium cases and five real-Git bisect cases passed. Startup and advance
 still inherit Git's normal checkout behavior for ignored files. The new
 installed detached-checkout gate requires the no-checkout case. Source
 and renderer evidence is under `target/local-review/bisect-vote-scope.wyWXmfb4/`.
+The Debian 12 Git 2.39.5 compatibility probe found that exact
+`show-ref` rejects even a genuine loose `BISECT_HEAD`. Status, voting
+and Reset now share a bounded, literal loose-file read, with exact ref
+lookup for reftable. All five Rust bisect tests passed against both the
+Debian 12 Git binary and Git 2.53. The separate Git 2.53 reftable probe
+verified the case with no loose file. A tag named `BISECT_HEAD` does not
+substitute for the actual no-checkout candidate.
 
 ### Manual and automatic Fetch recovery
 

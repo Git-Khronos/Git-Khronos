@@ -640,6 +640,38 @@ pub(super) fn ensure_recovery_reset_preserves_ignored_files(
     })
 }
 
+pub(super) fn exact_bisect_head(path: &Path) -> Result<Option<String>, AppError> {
+    let unavailable = || AppError::new(
+        "bisectCandidateUnavailable",
+        "Git could not verify the current bisect candidate.",
+        Some("Refresh the repository before classifying a commit."),
+    );
+    // Older supported Git only accepts fully qualified refs in show-ref,
+    // even when an exact loose BISECT_HEAD exists. Read that bounded state
+    // first. Reftable may not have a loose file; use Git's exact lookup there.
+    let marker = operation_storage::git_entry(path, "BISECT_HEAD")?;
+    let directory = marker.parent().ok_or_else(unavailable)?;
+    if let Some(oid) = bounded_state_line(directory, "BISECT_HEAD", 66, unavailable)? {
+        validate_commit_oid(&oid).map_err(|_| unavailable())?;
+        return Ok(Some(oid));
+    }
+    let exists = run_git(path, &["show-ref", "--verify", "--quiet", "BISECT_HEAD"])?;
+    match exists.status.code() {
+        Some(1) => Ok(None),
+        Some(0) => {
+            let output = run_git(path, &["show-ref", "--verify", "--hash", "BISECT_HEAD"])?;
+            if !output.status.success() {
+                return Err(unavailable());
+            }
+            let value = std::str::from_utf8(&output.stdout).map_err(|_| unavailable())?;
+            let oid = value.trim_end_matches(['\r', '\n']);
+            validate_commit_oid(oid).map_err(|_| unavailable())?;
+            Ok(Some(oid.to_owned()))
+        }
+        _ => Err(unavailable()),
+    }
+}
+
 pub(super) fn ensure_bisect_reset_preserves_ignored_files(path: &Path) -> Result<(), AppError> {
     let unavailable = || {
         AppError::new(
@@ -651,16 +683,7 @@ pub(super) fn ensure_bisect_reset_preserves_ignored_files(path: &Path) -> Result
     let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
         return Ok(());
     };
-    // --no-checkout sessions do not restore a worktree. Use an exact Git
-    // ref query: a reftable repository need not have a BISECT_HEAD file.
-    let no_checkout = || {
-        let result = run_git(path, &["show-ref", "--verify", "--quiet", "BISECT_HEAD"])?;
-        match result.status.code() {
-            Some(0) => Ok(true),
-            Some(1) => Ok(false),
-            _ => Err(unavailable()),
-        }
-    };
+    let no_checkout = || exact_bisect_head(path).map(|oid| oid.is_some()).map_err(|_| unavailable());
     let marker = operation_storage::git_entry(path, "BISECT_START")?;
     let directory = marker.parent().ok_or_else(unavailable)?;
     let read_start = || bounded_state_line(directory, "BISECT_START", 4096, unavailable)?

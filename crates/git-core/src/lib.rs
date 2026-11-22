@@ -6567,26 +6567,17 @@ pub struct BisectCandidate {
 }
 
 fn read_bisect_candidate(path: &Path) -> Result<BisectCandidate, AppError> {
+    if let Some(oid) = merge_checkout_guard::exact_bisect_head(path)? {
+        return Ok(BisectCandidate { oid, no_checkout: true });
+    }
     let unavailable = || AppError::new(
         "bisectCandidateUnavailable",
         "Git could not verify the current bisect candidate.",
         Some("Refresh the repository before classifying a commit."),
     );
-    // Use exact ref queries: reftable may not have a BISECT_HEAD file
-    // and a tag of that name must not be treated as a no-checkout session.
-    let pseudo = run_git(path, &["show-ref", "--verify", "--quiet", "BISECT_HEAD"])?;
-    let (oid, no_checkout) = match pseudo.status.code() {
-        Some(0) => {
-            let output = run_git(path, &["show-ref", "--verify", "--hash", "BISECT_HEAD"])?;
-            if !output.status.success() { return Err(unavailable()); }
-            let value = std::str::from_utf8(&output.stdout).map_err(|_| unavailable())?;
-            (value.trim_end_matches(['\r', '\n']).to_owned(), true)
-        }
-        Some(1) => (reference_tip(path, "HEAD").ok_or_else(unavailable)?, false),
-        _ => return Err(unavailable()),
-    };
+    let oid = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
     validate_commit_oid(&oid).map_err(|_| unavailable())?;
-    Ok(BisectCandidate { oid, no_checkout })
+    Ok(BisectCandidate { oid, no_checkout: false })
 }
 
 pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Result<(), AppError> {
