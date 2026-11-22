@@ -122,30 +122,50 @@ def abort_apply_rebase_preserves_ignored_settings(driver, fixtures, report):
     (repository / 'fixture.txt').write_text('Topic version.\n')
     fixtures.git(repository, 'commit', '-qam', 'Change topic text')
     original = fixtures.git(repository, 'rev-parse', 'HEAD')
+    from_stash = repository / 'stashed.local'
+    from_stash.write_text('Staged before starting Rebase.\n')
+    fixtures.git(repository, 'add', '--', from_stash.name)
     stopped = subprocess.run(
-        ['git', '-C', str(repository), 'rebase', '--apply', 'upstream'],
+        ['git', '-C', str(repository), 'rebase', '--apply', '--autostash', 'upstream'],
         env=fixtures.env, capture_output=True, timeout=20,
     )
     assert stopped.returncode != 0 and (repository / '.git/rebase-apply/rebasing').is_file(), stopped.stderr
-    assert not settings.exists()
-    (repository / '.git/info/exclude').write_text('/settings.local\n')
+    autostash = repository / '.git/rebase-apply/autostash'
+    stash_before = autostash.read_bytes()
+    assert not settings.exists() and not from_stash.exists()
+    (repository / '.git/info/exclude').write_text('/settings.local\n/stashed.local\n/saved-stash\n')
     settings.write_text('Only copy of ignored local settings.\n')
+    from_stash.write_text('Only copy of text created during Rebase.\n')
+    assert fixtures.git(repository, 'check-ignore', '--', from_stash.name) == from_stash.name
     open_ui(driver, repository)
     driver.wait('return !!document.querySelector(\'.rebase-progress[aria-label="Git rebase in progress"]\')')
-    before = checkout_footprint(fixtures, repository, ('fixture.txt', settings.name))
-    driver.click_scrolled_text('.rebase-progress button', 'Abort', wait_for_ready=True)
-    driver.wait("return document.querySelector('.error-toast')?.textContent.includes('Abort Rebase could overwrite ignored local contents')")
-    assert checkout_footprint(fixtures, repository, ('fixture.txt', settings.name)) == before
-    assert (repository / '.git/rebase-apply/rebasing').is_file()
+
+    def refuse(blocked, files):
+        before = checkout_footprint(fixtures, repository, files)
+        driver.click_scrolled_text('.rebase-progress button', 'Abort', wait_for_ready=True)
+        expected = f"Abort Rebase could overwrite ignored local contents at '{blocked.name}'"
+        driver.wait("return document.querySelector('.error-toast')?.textContent.includes(" + json.dumps(expected) + ")")
+        assert checkout_footprint(fixtures, repository, files) == before
+        assert (repository / '.git/rebase-apply/rebasing').is_file()
+        assert autostash.read_bytes() == stash_before
+
+    refuse(settings, ('fixture.txt', settings.name, from_stash.name))
     saved = repository / 'saved-settings'
     settings.rename(saved)
+    refuse(from_stash, ('fixture.txt', saved.name, from_stash.name))
+    saved_stash = repository / 'saved-stash'
+    from_stash.rename(saved_stash)
     driver.click_scrolled_text('.rebase-progress button', 'Abort', wait_for_ready=True)
     driver.wait("return !document.querySelector('.rebase-progress') && document.querySelector('.activity-status')?.textContent.includes('Rebase aborted')")
     assert fixtures.git(repository, 'rev-parse', 'HEAD') == original
     assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
     assert settings.read_text() == 'Tracked settings on the original branch.\n'
     assert saved.read_text() == 'Only copy of ignored local settings.\n'
+    assert not autostash.exists()
+    assert from_stash.read_text() == 'Staged before starting Rebase.\n'
+    assert saved_stash.read_text() == 'Only copy of text created during Rebase.\n'
     report['scenarios'].append('native-abort-apply-rebase-preserves-ignored-file-and-allows-safe-retry')
+    report['scenarios'].append('native-abort-apply-rebase-preserves-ignored-autostash-file')
 
 
 def recovery_reset_preserves_ignored_files(driver, fixtures, report):

@@ -1576,6 +1576,8 @@ behavior in the [rebase](https://git-scm.com/docs/git-rebase) and
 [merge](https://git-scm.com/docs/git-merge) manuals, including Merge Abort's
 autostash restore. Independent fixtures observed what the reset and stash
 restore actually wrote against an index that excluded the ignored path.
+For Rebase Abort the same experiments established the stash's original
+base and the distinct metadata under the merge and apply backends.
 No upstream code was copied.
 
 ## Fast-forward Pull and ignored files

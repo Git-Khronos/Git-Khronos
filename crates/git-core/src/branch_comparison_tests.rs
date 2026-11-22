@@ -315,6 +315,95 @@ fn abort_rebase_preserves_ignored_data_and_uses_the_original_state_for_both_back
 }
 
 #[test]
+fn abort_rebase_preserves_ignored_files_that_autostash_would_restore() {
+    for (backend, directory) in [
+        ("--merge", "rebase-merge"),
+        ("--apply", "rebase-apply"),
+    ] {
+        let fixture = Fixture::new();
+        fixture.commit_file("conflict", "Base");
+        fixture.git(&["switch", "-c", "upstream"]);
+        fixture.commit_file("conflict", "Upstream");
+        fixture.git(&["switch", "main"]);
+        fixture.commit_file("conflict", "Current");
+        let original = fixture.git(&["rev-parse", "HEAD"]);
+        let local_copy = fixture.path().join("new.local");
+        fs::write(&local_copy, "Staged before rebase").unwrap();
+        fixture.git(&["add", "new.local"]);
+        run_mutation(
+            fixture.path(),
+            &["rebase", backend, "--autostash", "upstream"],
+            "begin owned rebase with autostash",
+        )
+        .unwrap_err();
+        let autostash = fixture.path().join(".git").join(directory).join("autostash");
+        let stash_bytes = fs::read(&autostash).unwrap();
+        let stopped = fixture.git(&["rev-parse", "HEAD"]);
+        assert_ne!(original, stopped);
+        assert!(!local_copy.exists());
+        fs::write(
+            fixture.path().join(".git/info/exclude"),
+            "/new.local\n/new.saved\n",
+        )
+        .unwrap();
+        fs::write(&local_copy, "Created during stopped rebase").unwrap();
+        let index = fs::read(fixture.path().join(".git/index")).unwrap();
+
+        fs::write(&autostash, "malformed stash object id\n").unwrap();
+        assert_eq!(
+            abort_rebase(fixture.path()).unwrap_err().kind,
+            "rebaseAbortIgnoredPathsUnverified"
+        );
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), stopped);
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        #[cfg(unix)]
+        {
+            let outside = fixture.path().join(".git").join("owned-autostash-copy");
+            fs::write(&outside, &stash_bytes).unwrap();
+            fs::remove_file(&autostash).unwrap();
+            std::os::unix::fs::symlink(&outside, &autostash).unwrap();
+            assert_eq!(
+                abort_rebase(fixture.path()).unwrap_err().kind,
+                "rebaseAbortIgnoredPathsUnverified"
+            );
+            assert_eq!(fs::read(outside).unwrap(), stash_bytes);
+            assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+            fs::remove_file(&autostash).unwrap();
+        }
+        fs::write(&autostash, &stash_bytes).unwrap();
+
+        let error = abort_rebase(fixture.path()).unwrap_err();
+        assert_eq!(error.kind, "rebaseAbortLocalPathObstruction", "{backend}");
+        assert!(error.message.contains("new.local"), "{error:?}");
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), stopped);
+        assert_eq!(fixture.git(&["rev-parse", "main"]), original);
+        assert_eq!(fs::read(&autostash).unwrap(), stash_bytes);
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read_to_string(&local_copy).unwrap(),
+            "Created during stopped rebase"
+        );
+        assert!(read_status(fixture.path()).unwrap().rebase_in_progress);
+
+        let saved = local_copy.with_extension("saved");
+        fs::rename(&local_copy, &saved).unwrap();
+        abort_rebase(fixture.path()).unwrap();
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), original);
+        assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/main");
+        assert_eq!(
+            fs::read_to_string(local_copy).unwrap(),
+            "Staged before rebase"
+        );
+        assert_eq!(
+            fs::read_to_string(saved).unwrap(),
+            "Created during stopped rebase"
+        );
+        assert!(!autostash.exists());
+        assert!(!read_status(fixture.path()).unwrap().rebase_in_progress);
+    }
+}
+
+#[test]
 fn skipping_either_rebase_backend_preserves_ignored_files_restored_from_head() {
     for backend in ["--merge", "--apply"] {
         let fixture = Fixture::new();

@@ -3384,6 +3384,16 @@ The full Git-core run passed 1,158 tests (37 existing ignored tests), and
 strict library/test Clippy passed. Subsequent installed qualification
 requires both Skip backends and the Merge Abort reset/autostash retry.
 
+Abort Rebase now checks its native autostash against its recorded original
+tip as well as checking the reset. Both backends are exercised with a
+staged addition, a later ignored file, a malformed stash ID (refused), and
+a safe retry. Installed qualification also requires the Apply-backend
+autostash collision. Direct Git experiments showed that Skip and Continue
+can also apply a stash, and a renamed directory can relocate an incoming
+file to a path not named in the stash. Those separate paths are not covered
+by the Abort check. Reproductions:
+`target/local-review/rebase-autostash-ignored.crXvbXV3/`.
+
 The exact `fa3e152` package passed 36 focused Ubuntu 24.04 installed
 scenarios: 19 application-updates, ten detached-checkout and seven
 workspace-Pull. These ran without the inherited-Git launcher checks.

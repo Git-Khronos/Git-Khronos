@@ -280,31 +280,45 @@ fn obstructing_path(
 }
 
 fn rebase_original_tip(directory: &Path) -> Result<String, AppError> {
-    let unavailable = rebase_abort_unavailable;
     // The operation's own metadata is authoritative. ORIG_HEAD can be changed
     // by Git commands that run after the rebase started.
+    rebase_state_oid(directory, "orig-head")?.ok_or_else(rebase_abort_unavailable)
+}
+
+fn rebase_state_oid(directory: &Path, name: &str) -> Result<Option<String>, AppError> {
+    let unavailable = rebase_abort_unavailable;
     #[cfg(unix)]
     let file = {
-        use rustix::fs::{Mode, OFlags, open, openat};
+        use rustix::{
+            fs::{Mode, OFlags, open, openat},
+            io::Errno,
+        };
         let directory = open(
             directory,
             OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::empty(),
         )
         .map_err(|_| unavailable())?;
-        let file = openat(
+        match openat(
             directory,
-            "orig-head",
+            name,
             OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
             Mode::empty(),
-        )
-        .map_err(|_| unavailable())?;
-        fs::File::from(file)
+        ) {
+            Ok(file) => fs::File::from(file),
+            Err(Errno::NOENT) => return Ok(None),
+            Err(_) => return Err(unavailable()),
+        }
     };
     #[cfg(not(unix))]
     let file = {
-        let path = directory.join("orig-head");
-        operation_storage::file(&path).map_err(|_| unavailable())?;
+        let path = directory.join(name);
+        if operation_storage::file(&path)
+            .map_err(|_| unavailable())?
+            .is_none()
+        {
+            return Ok(None);
+        }
         let mut opts = fs::OpenOptions::new();
         opts.read(true);
         #[cfg(windows)]
@@ -333,7 +347,7 @@ fn rebase_original_tip(directory: &Path) -> Result<String, AppError> {
         .or_else(|| text.strip_suffix('\n'))
         .unwrap_or(text);
     validate_commit_oid(oid).map_err(|_| unavailable())?;
-    Ok(oid.to_owned())
+    Ok(Some(oid.to_owned()))
 }
 
 fn restore_obstruction(
@@ -366,6 +380,22 @@ fn merge_autostash_tip(path: &Path, unavailable: Unavailable) -> Result<Option<S
     reference_tip(path, "MERGE_AUTOSTASH")
         .map(Some)
         .ok_or_else(unavailable)
+}
+
+fn same_base_autostash_obstruction(
+    path: &Path,
+    ignored: &IgnoredPaths,
+    base: &str,
+    stash: &str,
+    unavailable: Unavailable,
+) -> Result<Option<String>, AppError> {
+    // Abort restores the stash's original base before Git reapplies it.
+    // Without that anchor (e.g. after replay), Git can relocate additions
+    // through directory renames. A simple stash delta would not be enough.
+    if reference_tip(path, &format!("{stash}^1")).as_deref() != Some(base) {
+        return Err(unavailable());
+    }
+    checkout_obstruction(path, ignored, base, stash, unavailable)
 }
 
 pub(super) fn ensure_head_reset_preserves_ignored_files(
@@ -405,15 +435,11 @@ pub(super) fn ensure_head_reset_preserves_ignored_files(
             // Merge Abort reapplies its autostash after resetting. The stash
             // can add paths which the receiving commit does not contain.
             let stash = merge_autostash_tip(path, unavailable)?;
-            if let Some(stash) = &stash {
-                if reference_tip(path, &format!("{stash}^1")).as_ref() != Some(&head) {
-                    return Err(unavailable());
-                }
-                if let Some(blocked) =
-                    checkout_obstruction(path, &ignored, &head, stash, unavailable)?
-                {
-                    return Err(obstruction(blocked));
-                }
+            if let Some(stash) = &stash
+                && let Some(blocked) =
+                    same_base_autostash_obstruction(path, &ignored, &head, stash, unavailable)?
+            {
+                return Err(obstruction(blocked));
             }
             if merge_autostash_tip(path, unavailable)? != stash {
                 return Err(unavailable());
@@ -448,20 +474,31 @@ pub(super) fn ensure_rebase_abort_preserves_ignored_files(path: &Path) -> Result
     let original = rebase_original_tip(&directory)?;
     without_lazy_fetch(|| {
         let head = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
+        let stash = rebase_state_oid(&directory, "autostash")?;
+        let obstruction = |blocked: String| {
+            AppError::new(
+                "rebaseAbortLocalPathObstruction",
+                format!("Abort Rebase could overwrite ignored local contents at '{blocked}'."),
+                Some("Move the ignored file or directory out of the way, then retry Abort."),
+            )
+        };
         if let Some(blocked) = restore_obstruction(
             path,
             &ignored,
             &format!("{original}^{{commit}}"),
             unavailable,
         )? {
-            return Err(AppError::new(
-                "rebaseAbortLocalPathObstruction",
-                format!("Abort Rebase could overwrite ignored local contents at '{blocked}'."),
-                Some("Move the ignored file or directory out of the way, then retry Abort."),
-            ));
+            return Err(obstruction(blocked));
+        }
+        if let Some(stash) = &stash
+            && let Some(blocked) =
+                same_base_autostash_obstruction(path, &ignored, &original, stash, unavailable)?
+        {
+            return Err(obstruction(blocked));
         }
         if reference_tip(path, "HEAD").as_deref() != Some(&head)
             || rebase_original_tip(&directory)? != original
+            || rebase_state_oid(&directory, "autostash")? != stash
         {
             return Err(unavailable());
         }

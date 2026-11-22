@@ -754,7 +754,8 @@ checkout if needed. This check does not predict paths created during replay,
 or cover whole-history replay without a destination. Pull's separate guard
 applies only to the fast-forward path.
 Abort Rebase inspects the original tree recorded by the active rebase, not
-the mutable `ORIG_HEAD`. If restoring it could replace an ignored local file,
+the mutable `ORIG_HEAD`, and checks the native autostash against that tree.
+If either restore could replace an ignored local file,
 the app leaves both the checkout and operation in progress. Move the
 obstructing file and retry Abort. Native status recognizes the apply backend's
 rebase marker separately from `git am`; apply-based rebases get the normal
@@ -765,7 +766,8 @@ Merge Abort, including the branch workflow's Abort, checks the receiving
 tree and additions from a native autostash before resetting. A refusal
 keeps the native operation active; a branch workflow still consumes its
 command revision as before. These checks do not predict subsequent rebase
-replay or application of a rebase autostash.
+replay or where Git could apply a rebase autostash on a different base
+after Continue or Skip.
 Merge, squash, fast-forward, and rebase from the branch context menu carry a
 separate review tied to that menu opening, the repository visit, and both
 branch tips. Their labels retain the selected receiver instead of mutating

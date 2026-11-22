@@ -109,6 +109,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-local-branch-delete-refuses-a-moved-tip',
     'native-context-rebase-preserves-unreviewed-sibling-branches',
     'native-abort-apply-rebase-preserves-ignored-file-and-allows-safe-retry',
+    'native-abort-apply-rebase-preserves-ignored-autostash-file',
     'native-skip-rebase-merge-preserves-ignored-reset-file',
     'native-skip-rebase-apply-preserves-ignored-reset-file',
     'native-merge-abort-preserves-ignored-reset-and-autostash-files',
