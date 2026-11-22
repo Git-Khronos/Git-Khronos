@@ -67,6 +67,9 @@ behavioral cases during the audit; grouping does not remove any listed action.
    **Clone multiple repositories** reviews pasted Git sources and destination
    names before cloning them one at a time. Stopping does not undo completed
    checkouts. Provider-catalogue selection is still single-repository.
+   **Share clone recipe** copies selected fetch URLs and suggested folder
+   names for reuse in another workspace. It does not create an online group
+   or synchronize workspace membership.
 
 Repository files now has a flat, native-filtered view of tracked, untracked and
 ignored files with bounded pages. Empty-file creation is currently limited to
@@ -356,7 +359,7 @@ implemented in-app capability.
 | W03 | Save/switch identities, accounts, preferences and tab sets; explicitly choose local/global identity sync without silent Git or credential changes | Partial: named commit identity templates only |
 | W04 | Provide local and shared team/repository collaboration views and discovery | Discovery and implementation required |
 | W05 | Configure terminal/editor/diff/merge programs, repository setup commands and defaults | Partial: terminal profiles retain explicit launch and defaults; the former dedicated agent launcher was removed. The [external file-tool candidate](specifications/external-file-tools.md) supports reviewed editor/comparison/merge launches and separate merge save/stage/cleanup. Earlier Linux package evidence predates this removal; restart storage management and reviewed setup workflows remain open. See the [independent tool specification](specifications/configured-tools.md) |
-| W11 | Select workspace repositories for bulk clone/fetch/pull/open/locate/remove, with individual outcomes; convert local groups to shared groups explicitly | Partial: clone from pasted Git sources, fetch, pull, open, locate, reviewed close of open tabs and reviewed removal of unopened saved paths have per-item outcomes. Bulk locate opens one folder chooser per path; it does not guess mappings. Catalogue bulk selection and group conversion remain missing |
+| W11 | Select workspace repositories for bulk clone/fetch/pull/open/locate/remove, with individual outcomes; convert local groups to shared groups explicitly | Partial: clone from pasted Git sources or a portable clone recipe, fetch, pull, open, locate, reviewed close of open tabs and reviewed removal of unopened saved paths have per-item outcomes. Bulk locate opens one folder chooser per path; it does not guess mappings. Catalogue bulk selection and hosted shared-group conversion remain missing |
 
 ## UX, platform and delivery requirements
 

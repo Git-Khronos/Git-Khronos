@@ -899,6 +899,16 @@ existing repository-creation recovery saves its location in the originating
 workspace rather than opening a tab in the unowned view. No queue or retry
 intent survives restart.
 
+**Share clone recipe** snapshots the open workspace rows and offers only
+shareable fetch URLs. Copy rechecks the selected repository and URL against
+the latest visible state before writing the clipboard. The version 1 JSON
+recipe carries only a format marker, version, and source/folder pairs. It
+does not carry local checkout paths, push destinations, workspace names,
+or authentication state. The import rejects unsupported fields, nonportable
+URLs, and invalid or colliding folder names as a whole. Pasting or reviewing
+a recipe never starts Git; the recipient chooses a parent and explicitly
+confirms using the same clone queue as a plain list.
+
 ### Deferred task-dialog shell
 
 Nine on-demand task dialogs share an eager loading/error shell. It offers

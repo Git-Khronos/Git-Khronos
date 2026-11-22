@@ -4039,6 +4039,21 @@ headroom. Build and comparison receipts:
 `target/local-review/shared-dialog-loading.GrICc3Y3/`.
 All 233 focused Chromium cases passed, including held, failed, and dismissed
 chunks and the existing workspace, integration, and file-dialog flows.
+
+The Ubuntu 24.04 installer from `ed901aa` passed 11 focused installed
+scenarios across workspace clone, saved status, and branch workflow recovery.
+SHA-256: `9c38c6272088eb09b4a38f04e60d32932927eccddd4668b79ef300ebd3412098`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/shared-dialog-loading-release.Nxn3pd0y/reports.json`.
+
+### Portable workspace clone recipes
+
+The production build retained the previous 1,306,960-byte initial asset
+total. The recipe has no eager startup code or new native permissions.
+The 317 desktop unit tests and 115 focused Chromium cases passed. Tests
+cover a recipe round trip, selected fetch URLs, an unchanged active checkout,
+stale-remote and clipboard refusal, and no dispatch before clone confirmation.
+Receipts: `target/local-review/workspace-clone-recipe.LDXZBXJy/`.
 This check does not include the later external-fetch watcher regression.
 
 ### Deferred Worktree and Submodule sidebar actions

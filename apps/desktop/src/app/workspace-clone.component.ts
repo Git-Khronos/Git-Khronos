@@ -1,23 +1,12 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, computed, type ElementRef, inject, Injector, input, OnDestroy, signal, viewChild } from '@angular/core';
 import { GitKhronosService } from './git-khronos.service';
+import { cloneFolderKey, createCloneRecipe, MAX_CLONES, MAX_RECIPE_TEXT, portableCloneSource, readCloneRecipe,
+  suggestedCloneFolder, type CloneTarget, validCloneFolder } from './workspace-clone-recipe';
 
-const MAX_CLONES = 20;
-type CloneTarget = { source: string; folder: string };
 type CloneRow = CloneTarget & { state: string; detail?: string | null };
 type CloneOwner = { workspaceId: string };
-
-function suggestedFolder(source: string): string {
-  const path = /^[a-z][\w+.-]*:\/\//i.test(source)
-    ? source.replace(/^[a-z][\w+.-]*:\/\/[^/]*(\/|$)/i, '').split(/[?#]/, 1)[0]
-    : source.replace(/^[^/\\:]+:(?![/\\])/, '');
-  return path.replace(/[/\\]+$/, '').split(/[/\\]/).at(-1)?.replace(/\.git$/i, '') ?? '';
-}
-
-function validFolder(folder: string): boolean {
-  return !!folder && folder !== '.' && folder !== '..' && folder.length <= 255
-    && !/[<>:"/\\|?*\u0000-\u001f]/.test(folder) && !folder.endsWith('.')
-    && !/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(folder);
-}
+type RecipeRow = { id: string; path: string; label: string; remotes: { name: string; fetchUrl: string }[];
+  remoteName: string; selected: boolean };
 
 function containsCredentials(source: string): boolean {
   const match = /^(https?|ssh):\/\/([^/]+)/i.exec(source);
@@ -29,15 +18,50 @@ function containsCredentials(source: string): boolean {
   selector: 'gc-workspace-clone',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <button #start type="button" [disabled]="disabled() || git.browserPreview()" [attr.aria-expanded]="phase() !== 'closed'"
-      (click)="toggle()">Clone multiple repositories</button>
-    @if (phase() !== 'closed') {
+    <div class="actions">
+      <button #start type="button" [disabled]="disabled() || git.browserPreview() || phase() === 'export'" [attr.aria-expanded]="phase() !== 'closed' && phase() !== 'export'"
+        (click)="toggle()">Clone multiple repositories</button>
+      <button #share type="button" [disabled]="disabled() || git.browserPreview() || (phase() !== 'closed' && phase() !== 'export')"
+        [attr.aria-expanded]="phase() === 'export'" [attr.aria-disabled]="copying()" (click)="toggleRecipe()">Share clone recipe…</button>
+    </div>
+    @if (phase() === 'export') {
+      <section aria-label="Share clone recipe">
+        <h3 #heading tabindex="-1">Share clone recipe</h3>
+        <p>Choose up to {{ limit }} open repositories and their fetch remotes. Only the selected URLs and suggested folder names
+          are copied, not local checkout paths, push URLs, or separate credentials. Review private URLs before sharing. Nothing is uploaded.</p>
+        <ul class="recipe-rows">
+          @for (row of recipeRows(); track row.id) {
+            <li>
+              <label><input type="checkbox" [checked]="row.selected" [disabled]="!row.remotes.length || copying()"
+                (change)="setRecipeRow(row.id, { selected: $any($event.target).checked })" /> Include {{ row.label }}</label>
+              @if (row.remotes.length) {
+                <label>Fetch remote for {{ row.label }}
+                  <select [disabled]="!row.selected || copying()"
+                    (change)="setRecipeRow(row.id, { remoteName: $any($event.target).value })">
+                    @for (remote of row.remotes; track remote.name) { <option [value]="remote.name" [selected]="remote.name === row.remoteName">{{ remote.name }} · {{ remote.fetchUrl }}</option> }
+                  </select>
+                </label>
+              } @else { <small>No shareable HTTPS or SSH fetch URL.</small> }
+            </li>
+          } @empty { <li>Open repositories with remotes to make a recipe.</li> }
+        </ul>
+        @if (recipeCount() > limit) { <p role="status">Select no more than {{ limit }} repositories.</p> }
+        @if (recipeText(); as recipe) {
+          <label for="workspace-clone-recipe">Recipe preview</label>
+          <textarea id="workspace-clone-recipe" readonly rows="7" [value]="recipe"></textarea>
+          <p>Paste this recipe into <strong>Clone multiple repositories</strong> to review and clone it on another machine.</p>
+          <button type="button" [disabled]="disabled()" [attr.aria-disabled]="copying()" (click)="copyRecipe()">Copy clone recipe ({{ recipeCount() }})</button>
+        }
+        @if (error()) { <p role="alert">{{ error() }}</p> }
+        @if (notice()) { <p role="status">{{ notice() }}</p> }
+      </section>
+    } @else if (phase() !== 'closed') {
       <section aria-label="Clone multiple repositories">
         <h3 #heading tabindex="-1">Clone multiple repositories</h3>
         @if (phase() === 'edit') {
-          <p>Paste up to {{ limit }} repository URLs or local paths, one per line. All clones use the remote’s default branch and do not initialize submodules.</p>
+          <p>Paste a Git Khronos clone recipe, or up to {{ limit }} repository URLs or local paths, one per line. All clones use the remote’s default branch and do not initialize submodules.</p>
           <label for="workspace-clone-sources">Repository URLs or paths</label>
-          <textarea id="workspace-clone-sources" #sources rows="5" maxlength="40960" [value]="sourceText()" (input)="setSources(sources.value)"></textarea>
+          <textarea id="workspace-clone-sources" #sources rows="5" [maxLength]="textLimit" [value]="sourceText()" (input)="setSources(sources.value)"></textarea>
           <label for="workspace-clone-parent">Destination parent folder</label>
           <div class="actions"><input id="workspace-clone-parent" readonly [value]="parent()" /><button type="button"
             [disabled]="picking() || disabled()" (click)="chooseParent()">Choose destination…</button></div>
@@ -79,7 +103,8 @@ function containsCredentials(source: string): boolean {
     p, label, li, small, code { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
     li + li { margin-top: 8px; } li small { display: block; }
     .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-    input, textarea, button { color: var(--text); background: var(--inspector-row); border: 1px solid var(--inspector-divider); box-sizing: border-box; min-height: 32px; padding: 6px 10px; }
+    input, select, textarea, button { color: var(--text); background: var(--inspector-row); border: 1px solid var(--inspector-divider); box-sizing: border-box; min-height: 32px; padding: 6px 10px; }
+    .recipe-rows { padding-inline-start: 20px; } .recipe-rows select { max-width: 100%; }
     textarea { width: 100%; margin: 4px 0 8px; resize: vertical; } input { max-width: 100%; }
     .actions input { flex: 1 1 220px; } button { cursor: pointer; }
     button:disabled, button[aria-disabled=true] { opacity: .5; cursor: default; } [role=alert] { color: var(--danger); }
@@ -90,13 +115,15 @@ export class WorkspaceCloneComponent implements OnDestroy {
   protected readonly git = inject(GitKhronosService);
   private readonly injector = inject(Injector);
   private readonly start = viewChild<ElementRef<HTMLButtonElement>>('start');
+  private readonly share = viewChild<ElementRef<HTMLButtonElement>>('share');
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly progress = viewChild<ElementRef<HTMLElement>>('progress');
 
   readonly disabled = input(false);
   readonly owner = input.required<() => CloneOwner | null>();
   protected readonly limit = MAX_CLONES;
-  protected readonly phase = signal<'closed' | 'edit' | 'review' | 'running' | 'results'>('closed');
+  protected readonly textLimit = MAX_RECIPE_TEXT;
+  protected readonly phase = signal<'closed' | 'export' | 'edit' | 'review' | 'running' | 'results'>('closed');
   protected readonly sourceText = signal('');
   protected readonly parent = signal('');
   protected readonly picking = signal(false);
@@ -105,14 +132,18 @@ export class WorkspaceCloneComponent implements OnDestroy {
   protected readonly results = signal<CloneRow[]>([]);
   protected readonly notice = signal('');
   protected readonly stopRequested = signal(false);
+  protected readonly recipeRows = signal<RecipeRow[]>([]);
+  protected readonly recipeCount = computed(() => this.recipeRows().filter(row => row.selected).length);
+  protected readonly recipeText = computed(() => createCloneRecipe(this.recipeSources(this.recipeRows())));
+  protected readonly copying = signal(false);
   private visit = 0;
 
   protected readonly planError = computed(() => {
     const names = new Set<string>();
     for (const [index, target] of this.targets().entries()) {
       const folder = target.folder.trim();
-      if (!validFolder(folder)) return `Enter a single folder name for repository ${index + 1}.`;
-      const key = folder.normalize('NFC').toLowerCase();
+      if (!validCloneFolder(folder)) return `Enter a single folder name for repository ${index + 1}.`;
+      const key = cloneFolderKey(folder);
       if (names.has(key)) return 'Each clone needs a different folder name.';
       names.add(key);
     }
@@ -120,7 +151,7 @@ export class WorkspaceCloneComponent implements OnDestroy {
   });
 
   protected toggle(): void {
-    if (this.disabled() || this.git.browserPreview() || !this.owner()()) return;
+    if (this.disabled() || this.git.browserPreview() || !this.owner()() || this.phase() === 'export') return;
     if (this.phase() === 'closed') {
       this.phase.set('edit');
       this.focus(this.heading);
@@ -129,6 +160,64 @@ export class WorkspaceCloneComponent implements OnDestroy {
       this.phase.set('closed');
       this.focus(this.start);
     }
+  }
+
+  protected toggleRecipe(): void {
+    if (this.disabled() || this.git.browserPreview() || !this.owner()() || this.copying()) return;
+    if (this.phase() === 'export') {
+      this.retire();
+      this.phase.set('closed');
+      this.focus(this.share);
+    } else if (this.phase() === 'closed') {
+      const rows = this.git.repositories().map(repository => {
+        const remotes = repository.remotes.filter(remote => portableCloneSource(remote.fetchUrl))
+          .map(({ name, fetchUrl }) => ({ name, fetchUrl }));
+        return { id: repository.id, path: repository.path, label: this.git.repositoryLabel(repository), remotes,
+          remoteName: remotes.find(remote => remote.name === 'origin')?.name ?? remotes[0]?.name ?? '', selected: !!remotes.length };
+      });
+      this.recipeRows.set(rows.filter(row => row.selected).length <= MAX_CLONES ? rows : rows.map(row => ({ ...row, selected: false })));
+      this.error.set('');
+      this.notice.set('');
+      this.phase.set('export');
+      this.focus(this.heading);
+    }
+  }
+
+  protected setRecipeRow(id: string, value: Partial<Pick<RecipeRow, 'selected' | 'remoteName'>>): void {
+    if (this.phase() !== 'export' || this.copying()) return;
+    this.recipeRows.update(rows => rows.map(row => row.id === id ? { ...row, ...value } : row));
+    this.error.set('');
+    this.notice.set('');
+  }
+
+  protected async copyRecipe(): Promise<void> {
+    if (this.phase() !== 'export' || this.disabled() || this.git.browserPreview() || this.copying() || !this.owner()()) return;
+    const recipe = this.recipeText();
+    if (!recipe) return;
+    const current = this.currentVisit();
+    const repositories = this.git.repositories();
+    const stale = this.recipeRows().some(row => row.selected && !repositories.some(repository =>
+      repository.id === row.id && repository.path === row.path && repository.remotes.some(remote =>
+        remote.name === row.remoteName && remote.fetchUrl === row.remotes.find(item => item.name === row.remoteName)?.fetchUrl)));
+    if (stale) {
+      this.error.set('A selected remote changed. Close and reopen this recipe to review the latest URLs.');
+      return;
+    }
+    this.copying.set(true);
+    this.error.set('');
+    this.notice.set('');
+    try {
+      await navigator.clipboard.writeText(recipe);
+      if (current()) this.notice.set('Clone recipe copied.');
+    } catch {
+      if (current()) this.error.set('Could not copy automatically. Select the recipe preview and copy it manually.');
+    } finally {
+      if (current()) this.copying.set(false);
+    }
+  }
+
+  private recipeSources(rows: RecipeRow[]): string[] {
+    return rows.filter(row => row.selected).map(row => row.remotes.find(remote => remote.name === row.remoteName)?.fetchUrl ?? '');
   }
 
   protected setSources(value: string): void {
@@ -150,7 +239,17 @@ export class WorkspaceCloneComponent implements OnDestroy {
 
   protected review(): void {
     if (!this.canStart('edit') || this.picking() || !this.parent()) return;
-    const sources = this.sourceText().split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const input = this.sourceText().trim();
+    if (input.startsWith('{')) {
+      const recipe = readCloneRecipe(input);
+      if ('error' in recipe) {
+        this.error.set(recipe.error);
+        return;
+      }
+      this.showReview(recipe.targets);
+      return;
+    }
+    const sources = input.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (!sources.length || sources.length > MAX_CLONES) {
       this.error.set(`Enter between 1 and ${MAX_CLONES} repository URLs or paths.`);
       return;
@@ -165,8 +264,12 @@ export class WorkspaceCloneComponent implements OnDestroy {
       this.error.set(`Remove embedded credentials from repository ${credential + 1}. Git will ask for credentials if needed.`);
       return;
     }
+    this.showReview(sources.map(source => ({ source, folder: suggestedCloneFolder(source) })));
+  }
+
+  private showReview(targets: CloneTarget[]): void {
     this.error.set('');
-    this.targets.set(sources.map(source => ({ source, folder: suggestedFolder(source) })));
+    this.targets.set(targets);
     this.phase.set('review');
     this.focus(this.heading);
   }
@@ -237,6 +340,7 @@ export class WorkspaceCloneComponent implements OnDestroy {
   retire(): void {
     this.visit++;
     this.picking.set(false);
+    this.copying.set(false);
   }
 
   ngOnDestroy(): void { this.retire(); }

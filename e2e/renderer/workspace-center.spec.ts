@@ -212,6 +212,104 @@ test('workspace clones do not review or dispatch input with embedded credentials
   expect(await cloneCalls(page)).toHaveLength(0);
 });
 
+async function openCloneRecipe(page: Page, denyClipboard = false) {
+  await prepareWorkspaceClone(page);
+  await page.evaluate(deny => {
+    const host = window as any;
+    const { git } = host.ng.getComponent(document.querySelector('gc-root'));
+    const fixture = host.__center;
+    fixture.clipboard = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => {
+      if (deny) throw new Error('Clipboard denied by fixture');
+      fixture.clipboard.push(text);
+    } } });
+    git.repositories.set([
+      { ...fixture.first, remotes: [
+        { name: 'mirror', fetchUrl: 'ssh://git@mirror.example.test:2222/team/app.git', pushUrl: 'ssh://git@push.example.test/private' },
+        { name: 'origin', fetchUrl: 'https://git.example.test/team/app.git', pushUrl: 'https://push.example.test/private' },
+        { name: 'local', fetchUrl: '/home/user/private-checkout', pushUrl: '/home/user/private-checkout' },
+        { name: 'credential', fetchUrl: 'https://token@git.example.test/team/app.git', pushUrl: '' },
+      ] },
+      { ...fixture.second, remotes: [{ name: 'origin', fetchUrl: 'git@git.example.test:tools/app.git', pushUrl: 'https://push.example.test/other' }] },
+      { ...fixture.second, path: '/owned/unshareable', id: 'no-share', name: 'Unshareable',
+        remotes: [{ name: 'origin', fetchUrl: '/home/user/private-checkout', pushUrl: 'https://push.example.test/other' }] },
+    ]);
+  }, denyClipboard);
+  const dialog = await open(page);
+  await dialog.getByRole('button', { name: 'Share clone recipe…' }).click();
+  return { dialog, recipe: dialog.getByRole('region', { name: 'Share clone recipe' }) };
+}
+
+test('shares selected fetch remotes and imports the preview without auto-starting workspace clones', async ({ page }) => {
+  const { dialog, recipe } = await openCloneRecipe(page);
+  await expect(recipe.getByRole('checkbox', { name: 'Include Unshareable' })).toBeDisabled();
+  const fetch = recipe.getByLabel('Fetch remote for Alpha');
+  await expect(fetch).toHaveValue('origin');
+  await expect(fetch.getByRole('option')).toHaveCount(2);
+  await fetch.selectOption('mirror');
+  const beta = recipe.getByRole('checkbox', { name: 'Include Beta' });
+  await beta.uncheck();
+  await expect(recipe.getByRole('button', { name: 'Copy clone recipe (1)' })).toBeEnabled();
+  await beta.check();
+  const body = await recipe.getByLabel('Recipe preview').inputValue();
+  expect(JSON.parse(body)).toEqual({ format: 'git-khronos.clone-recipe', version: 1, repositories: [
+    { source: 'ssh://git@mirror.example.test:2222/team/app.git', folder: 'app' },
+    { source: 'git@git.example.test:tools/app.git', folder: 'app-2' },
+  ] });
+  await recipe.getByRole('button', { name: 'Copy clone recipe (2)' }).click();
+  await expect(recipe.getByRole('status')).toHaveText('Clone recipe copied.');
+  expect(await page.evaluate(() => (window as any).__center.clipboard)).toEqual([body]);
+  expect(await cloneCalls(page)).toHaveLength(0);
+  await dialog.getByRole('button', { name: 'Share clone recipe…' }).click();
+  await dialog.getByRole('button', { name: 'Clone multiple repositories', exact: true }).click();
+  const clone = dialog.getByRole('region', { name: 'Clone multiple repositories' });
+  await clone.getByLabel('Repository URLs or paths').fill(body);
+  await clone.getByRole('button', { name: 'Choose destination…' }).click();
+  await clone.getByRole('button', { name: 'Review clones' }).click();
+  await expect(clone.getByLabel('Folder for repository 2')).toHaveValue('app-2');
+  expect(await cloneCalls(page)).toHaveLength(0);
+  await clone.getByRole('button', { name: 'Clone 2 repositories' }).click();
+  await expect(clone.getByRole('status')).toHaveText('Cloned 2 of 2 repositories.');
+  expect((await cloneCalls(page)).map(({ remote, folder }) => [remote, folder])).toEqual([
+    ['ssh://git@mirror.example.test:2222/team/app.git', 'app'], ['git@git.example.test:tools/app.git', 'app-2'],
+  ]);
+});
+
+test('keeps the clone recipe preview usable when the clipboard denies the write', async ({ page }) => {
+  const { recipe } = await openCloneRecipe(page, true);
+  const preview = recipe.getByLabel('Recipe preview');
+  const body = await preview.inputValue();
+  await recipe.getByRole('button', { name: 'Copy clone recipe (2)' }).click();
+  await expect(recipe.getByRole('alert')).toContainText('copy it manually');
+  await expect(preview).toHaveValue(body);
+  expect(await cloneCalls(page)).toHaveLength(0);
+});
+
+test('refuses to copy a clone recipe when a selected fetch remote has changed', async ({ page }) => {
+  const { recipe } = await openCloneRecipe(page);
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.repositories.update((rows: any[]) => rows.map(row => row.name === 'Alpha' ? { ...row, remotes: [] } : row));
+  });
+  await recipe.getByRole('button', { name: 'Copy clone recipe (2)' }).click();
+  await expect(recipe.getByRole('alert')).toContainText('A selected remote changed.');
+  expect(await page.evaluate(() => (window as any).__center.clipboard)).toEqual([]);
+});
+
+test('rejects a clone recipe with an unsafe entry before any repository is cloned', async ({ page }) => {
+  await prepareWorkspaceClone(page);
+  const body = (source: string, folder: string) => JSON.stringify({ format: 'git-khronos.clone-recipe', version: 1, repositories: [
+    { source: 'https://git.example.test/project.git', folder: 'project' }, { source, folder },
+  ] });
+  const form = await reviewWorkspaceClones(page, body('file:///home/user/private', 'private'));
+  await expect(form.getByRole('alert')).toContainText('Recipe repository 2 needs a shareable HTTPS or SSH URL');
+  await form.getByLabel('Repository URLs or paths').fill(body('ssh://git@git.example.test/private.git', '../outside'));
+  await form.getByRole('button', { name: 'Review clones' }).click();
+  await expect(form.getByRole('alert')).toContainText('a single folder name');
+  await expect(form.getByRole('button', { name: 'Clone 2 repositories' })).toHaveCount(0);
+  expect(await cloneCalls(page)).toHaveLength(0);
+});
+
 test('reopens a closed tab in its own workspace and original saved slot', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;

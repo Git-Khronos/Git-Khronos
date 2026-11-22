@@ -5,6 +5,49 @@ from native_folder_picker import respond_to_owned_picker
 from native_worktree_scenarios import checkout_footprint
 
 
+def workspace_clone_recipe(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    active = fixtures.repository('recipe-active', commits=2)
+    origin = 'https://git.example.test/fixtures/portable-project.git'
+    fixtures.git(active, 'remote', 'add', 'origin', origin)
+    fixtures.git(active, 'remote', 'set-url', '--push', 'origin', 'ssh://git@push.example.test/private-push.git')
+    fixtures.git(active, 'remote', 'add', 'local', str(fixtures.root / 'private-local-checkout'))
+    fixtures.git(active, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+    destination = fixtures.root / 'home' / 'recipe-clones'
+    destination.mkdir()
+    before = checkout_footprint(fixtures, active)
+    repo_id = open_ui(driver, active)
+    driver.wait("""return !!document.querySelector('[aria-label="Edit origin remote"]')""", 40)
+    driver.click_visible('.workspace-toggle')
+    driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
+    buttons = 'gc-workspace-clone button'
+    driver.click_scrolled_text(buttons, 'Share clone recipe…', wait_for_ready=True)
+    recipe_text = driver.wait("return document.getElementById('workspace-clone-recipe')?.value")
+    assert json.loads(recipe_text) == {'format': 'git-khronos.clone-recipe', 'version': 1,
+                                       'repositories': [{'source': origin, 'folder': 'portable-project'}]}
+    driver.click_scrolled_text(buttons, 'Share clone recipe…', wait_for_ready=True)
+    driver.click_scrolled_text(buttons, 'Clone multiple repositories', wait_for_ready=True)
+    driver.wait('return !!document.querySelector("#workspace-clone-sources")')
+    driver.script("""
+      const field = document.getElementById('workspace-clone-sources');
+      field.value = arguments[0];
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    """, recipe_text)
+    driver.click_scrolled_text(buttons, 'Choose destination…', wait_for_ready=True)
+    picker = respond_to_owned_picker(driver.owned_display, driver.owned_session_application_pid,
+                                     'Choose a destination for the workspace clones', fixtures.root, destination)
+    driver.click_scrolled_text(buttons, 'Review clones', wait_for_ready=True)
+    driver.wait("""return document.querySelector('gc-workspace-clone ol li input')?.value === 'portable-project'
+        && document.querySelector('gc-workspace-clone ol li code')?.textContent === """ + json.dumps(origin))
+    assert not list(destination.iterdir())
+    driver.wait('return document.querySelector(".status-repository-path")?.textContent.trim() === ' + json.dumps(str(active)))
+    assert checkout_footprint(fixtures, active) == before
+    report['workspaceCloneRecipe'] = {'onlyReviewedFetchSource': True, 'destinationStillEmpty': True, 'picker': picker}
+    report['scenarios'].append('native-workspace-clone-recipe-round-trips-reviewed-remote-without-starting-clone')
+    return active, repo_id
+
+
 def workspace_clone(driver, fixtures, report):
     from native_acceptance import open_ui
 
