@@ -249,6 +249,17 @@ Verification is not source authentication; pack objects are checked during fetch
 Owned real-Git fixtures define safety and refusal behavior. No external source
 code, assets or documentation prose copied.
 
+## Committed source ZIP
+
+- [Git archive manual](https://git-scm.com/docs/git-archive): ZIP format,
+  commit comments, path prefixes, attribute handling, and configurable tar
+  filters. These define the CLI boundary; no external code was copied.
+
+The archive is made in isolated Git metadata with the original object
+database available as a read-only alternate. A real-Git configuration probe
+confirmed that a custom `tar.zip.command` in a source repository can replace
+the default ZIP writer. The app does not run the export in that configuration.
+
 ## Complete diff patch exchange
 
 Sources:

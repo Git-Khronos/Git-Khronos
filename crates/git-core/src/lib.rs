@@ -192,6 +192,9 @@ pub use hosting_writes::{
     execute_hosted_write, prepare_hosted_write,
 };
 mod merge_checkout_guard;
+mod isolated_git;
+mod source_zip;
+pub use source_zip::export_source_zip;
 mod merge_preview;
 pub use merge_preview::{MergePreview, MergePreviewRequest, preview_merge};
 mod merge_rebase;

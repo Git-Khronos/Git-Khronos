@@ -4078,6 +4078,27 @@ refusals, missing prerequisites, binary history, and merge topology with a
 local replace ref. The production build and 33 focused Chromium cases
 passed, including stale-range refusal while the save picker is held.
 Receipts: `target/local-review/incremental-bundle.4BCqljtf/`.
+
+The Ubuntu 24.04 installer from `0ba82e7` passed seven focused scenarios,
+including the real incremental review and save picker, verification of a
+missing prerequisite, and import of the exact tip into a new recovery ref.
+SHA-256: `f9d1ab8b1e2282df19f56b0cf020baee37008f22956d40f2fb7fcadf856dae43`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/incremental-bundle-release.5nXSg4TY/reports.json`.
+
+### Export one commit's source ZIP
+
+The single-commit action opens a native save picker with the selected commit
+ID in the title. A bounded, cancellable offline export writes only a new file
+outside the checkout and Git metadata. It honors committed export attributes,
+not local archive filters, replacement refs, or working-tree attributes.
+The ZIP has no Git history or uncommitted files and does not materialize
+submodule contents or cached LFS objects.
+
+Four source ZIP tests passed on Git 2.53 and 2.39.5, including SHA-256 and
+shallow source commits. The production build, 28 focused Chromium tests,
+and 10 native merge-preview regression tests passed. Receipts:
+`target/local-review/source-zip.0PKLtjMX/`.
 This check does not include the later external-fetch watcher regression.
 
 ### Deferred Worktree and Submodule sidebar actions

@@ -3568,6 +3568,7 @@ export class AppComponent implements OnInit, OnDestroy {
     requestHistoryAction: this.requestHistoryAction.bind(this),
     requestReferenceAction: this.requestReferenceAction.bind(this),
     requestStoredReferenceDelete: this.requestStoredReferenceDelete.bind(this),
+    saveContextCommitSourceZip: this.saveContextCommitSourceZip.bind(this),
     shareRepositoryContext: this.shareRepositoryContext.bind(this),
     shortOid: this.shortOid.bind(this),
     soloContextBranch: this.soloContextBranch.bind(this),
@@ -12742,6 +12743,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!menu || menu.kind !== 'commit' || menu.oids.length !== 1) return;
     this.actionOverlays.close('context');
     this.startWorkingTreeComparison(menu.oid);
+  }
+
+  protected saveContextCommitSourceZip(request: ContextMenuState): void {
+    const repo = this.git.repository();
+    if (!repo || repo.id !== request.repositoryId || this.git.busy() || this.git.browserPreview() || this.contextMenu() !== request
+      || request.kind !== 'commit' || request.oids.length !== 1 || request.oids[0] !== request.oid) return;
+    this.dismissGraphActionMenu(true);
+    void this.git.saveCommitSourceZip(repo.id, request.oid);
   }
 
   protected compareContextReferenceWithWorkingTree(): void {

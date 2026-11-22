@@ -10,7 +10,7 @@ import { Injectable, computed, signal, type OnDestroy } from '@angular/core';
 import { isTauri } from '@tauri-apps/api/core';
 import { ipc, type BranchComparison } from '@git-khronos/contracts';
 import { invokeCommand, type SnapshotCommand, type StatusCommand, type MutationOptions, type CommandArgs } from '@git-khronos/contracts';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import type {
   BisectCandidate,
   BisectResult,
@@ -734,6 +734,25 @@ export class GitKhronosService implements OnDestroy {
       if (current()) this.error.set(this.formatError(error));
       return null;
     }
+  }
+
+  async saveCommitSourceZip(repositoryId: string, oid: string): Promise<void> {
+    if (this.busy() || this.browserPreview() || repositoryId !== this.activeRepositoryId()
+      || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(oid)) return;
+    const scope = this.activeRepositoryReadScope();
+    const current = () => this.activeRepositoryReadScope() === scope;
+    const short = oid.slice(0, 12);
+    const operationId = crypto.randomUUID();
+    await this.run('Choosing a source ZIP destination…', async report => {
+      if (!current()) return;
+      const destination = await save({ title: `Save committed files from ${short} as ZIP`,
+        defaultPath: `source-${short}.zip`, filters: [{ name: 'ZIP archive', extensions: ['zip'] }] });
+      if (!destination) { report('Source ZIP cancelled; no file written'); return; }
+      if (!current()) { report('Repository changed; no source ZIP written'); return; }
+      report(`Exporting committed files from ${short}…`);
+      const bytes = await ipc.export_commit_source_zip({ repoId: repositoryId, oid, destination, operationId });
+      report(`Saved source ZIP for ${short} (${bytes} bytes) to ${destination}`);
+    }, repositoryId, operationId, false, false, { announceFailure: current });
   }
 
   openRepository(path: string, replacement?: SavedRepositoryReplacement, owner?: () => boolean): Promise<OpenRepositoryResult> {

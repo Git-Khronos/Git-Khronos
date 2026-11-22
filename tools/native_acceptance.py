@@ -1195,7 +1195,7 @@ def main():
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
         "workspace-pull-upstreams", "pull-submodule-scope",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
-        "stash-selection", "patch-export", "bundle-incremental-export", "tracked-file-search", "diff-line-selection",
+        "stash-selection", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
@@ -1223,7 +1223,7 @@ def main():
         args.package = ROOT / "target/release/bundle/deb" / expected_package_name
     workspace_picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate", "workspace-locate-nearby")
     owned_picker_suite = workspace_picker_suite or args.suite in (
-        "repository-creation-scope", "workspace-clone", "workspace-clone-recipe", "bundle-incremental-export",
+        "repository-creation-scope", "workspace-clone", "workspace-clone-recipe", "bundle-incremental-export", "commit-source-zip",
     )
     if owned_picker_suite and not args.headless:
         parser.error(f"{args.suite} requires --headless (private Xvfb)")
@@ -1444,6 +1444,9 @@ def main():
             elif args.suite == "bundle-incremental-export":
                 from native_incremental_bundle_scenarios import incremental_bundle_export
                 repository, repo_id = incremental_bundle_export(driver, fixtures, report)
+            elif args.suite == "commit-source-zip":
+                from native_source_zip_scenarios import source_zip
+                repository, repo_id = source_zip(driver, fixtures, report)
             elif args.suite == "tracked-file-search":
                 from native_tracked_file_search_scenarios import deleted_file_history_from_exact_path, tracked_file_search_during_merge
                 tracked_file_search_during_merge(driver, fixtures, report)

@@ -1,4 +1,5 @@
 use super::*;
+use isolated_git::IsolatedGit;
 
 const OUTPUT_LIMIT: usize = 1024 * 1024;
 
@@ -113,51 +114,16 @@ fn current(
     Ok(())
 }
 
-struct Scratch(PathBuf);
+struct Scratch(IsolatedGit);
 impl Scratch {
     fn new() -> Result<Self, AppError> {
-        let mut random = [0; 16];
-        getrandom::fill(&mut random).map_err(|_| incomplete())?;
-        let name = random
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>();
-        let path = std::env::temp_dir().join(format!("git-khronos-merge-preview-{name}"));
-        let mut builder = fs::DirBuilder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::DirBuilderExt;
-            builder.mode(0o700);
-        }
-        builder.create(&path).map_err(io_error)?;
-        Ok(Self(path))
-    }
-    fn command(&self, args: &[&str]) -> Command {
-        let mut command = Command::new("git");
-        command.arg("-C").arg(&self.0).args(args);
-        // The isolated repository must not inherit object/index redirection,
-        // config injection, replacement refs, attributes or executable drivers.
-        for (name, _) in std::env::vars_os() {
-            if name.to_string_lossy().starts_with("GIT_") {
-                command.env_remove(name);
-            }
-        }
-        command
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", self.0.join("empty-config"))
-            .env("GIT_ATTR_NOSYSTEM", "1")
-            .env("GIT_NO_LAZY_FETCH", "1")
-            .env("GIT_OPTIONAL_LOCKS", "0")
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("LC_ALL", "C")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        configure_process_tree(&mut command);
-        command
+        IsolatedGit::new("merge-preview")
+            .map(Self)
+            .map_err(io_error)
     }
     fn run(&self, args: &[&str], cancellation: &CancellationToken) -> Result<Output, AppError> {
         let (output, truncated) = run_cancellable_command_with_stdout_limit(
-            self.command(args),
+            self.0.command(args),
             cancellation,
             Some(OUTPUT_LIMIT),
         )?;
@@ -166,15 +132,8 @@ impl Scratch {
         }
         Ok(output)
     }
-    fn remove(&self) -> Result<(), AppError> {
-        fs::remove_dir_all(&self.0).map_err(io_error)
-    }
 }
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+
 fn io_error(error: std::io::Error) -> AppError {
     AppError::new(
         "mergePreviewStorage",
@@ -286,25 +245,9 @@ fn preview_merge_before_publish(
     };
     let scratch = Scratch::new()?;
     let result = (|| {
-        fs::write(scratch.0.join("empty-config"), b"").map_err(io_error)?;
-        fs::create_dir(scratch.0.join("empty-template")).map_err(io_error)?;
-        let init = scratch.run(
-            &[
-                "init",
-                "--bare",
-                "--quiet",
-                "--template=empty-template",
-                object_format,
-                ".",
-            ],
-            cancellation,
-        )?;
-        ensure_success("initialize isolated merge preview", &init)?;
-        fs::write(
-            scratch.0.join("objects/info/alternates"),
-            format!("{object_path}\n"),
-        )
-        .map_err(io_error)?;
+        scratch
+            .0
+            .init_with_alternate(object_format, object_path, cancellation)?;
         let output = scratch.run(
             &[
                 &format!("--attr-source={}", request.target_oid),
@@ -334,7 +277,7 @@ fn preview_merge_before_publish(
             conflicted_paths,
         })
     })();
-    scratch.remove()?;
+    scratch.0.remove().map_err(io_error)?;
     result
 }
 
@@ -390,7 +333,7 @@ mod tests {
             f
         }
         fn path(&self) -> &Path {
-            &self.0.0
+            self.0.0.path()
         }
         fn git(&self, args: &[&str]) -> Vec<u8> {
             let output = run_git(self.path(), args).unwrap();
@@ -648,7 +591,7 @@ mod tests {
         );
         let scratch = Scratch::new().unwrap();
         let init = inspect(
-            &scratch.0,
+            scratch.0.path(),
             &["init", "--object-format=sha256", "-b", "main"],
             &CancellationToken::default(),
         )

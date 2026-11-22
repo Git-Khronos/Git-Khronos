@@ -1933,6 +1933,28 @@ fn import_diff_patch(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+async fn export_commit_source_zip(
+    repo_id: String,
+    oid: String,
+    destination: String,
+    operation_id: String,
+    app: AppHandle,
+) -> Result<usize, AppError> {
+    let (cancellation, lease) = register_active_operation(&app, operation_id)?;
+    with_repository_background_read(repo_id, app, move |path| {
+        let _lease = lease;
+        git_khronos_git_core::export_source_zip(
+            path,
+            &oid,
+            std::path::Path::new(&destination),
+            &cancellation,
+        )
+    })
+    .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 async fn review_git_bundle_export_range(
     repo_id: String,
     branch: String,
@@ -4441,6 +4463,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             export_diff_patch,
             review_diff_patch,
             import_diff_patch,
+            export_commit_source_zip,
             review_git_bundle_export_range,
             export_git_bundle,
             review_git_bundle,

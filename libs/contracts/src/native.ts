@@ -796,6 +796,7 @@ export const execute_merge_rebase: (args: { repoId: string; request: MergeRebase
 export const export_diff_patch: (args: { repoId: string; staged: boolean; paths: string[]; destination: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_diff_patch");
 export const review_diff_patch: (args: { repoId: string; file: string; target: PatchTarget }) => Promise<PatchReview> = /* @__PURE__ */ __bindCommand__("review_diff_patch");
 export const import_diff_patch: (args: { repoId: string; request: PatchRequest }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("import_diff_patch");
+export const export_commit_source_zip: (args: { repoId: string; oid: string; destination: string; operationId: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_commit_source_zip");
 export const review_git_bundle_export_range: (args: { repoId: string; branch: string; expectedOid: string; baseOid: string }) => Promise<BundleExportRange> = /* @__PURE__ */ __bindCommand__("review_git_bundle_export_range");
 export const export_git_bundle: (args: { repoId: string; branch: string; expectedOid: string; baseOid?: string | null; destination: string }) => Promise<number> = /* @__PURE__ */ __bindCommand__("export_git_bundle");
 export const review_git_bundle: (args: { repoId: string; file: string }) => Promise<BundleReview> = /* @__PURE__ */ __bindCommand__("review_git_bundle");
@@ -1080,6 +1081,7 @@ export type CommandMap = {
   export_diff_patch: typeof export_diff_patch;
   review_diff_patch: typeof review_diff_patch;
   import_diff_patch: typeof import_diff_patch;
+  export_commit_source_zip: typeof export_commit_source_zip;
   review_git_bundle_export_range: typeof review_git_bundle_export_range;
   export_git_bundle: typeof export_git_bundle;
   review_git_bundle: typeof review_git_bundle;
