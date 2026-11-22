@@ -797,11 +797,13 @@ the owned-process wrapper from the repository root:
 node tools/run-validation.mjs start target/validation-runs/my-source-check run-many --targets=test,check --projects=desktop --parallel=1 --skipNxCache --output-style=static
 ```
 
-Use a new run directory every time; it is created exclusively. The launcher
-prints its runner PID and directory, then the worker records `started.json`,
-`output.log`, and a terminal `result.json`. Verify `started.json` and the live
-process before interpreting a missing result as a running job. A launcher PID
-alone does not establish that a command started successfully.
+Use a new run directory every time. The launcher prints a runner PID only
+after the worker exclusively creates the directory and writes
+`preparing.json`. An existing directory or a missing parent makes
+`start` fail immediately, without changing any existing evidence. The
+worker goes on to record `started.json`, `output.log`, and a terminal
+`result.json`. Use `node tools/run-validation.mjs status <run-directory>`
+to distinguish preparation, a running command, and a finished run.
 
 SIGINT or SIGTERM to that verified runner interrupts its owned command group,
 waits for cleanup, and records the interruption instead of abandoning children.

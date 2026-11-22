@@ -67,12 +67,38 @@ const environment = {
 if (mode === 'start') {
   const runner = spawn(process.execPath, [fileURLToPath(import.meta.url), 'run', directory,
     ...(commit ? ['--snapshot', commit] : []), ...args], {
-    cwd: process.cwd(), detached: true, stdio: 'ignore',
+    cwd: process.cwd(), detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     env: { ...environment, NX_DAEMON: 'false', NX_ISOLATE_PLUGINS: 'false' },
   });
-  runner.unref();
-  console.log(JSON.stringify({ runnerPid: runner.pid, directory }));
+  try {
+    // A PID only proves spawn succeeded. Report success after this worker
+    // claims the evidence directory and publishes its first readable receipt.
+    const startup = await new Promise((ready, failed) => {
+      runner.once('message', ready);
+      runner.once('error', failed);
+      runner.once('disconnect', () => failed(new Error('Validation worker disconnected before startup')));
+      runner.once('exit', (code, signal) => failed(new Error(`Validation worker exited before startup (${signal ?? code})`)));
+    });
+    if (startup.ready !== true) throw new Error(startup.error ?? 'Invalid validation startup response');
+    console.log(JSON.stringify({ runnerPid: runner.pid, directory }));
+  } catch (error) {
+    console.error(`Could not start validation: ${error.message}`);
+    process.exitCode = 1;
+  } finally {
+    if (runner.connected) runner.disconnect();
+    runner.unref();
+  }
 } else {
+  try {
+    await runValidation();
+  } catch (error) {
+    if (!process.connected) throw error;
+    process.send({ error: error.message }, () => {});
+    process.exitCode = 1;
+  }
+}
+
+async function runValidation() {
   mkdirSync(directory, { recursive: false, mode: 0o700 });
   const command = ['pnpm', 'nx', ...args];
   const source = commit ? { cwd: process.cwd(), commit, commandCwd, mode: 'commit-snapshot' }
@@ -118,8 +144,9 @@ if (mode === 'start') {
     if (code !== 0) throw new Error(`${label} failed (${signal ?? code}); see output.log`);
   };
   try {
+    writeReceipt('preparing.json', { ...runner, command, source, started });
+    if (process.connected) process.send({ ready: true }, () => {});
     if (commit) {
-      writeReceipt('preparing.json', { ...runner, command, source, started });
       const archive = join(directory, 'snapshot.tar');
       mkdirSync(commandCwd);
       await prepare('Exporting committed source', 'git', [...gitArgs, 'archive', '--format=tar',

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -106,6 +106,50 @@ test('an existing evidence directory is refused without modifying its contents',
     assert.equal(readFileSync(join(root, 'retain'), 'utf8'), 'existing fixture evidence');
     assert.equal(existsSync(join(root, 'result.json')), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('detached start refuses an existing directory or missing parent before returning success', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-run-start-refusal-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, 'retain'), 'existing fixture evidence');
+  for (const [path, error] of [[root, 'EEXIST'], [join(root, 'missing', 'run'), 'ENOENT']]) {
+    const result = spawnSync(process.execPath, [launcher, 'start', path, 'run', 'desktop:fixture'], {
+      cwd: root, encoding: 'utf8',
+    });
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, new RegExp(error));
+    assert.equal(existsSync(join(path, 'preparing.json')), false);
+  }
+  assert.equal(readFileSync(join(root, 'retain'), 'utf8'), 'existing fixture evidence');
+});
+
+test('concurrent detached starts acknowledge only the owner with a visible receipt', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-run-start-claim-'));
+  const directory = join(root, 'evidence'), bin = join(root, 'bin');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'pnpm'), `#!${process.execPath}\nprocess.exit(0);\n`, { mode: 0o700 });
+  const start = () => new Promise((resolve, reject) => {
+    const process_ = spawn(process.execPath, [launcher, 'start', directory, 'run', 'desktop:fixture'], {
+      cwd: root, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '', stderr = '';
+    process_.stdout.on('data', chunk => { stdout += chunk; });
+    process_.stderr.on('data', chunk => { stderr += chunk; });
+    process_.once('error', reject);
+    process_.once('close', status => resolve({ status, stdout, stderr, receipt: readStatus(directory) }));
+  });
+  const results = await Promise.all([start(), start()]);
+  assert.deepEqual(results.map(result => result.status).sort(), [0, 1]);
+  const won = results.find(result => result.status === 0);
+  const lost = results.find(result => result.status === 1);
+  assert.match(lost.stderr, /EEXIST/);
+  assert.equal(lost.stdout, '');
+  assert.equal(won.receipt.runnerPid, JSON.parse(won.stdout).runnerPid);
+  for (let attempt = 0; attempt < 200 && !existsSync(join(directory, 'result.json')); attempt++) await delay(10);
+  assert.equal(readStatus(directory).state, 'passed');
 });
 
 
