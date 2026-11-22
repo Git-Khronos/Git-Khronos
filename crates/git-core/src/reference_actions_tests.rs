@@ -1861,6 +1861,46 @@ fn pull_strategy_fast_forwards_each_explicit_mode_despite_configured_no_ff() {
 }
 
 #[test]
+fn pull_respects_chosen_strategy_instead_of_implicitly_squashing() {
+    for (strategy, divergent) in [
+        ("merge", false),
+        ("ff-only", false),
+        ("rebase", false),
+        ("merge", true),
+    ] {
+        let (repository, _, local, incoming) = pull_fixture(divergent, false);
+        let path = &repository.0;
+        run_mutation(
+            path,
+            &["config", "branch.main.mergeOptions", "--squash"],
+            "configure a default squash for the receiving branch",
+        )
+        .unwrap();
+        let config = fs::read(path.join(".git/config")).unwrap();
+        if divergent {
+            pull_with_strategy(path, strategy).unwrap();
+            let parents = run_git(path, &["show", "-s", "--format=%P", "HEAD"]).unwrap();
+            assert_eq!(
+                parents.stdout.trim_ascii(),
+                format!("{local} {incoming}").as_bytes(),
+                "divergent Merge must record both parents",
+            );
+        } else {
+            pull_from_remote_with_strategy(path, strategy, Some("origin"), Some("main")).unwrap();
+            assert_eq!(repository.oid(), incoming, "{strategy} must advance HEAD");
+        }
+        assert_eq!(rev(path, "refs/remotes/origin/main"), incoming);
+        assert_eq!(fs::read(path.join(".git/config")).unwrap(), config);
+        assert_eq!(
+            fs::read(path.join("remote-file")).unwrap(),
+            b"remote change\n"
+        );
+        let status = run_git(path, &["status", "--porcelain"]).unwrap();
+        assert!(status.stdout.is_empty(), "{strategy} staged a squash");
+    }
+}
+
+#[test]
 fn pull_strategy_conflicts_offer_the_selected_operation_and_abort_restores_local_work() {
     for strategy in ["merge", "rebase"] {
         let (repository, _, local, remote) = pull_fixture(true, true);

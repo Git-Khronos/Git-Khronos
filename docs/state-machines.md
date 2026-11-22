@@ -295,6 +295,9 @@ Both configured and explicit Pull disable pruning for that invocation.
 Integration does not delete local tags or stale tracking refs as a side
 effect, even when pruning is configured. This does not disable normal tag
 following or change the configured fetch mappings.
+None of the three Pull strategies stages a squash. The app overrides
+`--squash` in receiving-branch merge options for those invocations,
+including the fast-forward path of Pull with Rebase.
 Pull with Rebase replays only the selected receiving branch. It suppresses
 `rebase.updateRefs` for the operation without changing repository settings.
 A conflict and later Continue Rebase do not add sibling branches to the replay.
@@ -715,6 +718,8 @@ verification, the app refuses the operation when ignored files are present.
 Only the receiving branch's default merge flags apply. Standard fast-forward,
 commit, and statistics toggles remain usable because they do not widen the
 paths the merge may write; unknown options on the receiver are still refused.
+Merge and Fast-forward explicitly disable squash, and Squash explicitly
+enables it. A saved branch option cannot substitute one mode for another.
 
 The native command runs on a background worker using the existing repository
 mutation lock. It rechecks the reviewed receiver after the preflight and still

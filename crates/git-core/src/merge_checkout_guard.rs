@@ -89,11 +89,14 @@ fn check_branch_options(path: &Path, branch: &str) -> Result<(), AppError> {
     }) {
         // These toggles affect history shape, committing or reporting, not
         // the paths that a standard merge may write. Do not guess any value.
+        // The integration command explicitly selects squash or no-squash.
         if !matches!(
             option,
             b"--ff"
                 | b"--no-ff"
                 | b"--ff-only"
+                | b"--squash"
+                | b"--no-squash"
                 | b"--stat"
                 | b"--no-stat"
                 | b"--commit"

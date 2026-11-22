@@ -126,6 +126,7 @@ def workspace_pull_upstreams(driver, fixtures, report):
         fixtures.git(checkout, 'update-ref', 'refs/remotes/origin/removed', base)
         fixtures.git(checkout, 'config', 'fetch.prune', 'true')
         fixtures.git(checkout, 'config', 'remote.origin.pruneTags', 'true')
+        fixtures.git(checkout, 'config', 'branch.main.mergeOptions', '--squash')
     def retained_refs(checkout):
         return fixtures.git(checkout, 'for-each-ref', '--format=%(refname) %(objectname)',
                             'refs/tags/owned-local', 'refs/remotes/origin/removed').splitlines()
@@ -137,6 +138,7 @@ def workspace_pull_upstreams(driver, fixtures, report):
     extra = _write_commit(fixtures, publisher, 'extra.txt', 'Other incoming branch\n')
     fixtures.git(publisher, 'switch', '-q', 'main')
     first_before = checkout_footprint(fixtures, ambiguous)
+    ordinary_config = (ordinary / '.git/config').read_bytes()
     upstream_refs = fixtures.git(publisher, 'show-ref')
     fetch_head = ambiguous / '.git/FETCH_HEAD'
     assert not fetch_head.exists()
@@ -172,7 +174,10 @@ def workspace_pull_upstreams(driver, fixtures, report):
         'ambiguousFetchHeadExists': has_fetch,
     }
     assert after == first_before and not has_fetch, 'Ambiguous batch Pull fetched or integrated before refusing'
-    assert ordinary_head == main and (ordinary / 'main.txt').is_file()
+    assert ordinary_head == main and (ordinary / 'main.txt').is_file(), (
+        'Configured-upstream Pull reported success without advancing the selected branch')
+    assert fixtures.git(ordinary, 'status', '--porcelain') == ''
+    assert (ordinary / '.git/config').read_bytes() == ordinary_config
     assert retained_refs(ordinary) == retained[ordinary], 'Configured-upstream Pull pruned local refs'
     assert not (ambiguous / 'main.txt').exists() and not (ambiguous / 'extra.txt').exists()
     assert not (ordinary / 'extra.txt').exists()
@@ -184,7 +189,9 @@ def workspace_pull_upstreams(driver, fixtures, report):
     driver.click_visible('gc-workspace-center header button', 'Close')
     _toolbar_pull(driver)
     selected = checkout_footprint(fixtures, ambiguous, ('fixture.txt', 'main.txt'))
-    assert selected['head'] == main and not (ambiguous / 'extra.txt').exists()
+    assert selected['head'] == main and not (ambiguous / 'extra.txt').exists(), (
+        'Explicit Pull reported success without advancing only the selected branch')
+    assert fixtures.git(ambiguous, 'status', '--porcelain') == ''
     assert selected['configSha256'] == first_before['configSha256']
     assert fixtures.git(publisher, 'show-ref') == upstream_refs
     assert retained_refs(ambiguous) == retained[ambiguous], 'Explicit Pull pruned local refs'
@@ -194,5 +201,6 @@ def workspace_pull_upstreams(driver, fixtures, report):
     report['workspacePullUpstreams']['explicitSelection'] = selected
     report['scenarios'].append('native-single-branch-toolbar-pull-keeps-multi-upstream-config-and-excludes-the-other-branch')
     report['scenarios'].append('native-pull-retains-local-tag-and-stale-tracking-ref-even-with-git-pruning-config')
+    report['scenarios'].append('native-pull-honors-selected-strategy-over-implicit-squash')
     rebase = _toolbar_pull_rebase_preserves_sibling(driver, fixtures, report)
     return rebase, driver.invoke('open_repository', path=str(rebase))['id']

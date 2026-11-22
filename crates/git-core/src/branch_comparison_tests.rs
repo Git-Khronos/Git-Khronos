@@ -165,12 +165,19 @@ fn merge_squash_and_rebase_keep_their_git_semantics() {
 
     let squashed = Fixture::new();
     squashed.diverge(1, 1);
+    squashed.git(&["config", "branch.main.mergeOptions", "--no-squash"]);
+    fs::write(squashed.path().join(".git/info/exclude"), "/settings.local\n").unwrap();
+    fs::write(squashed.path().join("settings.local"), "Keep local settings\n").unwrap();
     let before = squashed.git(&["rev-parse", "main"]);
     integrate_branch(squashed.path(), "feature", "squash").unwrap();
     assert_eq!(squashed.git(&["rev-parse", "main"]), before);
     assert_eq!(
         squashed.git(&["diff", "--cached", "--name-only"]),
         "feature-0"
+    );
+    assert_eq!(
+        fs::read_to_string(squashed.path().join("settings.local")).unwrap(),
+        "Keep local settings\n"
     );
 
     let rebased = Fixture::new();
@@ -190,6 +197,40 @@ fn integration_review(fixture: &Fixture) -> BranchIntegrationReview {
         receiving_oid: comparison.target_oid,
         source_branch: comparison.source,
         source_oid: comparison.source_oid,
+    }
+}
+
+#[test]
+fn reviewed_branch_integration_honors_selected_mode_over_squash_defaults() {
+    for (strategy, ahead, ignored) in
+        [("merge", 1, false), ("merge", 1, true), ("ff-only", 0, true)]
+    {
+        let fixture = Fixture::new();
+        fixture.diverge(ahead, 1);
+        fixture.git(&["config", "branch.main.mergeOptions", "--squash"]);
+        if ignored {
+            fs::write(fixture.path().join(".git/info/exclude"), "/settings.local\n").unwrap();
+            fs::write(fixture.path().join("settings.local"), "Keep local settings\n").unwrap();
+        }
+        let config = fs::read(fixture.path().join(".git/config")).unwrap();
+        let review = integration_review(&fixture);
+        integrate_branch_with_review(fixture.path(), "feature", strategy, Some(&review)).unwrap();
+        if ahead > 0 {
+            assert_eq!(
+                fixture.git(&["show", "-s", "--format=%P", "HEAD"]),
+                format!("{} {}", review.receiving_oid, review.source_oid)
+            );
+        } else {
+            assert_eq!(fixture.git(&["rev-parse", "HEAD"]), review.source_oid);
+        }
+        if ignored {
+            assert_eq!(
+                fs::read_to_string(fixture.path().join("settings.local")).unwrap(),
+                "Keep local settings\n"
+            );
+        }
+        assert_eq!(fixture.git(&["status", "--porcelain"]), "");
+        assert_eq!(fs::read(fixture.path().join(".git/config")).unwrap(), config);
     }
 }
 

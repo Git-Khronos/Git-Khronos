@@ -1053,6 +1053,10 @@ behavior: merge uses `--no-rebase --ff`, fast-forward-only uses
 `--no-rebase --ff-only`, and rebase uses `--rebase --ff`. This prevents
 configured `pull.rebase`, `branch.<name>.rebase`, `pull.ff` or `merge.ff` from
 contradicting the chosen menu mode. No persistent Git configuration changes.
+The app also passes `--no-squash` to Pull and to branch Merge/Fast-forward.
+Real Git permits a receiving branch's merge options to stage an implicit
+squash without advancing HEAD, even on a fast-forward. The app only stages
+a squash when the user selects that distinct action.
 Other Git policies, including hooks/signing and configured autostash, remain.
 Pull uses [Git's non-recursive mode](https://git-scm.com/docs/git-pull) to
 update the parent gitlink without also fetching into or checking out

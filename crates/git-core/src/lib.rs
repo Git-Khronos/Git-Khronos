@@ -3778,12 +3778,12 @@ pub fn integrate_branch_with_review(
     ];
     match strategy {
         "merge" => {
-            args.push("--no-edit");
+            args.extend(["--no-edit", "--no-squash"]);
             if review.is_some() {
                 args.extend(["-m", &message]);
             }
         }
-        "ff-only" => args.push("--ff-only"),
+        "ff-only" => args.extend(["--ff-only", "--no-squash"]),
         "squash" => args.push("--squash"),
         _ => unreachable!(),
     }
@@ -5006,7 +5006,10 @@ fn pull_from_remote_with_strategy_and_cancellation(
         // rebase inherits this override without modifying the user's config.
         args.extend(["-c", "rebase.updateRefs=false"]);
     }
-    args.extend(["pull", "--no-recurse-submodules", "--no-prune"]);
+    // A receiving branch's mergeOptions may otherwise turn even a successful
+    // fast-forward (including the fast path of Pull with Rebase) into staged
+    // changes without advancing the branch. None of these modes is Squash.
+    args.extend(["pull", "--no-recurse-submodules", "--no-prune", "--no-squash"]);
     args.extend(strategy_arguments);
     match (remote, branch) {
         (Some(remote), Some(branch)) => {

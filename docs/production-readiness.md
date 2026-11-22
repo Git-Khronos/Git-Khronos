@@ -3272,6 +3272,18 @@ package and reports are under
 `target/local-review/updater/jammy-builder/repository-files-smoke.zJYTbGpB/`.
 This is focused smoke evidence, not a complete Linux matrix for that build.
 
+Git's receiving-branch `--squash` default could also make the old
+installer report Pull success without moving HEAD. The new
+workspace-Pull check reproduced it on that same `62ac826` package, even
+though its earlier matrix passed without this case. Pull and direct
+Merge/Fast-forward now select no-squash explicitly; reviewed Squash
+remains available. Native source tests check exact tips, parents, working
+files, clean stage state, and unchanged config. The command behavior was
+reproduced and then corrected on Git 2.39.5 and 2.53.0 using only owned
+local repositories. Future package qualification requires the new
+workspace-Pull scenario. The installed baseline failure is retained
+under `target/local-review/pull-squash-safety.y3cPYiIi/installed-red/`.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds
