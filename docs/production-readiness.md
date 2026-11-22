@@ -4369,3 +4369,9 @@ checks comparison and unstaged totals with the sparse checkout intact,
 verifies no index or file changes, and only then expands the owned
 fixture to run the independent Git diff oracle. Both complete Git
 runtimes passed the revised test.
+
+The focused `bisect-voting` suite reproduced the old behavior on the
+unchanged `86900ea` installer with Debian 12's Git 2.39.5. Its first named
+vote failed, and the retained WebView screenshot shows Git's
+`need a subcommand` error. This is negative-control evidence only.
+Receipt: `target/local-review/updater/jammy-builder/bisect-minimum-negative.VfKJVeHn/lane/results/`.
