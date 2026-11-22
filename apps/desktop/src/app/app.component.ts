@@ -448,6 +448,7 @@ export interface CommandAction {
   enabled: boolean;
   icon: IconName;
   stashTarget?: { repositoryId: string; stash: StashEntry };
+  stashReview?: { scope: string } & ({ action: 'save' } | { action: 'apply' | 'branch'; stash: StashEntry });
   bisectTarget?: BisectVoteTarget | null;
   exactFileHistory?: { path: string; scope: string; revision: string };
 }
@@ -11821,11 +11822,17 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!action.enabled) return;
     const previous = this.previousBranchLookup();
     if (previous && (previous.hideActions || !this.ownsPreviousBranchLookup(previous))) return;
+    const stashReview = action.stashReview;
+    if (stashReview && !this.canOpenPaletteStashReview(stashReview)) return;
     this.previousBranchLookup.set(null);
     this.rememberCommand(action.id);
     const paletteReturnFocus = this.commandPaletteOpener;
     this.commandPaletteOpen.set(false);
     this.commandPaletteOpener = null;
+    if (stashReview) {
+      this.openStashOptions(stashReview.action, stashReview.action === 'save' ? undefined : stashReview.stash, paletteReturnFocus);
+      return;
+    }
     if (action.id.startsWith('workspace:')) {
       await this.selectWorkspace(action.id.slice('workspace:'.length));
       setTimeout(() => this.workspaceToggle()?.nativeElement.focus());
@@ -13080,6 +13087,15 @@ export class AppComponent implements OnInit, OnDestroy {
       y: Math.max(VIEWPORT_MENU_GUTTER, Math.min(preferredPosition.y, window.innerHeight - 320)),
     } }, this.contextMenuReturnFocus);
     this.settleGraphActionMenuPosition('stash', stash.reference, preferredPosition, focusMenu);
+  }
+
+  private canOpenPaletteStashReview(review: NonNullable<CommandAction['stashReview']>): boolean {
+    const repository = this.git.repository();
+    if (!repository?.headOid || repository.bare || repository.status.conflicted || this.git.busy()
+      || this.git.activeRepositoryReadScope() !== review.scope) return false;
+    if (review.action === 'save') return repository.status.entryCount > 0;
+    if (review.action === 'branch' && repository.status.entryCount) return false;
+    return repository.stashes.some(stash => stash.reference === review.stash.reference && stash.oid === review.stash.oid);
   }
 
   protected openStashOptions(action: StashDialogRequest['action'], stash?: StashEntry, explicitReturnFocus?: HTMLElement | null): void {

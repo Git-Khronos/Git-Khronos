@@ -1109,6 +1109,13 @@ replacement stash review. Native work freezes its option controls and payload;
 its actual mutation result, not a subsequently cleared global error, determines
 successful dismissal. Retiring UI intent does not cancel or lose native receipts.
 
+The command palette opens the same reviews for saving with options, applying
+a selected stash with optional staged-state restoration, and creating a branch
+from a selected stash. Palette results carry the checkout visit and, when
+applicable, the stash reference and object ID. If that visit or reference
+changes before activation, the result cannot open a review for the new target.
+Opening a review does not mutate Git; confirmation remains separate.
+
 Selected stash paths are limited to entries eligible for the current mode.
 Changing mode or untracked-file preference drops paths that no longer match;
 dispatch also intersects with the latest visible status. The native command

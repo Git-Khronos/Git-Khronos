@@ -34,6 +34,84 @@ test('opens advanced stash controls from the toolbar and restores focus', async 
   await expect(toggle).toBeFocused();
 });
 
+test('the keyboard palette opens a non-mutating stash review and returns focus on Escape', async ({ page }) => {
+  const opener = page.getByRole('button', { name: 'Command palette', exact: true });
+  await opener.focus();
+  await opener.press('Enter');
+  const search = page.getByRole('combobox', { name: 'Search commands', exact: true });
+  await search.fill('stash with options');
+  await expect(page.getByRole('option', { name: /^Stash with options/ })).toBeEnabled();
+  await search.press('Enter');
+  const dialog = page.getByRole('dialog', { name: 'Stash with options' });
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await expect(dialog.getByLabel('Changes to save')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__stashCalls.filter((call: any) =>
+    call.command === 'stash_changes' || call.command === 'stash_selected'))).toEqual([]);
+});
+
+for (const branch of [false, true]) {
+  test(`the palette reviews ${branch ? 'a new branch from' : 'a staged-state apply for'} a specific stash before dispatch`, async ({ page }) => {
+    const selectedOid = 'b'.repeat(40);
+    await page.evaluate(({ selectedOid, branch }) => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const repo = git.repository();
+      git.repositories.set([{ ...repo, stashes: [
+        { reference: 'stash@{0}', oid: 'a'.repeat(40), message: 'Latest work' },
+        { reference: 'stash@{1}', oid: selectedOid, message: 'Earlier work' },
+      ], status: branch ? { ...repo.status, entryCount: 0, entries: [], staged: 0, unstaged: 0, untracked: 0 } : repo.status }]);
+    }, { selectedOid, branch });
+    const opener = page.getByRole('button', { name: 'Command palette', exact: true });
+    await opener.click();
+    const search = page.getByRole('combobox', { name: 'Search commands', exact: true });
+    await search.fill(branch ? 'create branch from stash@{1}' : 'review applying stash@{1}');
+    const option = page.getByRole('option', { name: branch ? /^Create branch from stash@\{1\}/ : /^Review applying stash@\{1\}/ });
+    await expect(option).toBeEnabled();
+    await search.press('Enter');
+    const dialog = page.getByRole('dialog', { name: branch ? 'Create branch from stash' : 'Apply stash' });
+    await expect(dialog).toContainText('Earlier work');
+    const command = branch ? 'branch_from_stash' : 'apply_stash_options';
+    const dispatched = () => page.evaluate(command => (window as any).__stashCalls.filter((call: any) => call.command === command), command);
+    expect(await dispatched()).toEqual([]);
+    if (branch) await dialog.getByLabel('New branch name').fill('restore-earlier');
+    else await dialog.getByLabel('Restore which changes were staged').check();
+    await dialog.getByRole('button', { name: branch ? 'Create branch and restore' : 'Apply and keep stash' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    expect(await dispatched()).toEqual([{ command, args: {
+      repoId: expect.any(String), reference: 'stash@{1}', expectedOid: selectedOid,
+      ...(branch ? { name: 'restore-earlier' } : { restoreIndex: true }),
+    } }]);
+  });
+}
+
+test('a captured palette stash review does not follow a shifted reference or checkout', async ({ page }) => {
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    git.repositories.set([{ ...git.repository(), stashes: [{ reference: 'stash@{0}', oid: 'a'.repeat(40), message: 'Earlier work' }] }]);
+  });
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search commands', exact: true }).fill('review applying stash@{0}');
+  await expect(page.getByRole('option', { name: /^Review applying stash@\{0\}/ })).toBeEnabled();
+  const result = await page.evaluate(async () => {
+    const root = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const palette = (window as any).ng.getComponent(document.querySelector('gc-command-palette'));
+    const git = root.git;
+    const repo = git.repository();
+    const apply = palette.commandActions().find((action: any) => action.stashReview?.action === 'apply');
+    git.repositories.set([{ ...repo, stashes: [{ ...repo.stashes[0], oid: 'b'.repeat(40) }] }]);
+    await root.runCommand(apply);
+    const shifted = root.stashDialog();
+    git.repositories.set([{ ...repo, path: '/tmp/other-checkout' }]);
+    await root.runCommand(apply);
+    return { shifted, otherCheckout: root.stashDialog() };
+  });
+  expect(result).toEqual({ shifted: null, otherCheckout: null });
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+});
+
 test('selected stash options disclose staged state and send only chosen paths', async ({ page }) => {
   const path = 'apps/desktop/src/app/app.component.html';
   const opener = page.getByRole('button', { name: 'Working directory options', exact: true });

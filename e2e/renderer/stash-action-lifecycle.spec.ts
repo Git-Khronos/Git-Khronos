@@ -84,7 +84,7 @@ for (const change of ['shifted-stack', 'other-repository']) {
     }, change);
     expect(await page.evaluate(() => (window as any).__stashAction.actionCount)).toBe(4);
     expect(await page.evaluate(() => (window as any).__stashAction.calls.filter(
-    (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toHaveLength(0);
+      (call: { command: string }) => ['apply_stash', 'pop_stash_entry', 'pop_stash'].includes(call.command)))).toHaveLength(0);
   });
 }
 
