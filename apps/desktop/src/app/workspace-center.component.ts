@@ -13,6 +13,7 @@ import { BackgroundOperationWarningsComponent } from './background-operation-war
 export interface WorkspaceCenterRequest { workspaceId: string; panel: 'overview' | 'identities' | 'hosting' | 'files'; returnFocus: HTMLElement | null }
 export interface WorkspaceTabsCloseRequest { workspaceId: string; scope: string; tabs: readonly Pick<RepositorySnapshot, 'id' | 'path'>[] }
 interface SavedPathsRemoval { workspaceId: string; scope: string; paths: readonly string[] }
+interface FileDeletionReview { file: RepositoryFiles['files'][number]; repositoryId: string; path: string; scope: string }
 interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close' | 'remove' | 'locate'; status: 'pending' | 'running' | 'success' | 'error' | 'cancelled'; detail: string | null }
 
 @Component({
@@ -92,7 +93,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           </section>
         }
       } @else if (panel() === 'files') {
-        <p>Browse repository files, including ignored files. Git metadata, nested repositories and symbolic-link targets are excluded. Deleting ignored files is disabled because they are not covered by Git recovery. Tracked deletion requires a clean committed file without index flags that hide changes.</p>
+        <p>Browse repository files, including ignored files. Git metadata, nested repositories and symbolic-link targets are excluded. Deleting ignored files is disabled because they are not covered by Git recovery. Tracked deletion requires a clean committed file without index flags that hide changes. Untracked deletion with recovery is limited to supported files in the top-level folder of a Linux working tree.</p>
         @if (fileError()) { <p role="alert">{{ fileError() }}</p> }
         @if (fileNotice()) { <p role="status">{{ fileNotice() }}</p> }
         @if (git.systemInfo()?.repositoryFileCreationAvailable === false && hasFileCheckout()) {
@@ -116,10 +117,10 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           @if (fileList.incomplete) { <p role="alert">Some matching paths could not be displayed safely. Check file permissions or excluded repository boundaries and refresh.</p> }
           <div class="file-list" aria-label="Repository files">
             @for (file of fileList.files; track file.path) {
-              <article class="file-entry"><code>{{ file.path }}</code><span>{{ file.symbolicLink ? 'Symbolic link' : file.ignored ? 'Ignored · read-only' : file.tracked ? (file.deletable ? 'Tracked' : 'Tracked · deletion unavailable') : 'Untracked' }}</span>
+              <article class="file-entry"><code>{{ file.path }}</code><span>{{ file.symbolicLink ? 'Symbolic link' : file.ignored ? 'Ignored · read-only' : file.tracked ? (file.deletable ? 'Tracked' : 'Tracked · deletion unavailable') : (file.deletableWithRecovery ? 'Untracked' : 'Untracked · deletion unavailable') }}</span>
                 <div class="tools"><button type="button" [disabled]="file.symbolicLink || git.busy() || fileMutating()" (click)="openFileRequested.emit(file)">Open</button>
                   @if (file.tracked && file.deletable && !file.symbolicLink) { <button type="button" class="danger" [disabled]="git.busy() || fileMutating()" (click)="confirmDelete(file)">Delete and stage</button> }
-                  @else if (!file.tracked && !file.ignored && !file.symbolicLink) { <button type="button" class="danger" [disabled]="git.busy() || fileMutating()" (click)="confirmDelete(file)">Delete with recovery</button> }
+                  @else if (!file.tracked && !file.ignored && !file.symbolicLink && file.deletableWithRecovery) { <button type="button" class="danger" [disabled]="git.busy() || fileMutating()" (click)="confirmDelete(file)">Delete with recovery</button> }
                 </div>
               </article>
             } @empty { <p>{{ fileList.incomplete ? 'No files could be displayed safely on this page.' : filePage() > 0 ? 'No files remain on this page. Use Previous to review earlier results.' : fileQuery().trim() ? 'No files match this filter.' : 'No Git-visible files in this repository.' }}</p> }
@@ -162,7 +163,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           @if (deletion.file.tracked) { <p>This clean committed file will be removed from disk and its deletion staged. The current commit retains its contents.</p> }
           @else { <p>This untracked file will be removed from disk and saved to Recovery History so it can be restored.</p> }
           @if (fileError()) { <p role="alert">{{ fileError() }}</p> }
-          <div class="tools"><button #reviewCancel type="button" [disabled]="git.busy() || fileMutating()" (click)="cancelDelete()">Cancel</button><button type="button" class="danger" [disabled]="git.busy() || fileMutating()" (click)="deleteFile()">Delete file</button></div>
+          <div class="tools"><button #reviewCancel type="button" [disabled]="git.busy() || fileMutating()" (click)="cancelDelete(deletion)">Cancel</button><button type="button" class="danger" [disabled]="git.busy() || fileMutating()" (click)="deleteFile(deletion)">Delete file</button></div>
         </aside>
       } @else if (pendingTabsClose(); as review) {
         <aside #reviewDialog role="alertdialog" aria-modal="true" aria-labelledby="tabs-close-title" aria-describedby="tabs-close-description" tabindex="-1">
@@ -272,7 +273,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
     return name.includes('/') || name.includes('\\');
   });
   readonly filePage = signal(0);
-  readonly pendingFileDelete = signal<{ file: RepositoryFiles['files'][number]; repositoryId: string; path: string } | null>(null);
+  readonly pendingFileDelete = signal<FileDeletionReview | null>(null);
   readonly pendingTabsClose = signal<WorkspaceTabsCloseRequest | null>(null);
   readonly pendingSavedRemoval = signal<SavedPathsRemoval | null>(null);
   readonly reviewPending = computed(() => !!this.pendingFileDelete() || !!this.pendingTabsClose() || !!this.pendingSavedRemoval());
@@ -457,25 +458,30 @@ export class WorkspaceCenterComponent implements OnDestroy {
   confirmDelete(file: RepositoryFiles['files'][number]): void {
     const repository = this.git.repository();
     const repositoryId = this.git.activeRepositoryId();
-    if (!repository || !repositoryId || this.git.busy() || this.fileMutating() || file.ignored || file.symbolicLink || (file.tracked && !file.deletable)) return;
+    const scope = this.git.activeRepositoryReadScope();
+    if (this.destroyed || this.panel() !== 'files' || this.suspended() || this.reviewPending()
+      || this.fileBinding !== scope || !this.files()?.files.includes(file) || !repository || !repositoryId
+      || this.git.busy() || this.fileMutating() || file.ignored || file.symbolicLink
+      || !(file.tracked ? file.deletable : file.deletableWithRecovery)) return;
     this.deleteOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.fileError.set('');
     this.fileNotice.set('');
-    this.pendingFileDelete.set({ file, repositoryId, path: repository.path });
+    this.pendingFileDelete.set({ file, repositoryId, path: repository.path, scope });
   }
-  async deleteFile(): Promise<void> {
-    const pending = this.pendingFileDelete();
-    if (this.fileMutating() || this.git.busy()) return;
-    if (!pending || pending.repositoryId !== this.git.activeRepositoryId() || pending.path !== this.git.repository()?.path) {
+  async deleteFile(pending: FileDeletionReview): Promise<void> {
+    if (this.pendingFileDelete() !== pending || this.fileMutating() || this.git.busy()) return;
+    const workspaceId = this.request().workspaceId;
+    const current = () => !this.destroyed && this.panel() === 'files'
+      && workspaceId === this.git.activeWorkspaceId() && this.git.activeRepositoryReadScope() === pending.scope;
+    if (this.suspended()) return;
+    if (!current()) {
       this.pendingFileDelete.set(null);
+      this.deleteOpener = null;
       return;
     }
-    const workspaceId = this.request().workspaceId;
-    const current = () => !this.destroyed && workspaceId === this.git.activeWorkspaceId()
-      && this.git.activeRepositoryId() === pending.repositoryId && this.git.repository()?.path === pending.path;
     const restoreFileFocus = () => afterNextRender(() => {
       const active = document.activeElement;
-      if (!current() || this.panel() !== 'files' || this.pendingFileDelete() || this.suspended()
+      if (!current() || this.pendingFileDelete() || this.suspended()
         || (active && active !== document.body && active !== document.documentElement)) return;
       this.focusFirst();
     }, { injector: this.injector });
@@ -522,13 +528,14 @@ export class WorkspaceCenterComponent implements OnDestroy {
       if (current()) this.fileError.set(this.git.formatError(error));
     } finally { if (!this.destroyed) this.fileMutating.set(false); }
   }
-  cancelDelete(): void {
-    if (this.fileMutating() || this.git.busy()) return;
+  cancelDelete(pending: FileDeletionReview): void {
+    if (this.pendingFileDelete() !== pending || this.fileMutating() || this.git.busy()) return;
     this.pendingFileDelete.set(null);
     const opener = this.deleteOpener;
     this.deleteOpener = null;
     afterNextRender(() => {
-      if (this.destroyed || this.pendingFileDelete() || this.suspended()) return;
+      if (this.destroyed || this.panel() !== 'files' || this.git.activeRepositoryReadScope() !== pending.scope
+        || this.pendingFileDelete() || this.suspended()) return;
       if (opener?.isConnected) opener.focus();
       else this.focusFirst();
     }, { injector: this.injector });
@@ -820,7 +827,8 @@ export class WorkspaceCenterComponent implements OnDestroy {
   ngOnDestroy(): void { this.destroyed = true; this.invalidateFileRequest(); }
   close(restoreFocus = true): void {
     if (this.destroyed) return;
-    if (this.pendingFileDelete()) { this.cancelDelete(); return; }
+    const deletion = this.pendingFileDelete();
+    if (deletion) { this.cancelDelete(deletion); return; }
     if (this.pendingTabsClose() || this.pendingSavedRemoval()) { this.cancelWorkspaceReview(); return; }
     this.locationRequest = null;
     this.locatingPath.set(null);

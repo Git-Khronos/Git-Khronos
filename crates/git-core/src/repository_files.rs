@@ -17,6 +17,9 @@ pub struct RepositoryFile {
     pub ignored: bool,
     pub symbolic_link: bool,
     pub deletable: bool,
+    /// The structural scope of untracked deletion; the discard operation
+    /// still verifies current state and requires a successful recovery capture.
+    pub deletable_with_recovery: bool,
 }
 
 #[derive(Clone, Serialize, specta::Type)]
@@ -602,7 +605,8 @@ pub fn repository_files(
                 }
             };
             let kind = metadata.file_type();
-            if !kind.is_file() && !is_link_or_reparse_point(&metadata) {
+            let symbolic_link = is_link_or_reparse_point(&metadata);
+            if !kind.is_file() && !symbolic_link {
                 return Ok(());
             }
             entries
@@ -617,11 +621,16 @@ pub fn repository_files(
                         && has_head
                         && is_tracked
                         && index_permits_deletion
-                        && !is_link_or_reparse_point(&metadata),
+                        && !symbolic_link,
+                    deletable_with_recovery: cfg!(target_os = "linux")
+                        && !is_tracked
+                        && !is_ignored
+                        && !symbolic_link
+                        && discard::guarded_leaf(file),
                     path: file.to_owned(),
                     tracked: is_tracked,
                     ignored: is_ignored,
-                    symbolic_link: is_link_or_reparse_point(&metadata),
+                    symbolic_link,
                 });
             if entries.len() > FILE_PAGE_SIZE + 1 {
                 entries.pop_last();
@@ -634,10 +643,10 @@ pub fn repository_files(
         entries.pop_last();
     }
     let mut files = entries.into_values().collect::<Vec<_>>();
-    if has_head && files.iter().any(|file| file.tracked && !file.symbolic_link) {
+    if files.iter().any(|file| file.deletable) {
         let selected = files
             .iter()
-            .filter(|file| file.tracked)
+            .filter(|file| file.deletable)
             .map(|file| file.path.as_str())
             .collect::<HashSet<_>>();
         let mut changed = HashSet::new();
@@ -934,6 +943,49 @@ mod tests {
                 .files
                 .iter()
                 .any(|entry| entry.path.starts_with(".git/"))
+        );
+    }
+
+    #[test]
+    fn repository_file_list_advertises_only_supported_untracked_recovery_paths() {
+        let fixture = Fixture::new();
+        fixture.commit("tracked.txt", b"tracked");
+        fixture.commit(".gitignore", b"ignored.txt\n");
+        fs::create_dir(fixture.0.join("folder")).unwrap();
+        for name in ["new.txt", "folder/nested.txt", "ignored.txt"] {
+            fs::write(fixture.0.join(name), name).unwrap();
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("tracked.txt", fixture.0.join("link.txt")).unwrap();
+
+        let listed = repository_files(&fixture.0, "", None).unwrap();
+        let paths: Vec<_> = listed
+            .files
+            .iter()
+            .filter(|file| file.deletable_with_recovery)
+            .map(|file| file.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            if cfg!(target_os = "linux") {
+                vec!["new.txt"]
+            } else {
+                vec![]
+            }
+        );
+        assert!(
+            listed
+                .files
+                .iter()
+                .any(|file| file.path == "folder/nested.txt")
+        );
+        assert!(listed.files.iter().any(|file| file.path == "ignored.txt"));
+        #[cfg(unix)]
+        assert!(
+            listed
+                .files
+                .iter()
+                .any(|file| file.path == "link.txt" && file.symbolic_link)
         );
     }
 

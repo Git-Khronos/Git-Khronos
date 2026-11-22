@@ -15,9 +15,9 @@ async function installFileBrowser(page: Page, repositoryFileCreationAvailable = 
     fixture.calls = [];
     fixture.files = [
       { path: 'a.txt', tracked: true, ignored: false, symbolicLink: false, deletable: true },
-      { path: 'b.txt', tracked: false, ignored: false, symbolicLink: false, deletable: false },
+      { path: 'b.txt', tracked: false, ignored: false, symbolicLink: false, deletable: false, deletableWithRecovery: true },
       { path: 'ignored.log', tracked: false, ignored: true, symbolicLink: false, deletable: false },
-      { path: 'z.txt', tracked: false, ignored: false, symbolicLink: false, deletable: false },
+      { path: 'z.txt', tracked: false, ignored: false, symbolicLink: false, deletable: false, deletableWithRecovery: true },
     ];
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       fixture.calls.push({ command, args });
@@ -1239,7 +1239,7 @@ test('creates files and deletes files with explicit Git and recovery behavior', 
     fixture.files = {
       files: [
         { path: 'src/tracked.ts', tracked: true, ignored: false, symbolicLink: false, deletable: true },
-        { path: 'notes.txt', tracked: false, ignored: false, symbolicLink: false, deletable: false },
+        { path: 'notes.txt', tracked: false, ignored: false, symbolicLink: false, deletable: false, deletableWithRecovery: true },
       ],
       nextCursor: null,
       incomplete: false,
@@ -1472,6 +1472,61 @@ test('explains why tracked files can be unavailable for deletion', async ({ page
   await expect(entry).toContainText('Tracked · deletion unavailable');
   await expect(entry.getByRole('button', { name: 'Delete and stage' })).toHaveCount(0);
   await expect(dialog).toContainText('without index flags that hide changes');
+});
+
+test('opens untracked files without offering deletion when native recovery is unavailable', async ({ page }) => {
+  await installFileBrowser(page, false);
+  await page.evaluate(() => {
+    const fixture = (window as any).__center;
+    const root = fixture.files.find((file: any) => file.path === 'b.txt');
+    fixture.files = [root, { ...root, path: 'src/notes.txt', deletableWithRecovery: false }];
+  });
+  const dialog = await open(page, 'files');
+  const entry = dialog.getByRole('article').filter({ hasText: 'src/notes.txt' });
+  await expect(entry).toContainText('Untracked · deletion unavailable');
+  await expect(entry.getByRole('button', { name: 'Open' })).toBeEnabled();
+  await expect(entry.getByRole('button', { name: 'Delete with recovery' })).toHaveCount(0);
+  await expect(dialog.getByRole('article').filter({ hasText: 'b.txt' })
+    .getByRole('button', { name: 'Delete with recovery' })).toBeEnabled();
+  expect(await page.evaluate(() => {
+    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    component.confirmDelete(component.files().files.find((file: any) => file.path === 'src/notes.txt'));
+    return component.pendingFileDelete() !== null;
+  })).toBe(false);
+});
+
+test('a file deletion review cannot survive a round trip to the same checkout', async ({ page }) => {
+  await installFileBrowser(page, false);
+  const dialog = await open(page, 'files');
+  await dialog.getByRole('article').filter({ hasText: 'b.txt' }).getByRole('button', { name: 'Delete with recovery' }).click();
+  await expect(dialog.getByRole('alertdialog')).toBeVisible();
+  expect(await page.evaluate(async () => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    const first = app.git.activeRepositoryId();
+    app.git.activateRepository('clean-repo');
+    app.git.activateRepository(first);
+    await component.deleteFile(component.pendingFileDelete());
+    return (window as any).__center.calls.filter((call: any) => call.command === 'delete_untracked_repository_file');
+  })).toEqual([]);
+  await expect(dialog.getByRole('alertdialog')).toHaveCount(0);
+});
+
+test('dismissed file deletion controls cannot consume a replacement review', async ({ page }) => {
+  await installFileBrowser(page, false);
+  const dialog = await open(page, 'files');
+  await dialog.getByRole('article').filter({ hasText: 'b.txt' }).getByRole('button', { name: 'Delete with recovery' }).click();
+  await expect(dialog.getByRole('alertdialog')).toBeVisible();
+  expect(await page.evaluate(async () => {
+    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    const previous = component.pendingFileDelete();
+    component.cancelDelete(previous);
+    component.confirmDelete(component.files().files.find((file: any) => file.path === 'a.txt'));
+    await component.deleteFile(previous);
+    component.cancelDelete(previous);
+    return (window as any).__center.calls.filter((call: any) => call.command.startsWith('delete_'));
+  })).toEqual([]);
+  await expect(dialog.getByRole('alertdialog')).toHaveAccessibleName('Delete a.txt?');
 });
 
 test('traps the delete confirmation and restores focus on Escape', async ({ page }) => {

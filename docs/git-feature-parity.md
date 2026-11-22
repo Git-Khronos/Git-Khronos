@@ -71,7 +71,12 @@ cannot be protected against concurrent replacement. Repository Files uses the
 desktop's reported creation capability; unsupported builds keep browsing and
 refresh available and direct users to their editor or file manager. On Windows
 the form accepts a root filename, not a folder path. Supported files can be
-opened. Tracked-file deletion is disabled on
+opened. The file list reports whether untracked deletion with recovery is
+available for each row. Linux top-level regular files can be reviewed; nested
+and ignored files and symbolic links are not offered that action. A deletion
+confirmation is valid only in the repository visit that opened it. Native
+still checks the current file and requires a successful recovery capture.
+Tracked-file deletion is disabled on
 non-Windows platforms: a confirmed Linux race lets Git's pathname-based `git
 rm` remove a file outside the worktree after concurrent parent replacement.
 Windows still stages deletion only for clean committed files without index

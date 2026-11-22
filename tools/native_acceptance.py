@@ -945,20 +945,29 @@ def terminal_csp_rendering(driver, report):
 def repository_file_discard_recovery(driver, fixtures, repository, repo_id, report):
     """Use only the packaged UI to delete and recover an owned untracked file."""
     file = repository / "native-recovery-file.bin"
+    nested = repository / "native-recovery-nested" / "notes.bin"
     contents = b"owned native recovery\x00\xff\n"
     before_index = (repository / ".git/index").read_bytes()
     before_head = fixtures.git(repository, "rev-parse", "HEAD")
     file.write_bytes(contents)
+    nested.parent.mkdir()
+    nested.write_bytes(contents)
     driver.wait('return !!document.querySelector(\'[aria-label="Stage native-recovery-file.bin"]\')')
 
     driver.click(".workspace-toggle")
     driver.click_scrolled_text(".workspace-menu-actions [role=menuitem]", "Repository files", wait_for_ready=True)
-    driver.wait("""return [...document.querySelectorAll('gc-workspace-center .file-entry')]
-      .some(row => row.querySelector('code')?.textContent === 'native-recovery-file.bin')""")
+    driver.wait("""const paths = [...document.querySelectorAll('gc-workspace-center .file-entry code')]
+      .map(code => code.textContent);
+      return paths.includes('native-recovery-file.bin') && paths.includes('native-recovery-nested/notes.bin');""")
     assert driver.invoke("system_info")["repositoryFileCreationAvailable"] is False
     assert driver.script("""const workspace = document.querySelector('gc-workspace-center');
       return !workspace.querySelector('.file-tools form')
         && workspace.textContent.includes('Create files in your file manager or editor, then refresh this list.');""")
+    assert driver.script("""const row = [...document.querySelectorAll('gc-workspace-center .file-entry')]
+      .find(row => row.querySelector('code')?.textContent === 'native-recovery-nested/notes.bin');
+      return row?.textContent.includes('Untracked · deletion unavailable')
+        && row.querySelector('button')?.textContent.trim() === 'Open'
+        && row.querySelectorAll('button').length === 1;""")
     driver.click_text("gc-workspace-center .file-entry button", "Delete with recovery")
     driver.wait("return !!document.querySelector('gc-workspace-center [role=alertdialog]')")
     assert "Recovery History" in driver.script(
@@ -1049,6 +1058,9 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
     driver.wait("return !document.querySelector('[role=alertdialog]')")
     assert not driver.invoke("load_discard_recoveries", repoId=repo_id)
     assert file.read_bytes() == contents
+    assert nested.read_bytes() == contents
+    nested.unlink()
+    nested.parent.rmdir()
     file.unlink()
     driver.click('[aria-label="Close recovery history"]')
     driver.wait('return !document.querySelector(\'[aria-label="Stage native-recovery-file.bin"]\')')

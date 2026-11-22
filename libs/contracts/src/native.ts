@@ -410,7 +410,12 @@ export type Remote = { name: string; fetchUrl: string; pushUrl: string }
 export type RemoteCheckoutOutcome = "created" | "updated" | "upToDate" | "ahead" | "diverged"
 export type RemoteCheckoutResult = { snapshot: RepositorySnapshot; outcome: RemoteCheckoutOutcome }
 export type RepositoryChanged = { repositoryId: string }
-export type RepositoryFile = { path: string; tracked: boolean; ignored: boolean; symbolicLink: boolean; deletable: boolean }
+export type RepositoryFile = { path: string; tracked: boolean; ignored: boolean; symbolicLink: boolean; deletable: boolean;
+/**
+ * The structural scope of untracked deletion; the discard operation
+ * still verifies current state and requires a successful recovery capture.
+ */
+deletableWithRecovery: boolean }
 export type RepositoryFileMutation = { snapshot: RepositorySnapshot | null; refreshError: AppError | null }
 export type RepositoryFiles = { files: RepositoryFile[]; nextCursor: string | null; incomplete: boolean }
 export type RepositoryLink = { remote: string; target: RepositoryLinkTarget }

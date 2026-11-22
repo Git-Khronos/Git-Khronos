@@ -158,7 +158,7 @@ fn nested_discard_error(paths: &[String]) -> AppError {
     ))
 }
 
-fn guarded_leaf(file: &str) -> bool {
+pub(super) fn guarded_leaf(file: &str) -> bool {
     let mut parts = Path::new(file).components();
     matches!(parts.next(), Some(Component::Normal(_)))
         && parts.next().is_none()
