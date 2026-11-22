@@ -505,7 +505,7 @@ def bisect_can_start_without_switching_dirty_checkout(driver, fixtures, report):
     driver.click_scrolled_text('[role="menuitem"]', 'Start bisect from here…', wait_for_ready=True)
     dialog = '[role="alertdialog"][aria-labelledby="bisect-dialog-title"]'
     driver.wait("return document.querySelector(" + json.dumps(dialog + ' .confirm-action') + ")?.disabled")
-    driver.click_visible(dialog + ' input[type="checkbox"]')
+    driver.click_visible(dialog + ' input[aria-describedby="bisect-checkout-note"]')
     driver.click_scrolled_text(dialog + ' button', 'Start Bisect', wait_for_ready=True)
     banner = '[aria-label="Git bisect in progress"]'
     driver.wait("return document.querySelector(" + json.dumps(banner + ' small') + ")?.textContent.includes('Checkout unchanged.')")
