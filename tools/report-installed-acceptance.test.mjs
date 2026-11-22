@@ -394,15 +394,19 @@ test('installed environment must prove manual and background Fetch protect local
   assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['environment']);
 });
 
-test('installed recap evidence must prove diff sides stay distinct even for the same path', () => {
+test('installed recaps must prove distinct diff sides and independent line budgets', () => {
   const fixtures = matrixFixtures();
   const recaps = fixtures.find(report => report.suite === 'working-tree-recaps');
-  const scenario = 'native-working-tree-same-path-selects-each-index-side-from-its-tree-row';
-  assert.ok(recaps.scenarios.includes(scenario));
-  const priorEvidence = { ...recaps, scenarios: recaps.scenarios.filter(name => name !== scenario) };
-  const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== recaps), priorEvidence]);
-  assert.equal(matrix.complete, false);
-  assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['working-tree-recaps']);
+  for (const scenario of [
+    'native-working-tree-same-path-selects-each-index-side-from-its-tree-row',
+    'native-unstaged-recap-is-complete-when-staged-recap-hits-its-bound',
+  ]) {
+    assert.ok(recaps.scenarios.includes(scenario));
+    const priorEvidence = { ...recaps, scenarios: recaps.scenarios.filter(name => name !== scenario) };
+    const matrix = summarizeReleaseMatrix([...fixtures.filter(report => report !== recaps), priorEvidence]);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['working-tree-recaps']);
+  }
 });
 
 test('installed Pull requires both repository-scope and explicit single-branch evidence', () => {

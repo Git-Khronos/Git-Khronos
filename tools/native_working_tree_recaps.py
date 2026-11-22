@@ -2,22 +2,27 @@
 import json
 
 
-def wait_for_line_recaps(driver, unstaged, staged, *, uncounted=0, changed_files=None, timeout=30):
-    def expected(section, counts, excluded=0):
+def wait_for_line_recaps(driver, unstaged, staged, *, uncounted=0, changed_files=None,
+                        staged_partial=False, timeout=30):
+    def expected(section, counts, excluded=0, partial=False):
         added, removed = counts
         label = (f'{added} {"addition" if added == 1 else "additions"} and '
                  f'{removed} {"deletion" if removed == 1 else "deletions"} in {section} files')
         if excluded:
             label += f'; {excluded} binary or uncounted {"file" if excluded == 1 else "files"} excluded'
+        details = [f'{excluded} other'] if excluded else []
+        if partial:
+            label += '; partial totals'
+            details.append('(partial)')
         return {
             'selector': f'.{section}-section gc-working-tree-summary .summary',
             'label': label,
             'added': f'+{added}',
             'removed': f'−{removed}',
-            'details': [f'{excluded} other'] if excluded else [],
+            'details': details,
         }
 
-    rows = [expected('unstaged', unstaged, uncounted), expected('staged', staged)]
+    rows = [expected('unstaged', unstaged, uncounted), expected('staged', staged, partial=staged_partial)]
     return driver.wait(f"""
         const changedFiles = {json.dumps(changed_files)};
         if (changedFiles !== null && (

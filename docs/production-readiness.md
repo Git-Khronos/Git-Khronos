@@ -3512,6 +3512,26 @@ publication. Its 37 required checks and per-lane evidence are recorded
 under `target/local-review/updater/jammy-builder/next-linux-matrix.Wj85katk/`.
 This replaces no qualification until all lanes and the strict verifier pass.
 
+The full Chromium renderer suite passed all 2,631 tests in 62m 40s
+with retries disabled on frozen source
+`02b65034dde278cb72f3fc1edf92a4b23bc1985c`. The captured result and
+output are in `target/local-review/full-renderer-02b6503.na7tgOKX/run/`.
+This covers that renderer snapshot, not later changes or installed Linux
+behavior.
+
+### Independent staged and unstaged recap limits
+
+Both recaps still share one bounded Git status read. Staged-only records
+no longer consume the unstaged path budget. With 2,001 staged additions,
+one independent modified file and one untracked text file, the staged
+badge is partial while the unstaged badge correctly shows `+3 −1`.
+Tracked paths are joined to Git's numstat by byte identity. A non-UTF-8
+untracked path is disclosed as excluded rather than opening a different
+file that happens to have the same display label. Both regressions
+failed on the prior source; the first is also required in the next
+installed recap qualification. Evidence:
+`target/local-review/independent-unstaged-recap.6woZdGil/`.
+
 ### Manual and automatic Fetch recovery
 
 Successful manual Fetch options now re-enable an automatic Fetch paused

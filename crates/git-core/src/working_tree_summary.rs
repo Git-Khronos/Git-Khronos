@@ -1,10 +1,10 @@
 use super::{
-    AppError, RepositoryStatus, StatusOverflow, ensure_success, file_statistics, git_cancellation,
-    is_explicit_bare_repository, numstat_entries, parse_numstat, parse_porcelain_status,
-    run_git_with_stdout_limit, without_lazy_fetch,
+    AppError, ensure_success, file_statistics, git_cancellation, is_explicit_bare_repository,
+    numstat_entries, porcelain_status_conflicted, porcelain_status_records, run_git_with_stdout_limit,
+    without_lazy_fetch,
 };
 use serde::Serialize;
-use std::{path::Path, time::Duration};
+use std::{collections::HashMap, path::Path, time::Duration};
 
 const MAX_FILES: usize = 2_000;
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
@@ -38,9 +38,21 @@ pub fn working_tree_summaries(path: &Path) -> Result<WorkingTreeSummaries, AppEr
     })
 }
 
-fn read_summary_status(path: &Path) -> Result<RepositoryStatus, AppError> {
+struct UnstagedPath {
+    name: Vec<u8>,
+    untracked: bool,
+}
+
+#[derive(Default)]
+struct RecapStatus {
+    has_staged: bool,
+    unstaged_paths: Vec<UnstagedPath>,
+    unstaged_partial: bool,
+}
+
+fn read_summary_status(path: &Path) -> Result<RecapStatus, AppError> {
     if is_explicit_bare_repository(path) {
-        return Ok(RepositoryStatus::default());
+        return Ok(RecapStatus::default());
     }
     // An unstaged rename can be one porcelain record, but two diff records
     // if rename detection is disabled there. Use matching policy on both reads.
@@ -66,13 +78,27 @@ fn read_summary_status(path: &Path) -> Result<RepositoryStatus, AppError> {
         ));
     }
     ensure_success("read working-tree summary status", &output)?;
-    Ok(parse_porcelain_status(
-        &output.stdout,
-        RepositoryStatus::default(),
-        MAX_FILES,
-        false,
-        StatusOverflow::default(),
-    ))
+    let mut status = RecapStatus::default();
+    // A staged-only path must not consume the unstaged budget. Keep bytes,
+    // not a display string: unrelated non-UTF-8 names can look identical.
+    for (record, _) in porcelain_status_records(&output.stdout) {
+        if record.len() < 4 || record.starts_with(b"## ") || porcelain_status_conflicted(&record[..2]) {
+            continue;
+        }
+        let untracked = record.starts_with(b"??");
+        status.has_staged |= !untracked && !matches!(record[0], b' ' | b'!');
+        if untracked || !matches!(record[1], b' ' | b'!') {
+            if status.unstaged_paths.len() == MAX_FILES {
+                status.unstaged_partial = true;
+            } else {
+                status.unstaged_paths.push(UnstagedPath {
+                    name: record[3..].to_vec(),
+                    untracked,
+                });
+            }
+        }
+    }
+    Ok(status)
 }
 
 fn inspect_recap<T>(action: impl FnOnce() -> Result<T, AppError>) -> Result<T, AppError> {
@@ -98,9 +124,9 @@ fn complete_records(output: &[u8]) -> &[u8] {
     output.iter().rposition(|byte| *byte == 0).map_or(&[], |end| &output[..=end])
 }
 
-fn read_staged_summary(path: &Path, status: &RepositoryStatus) -> Result<WorkingTreeChangeSummary, AppError> {
+fn read_staged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTreeChangeSummary, AppError> {
     let mut summary = WorkingTreeChangeSummary::default();
-    if status.staged == 0 {
+    if !status.has_staged {
         return Ok(summary);
     }
     // No explicit HEAD: an unborn branch compares the index to an empty tree.
@@ -140,19 +166,10 @@ pub fn working_tree_change_summary(path: &Path) -> Result<WorkingTreeChangeSumma
     inspect_recap(|| read_unstaged_summary(path, &read_summary_status(path)?))
 }
 
-fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<WorkingTreeChangeSummary, AppError> {
-    if status.unstaged == 0 && status.untracked == 0 {
-        return Ok(WorkingTreeChangeSummary::default());
-    }
-    let entries: Vec<_> = status
-        .entries
-        .iter()
-        .filter(|entry| {
-            !entry.conflicted && (entry.worktree_status != " " || entry.index_status == "?")
-        })
-        .collect();
+fn read_unstaged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTreeChangeSummary, AppError> {
+    let entries = &status.unstaged_paths;
     let mut summary = WorkingTreeChangeSummary {
-        partial: status.entries_truncated,
+        partial: status.unstaged_partial,
         ..Default::default()
     };
     if entries.is_empty() {
@@ -160,7 +177,7 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
     }
     // Git diff has no rows for ordinary untracked names. Do not scan the
     // tracked index again unless this recap can use at least one such row.
-    let stats = if entries.iter().any(|entry| entry.index_status != "?") {
+    let stats_output = if entries.iter().any(|entry| !entry.untracked) {
         let rename_limit = format!("-l{MAX_FILES}");
         let (output, truncated) = run_git_with_stdout_limit(
             path,
@@ -181,17 +198,27 @@ fn read_unstaged_summary(path: &Path, status: &RepositoryStatus) -> Result<Worki
             ensure_success("count unstaged lines", &output)?;
         }
         summary.partial |= truncated || skipped_renames(&output.stderr);
-        parse_numstat(complete_records(&output.stdout))
+        output.stdout
     } else {
-        Default::default()
+        Vec::new()
     };
+    let stats: HashMap<_, _> = numstat_entries(complete_records(&stats_output))
+        .map(|(path, additions, deletions)| (path, (additions, deletions)))
+        .collect();
     let mut untracked = Vec::new();
     for entry in entries {
         git_cancellation::inspection_checkpoint()?;
-        if entry.index_status == "?" {
-            untracked.push(entry.path.as_str());
+        if entry.untracked {
+            // The file/attribute reader accepts UTF-8 paths. Never open a
+            // different, valid filename obtained by substituting bytes.
+            if let Ok(name) = std::str::from_utf8(&entry.name) {
+                untracked.push(name);
+            } else {
+                summary.uncounted_files += 1;
+                summary.partial = true;
+            }
         } else {
-            match stats.get(&entry.path) {
+            match stats.get(entry.name.as_slice()) {
                 Some((Some(additions), Some(deletions))) => {
                     summary.additions += additions;
                     summary.deletions += deletions;

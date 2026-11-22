@@ -2128,15 +2128,43 @@ fn staged_summary_ignores_unmerged_entries_while_counting_other_index_changes() 
 #[test]
 fn staged_summary_discloses_its_bound_without_erasing_the_unstaged_side() {
     let repository = Repository::new();
+    repository.write("z-tracked.txt", b"old\n");
+    repository.commit("Base");
     for index in 0..2001 {
         repository.write(&format!("file-{index:04}.txt"), b"staged\n");
     }
     repository.git(&["add", "--all"]);
+    repository.write("z-tracked.txt", b"new\nnew second line\n");
+    repository.write("z-untracked.txt", b"not staged\n");
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
     let recaps = working_tree_summaries(&repository.0).unwrap();
     let staged = recaps.staged.unwrap();
     let unstaged = recaps.unstaged.unwrap();
     assert_eq!((staged.additions, staged.deletions, staged.partial), (2000, 0, true));
-    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.partial), (0, 0, false));
+    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial), (3, 1, 0, false));
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+}
+
+#[cfg(unix)]
+#[test]
+fn unstaged_summary_does_not_join_or_read_files_by_lossy_names() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let repository = Repository::new();
+    let first = repository.0.join(OsStr::from_bytes(b"x\x80"));
+    let second = repository.0.join(OsStr::from_bytes(b"x\x81"));
+    fs::write(&first, b"old A\n").unwrap();
+    fs::write(&second, b"old B\n").unwrap();
+    repository.commit("Two distinct byte paths");
+    fs::write(&first, b"first\nsecond\n").unwrap();
+    fs::write(&second, b"one\ntwo\nthree\n").unwrap();
+    fs::write(repository.0.join(OsStr::from_bytes(b"u\xff")), b"other bytes\n").unwrap();
+    repository.write("u\u{fffd}", b"one\ntwo\n");
+
+    let recaps = working_tree_summaries(&repository.0).unwrap();
+    let unstaged = recaps.unstaged.unwrap();
+    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial), (7, 2, 1, true));
 }
 
 #[cfg(unix)]

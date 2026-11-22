@@ -8415,6 +8415,29 @@ fn read_status_with_limit_mode(
     Ok(status)
 }
 
+fn porcelain_status_records(stdout: &[u8]) -> impl Iterator<Item = (&[u8], Option<&[u8]>)> {
+    let mut records = stdout.split(|byte| *byte == 0);
+    std::iter::from_fn(move || loop {
+        let record = records.next()?;
+        if record.is_empty() {
+            continue;
+        }
+        let previous = if record.len() >= 3
+            && !record.starts_with(b"## ")
+            && record[..2].iter().any(|code| matches!(code, b'R' | b'C'))
+        {
+            records.next()
+        } else {
+            None
+        };
+        return Some((record, previous));
+    })
+}
+
+fn porcelain_status_conflicted(code: &[u8]) -> bool {
+    matches!(code, b"DD" | b"AU" | b"UD" | b"UA" | b"DU" | b"AA" | b"UU")
+}
+
 fn parse_porcelain_status(
     stdout: &[u8],
     mut status: RepositoryStatus,
@@ -8422,12 +8445,7 @@ fn parse_porcelain_status(
     output_truncated: bool,
     overflow: StatusOverflow,
 ) -> RepositoryStatus {
-    let mut records = stdout.split(|byte| *byte == 0);
-
-    while let Some(record) = records.next() {
-        if record.is_empty() {
-            continue;
-        }
+    for (record, previous) in porcelain_status_records(stdout) {
         if record.starts_with(b"## ") {
             parse_branch_header(&String::from_utf8_lossy(&record[3..]), &mut status);
             continue;
@@ -8439,7 +8457,7 @@ fn parse_porcelain_status(
         let x = record[0] as char;
         let y = record[1] as char;
         let code = &record[..2];
-        let conflicted = matches!(code, b"DD" | b"AU" | b"UD" | b"UA" | b"DU" | b"AA" | b"UU");
+        let conflicted = porcelain_status_conflicted(code);
         let untracked = code == b"??";
         if conflicted {
             status.conflicted += 1;
@@ -8456,11 +8474,6 @@ fn parse_porcelain_status(
         let index_grouped = matches!(x, 'R' | 'C');
         let worktree_grouped = matches!(y, 'R' | 'C');
         let exact_rename = (x == 'R' && !worktree_grouped) || (y == 'R' && !index_grouped);
-        let previous = if index_grouped || worktree_grouped {
-            records.next()
-        } else {
-            None
-        };
         status.entry_count += 1;
         if status.entries.len() < entry_limit {
             status.entries.push(WorkingTreeEntry {
@@ -8520,7 +8533,7 @@ impl StatusOverflow {
     fn record(&mut self, code: &[u8]) {
         let x = code[0] as char;
         let y = code[1] as char;
-        let conflicted = matches!(code, b"DD" | b"AU" | b"UD" | b"UA" | b"DU" | b"AA" | b"UU");
+        let conflicted = porcelain_status_conflicted(code);
         if conflicted {
             self.conflicted += 1;
         } else if code == b"??" {

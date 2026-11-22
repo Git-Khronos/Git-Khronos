@@ -133,4 +133,18 @@ def unstaged_summary_workflow(driver, fixtures, report):
     report['scenarios'].append('native-worktree-rename-stages-and-unstages-both-paths-without-changing-files')
     report['unstagedLineSummary']['renameDiff'] = {'unstaged': unstaged_diff, 'staged': staged_diff}
     report['scenarios'].append('native-worktree-rename-diff-reviews-both-paths-and-shows-only-edited-lines')
-    return renamed, repo_id
+
+    crowded = fixtures.repository('unstaged-recap-beyond-staged-budget', commits=2)
+    for index in range(2001):
+        (crowded / f'a-staged-{index:04}.txt').write_text('staged only\n')
+    fixtures.git(crowded, 'add', '--all')
+    (crowded / 'fixture.txt').write_text('changed\nsecond line\n')
+    (crowded / 'z-untracked.txt').write_text('untracked\n')
+    files = ('a-staged-0000.txt', 'fixture.txt', 'z-untracked.txt')
+    before_budget = checkout_footprint(fixtures, crowded, files)
+    repo_id = open_ui(driver, crowded)
+    recaps = wait_for_line_recaps(driver, (3, 1), (2000, 0), staged_partial=True, timeout=45)
+    assert checkout_footprint(fixtures, crowded, files) == before_budget
+    report['unstagedLineSummary']['independentBudget'] = recaps
+    report['scenarios'].append('native-unstaged-recap-is-complete-when-staged-recap-hits-its-bound')
+    return crowded, repo_id
