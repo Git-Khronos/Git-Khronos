@@ -3532,6 +3532,17 @@ failed on the prior source; the first is also required in the next
 installed recap qualification. Evidence:
 `target/local-review/independent-unstaged-recap.6woZdGil/`.
 
+Even when the combined porcelain stream exceeds 4 MiB, the recap now
+falls back to separately bounded index, worktree and untracked reads under
+the same deadline. The regression uses 3,000 long staged paths, one
+unmerged file, one unrelated unstaged edit and one untracked text file.
+The staged badge is partial and the unstaged total remains `+3 −1`.
+The unmerged index listing excludes both numstat records Git can emit for
+one conflicted path; filtering out only Git's `U` record is insufficient.
+The installed recap gate now exercises this overflow case. The failing
+baseline, conflict probe, and source checks are retained under
+`target/local-review/recap-status-overflow.6NLZbVz1/`.
+
 ### Rebuilding native code after restoring a source archive
 
 An Ubuntu 24.04 installed check caught the Bisect Reset safeguard missing

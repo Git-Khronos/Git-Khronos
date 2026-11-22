@@ -98,6 +98,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-unstaged-summary-recounts-after-staging-without-including-staged-lines',
     'native-unstaged-recap-updates-after-external-edit-with-unchanged-porcelain',
     'native-unstaged-recap-is-complete-when-staged-recap-hits-its-bound',
+    'native-unstaged-recap-survives-status-byte-bound-without-counting-conflicts',
     'native-worktree-rename-stages-and-unstages-both-paths-without-changing-files',
   ]],
   ['repository-open-scope', [

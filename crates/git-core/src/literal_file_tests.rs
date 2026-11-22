@@ -2167,6 +2167,42 @@ fn unstaged_summary_does_not_join_or_read_files_by_lossy_names() {
     assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial), (7, 2, 1, true));
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn summary_status_byte_limit_does_not_hide_a_small_unstaged_recap() {
+    let repository = Repository::new();
+    repository.write("z-tracked.txt", b"old\n");
+    repository.write("conflicted.txt", b"base\n");
+    repository.commit("Base");
+    let branch = String::from_utf8(repository.git(&["branch", "--show-current"])).unwrap();
+    repository.git(&["switch", "-c", "other"]);
+    repository.write("conflicted.txt", b"theirs\n");
+    repository.commit("Other");
+    repository.git(&["switch", branch.trim()]);
+    repository.write("conflicted.txt", b"ours\n");
+    repository.commit("Ours");
+    assert!(!git_in(&repository.0).args(["merge", "--no-edit", "other"]).output().unwrap().status.success());
+    let parent = std::iter::repeat_n("a".repeat(250), 6).collect::<Vec<_>>().join("/");
+    fs::create_dir_all(repository.0.join(&parent)).unwrap();
+    for index in 0..3000 {
+        repository.write(&format!("{parent}/file-{index:04}.txt"), b"one line\n");
+    }
+    repository.git(&["add", "--", &parent]);
+    repository.write("z-tracked.txt", b"new\nsecond line\n");
+    repository.write("z-untracked.txt", b"one more line\n");
+    let status = repository.git(&["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+    assert!(status.len() > 4 * 1024 * 1024);
+    let index = fs::read(repository.0.join(".git/index")).unwrap();
+
+    let recaps = working_tree_summaries(&repository.0).unwrap();
+    let staged = recaps.staged.unwrap();
+    let unstaged = recaps.unstaged.unwrap();
+    assert_eq!((staged.additions, staged.deletions, staged.partial), (2000, 0, true));
+    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial), (3, 1, 0, false));
+    assert_eq!(working_tree_change_summary(&repository.0).unwrap().additions, 3);
+    assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+}
+
 #[cfg(unix)]
 #[test]
 fn working_tree_recaps_reap_stalled_git_without_misreporting_counts() {
@@ -2195,7 +2231,13 @@ fn working_tree_recaps_reap_stalled_git_without_misreporting_counts() {
         let result = working_tree_summaries(&repository.0);
         match mode.as_str() {
             "status" => assert_eq!(result.unwrap_err().kind, "workingTreeSummaryTimedOut"),
-            "limit" => assert_eq!(result.unwrap_err().kind, "workingTreeSummaryStatusLimit"),
+            "limit" => {
+                let recaps = result.unwrap();
+                let staged = recaps.staged.unwrap();
+                let unstaged = recaps.unstaged.unwrap();
+                assert_eq!((staged.additions, staged.deletions, staged.partial), (1, 1, false));
+                assert_eq!((unstaged.additions, unstaged.deletions, unstaged.partial), (1, 1, false));
+            }
             "unstaged" => {
                 let recaps = result.unwrap();
                 let staged = recaps.staged.unwrap();

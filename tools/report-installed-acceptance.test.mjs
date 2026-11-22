@@ -400,6 +400,7 @@ test('installed recaps must prove distinct diff sides and independent line budge
   for (const scenario of [
     'native-working-tree-same-path-selects-each-index-side-from-its-tree-row',
     'native-unstaged-recap-is-complete-when-staged-recap-hits-its-bound',
+    'native-unstaged-recap-survives-status-byte-bound-without-counting-conflicts',
   ]) {
     assert.ok(recaps.scenarios.includes(scenario));
     const priorEvidence = { ...recaps, scenarios: recaps.scenarios.filter(name => name !== scenario) };

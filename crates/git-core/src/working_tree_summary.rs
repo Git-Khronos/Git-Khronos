@@ -4,7 +4,11 @@ use super::{
     without_lazy_fetch,
 };
 use serde::Serialize;
-use std::{collections::HashMap, path::Path, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    time::Duration,
+};
 
 const MAX_FILES: usize = 2_000;
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
@@ -31,8 +35,15 @@ pub struct WorkingTreeSummaries {
 pub fn working_tree_summaries(path: &Path) -> Result<WorkingTreeSummaries, AppError> {
     inspect_recap(|| {
         let status = read_summary_status(path)?;
+        let Some(status) = status else {
+            // A full status stream isn't necessary for either line count.
+            // Use independent bounded sources under the same deadline.
+            let unstaged = read_unstaged_without_status(path).ok();
+            let staged = read_staged_summary(path, true).ok();
+            return Ok(WorkingTreeSummaries { staged, unstaged });
+        };
         Ok(WorkingTreeSummaries {
-            staged: read_staged_summary(path, &status).ok(),
+            staged: read_staged_summary(path, status.has_staged).ok(),
             unstaged: read_unstaged_summary(path, &status).ok(),
         })
     })
@@ -50,9 +61,9 @@ struct RecapStatus {
     unstaged_partial: bool,
 }
 
-fn read_summary_status(path: &Path) -> Result<RecapStatus, AppError> {
+fn read_summary_status(path: &Path) -> Result<Option<RecapStatus>, AppError> {
     if is_explicit_bare_repository(path) {
-        return Ok(RecapStatus::default());
+        return Ok(Some(RecapStatus::default()));
     }
     // An unstaged rename can be one porcelain record, but two diff records
     // if rename detection is disabled there. Use matching policy on both reads.
@@ -71,11 +82,7 @@ fn read_summary_status(path: &Path) -> Result<RecapStatus, AppError> {
         MAX_STATUS_BYTES,
     )?;
     if truncated {
-        return Err(AppError::new(
-            "workingTreeSummaryStatusLimit",
-            "Git status exceeded the working-tree line count limit.",
-            None,
-        ));
+        return Ok(None);
     }
     ensure_success("read working-tree summary status", &output)?;
     let mut status = RecapStatus::default();
@@ -98,7 +105,7 @@ fn read_summary_status(path: &Path) -> Result<RecapStatus, AppError> {
             }
         }
     }
-    Ok(status)
+    Ok(Some(status))
 }
 
 fn inspect_recap<T>(action: impl FnOnce() -> Result<T, AppError>) -> Result<T, AppError> {
@@ -124,9 +131,9 @@ fn complete_records(output: &[u8]) -> &[u8] {
     output.iter().rposition(|byte| *byte == 0).map_or(&[], |end| &output[..=end])
 }
 
-fn read_staged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTreeChangeSummary, AppError> {
+fn read_staged_summary(path: &Path, has_staged: bool) -> Result<WorkingTreeChangeSummary, AppError> {
     let mut summary = WorkingTreeChangeSummary::default();
-    if !status.has_staged {
+    if !has_staged {
         return Ok(summary);
     }
     // No explicit HEAD: an unborn branch compares the index to an empty tree.
@@ -163,7 +170,26 @@ fn read_staged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTreeC
 /// Unstaged changes are relative to the index, not HEAD. Never run external diff
 /// drivers or read through untracked symlinks while calculating this recap.
 pub fn working_tree_change_summary(path: &Path) -> Result<WorkingTreeChangeSummary, AppError> {
-    inspect_recap(|| read_unstaged_summary(path, &read_summary_status(path)?))
+    inspect_recap(|| match read_summary_status(path)? {
+        Some(status) => read_unstaged_summary(path, &status),
+        None => read_unstaged_without_status(path),
+    })
+}
+
+fn unstaged_numstat(path: &Path) -> Result<(Vec<u8>, bool), AppError> {
+    let rename_limit = format!("-l{MAX_FILES}");
+    let (output, truncated) = run_git_with_stdout_limit(
+        path,
+        &[
+            "diff", "--numstat", "-z", "--find-renames", &rename_limit,
+            "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--",
+        ],
+        MAX_STATS_BYTES,
+    )?;
+    if !truncated {
+        ensure_success("count unstaged lines", &output)?;
+    }
+    Ok((output.stdout, truncated || skipped_renames(&output.stderr)))
 }
 
 fn read_unstaged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTreeChangeSummary, AppError> {
@@ -178,60 +204,108 @@ fn read_unstaged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTre
     // Git diff has no rows for ordinary untracked names. Do not scan the
     // tracked index again unless this recap can use at least one such row.
     let stats_output = if entries.iter().any(|entry| !entry.untracked) {
-        let rename_limit = format!("-l{MAX_FILES}");
-        let (output, truncated) = run_git_with_stdout_limit(
-            path,
-            &[
-                "diff",
-                "--numstat",
-                "-z",
-                "--find-renames",
-                &rename_limit,
-                "--no-ext-diff",
-                "--no-textconv",
-                "--ignore-submodules=none",
-                "--",
-            ],
-            MAX_STATS_BYTES,
-        )?;
-        if !truncated {
-            ensure_success("count unstaged lines", &output)?;
-        }
-        summary.partial |= truncated || skipped_renames(&output.stderr);
-        output.stdout
+        let (output, partial) = unstaged_numstat(path)?;
+        summary.partial |= partial;
+        output
     } else {
         Vec::new()
     };
     let stats: HashMap<_, _> = numstat_entries(complete_records(&stats_output))
         .map(|(path, additions, deletions)| (path, (additions, deletions)))
         .collect();
-    let mut untracked = Vec::new();
-    for entry in entries {
+    for entry in entries.iter().filter(|entry| !entry.untracked) {
         git_cancellation::inspection_checkpoint()?;
-        if entry.untracked {
-            // The file/attribute reader accepts UTF-8 paths. Never open a
-            // different, valid filename obtained by substituting bytes.
-            if let Ok(name) = std::str::from_utf8(&entry.name) {
-                untracked.push(name);
-            } else {
+        match stats.get(entry.name.as_slice()) {
+            Some((Some(additions), Some(deletions))) => {
+                summary.additions += additions;
+                summary.deletions += deletions;
+            }
+            Some(_) => summary.uncounted_files += 1,
+            None => {
                 summary.uncounted_files += 1;
                 summary.partial = true;
             }
-        } else {
-            match stats.get(entry.name.as_slice()) {
-                Some((Some(additions), Some(deletions))) => {
-                    summary.additions += additions;
-                    summary.deletions += deletions;
-                }
-                Some(_) => summary.uncounted_files += 1,
-                None => {
-                    summary.uncounted_files += 1;
-                    summary.partial = true;
-                }
-            }
         }
     }
-    let counts = file_statistics::untracked_additions(path, &untracked)?;
+    count_untracked(
+        path,
+        entries.iter().filter(|entry| entry.untracked).map(|entry| entry.name.as_slice()),
+        &mut summary,
+    )?;
+    Ok(summary)
+}
+
+fn read_unstaged_without_status(path: &Path) -> Result<WorkingTreeChangeSummary, AppError> {
+    // A conflicted path can have both an unmerged and a modified numstat
+    // record. Filtering the diff by change type alone leaves the latter.
+    let (conflict, truncated) =
+        run_git_with_stdout_limit(path, &["ls-files", "--unmerged", "-z"], MAX_STATUS_BYTES)?;
+    let incomplete_conflicts = || {
+        AppError::new(
+            "workingTreeSummaryConflictPaths",
+            "Could not verify all unmerged paths for the unstaged line count.",
+            None,
+        )
+    };
+    if truncated || (!conflict.stdout.is_empty() && !conflict.stdout.ends_with(&[0])) {
+        return Err(incomplete_conflicts());
+    }
+    ensure_success("read unmerged paths for the unstaged line count", &conflict)?;
+    let mut blocked = HashSet::new();
+    for row in conflict.stdout.split(|byte| *byte == 0).filter(|row| !row.is_empty()) {
+        let separator = row.iter().position(|byte| *byte == b'\t').ok_or_else(incomplete_conflicts)?;
+        blocked.insert(&row[separator + 1..]);
+    }
+    let (tracked, partial) = unstaged_numstat(path)?;
+    let mut summary = WorkingTreeChangeSummary { partial, ..Default::default() };
+    let mut remaining = MAX_FILES;
+    for (name, additions, deletions) in numstat_entries(complete_records(&tracked)) {
+        if blocked.contains(name) {
+            continue;
+        }
+        if remaining == 0 {
+            summary.partial = true;
+            return Ok(summary);
+        }
+        remaining -= 1;
+        match (additions, deletions) {
+            (Some(additions), Some(deletions)) => {
+                summary.additions += additions;
+                summary.deletions += deletions;
+            }
+            _ => summary.uncounted_files += 1,
+        }
+    }
+    let (output, truncated) = run_git_with_stdout_limit(
+        path, &["ls-files", "--others", "--exclude-standard", "-z"], MAX_STATUS_BYTES,
+    )?;
+    if !truncated {
+        ensure_success("read untracked paths for the unstaged line count", &output)?;
+    }
+    let mut rows = complete_records(&output.stdout).split(|byte| *byte == 0).filter(|row| !row.is_empty());
+    count_untracked(path, rows.by_ref().take(remaining), &mut summary)?;
+    summary.partial |= truncated || rows.next().is_some();
+    Ok(summary)
+}
+
+fn count_untracked<'a>(
+    path: &Path,
+    names: impl Iterator<Item = &'a [u8]>,
+    summary: &mut WorkingTreeChangeSummary,
+) -> Result<(), AppError> {
+    let mut paths = Vec::new();
+    for name in names {
+        git_cancellation::inspection_checkpoint()?;
+        // The file/attribute reader accepts UTF-8 paths. Never open a
+        // different, valid filename obtained by substituting bytes.
+        if let Ok(name) = std::str::from_utf8(name) {
+            paths.push(name);
+        } else {
+            summary.uncounted_files += 1;
+            summary.partial = true;
+        }
+    }
+    let counts = file_statistics::untracked_additions(path, &paths)?;
     summary.partial |= counts.partial;
     for additions in counts.counts {
         if let Some(additions) = additions {
@@ -240,5 +314,5 @@ fn read_unstaged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTre
             summary.uncounted_files += 1;
         }
     }
-    Ok(summary)
+    Ok(())
 }

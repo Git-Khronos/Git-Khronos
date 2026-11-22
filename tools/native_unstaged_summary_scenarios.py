@@ -1,5 +1,6 @@
 """Unstaged recap uses real index-relative Git counts, never commit totals."""
 import json
+import subprocess
 from native_worktree_scenarios import checkout_footprint
 from native_working_tree_recaps import wait_for_line_recaps
 
@@ -142,9 +143,47 @@ def unstaged_summary_workflow(driver, fixtures, report):
     (crowded / 'z-untracked.txt').write_text('untracked\n')
     files = ('a-staged-0000.txt', 'fixture.txt', 'z-untracked.txt')
     before_budget = checkout_footprint(fixtures, crowded, files)
-    repo_id = open_ui(driver, crowded)
+    open_ui(driver, crowded)
     recaps = wait_for_line_recaps(driver, (3, 1), (2000, 0), staged_partial=True, timeout=45)
     assert checkout_footprint(fixtures, crowded, files) == before_budget
     report['unstagedLineSummary']['independentBudget'] = recaps
     report['scenarios'].append('native-unstaged-recap-is-complete-when-staged-recap-hits-its-bound')
-    return crowded, repo_id
+    return status_byte_bound_workflow(driver, fixtures, report)
+
+
+def status_byte_bound_workflow(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('recap-status-byte-bound', commits=1)
+    conflict = repository / 'conflicted.txt'
+    conflict.write_text('base\n')
+    fixtures.git(repository, 'add', '--', conflict.name)
+    fixtures.git(repository, 'commit', '-qm', 'Base for owned conflict')
+    fixtures.git(repository, 'switch', '-qc', 'side')
+    conflict.write_text('theirs\n')
+    fixtures.git(repository, 'commit', '-qam', 'Side')
+    fixtures.git(repository, 'switch', '-q', 'main')
+    conflict.write_text('ours\n')
+    fixtures.git(repository, 'commit', '-qam', 'Main')
+    result = subprocess.run(
+        ['git', '-C', str(repository), 'merge', '--no-edit', 'side'],
+        env=fixtures.env, capture_output=True, timeout=10,
+    )
+    assert result.returncode == 1 and fixtures.git(repository, 'ls-files', '--unmerged'), result.stderr
+    parent = repository.joinpath(*(['a' * 250] * 6))
+    parent.mkdir(parents=True)
+    for index in range(3000):
+        (parent / f'file-{index:04}.txt').write_text('staged only\n')
+    fixtures.git(repository, 'add', '--', str(parent.relative_to(repository)))
+    (repository / 'fixture.txt').write_text('changed\nsecond line\n')
+    (repository / 'z-untracked.txt').write_text('untracked\n')
+    status = fixtures.git(repository, '--no-optional-locks', 'status', '--porcelain=v1', '-z', '--untracked-files=all')
+    assert len(status.encode('utf-8')) > 4 * 1024 * 1024
+    files = (conflict.name, 'fixture.txt', 'z-untracked.txt')
+    before = checkout_footprint(fixtures, repository, files)
+    repo_id = open_ui(driver, repository)
+    recaps = wait_for_line_recaps(driver, (3, 1), (2000, 0), staged_partial=True, timeout=60)
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['unstagedLineSummary']['statusByteBound'] = {'statusBytes': len(status.encode('utf-8')), 'recaps': recaps}
+    report['scenarios'].append('native-unstaged-recap-survives-status-byte-bound-without-counting-conflicts')
+    return repository, repo_id
