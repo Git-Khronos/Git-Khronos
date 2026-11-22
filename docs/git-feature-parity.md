@@ -54,8 +54,8 @@ behavioral cases during the audit; grouping does not remove any listed action.
    exposed: pull-triggered nested checkouts could surprise users or interact
    with local submodule state. See the
    [submodule guide](https://help.gitkraken.com/gitkraken-desktop/submodules/).
-3. **Remaining workspace actions:** bulk clone and conversion
-   of local groups to shared groups remain unimplemented. Bulk fetch, pull and open report
+3. **Remaining workspace actions:** conversion of local groups to shared groups
+   remains unimplemented. Bulk clone, fetch, pull and open report
    per-repository outcomes. Bulk close removes reviewed open tabs from this
    workspace without touching Git data or files. Saved but unopened paths
    remain in Repository overview with individual retry, locate and remove
@@ -64,6 +64,9 @@ behavioral cases during the audit; grouping does not remove any listed action.
    **Check saved status** reads selected or all unopened saved paths, up to
    32 at a time, without opening a tab or fetching. Results are timestamped
    local observations; an unavailable path does not hide the other results.
+   **Clone multiple repositories** reviews pasted Git sources and destination
+   names before cloning them one at a time. Stopping does not undo completed
+   checkouts. Provider-catalogue selection is still single-repository.
 
 Repository files now has a flat, native-filtered view of tracked, untracked and
 ignored files with bounded pages. Empty-file creation is currently limited to
@@ -349,11 +352,11 @@ implemented in-app capability.
 | ID | Required behavior | Current assessment / evidence needed |
 | --- | --- | --- |
 | W01 | Persist and switch workspace repository sets, including shared/remote workspace capabilities documented by the reference product | Partial: local sets only; shared workspace equivalent needs specification and implementation |
-| W02 | Show multi-repository changes, divergence, active operations, review/CI/issue context and actionable overview filters | Partial: open-local-repository overview; unopened repositories and hosted aggregation missing |
+| W02 | Show multi-repository changes, divergence, active operations, review/CI/issue context and actionable overview filters | Partial: open-local-repository overview and on-demand unopened local status; hosted aggregation missing |
 | W03 | Save/switch identities, accounts, preferences and tab sets; explicitly choose local/global identity sync without silent Git or credential changes | Partial: named commit identity templates only |
 | W04 | Provide local and shared team/repository collaboration views and discovery | Discovery and implementation required |
 | W05 | Configure terminal/editor/diff/merge programs, repository setup commands and defaults | Partial: terminal profiles retain explicit launch and defaults; the former dedicated agent launcher was removed. The [external file-tool candidate](specifications/external-file-tools.md) supports reviewed editor/comparison/merge launches and separate merge save/stage/cleanup. Earlier Linux package evidence predates this removal; restart storage management and reviewed setup workflows remain open. See the [independent tool specification](specifications/configured-tools.md) |
-| W11 | Select workspace repositories for bulk clone/fetch/pull/open/locate/remove, with individual outcomes; convert local groups to shared groups explicitly | Partial: fetch, pull, open, locate, reviewed close of open tabs and reviewed removal of unopened saved paths have per-item outcomes. Bulk locate opens one folder chooser per path; it does not guess mappings. Bulk clone and group conversion remain missing |
+| W11 | Select workspace repositories for bulk clone/fetch/pull/open/locate/remove, with individual outcomes; convert local groups to shared groups explicitly | Partial: clone from pasted Git sources, fetch, pull, open, locate, reviewed close of open tabs and reviewed removal of unopened saved paths have per-item outcomes. Bulk locate opens one folder chooser per path; it does not guess mappings. Catalogue bulk selection and group conversion remain missing |
 
 ## UX, platform and delivery requirements
 

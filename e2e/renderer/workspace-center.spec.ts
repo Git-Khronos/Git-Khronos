@@ -113,6 +113,105 @@ test('shows local repository state, filters attention and opens a repository', a
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('clean-repo');
 });
 
+async function prepareWorkspaceClone(page: Page, heldFolder: string | null = null) {
+  await page.evaluate(held => {
+    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    const fixture = (window as any).__center;
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
+      fixture.calls.push({ command, args });
+      if (command === 'plugin:dialog|open') return Promise.resolve('/owned/clones');
+      if (command === 'clone_repository') {
+        if (args.folder === 'blocked') return Promise.reject({ kind: 'destinationExists', message: 'The clone destination already exists.' });
+        const snapshot = { ...fixture.second, id: 'clone-' + args.folder, name: args.folder, path: args.parentPath + '/' + args.folder };
+        if (args.folder === held) return new Promise(resolve => fixture.releaseClone = () => resolve(snapshot));
+        return Promise.resolve(snapshot);
+      }
+      if (command === 'refresh_repository_metadata') return Promise.resolve(git.repositories().find((repo: any) => repo.id === args.repoId));
+      return Promise.resolve(null);
+    } };
+  }, heldFolder);
+}
+
+async function reviewWorkspaceClones(page: Page, sources: string) {
+  const dialog = await open(page);
+  await dialog.getByRole('button', { name: 'Clone multiple repositories', exact: true }).click();
+  const form = dialog.getByRole('region', { name: 'Clone multiple repositories' });
+  await form.getByLabel('Repository URLs or paths').fill(sources);
+  await form.getByRole('button', { name: 'Choose destination…' }).click();
+  await form.getByRole('button', { name: 'Review clones' }).click();
+  return form;
+}
+
+async function cloneCalls(page: Page): Promise<{ remote: string; parentPath: string; folder: string }[]> {
+  return page.evaluate(() => (window as any).__center.calls
+    .filter((entry: any) => entry.command === 'clone_repository').map((entry: any) => entry.args));
+}
+
+test('reviews workspace clones and keeps successful tabs without switching even if a clone fails', async ({ page }) => {
+  await prepareWorkspaceClone(page);
+  const form = await reviewWorkspaceClones(page, 'https://example.test/team/example.git\n/fixtures/blocked.git\ngit@example.test:other/example.git');
+  const confirm = form.getByRole('button', { name: 'Clone 3 repositories' });
+  await expect(confirm).toBeDisabled();
+  await expect(form.getByRole('status')).toContainText('Each clone needs a different folder name.');
+  await form.getByLabel('Folder for repository 3').fill('../outside');
+  await expect(confirm).toBeDisabled();
+  await form.getByLabel('Folder for repository 3').fill('other-example');
+  expect(await cloneCalls(page)).toHaveLength(0);
+  await confirm.click();
+  await expect(form.getByRole('status')).toHaveText('Cloned 2 of 3 repositories.');
+  await expect(form.getByRole('list', { name: 'Clone results' })).toContainText('blocked — Could not clone');
+  await expect(form.getByRole('list', { name: 'Clone results' })).toContainText('The clone destination already exists.');
+  expect((await cloneCalls(page)).map(({ remote, parentPath, folder }) => [remote, parentPath, folder])).toEqual([
+    ['https://example.test/team/example.git', '/owned/clones', 'example'],
+    ['/fixtures/blocked.git', '/owned/clones', 'blocked'],
+    ['git@example.test:other/example.git', '/owned/clones', 'other-example'],
+  ]);
+  expect(await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    return { active: git.repository().path, tabs: git.repositories().map((repo: any) => repo.path), saved: git.activeWorkspace().repositoryPaths };
+  })).toEqual({ active: '/owned/alpha', tabs: ['/owned/alpha', '/owned/beta', '/owned/clones/example', '/owned/clones/other-example'],
+    saved: ['/owned/alpha', '/owned/beta', '/owned/clones/example', '/owned/clones/other-example'] });
+});
+
+test('stopping workspace clones leaves the current clone alone and does not start the next', async ({ page }) => {
+  await prepareWorkspaceClone(page, 'first');
+  const form = await reviewWorkspaceClones(page, '/fixtures/first.git\n/fixtures/second.git');
+  await form.getByRole('button', { name: 'Clone 2 repositories' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseClone)).toBe('function');
+  await form.getByRole('button', { name: 'Stop after current clone' }).click();
+  await expect(form.getByRole('status')).toContainText('Stopping after the current clone');
+  await page.evaluate(() => (window as any).__center.releaseClone());
+  await expect(form.getByRole('status')).toHaveText('Cloned 1 of 2 repositories. 1 not started.');
+  await expect(form.getByRole('list', { name: 'Clone results' })).toContainText('second — Not started');
+  expect((await cloneCalls(page)).map(call => call.folder)).toEqual(['first']);
+});
+
+test('closing workspace clones saves a completed checkout without opening it or starting another', async ({ page }) => {
+  await prepareWorkspaceClone(page, 'first');
+  const form = await reviewWorkspaceClones(page, '/fixtures/first.git\n/fixtures/second.git');
+  await form.getByRole('button', { name: 'Clone 2 repositories' }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseClone)).toBe('function');
+  await page.keyboard.press('Escape');
+  await expect(form).toBeHidden();
+  await page.evaluate(() => (window as any).__center.releaseClone());
+  await expect.poll(() => page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    return { busy: git.busy(), active: git.repository().path, tabs: git.repositories().map((repo: any) => repo.path),
+      saved: git.activeWorkspace().repositoryPaths.includes('/owned/clones/first') };
+  })).toEqual({ busy: false, active: '/owned/alpha', tabs: ['/owned/alpha', '/owned/beta'], saved: true });
+  expect((await cloneCalls(page)).map(call => call.folder)).toEqual(['first']);
+});
+
+test('workspace clones do not review or dispatch input with embedded credentials', async ({ page }) => {
+  await prepareWorkspaceClone(page);
+  const form = await reviewWorkspaceClones(page, 'https://user:example-only@example.test/team/repo.git');
+  await expect(form.getByRole('alert')).toContainText('Remove embedded credentials from repository 1.');
+  await expect(form.getByRole('button', { name: 'Clone 1 repository' })).toHaveCount(0);
+  expect(await cloneCalls(page)).toHaveLength(0);
+});
+
 test('reopens a closed tab in its own workspace and original saved slot', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
@@ -290,6 +389,7 @@ test('closing the overview retires a pending saved checkout result', async ({ pa
   const saved = dialog.getByRole('region', { name: 'Saved repositories not open' });
   await saved.getByRole('button', { name: 'Check saved status (2)' }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseStatus)).toBe('function');
+  await expect(saved.getByRole('button', { name: 'Stop checking status' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await open(page);

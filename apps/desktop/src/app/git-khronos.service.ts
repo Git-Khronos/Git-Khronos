@@ -820,7 +820,7 @@ export class GitKhronosService implements OnDestroy {
     remote: string,
     parentPath: string,
     folder: string,
-    options: { branch?: string; depth?: number; recurseSubmodules?: boolean } = {},
+    options: { branch?: string; depth?: number; recurseSubmodules?: boolean; preserveActiveTab?: boolean } = {},
     stillCurrent?: () => boolean,
   ): Promise<RepositoryCreationResult> {
     const operationId = crypto.randomUUID();
@@ -832,7 +832,7 @@ export class GitKhronosService implements OnDestroy {
       depth: options.depth ?? null,
       recurseSubmodules: options.recurseSubmodules ?? false,
       operationId,
-    }), operationId, stillCurrent);
+    }), operationId, stillCurrent, options.preserveActiveTab);
   }
 
   cloneHostedRepository(contextId: string, token: string, operationId: string, stillCurrent?: () => boolean): Promise<RepositoryCreationResult> {
@@ -3787,10 +3787,12 @@ export class GitKhronosService implements OnDestroy {
     this.clearMutationInspection(repoId, request, preserveConflict);
   }
 
-  private acceptOpenedRepository(snapshot: RepositorySnapshot, activity: string, report: ActivityReporter): void {
+  private acceptOpenedRepository(snapshot: RepositorySnapshot, activity: string, report: ActivityReporter, preserveActiveTab = false): void {
     this.storeSnapshot(snapshot, true);
-    this.setActiveRepository(snapshot.id);
-    this.clearInspection();
+    if (!preserveActiveTab || !this.repository()) {
+      this.setActiveRepository(snapshot.id);
+      this.clearInspection();
+    }
     this.remember(snapshot.path);
     this.persistOpenTabs({ preserveSavedOrder: this.incomingRepositoryLinksPending() });
     report(activity);
@@ -3803,6 +3805,7 @@ export class GitKhronosService implements OnDestroy {
     perform: () => Promise<RepositorySnapshot>,
     operationId: string | null,
     stillCurrent = () => true,
+    preserveActiveTab = false,
   ): Promise<RepositoryCreationResult> {
     const workspaceId = this.activeWorkspaceId();
     const scope = this.activeRepositoryReadScope();
@@ -3817,7 +3820,7 @@ export class GitKhronosService implements OnDestroy {
       try { snapshot = await perform(); }
       catch (error: unknown) { result.failure = this.formatError(error); throw error; }
       if (current()) {
-        this.acceptOpenedRepository(snapshot, `${verb} ${snapshot.name}`, report);
+        this.acceptOpenedRepository(snapshot, `${verb} ${snapshot.name}`, report, preserveActiveTab);
         result.settled = { status: 'opened' };
         return;
       }

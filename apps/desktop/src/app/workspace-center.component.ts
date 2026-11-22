@@ -10,6 +10,7 @@ import { PULL_STRATEGY_LABEL, type PullStrategy } from './pull-strategy';
 import { runRepositoryFileAction } from './repository-file-actions';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { CancellableOperation } from './cancellable-operation';
+import { WorkspaceCloneComponent } from './workspace-clone.component';
 
 const SAVED_STATUS_LIMIT = 32;
 type SavedStatusResult = { status: SavedCheckoutStatus; at: number } | { error: string };
@@ -22,7 +23,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
 
 @Component({
   selector: 'gc-workspace-center',
-  imports: [BackgroundOperationWarningsComponent, DatePipe, HostingPanelComponent],
+  imports: [BackgroundOperationWarningsComponent, DatePipe, HostingPanelComponent, WorkspaceCloneComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" [inert]="suspended()" (click)="close()"><section #dialog role="dialog" aria-modal="true" aria-label="Workspace center" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
@@ -41,6 +42,9 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           <button type="button" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('fetch')">Fetch selected ({{ selectedRepositoryIds().length }})</button>
           <button type="button" aria-describedby="workspace-pull-strategy" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('pull')">Pull selected ({{ selectedRepositoryIds().length }})</button>
           <button type="button" [disabled]="overviewBusy() || !selectedOpenTabs().length" (click)="reviewTabClose($event)">Close selected ({{ selectedOpenTabs().length }})…</button></div>
+        @for (visit of [request()]; track visit) {
+          <gc-workspace-clone [owner]="cloneOwner" [disabled]="overviewBusy()" />
+        }
         <p id="workspace-pull-strategy">Pull uses each repository’s configured upstream. Default strategy: {{ pullStrategyLabel() }}.</p>
         <p role="status">{{ rows().length }} of {{ git.repositories().length }} open repositories shown{{ refreshing() ? ' · reading local repositories' : '' }}</p>
         @if (bulkError()) { <p role="alert">{{ bulkError() }}</p> }
@@ -76,9 +80,9 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
               <h3>Saved repositories not open</h3>
               <p>These paths are still in this workspace. Locate a moved repository to replace its saved path, or remove the entry without changing files on disk.</p>
               <div class="tools">
-                <button type="button" [disabled]="overviewBusy() || git.browserPreview()" (click)="scanSavedStatus()">Check saved status ({{ savedStatusTargets().length }})</button>
+                <button #savedStatusStart type="button" [disabled]="overviewBusy() || git.browserPreview()" (click)="scanSavedStatus()">Check saved status ({{ savedStatusTargets().length }})</button>
                 @if (savedStatusScanning()) {
-                  <button type="button" [attr.aria-disabled]="savedStatusStopping()" (click)="stopSavedStatus()">Stop checking status</button>
+                  <button #savedStatusStop type="button" [attr.aria-disabled]="savedStatusStopping()" (click)="stopSavedStatus()">Stop checking status</button>
                 }
                 <button type="button" [disabled]="overviewBusy() || selectedUnopenedPaths().length === unopenedPaths().length" (click)="selectedSavedPaths.set(unopenedPaths())">Select all saved paths</button>
                 <button type="button" [disabled]="overviewBusy() || !selectedUnopenedPaths().length" (click)="selectedSavedPaths.set([])">Clear saved path selection</button>
@@ -232,6 +236,9 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
 export class WorkspaceCenterComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<WorkspaceCenterRequest>();
+  private readonly cloneBatch = viewChild(WorkspaceCloneComponent);
+  readonly cloneOwner = () => !this.destroyed && this.panel() === 'overview' && this.request().workspaceId === this.git.activeWorkspaceId()
+    ? this.request() : null;
   readonly pullStrategy = input.required<PullStrategy>();
   readonly pullStrategyLabel = computed(() => PULL_STRATEGY_LABEL[this.pullStrategy()]);
   readonly openRepository = input.required<(path: string, replacement?: SavedRepositoryReplacement) => Promise<OpenRepositoryResult>>();
@@ -265,6 +272,8 @@ export class WorkspaceCenterComponent implements OnDestroy {
   readonly savedStatusStopping = signal(false);
   readonly savedStatusNotice = signal('');
   readonly savedStatusResults = signal<ReadonlyMap<string, SavedStatusResult>>(new Map());
+  private readonly savedStatusStart = viewChild<ElementRef<HTMLButtonElement>>('savedStatusStart');
+  private readonly savedStatusStop = viewChild<ElementRef<HTMLButtonElement>>('savedStatusStop');
   private savedStatusRun: { request: WorkspaceCenterRequest; read: CancellableOperation | null; stopped: boolean } | null = null;
   readonly overviewBusy = computed(() => this.git.busy() || this.refreshing() || this.openingRepositories() || this.bulkRunning() || this.savedStatusScanning());
   readonly unopenedPaths = computed(() => {
@@ -589,8 +598,14 @@ export class WorkspaceCenterComponent implements OnDestroy {
     this.savedStatusRun = run;
     this.savedStatusScanning.set(true);
     this.savedStatusStopping.set(false);
-    const current = () => !this.destroyed && this.savedStatusRun === run && this.request() === request
-      && request.workspaceId === this.git.activeWorkspaceId();
+    const ownsView = () => !this.destroyed && this.request() === request && request.workspaceId === this.git.activeWorkspaceId();
+    const current = () => this.savedStatusRun === run && ownsView();
+    afterNextRender(() => {
+      const active = document.activeElement;
+      if (current() && (active === this.savedStatusStart()?.nativeElement || active === document.body)) {
+        this.savedStatusStop()?.nativeElement.focus();
+      }
+    }, { injector: this.injector });
     const targets = new Set(paths);
     this.savedStatusResults.update(results => new Map([...results].filter(([path]) => !targets.has(path))));
     let checked = 0;
@@ -619,9 +634,16 @@ export class WorkspaceCenterComponent implements OnDestroy {
     } finally {
       if (this.savedStatusRun === run) {
         if (!this.destroyed) {
+          const restoreFocus = current()
+            && (document.activeElement === this.savedStatusStop()?.nativeElement || document.activeElement === document.body);
           this.savedStatusScanning.set(false);
           this.savedStatusStopping.set(false);
           this.savedStatusNotice.set(current() ? `${run.stopped ? 'Stopped. ' : ''}${checked} of ${paths.length} saved paths checked.` : '');
+          if (restoreFocus) afterNextRender(() => {
+            if (ownsView() && !this.savedStatusScanning() && document.activeElement === document.body) {
+              this.savedStatusStart()?.nativeElement.focus();
+            }
+          }, { injector: this.injector });
         }
         this.savedStatusRun = null;
       }
@@ -926,6 +948,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
     const deletion = this.pendingFileDelete();
     if (deletion) { this.cancelDelete(deletion); return; }
     if (this.pendingTabsClose() || this.pendingSavedRemoval()) { this.cancelWorkspaceReview(); return; }
+    this.cloneBatch()?.retire();
     this.stopSavedStatus();
     this.locationRequest = null;
     this.locatingPath.set(null);
@@ -967,7 +990,7 @@ export class WorkspaceCenterComponent implements OnDestroy {
     }
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); }
     if (event.key !== 'Tab') return;
-    const items = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary') ?? [])].filter(item => item.getClientRects().length);
+    const items = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary') ?? [])].filter(item => item.getClientRects().length);
     if (!items.length) return;
     const first = items[0], last = items[items.length - 1];
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }

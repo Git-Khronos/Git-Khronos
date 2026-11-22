@@ -2340,3 +2340,9 @@ name/status records across create, rename and delete commits. The
 reader consumes paths according to each status record rather than
 recognizing arbitrary filename or author text as a delimiter.
 No source code was copied.
+
+## Workspace clone queue
+
+- [Git clone manual](https://git-scm.com/docs/git-clone): source and
+  destination semantics, default checkout and submodule options. The
+  queue, review, and stop behavior are independent application design.

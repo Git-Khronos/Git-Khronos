@@ -3992,6 +3992,26 @@ updated the boundary labels without a ref change or a manual refresh.
 SHA-256: `ed10e8dacf674584be244be4c48e4ba4c95de6800d08cf6b5c7513411eaa8ed9`.
 Focused receipt:
 `target/local-review/updater/jammy-builder/watcher-shallow-release.vslO9hFh/reports.json`.
+
+### Installed conflict navigation and branch workflow recovery
+
+The Ubuntu 24.04 installer from `8615840` passed eight scenarios across
+the focused conflict navigation and branch workflow recovery suites.
+The conflict list received focus without advancing or changing the underlying
+Git operation, and continuing the workflow after restart preserved the first
+completed merge.
+SHA-256: `4c8d97481128b2f76cf54fc50c84a734a6977dd883f841cad63bd764f8c07a26`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/conflict-navigation-release.HsBvyyLS/reports.json`.
+
+### Installed saved checkout status
+
+The Ubuntu 24.04 installer from `3aae2fa` passed the three checks in the
+focused saved-status suite. It reported both dirty and missing paths while
+leaving the index, files, active tab, and workspace layout unchanged.
+SHA-256: `92e751ab2f9d5830a9fec1f75732b3b0b50f2c42a875f5978aaab55f69bf9587`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/saved-checkout-status-release.IpHx9U57/reports.json`.
 This check does not include the later external-fetch watcher regression.
 
 ### Deferred Worktree and Submodule sidebar actions

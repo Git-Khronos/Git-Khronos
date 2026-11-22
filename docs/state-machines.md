@@ -882,6 +882,23 @@ The scan belongs to the workspace dialog instance. Stop retires the current
 result and prevents new reads; closing or changing workspace requests
 cancellation and cannot publish a late result in the next workspace.
 
+### Workspace clone queue
+
+Bulk clone takes up to 20 sources and one chosen parent folder. Reviewing the
+source-to-folder mapping does not start Git. A confirmed plan snapshots the
+sources and names and dispatches them serially through the standard native
+clone and authentication path. Git's default branch is used without recursive
+submodule initialization. Native clone enforces destination vacancy; an
+ordinary failure belongs to its own row and does not abandon later rows.
+
+Successful clones are added without switching an existing active tab. Stop
+leaves the current clone running and prevents dispatch of further rows.
+Cancelling the current native operation ends the queue too. Leaving the
+overview retires the plan; if a committed clone returns after retirement, the
+existing repository-creation recovery saves its location in the originating
+workspace rather than opening a tab in the unowned view. No queue or retry
+intent survives restart.
+
 ### Shared deferred fetch and worktree review ownership
 
 Fetch options and linked-worktree move/repair capture the checkout ID/path and

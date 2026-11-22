@@ -1192,7 +1192,7 @@ def main():
         "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
-        "workspace-batch", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
+        "workspace-batch", "workspace-clone", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
         "workspace-pull-upstreams", "pull-submodule-scope",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
         "stash-selection", "patch-export", "tracked-file-search", "diff-line-selection",
@@ -1222,7 +1222,7 @@ def main():
     if args.package is None:
         args.package = ROOT / "target/release/bundle/deb" / expected_package_name
     workspace_picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate", "workspace-locate-nearby")
-    owned_picker_suite = workspace_picker_suite or args.suite == "repository-creation-scope"
+    owned_picker_suite = workspace_picker_suite or args.suite in ("repository-creation-scope", "workspace-clone")
     if owned_picker_suite and not args.headless:
         parser.error(f"{args.suite} requires --headless (private Xvfb)")
     if args.suite == "patch-export" and not args.headless:
@@ -1392,6 +1392,9 @@ def main():
                 from native_workspace_batch_scenarios import workspace_batch_stop
                 repository = workspace_batch_stop(driver, fixtures, report)
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite == "workspace-clone":
+                from native_workspace_clone_scenarios import workspace_clone
+                repository, repo_id = workspace_clone(driver, fixtures, report)
             elif args.suite in ("workspace-pull-upstreams", "pull-submodule-scope"):
                 from native_pull_scope_scenarios import pull_submodule_scope, workspace_pull_upstreams
                 scenario = pull_submodule_scope if args.suite == "pull-submodule-scope" else workspace_pull_upstreams
