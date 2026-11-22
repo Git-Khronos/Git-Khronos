@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::BTreeSet;
 
 #[derive(Clone, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -20,6 +21,7 @@ pub enum FetchHistory {
 }
 
 pub const MAX_DEEPEN_COMMITS: u32 = 1_000_000;
+const MAX_SHALLOW_BOUNDARY_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -29,13 +31,18 @@ pub struct ShallowHistoryState {
 }
 
 pub fn shallow_history_state(path: &Path) -> Result<ShallowHistoryState, AppError> {
+    let boundaries = shallow_boundaries(path)?;
+    Ok(ShallowHistoryState {
+        shallow: boundaries.is_some(),
+        boundary_commits: boundaries.map_or(0, |commits| commits.len()),
+    })
+}
+
+fn shallow_boundaries(path: &Path) -> Result<Option<BTreeSet<Vec<u8>>>, AppError> {
     let output = run_git(path, &["rev-parse", "--is-shallow-repository"])?;
     ensure_success("check whether history is shallow", &output)?;
     if output.stdout != b"true\n" {
-        return Ok(ShallowHistoryState {
-            shallow: false,
-            boundary_commits: 0,
-        });
+        return Ok(None);
     }
     let location = run_git(
         path,
@@ -47,22 +54,53 @@ pub fn shallow_history_state(path: &Path) -> Result<ShallowHistoryState, AppErro
         ],
     )?;
     ensure_success("locate shallow history boundaries", &location)?;
-    let file = PathBuf::from(String::from_utf8_lossy(&location.stdout).trim());
-    let boundary_commits = fs::read(&file)
-        .map(|bytes| {
-            bytes
-                .split(|byte| *byte == b'\n')
-                .filter(|line| !line.is_empty())
-                .count()
-        })
-        .unwrap_or(0);
-    Ok(ShallowHistoryState {
-        shallow: true,
-        boundary_commits,
-    })
+    let file = git_absolute_path(&location.stdout)?;
+    let metadata = fs::metadata(file).map_err(shallow_boundary_error)?;
+    if !metadata.is_file() || metadata.len() > MAX_SHALLOW_BOUNDARY_BYTES {
+        return Err(shallow_boundary_error(
+            "The shallow boundary list cannot be inspected within its limits.",
+        ));
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(file)
+        .map_err(shallow_boundary_error)?
+        .take(MAX_SHALLOW_BOUNDARY_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(shallow_boundary_error)?;
+    if bytes.len() as u64 > MAX_SHALLOW_BOUNDARY_BYTES {
+        return Err(shallow_boundary_error(
+            "The shallow boundary list exceeds its inspection limit.",
+        ));
+    }
+    let mut boundaries = BTreeSet::new();
+    for line in bytes
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+    {
+        if !matches!(line.len(), 40 | 64) || !line.iter().all(u8::is_ascii_hexdigit) {
+            return Err(shallow_boundary_error(
+                "Git reported an invalid boundary commit.",
+            ));
+        }
+        boundaries.insert(line.to_vec());
+    }
+    if boundaries.is_empty() {
+        return Err(shallow_boundary_error(
+            "Git reported shallow history without any boundary commits.",
+        ));
+    }
+    Ok(Some(boundaries))
 }
 
-fn validate_history(path: &Path, options: &FetchOptions) -> Result<Option<String>, AppError> {
+fn shallow_boundary_error(error: impl std::fmt::Display) -> AppError {
+    AppError::new(
+        "shallowBoundaryUnavailable",
+        format!("Could not verify the shallow history boundary: {error}"),
+        Some("Refresh repository history to see its actual state before retrying."),
+    )
+}
+
+fn validate_history(options: &FetchOptions) -> Result<Option<String>, AppError> {
     let Some(history) = options.history else {
         return Ok(None);
     };
@@ -72,12 +110,6 @@ fn validate_history(path: &Path, options: &FetchOptions) -> Result<Option<String
         return refused(
             "Extending shallow history requires one selected remote.",
             "Choose the remote that provides the missing history; the shallow boundary is shared by the whole repository.",
-        );
-    }
-    if !shallow_history_state(path)?.shallow {
-        return refused(
-            "This repository already has complete history.",
-            "Fetch without a history option.",
         );
     }
     match history {
@@ -124,7 +156,7 @@ pub fn fetch_with_options(
             ));
         }
     }
-    let history = validate_history(path, options)?;
+    let history = validate_history(options)?;
     let output = run_git(path, &["remote"])?;
     ensure_success("list fetch destinations", &output)?;
     let names = String::from_utf8(output.stdout).map_err(|_| {
@@ -201,6 +233,17 @@ pub fn fetch_with_options(
     }
 
     for (index, remote) in selected.iter().enumerate() {
+        let before_depth = if history.is_some() {
+            Some(shallow_boundaries(path)?.ok_or_else(|| {
+                AppError::new(
+                    "historyDepthRefused",
+                    "This repository already has complete history.",
+                    Some("Fetch without a history option."),
+                )
+            })?)
+        } else {
+            None
+        };
         let branch = options.branch.as_deref().unwrap_or("*");
         let destination = format!("refs/remotes/{remote}/{branch}");
         if options.branch.is_some() {
@@ -247,10 +290,13 @@ pub fn fetch_with_options(
             args.push(history);
         }
         args.extend(["--", remote, &refspec]);
-        let result = run_git_with_cancellation(path, &args, Some(cancellation))
-            .and_then(|output| ensure_success("fetch branches from the selected remote", &output));
-        if let Err(error) = result {
-            return Err(AppError::new(
+        let fetch = || {
+            run_git_with_cancellation(path, &args, Some(cancellation)).and_then(|output| {
+                ensure_success("fetch branches from the selected remote", &output)
+            })
+        };
+        let fetch_error = |error: AppError| {
+            AppError::new(
                 &error.kind,
                 format!("Fetch failed at remote '{remote}': {}", error.message),
                 Some(&format!(
@@ -260,19 +306,74 @@ pub fn fetch_with_options(
                         .as_deref()
                         .unwrap_or("Review the destination and retry.")
                 )),
-            ));
+            )
+        };
+        fetch().map_err(fetch_error)?;
+        let Some(before) = before_depth else { continue };
+        if cancellation.is_cancelled() {
+            return Err(operation_cancelled());
+        }
+        let mut after = shallow_boundaries(path)?;
+        // Some Git versions omit equal tracking tips from the depth
+        // negotiation when other tips need updating. Once those tips are
+        // fetched, one more pass can include the unchanged branches. Never
+        // apply a second relative deepen after Git has changed any boundary.
+        if after.as_ref() == Some(&before) {
+            check_tracking_aliases(path, &format!("refs/remotes/{remote}/"))?;
+            after = shallow_boundaries(path)?;
+            if after.as_ref() == Some(&before) {
+                fetch().map_err(|error| {
+                    AppError::new(
+                        &error.kind,
+                        format!("The follow-up history fetch from '{remote}' did not finish: {}", error.message),
+                        Some("The first fetch may have updated tracking branches. Review the refreshed graph before retrying."),
+                    )
+                })?;
+                after = shallow_boundaries(path)?;
+            }
+        }
+        if let Some(after) = after {
+            verify_remaining_depth(options.history, &before, &after)?;
         }
     }
-    if options.history == Some(FetchHistory::Complete) && shallow_history_state(path)?.shallow {
-        return Err(AppError::new(
+    Ok(())
+}
+
+fn verify_remaining_depth(
+    history: Option<FetchHistory>,
+    before: &BTreeSet<Vec<u8>>,
+    after: &BTreeSet<Vec<u8>>,
+) -> Result<(), AppError> {
+    match history {
+        Some(FetchHistory::Complete) => Err(AppError::new(
             "historyStillShallow",
             "Git finished, but the repository still has a shallow history boundary.",
             Some(
-                "The remote may itself be shallow. Inspect the history and its source before retrying.",
+                "Tracking branches may have updated. Inspect the history and its source before retrying.",
             ),
-        ));
+        )),
+        Some(FetchHistory::Deepen { .. }) if !before.is_disjoint(after) => {
+            let (kind, message) = if before.is_subset(after) {
+                (
+                    "historyDepthUnchanged",
+                    "Git did not extend the existing shallow history.",
+                )
+            } else {
+                (
+                    "historyDepthPartial",
+                    "Git extended only part of the shallow history.",
+                )
+            };
+            Err(AppError::new(
+                kind,
+                message,
+                Some(
+                    "Tracking branches may have updated. Review the refreshed graph and whether this remote has the missing history.",
+                ),
+            ))
+        }
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 pub(crate) fn check_tracking_aliases(path: &Path, namespace: &str) -> Result<(), AppError> {
@@ -368,6 +469,25 @@ fn fetch_scope_io_error(error: impl std::fmt::Display) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn depth_verification_distinguishes_equal_partial_and_advanced_boundaries() {
+        let before = BTreeSet::from([b"a".to_vec(), b"b".to_vec()]);
+        let check = |after: BTreeSet<Vec<u8>>| {
+            verify_remaining_depth(Some(FetchHistory::Deepen { commits: 1 }), &before, &after)
+        };
+        assert_eq!(
+            check(before.clone()).unwrap_err().kind,
+            "historyDepthUnchanged"
+        );
+        assert_eq!(
+            check(BTreeSet::from([b"b".to_vec(), b"c".to_vec()]))
+                .unwrap_err()
+                .kind,
+            "historyDepthPartial"
+        );
+        check(BTreeSet::from([b"c".to_vec(), b"d".to_vec()])).unwrap();
+    }
 
     #[test]
     fn fetch_options_ipc_requires_pruning_choice_and_rejects_unknown_options() {

@@ -4299,3 +4299,26 @@ report alongside the passing evidence.
 - First attempt: `target/local-review/updater/jammy-builder/revision-inspector-matrix.mzBP6S7J/compatibility/bookworm/results/incoming-links/incoming-links-1795337830197984323/report.json`.
 - Exact recheck: `target/local-review/updater/jammy-builder/revision-inspector-bookworm-recheck.uOAUgXWZ/results/incoming-links/incoming-links-1795337907342303873/report.json`.
 - Diagnostic probe: `target/local-review/updater/jammy-builder/bookworm-singleton-stress.JKKvaRtA/native.log`.
+
+Three additional Debian 12 incoming-link runs with core capture enabled all
+passed under the unchanged installer; no crash was reproduced. Receipts:
+`target/local-review/updater/jammy-builder/revision-inspector-bookworm-core-check.8bDOL2vx/results/`.
+
+The original Ubuntu 22.04 environment gate failed its shallow-history
+review with Git 2.56.1. The same installer reproduced the failure outside
+the full run: a new tracking tip was fetched and the original HEAD
+remained the shallow boundary. An independent Git-only fixture observed
+the same mismatch on 2.56.1 with both protocol versions and all three
+tested negotiation algorithms. Git 2.39.5 and 2.53.0 deepened that fixture
+as requested. Receipts:
+`target/local-review/updater/jammy-builder/revision-inspector-depth-probe.lSQznWvV/results/`
+and `target/local-review/depth-git-oracle.yJm92Dq5/`. The failed matrix does
+not qualify `d1560c6` for release.
+
+The test-publisher installer from `2b1f4b7` (SHA-256
+`20e7585492a0b5063736f437bb921d0f6a63fbf917d0fcb3989ac6343e231bf6`)
+passed four focused installed scenarios on Ubuntu 24.04, including
+same-commit annotation replacement and refusal to substitute a packed
+descendant tag. Receipt:
+`target/local-review/updater/jammy-builder/tag-preview-release.Bb3pXE9p/reports.json`.
+This package predates the shallow-history correction.

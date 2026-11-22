@@ -4,7 +4,7 @@ import json
 from native_worktree_scenarios import checkout_footprint
 
 
-def deferred_review_workflows(driver, fixtures, report):
+def deferred_review_workflows(driver, fixtures, report, *, history_only=False):
     from native_acceptance import open_ui
 
     fetch_modal = 'gc-fetch-options-dialog [role=dialog]'
@@ -168,7 +168,7 @@ def deferred_review_workflows(driver, fixtures, report):
     (shallow / 'fixture.txt').write_text('Owned staged shallow-review contents.\n')
     fixtures.git(shallow, 'add', 'fixture.txt')
     (shallow / 'untracked-note.txt').write_text('Owned untracked shallow-review contents.\n')
-    open_ui(driver, shallow)
+    shallow_repo_id = open_ui(driver, shallow)
     fetch_ready()
     assert fixtures.git(shallow, 'rev-parse', '--is-shallow-repository') == 'true'
     assert fixtures.git(shallow, 'rev-list', '--count', 'HEAD') == '1'
@@ -189,7 +189,9 @@ def deferred_review_workflows(driver, fixtures, report):
     driver.script('''const field = document.querySelector('input[name=deepenCommits]');
       field.value = '1'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
     confirm_fetch('Fetch and extend history')
-    assert fixtures.git(shallow, 'rev-list', '--count', 'HEAD') == '2'
+    count = fixtures.git(shallow, 'rev-list', '--count', 'HEAD')
+    assert count == '2', ('Requested one more commit behind the original boundary', count)
+    assert fixtures.git(shallow, 'rev-parse', 'refs/remotes/origin/' + branch) == remote_head
     assert fixtures.git(shallow, 'rev-parse', '--is-shallow-repository') == 'true'
     new_boundary = fixtures.git(shallow, 'rev-parse', 'HEAD^')
     new_query = 'document.querySelector(' + json.dumps(f'[data-commit-oid="{new_boundary}"]') + ')'
@@ -216,6 +218,8 @@ def deferred_review_workflows(driver, fixtures, report):
     evidence.append({'source': str(shallow), 'before': shallow_before, 'afterDeepen': after_deepen,
                      'afterComplete': after_complete, 'completeCommitCount': fixtures.git(shallow, 'rev-list', '--count', 'HEAD')})
     report['deferredFetchReviews'] = {'networkRemoteUsed': False, 'cases': evidence}
+    if history_only:
+        return shallow, shallow_repo_id
 
     main = fixtures.repository('deferred-worktree-review', commits=2)
     linked = fixtures.root / 'deferred-linked-before'

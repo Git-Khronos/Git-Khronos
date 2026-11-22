@@ -7071,6 +7071,10 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     }
     let parent = source.0.with_extension("deepen");
     fs::create_dir(&parent).unwrap();
+    // An additional advertised branch is absent from the depth-one clone.
+    // Git 2.56's mixed-tip fetch can download it without sending a want for
+    // main, which already matches its tracking ref and still needs parents.
+    run_mutation(&source.0, &["branch", "older-side", "HEAD~3"], "side branch").unwrap();
     let url = format!("file://{}", source.0.display());
     let clone = clone_repository(&url, &parent, "work", None, Some(1)).unwrap();
     run_mutation(&clone, &["remote", "add", "mirror", &url], "mirror").unwrap();
@@ -7092,6 +7096,16 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     };
     assert_eq!(shallow_history_state(&clone).unwrap().boundary_commits, 1);
     let head = run_git(&clone, &["rev-parse", "HEAD"]).unwrap().stdout;
+    let side_present = || {
+        run_git(
+            &clone,
+            &["show-ref", "--verify", "--quiet", "refs/remotes/origin/older-side"],
+        )
+        .unwrap()
+        .status
+        .success()
+    };
+    assert!(!side_present());
     let all = fetch_with_options(
         &clone,
         &options(None, FetchHistory::Deepen { commits: 2 }),
@@ -7114,6 +7128,7 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     )
     .unwrap();
     assert_eq!(count("HEAD"), 3);
+    assert!(side_present());
     assert!(shallow_history_state(&clone).unwrap().shallow);
     assert_eq!(
         run_git(&clone, &["rev-parse", "HEAD"]).unwrap().stdout,

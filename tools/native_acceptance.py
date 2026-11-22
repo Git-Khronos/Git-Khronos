@@ -1199,7 +1199,7 @@ def main():
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
-        "commit-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview",
+        "commit-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
     )
     forced_inherited = ("environment",)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1461,6 +1461,9 @@ def main():
             elif args.suite == "tag-preview":
                 from native_tag_preview_scenarios import tag_preview
                 repository, repo_id = tag_preview(driver, fixtures, report)
+            elif args.suite == "history-depth":
+                from native_deferred_review_scenarios import deferred_review_workflows
+                repository, repo_id = deferred_review_workflows(driver, fixtures, report, history_only=True)
             elif args.suite == "tracked-file-search":
                 from native_tracked_file_search_scenarios import deleted_file_history_from_exact_path, tracked_file_search_during_merge
                 tracked_file_search_during_merge(driver, fixtures, report)

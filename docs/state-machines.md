@@ -515,6 +515,20 @@ older request before it can select a commit, open a different file, or surface
 its error in the current view. Tests hold the native blame lookup across these
 transitions without weakening ordinary Parent navigation.
 
+### Reviewed shallow-history fetch
+
+The native depth mutation compares the original shared Git shallow
+boundaries with the result. If Git reports success but leaves the
+boundary set identical, a single follow-up with the same reviewed scope
+can obtain missing parents that were skipped while fetching new tips.
+It rechecks tracking destinations and the boundary before dispatch and
+shares the original cancellation token.
+Changes to the boundary set, including partial progress, never trigger
+a second depth change. An unchanged or partially extended result
+cannot be reported as full success; the existing fetch failure flow
+refreshes the graph and retains the user's options. This is not a lock
+against independent Git processes.
+
 ### Tag preview read ownership
 
 Pointer and keyboard tag previews belong to the active checkout visit. A

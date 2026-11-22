@@ -14198,9 +14198,17 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         );
         repository.git(&["commit", "--allow-empty", "-m", "New remote branch"]);
         let upstream = repository.path.join(".git/upstream.git");
-        // Push to the owned path rather than the configured remote, so the
-        // publisher doesn't update the very tracking ref we expect to fetch.
-        repository.git(&["push", upstream.to_str().unwrap(), "HEAD:refs/heads/new"]);
+        // Update the receiver from its own process. Git can associate even
+        // a push to a literal URL with the source's configured tracking refs.
+        repository.git(&[
+            "-C",
+            upstream.to_str().unwrap(),
+            "fetch",
+            "--no-tags",
+            "--refmap=",
+            repository.path.to_str().unwrap(),
+            "HEAD:refs/heads/new",
+        ]);
         assert!(
             repository
                 .git_output(&["for-each-ref", "refs/remotes/upstream/new"])

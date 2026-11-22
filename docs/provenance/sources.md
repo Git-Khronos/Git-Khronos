@@ -410,6 +410,13 @@ for marking real boundaries rather than ordinary roots or legacy grafts.
 Behavior confirmed with original real-Git fixtures; no
 third-party implementation copied.
 
+An independent mixed-tip fixture on Git 2.56.1 observed that scoped
+`--deepen` could fetch a newly advertised branch without extending an
+unchanged tracking tip. The [Git 2.56.1 transport implementation](https://github.com/git/git/blob/v2.56.1/transport.c)
+explains why equal tips can be omitted. It was consulted for diagnosis
+only. Git Khronos verifies its local shallow-boundary read and uses only
+the documented Git command to perform any follow-up.
+
 ## Repository states on open
 
 Sources: [git-rev-parse](https://git-scm.com/docs/git-rev-parse),
