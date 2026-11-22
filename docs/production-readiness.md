@@ -3462,6 +3462,15 @@ Package and receipts:
 `target/local-review/updater/jammy-builder/stash-branch-release.jVuyan4e/`
 (SHA-256 `54dda40024bef7c524b2c79b82b6af6c20aa5bfdf03e3ab0d5dd591b1da306da`).
 
+The installed-report verifier now has a distinct focused mode. A local
+plan names the distro, Git setup, suite and exact required scenarios
+before verification. One passing report must satisfy each lane; an
+unplanned passing report cannot substitute for it. The verifier checked
+the exact `5539be8` installer above, returned an incomplete result for a
+missing scenario, and rejected substituting another installer of the
+same version. The focused receipt cannot qualify a release or sign assets.
+Examples and logs are in `target/local-review/focused-installed-evidence.twqARbH7/`.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds

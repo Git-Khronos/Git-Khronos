@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { expandAcceptanceReports, selectPublisherReport, summarizeInstalledReport, summarizeReleaseMatrix, summarizeReleaseProgress } from './report-installed-acceptance.mjs';
+import { expandAcceptanceReports, parseFocusedAcceptance, reportInstalledAcceptance, selectPublisherReport, summarizeFocusedAcceptance, summarizeInstalledReport, summarizeReleaseMatrix, summarizeReleaseProgress } from './report-installed-acceptance.mjs';
 
 test('discovers only final native reports from explicitly selected roots in stable order', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'khronos-report-discovery-'));
@@ -126,6 +126,83 @@ function matrixFixtures() {
     scenarios: check.requiredScenarios,
   }));
 }
+
+const focusedLane = {
+  distribution: { id: 'ubuntu', versionId: '24.04' },
+  suite: 'setup-keyboard',
+  inheritedGitEnvironment: true,
+  requiredScenarios: ['owned-a', 'owned-b'],
+};
+
+test('focused plans require non-empty, unambiguous lanes with explicit Git setup', async () => {
+  const plan = { version: 1, checks: [focusedLane] };
+  assert.deepEqual(parseFocusedAcceptance(plan), [focusedLane]);
+  for (const invalid of [
+    { ...plan, version: 2 }, { ...plan, checks: [] }, { ...plan, ignored: true },
+    { ...plan, checks: [{ ...focusedLane, inheritedGitEnvironment: undefined }] },
+    { ...plan, checks: [{ ...focusedLane, requiredScenarios: [] }] },
+    { ...plan, checks: [{ ...focusedLane, requiredScenarios: ['same', 'same'] }] },
+    { ...plan, checks: [{ ...focusedLane, distribution: { id: 'ubuntu', versionId: 24.04 } }] },
+  ]) {
+    assert.throws(() => parseFocusedAcceptance(invalid), /focused acceptance/);
+  }
+  assert.throws(() => parseFocusedAcceptance({ ...plan, checks: [focusedLane, {
+    ...focusedLane, requiredScenarios: ['different-scope'],
+  }] }), /Duplicate focused acceptance lane/);
+  await assert.rejects(reportInstalledAcceptance('not-read.deb', [], {
+    releaseMatrix: true, focusedRequest: plan,
+  }), /cannot qualify a release matrix/);
+  await assert.rejects(reportInstalledAcceptance('not-read.deb', [], {
+    publisherPreflight: {}, focusedRequest: plan,
+  }), /cannot qualify a release matrix/);
+});
+
+test('focused acceptance requires one exact passing report per lane and cannot stitch scenarios', () => {
+  const secondLane = { ...focusedLane, suite: 'detached-checkout', inheritedGitEnvironment: false, requiredScenarios: ['owned-c'] };
+  const plan = { version: 1, checks: [focusedLane, secondLane] };
+  const report = {
+    suite: focusedLane.suite,
+    linuxDistribution: focusedLane.distribution,
+    inheritedGitEnvironment: true,
+    passed: true,
+    scenarios: ['owned-a', 'owned-b'],
+    path: '/owned/ready.json',
+  };
+  const other = {
+    ...report, suite: secondLane.suite, inheritedGitEnvironment: false,
+    scenarios: ['owned-c'], path: '/owned/second.json',
+  };
+  const result = summarizeFocusedAcceptance(plan, [report, other]);
+  assert.equal(result.complete, true);
+  assert.deepEqual(result.checks.map(check => check.report), [report.path, other.path]);
+  for (const evidence of [
+    [report],
+    [report, { ...other, inheritedGitEnvironment: true }],
+    [report, { ...other, inheritedGitEnvironment: undefined }],
+    [report, { ...other, linuxDistribution: { id: 'ubuntu', versionId: '22.04' } }],
+    [{ ...report, scenarios: ['owned-a'] }, { ...report, scenarios: ['owned-b'], path: '/owned/split.json' }, other],
+  ]) {
+    assert.equal(summarizeFocusedAcceptance(plan, evidence).complete, false);
+  }
+  const failed = { ...report, passed: false, path: '/owned/failed.json' };
+  const mixed = summarizeFocusedAcceptance(plan, [report, other, failed]);
+  assert.equal(mixed.complete, false);
+  assert.deepEqual(mixed.failedReports, [failed.path]);
+});
+
+test('the CLI rejects missing or combined focused options before looking up package bytes', () => {
+  const cli = fileURLToPath(new URL('./report-installed-acceptance.mjs', import.meta.url));
+  for (const args of [
+    ['--verify-focused'],
+    ['--verify-focused', '--release-matrix', 'owned.deb', 'report.json'],
+    ['--verify-release', 'receipt.json', 'publisher.pub', '--verify-focused', 'plan.json', 'owned.deb', 'report.json'],
+  ]) {
+    const result = spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Usage:/);
+    assert.equal(result.stdout, '');
+  }
+});
 
 test('the release matrix needs exact suites on all supported userspaces', () => {
   const fixtures = matrixFixtures();

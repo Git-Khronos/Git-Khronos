@@ -540,6 +540,39 @@ suites. Older reports may not identify the userspace distribution. This
 summary is not signing approval; it does not replace the release preflight or
 the required runtime matrix.
 
+For a focused installer check, record the expected scope before running the
+suites. For example, write the following to `focused-plan.json`:
+
+```json
+{
+  "version": 1,
+  "checks": [
+    {
+      "distribution": { "id": "ubuntu", "versionId": "24.04" },
+      "suite": "setup-keyboard",
+      "inheritedGitEnvironment": true,
+      "requiredScenarios": [
+        "native-stash-branch-refuses-ignored-obstruction-before-creating-branch",
+        "native-reviewed-stash-branch-retains-exact-saved-state-and-source"
+      ]
+    }
+  ]
+}
+```
+
+```sh
+node tools/report-installed-acceptance.mjs --verify-focused focused-plan.json \
+  "$PACKAGE" --reports-dir "$RESULTS" > focused-result.json
+```
+
+The command exits nonzero if any requested lane is missing, split across
+reports, incomplete or mismatched, or if any supplied report failed. Both
+`true` and `false` require an explicit match for the inherited Git setup.
+With no completed reports the result shows the requested lanes as missing.
+The output is labeled `focused-installed-acceptance`, includes the exact
+package digest and the matched report for each check, and is not a release
+qualification or publisher receipt.
+
 To check whether the retained reports cover every required Linux runtime
 suite for one release candidate, add `--release-matrix` before the package
 path. The JSON lists the matching report or `null` for each required

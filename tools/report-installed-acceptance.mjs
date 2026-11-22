@@ -192,12 +192,12 @@ export async function expandAcceptanceReports(args, { allowEmptyDirectories = fa
   return reports;
 }
 
-async function readReport(path) {
+async function readBoundedJson(path, label, maxBytes) {
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = await file.stat();
-    if (!stat.isFile() || stat.size < 1 || stat.size > MAX_REPORT_BYTES) {
-      throw new Error('Expected a bounded, regular acceptance report');
+    if (!stat.isFile() || stat.size < 1 || stat.size > maxBytes) {
+      throw new Error(`Expected a bounded, regular ${label}`);
     }
     const bytes = Buffer.alloc(stat.size + 1);
     let offset = 0;
@@ -206,11 +206,44 @@ async function readReport(path) {
       if (bytesRead === 0) break;
       offset += bytesRead;
     }
-    if (offset !== stat.size) throw new Error('The acceptance report changed while reading it');
+    if (offset !== stat.size) throw new Error(`The ${label} changed while reading it`);
     return JSON.parse(bytes.subarray(0, offset).toString('utf8'));
   } finally {
     await file.close();
   }
+}
+
+export function parseFocusedAcceptance(request) {
+  const keysAre = (value, keys) => value !== null && typeof value === 'object' &&
+    !Array.isArray(value) && Object.keys(value).length === keys.length &&
+    keys.every(key => Object.hasOwn(value, key));
+  if (!keysAre(request, ['version', 'checks']) || request.version !== 1 ||
+      !Array.isArray(request.checks) || !request.checks.length || request.checks.length > 128) {
+    throw new Error('Expected focused acceptance version 1 and between 1 and 128 checks.');
+  }
+  const unique = new Set();
+  return request.checks.map((check, index) => {
+    if (!keysAre(check, ['distribution', 'suite', 'inheritedGitEnvironment', 'requiredScenarios']) ||
+        !keysAre(check.distribution, ['id', 'versionId']) ||
+        typeof check.distribution.id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(check.distribution.id) ||
+        typeof check.distribution.versionId !== 'string' || !/^\d+(?:\.\d+)*$/.test(check.distribution.versionId) ||
+        typeof check.suite !== 'string' || !/^[a-z]+(?:-[a-z]+)*$/.test(check.suite) ||
+        typeof check.inheritedGitEnvironment !== 'boolean' ||
+        !Array.isArray(check.requiredScenarios) || !check.requiredScenarios.length ||
+        check.requiredScenarios.length > 512 ||
+        check.requiredScenarios.some(name => typeof name !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,159}$/.test(name)) ||
+        new Set(check.requiredScenarios).size !== check.requiredScenarios.length) {
+      throw new Error(`Invalid focused acceptance check ${index + 1}.`);
+    }
+    const key = JSON.stringify([check.distribution.id, check.distribution.versionId, check.suite, check.inheritedGitEnvironment]);
+    if (unique.has(key)) throw new Error(`Duplicate focused acceptance lane at check ${index + 1}; list its scenarios together.`);
+    unique.add(key);
+    return {
+      distribution: { ...check.distribution }, suite: check.suite,
+      inheritedGitEnvironment: check.inheritedGitEnvironment,
+      requiredScenarios: [...check.requiredScenarios],
+    };
+  });
 }
 
 export function summarizeInstalledReport(candidate, report) {
@@ -254,16 +287,28 @@ function releaseRequirements() {
 }
 
 // Input reports must already have been matched to the installed payload.
-export function summarizeReleaseMatrix(validatedReports) {
-  const checks = releaseRequirements().map(requirement => {
+function matchChecks(requirements, validatedReports, exactGitEnvironment) {
+  return requirements.map(requirement => {
     const { distribution: { id, versionId }, suite, inheritedGitEnvironment, requiredScenarios } = requirement;
     const observed = validatedReports.find(report => report.passed === true &&
       report.linuxDistribution?.id === id && report.linuxDistribution.versionId === versionId &&
-      report.suite === suite && (!inheritedGitEnvironment || report.inheritedGitEnvironment === true) &&
+      report.suite === suite &&
+      (exactGitEnvironment ? report.inheritedGitEnvironment === inheritedGitEnvironment
+        : !inheritedGitEnvironment || report.inheritedGitEnvironment === true) &&
       requiredScenarios.every(required => report.scenarios.includes(required)));
     return { ...requirement, report: observed?.path ?? null };
   });
+}
+
+export function summarizeReleaseMatrix(validatedReports) {
+  const checks = matchChecks(releaseRequirements(), validatedReports, false);
   return { complete: checks.every(check => check.report !== null), checks };
+}
+
+export function summarizeFocusedAcceptance(request, validatedReports) {
+  const checks = matchChecks(parseFocusedAcceptance(request), validatedReports, true);
+  const failedReports = validatedReports.filter(report => !report.passed).map(report => report.path);
+  return { complete: !failedReports.length && checks.every(check => check.report !== null), checks, failedReports };
 }
 
 // Progress reports cannot qualify an installer or check a publisher key.
@@ -303,8 +348,9 @@ export function selectPublisherReport(summary, environmentReports) {
   return { path: selected, raw };
 }
 
-export async function reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix = false, publisherPreflight } = {}) {
+export async function reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix = false, publisherPreflight, focusedRequest } = {}) {
   releaseMatrix ||= !!publisherPreflight;
+  if (focusedRequest !== undefined && releaseMatrix) throw new Error('Focused acceptance cannot qualify a release matrix.');
   const candidate = checkPackage(resolve(packagePath));
   const reports = [];
   const seen = new Set();
@@ -315,9 +361,9 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
     if (seen.has(absolute)) throw new Error(`Duplicate report path: ${path}`);
     seen.add(absolute);
     try {
-      const report = await readReport(absolute);
+      const report = await readBoundedJson(absolute, 'acceptance report', MAX_REPORT_BYTES);
       reports.push({ path, ...summarizeInstalledReport(candidate, report) });
-      if (releaseMatrix) {
+      if (releaseMatrix || focusedRequest !== undefined) {
         const { suite, passed, scenarios, linuxDistribution, inheritedGitEnvironment } = report;
         validatedReports.push({ path, suite, passed, scenarios, linuxDistribution, inheritedGitEnvironment });
         if (publisherPreflight && suite === 'environment' && linuxDistribution?.id === 'ubuntu'
@@ -333,6 +379,7 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
     sha256: candidate.packageSha256,
     reports,
     ...(releaseMatrix && { releaseMatrix: summarizeReleaseMatrix(validatedReports) }),
+    ...(focusedRequest !== undefined && { focusedAcceptance: summarizeFocusedAcceptance(focusedRequest, validatedReports) }),
   };
   if (publisherPreflight) {
     const { path, raw } = selectPublisherReport(summary, environmentReports);
@@ -346,7 +393,7 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
 async function main(args) {
   try {
     const usage = 'Usage: node tools/report-installed-acceptance.mjs --list-release-matrix\n'
-      + '   or: node tools/report-installed-acceptance.mjs [--release-progress | --release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
+      + '   or: node tools/report-installed-acceptance.mjs [--verify-focused PLAN | --release-progress | --release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
     if (args[0] === '--list-release-matrix') {
       if (args.length !== 1) throw new Error(usage);
       const checks = releaseRequirements();
@@ -356,19 +403,29 @@ async function main(args) {
     const releaseMatrix = args[0] === '--release-matrix';
     const releaseProgress = args[0] === '--release-progress';
     let publisherPreflight;
+    let focusedPlan;
     if (releaseMatrix || releaseProgress) args.shift();
     else if (args[0] === '--verify-release') {
       const [, receipt, key] = args.splice(0, 3);
       if (!receipt || !key || [receipt, key].some(arg => arg.startsWith('--'))) throw new Error(usage);
       publisherPreflight = { receipt, key };
+    } else if (args[0] === '--verify-focused') {
+      [, focusedPlan] = args.splice(0, 2);
+      if (!focusedPlan || focusedPlan.startsWith('--')) throw new Error(usage);
     }
     const [packagePath, ...reportInputs] = args;
-    if (!packagePath || packagePath.startsWith('--') || (!releaseMatrix && !releaseProgress && !reportInputs.length)) {
+    if (!packagePath || packagePath.startsWith('--') ||
+        (!releaseMatrix && !releaseProgress && focusedPlan === undefined && !reportInputs.length)) {
       throw new Error(usage);
     }
-    const reportPaths = await expandAcceptanceReports(reportInputs, { allowEmptyDirectories: releaseProgress });
+    const focusedRequest = focusedPlan === undefined ? undefined
+      : await readBoundedJson(resolve(focusedPlan), 'focused acceptance plan', 256 * 1024);
+    if (focusedPlan !== undefined) parseFocusedAcceptance(focusedRequest);
+    const reportPaths = await expandAcceptanceReports(reportInputs, {
+      allowEmptyDirectories: releaseProgress || focusedPlan !== undefined,
+    });
     const summary = await reportInstalledAcceptance(packagePath, reportPaths, {
-      releaseMatrix: releaseMatrix || releaseProgress, publisherPreflight,
+      releaseMatrix: releaseMatrix || releaseProgress, publisherPreflight, focusedRequest,
     });
     if (releaseProgress) {
       const { releaseMatrix: matrix, ...result } = summary;
@@ -376,6 +433,11 @@ async function main(args) {
         kind: 'installed-release-progress', ...result, releaseProgress: summarizeReleaseProgress(matrix, summary.reports),
       }, null, 2));
       if (summary.reports.some(report => !report.passed)) process.exitCode = 1;
+      return;
+    }
+    if (focusedPlan !== undefined) {
+      console.log(JSON.stringify({ kind: 'focused-installed-acceptance', ...summary }, null, 2));
+      if (!summary.focusedAcceptance.complete) process.exitCode = 1;
       return;
     }
     console.log(JSON.stringify(summary, null, 2));
