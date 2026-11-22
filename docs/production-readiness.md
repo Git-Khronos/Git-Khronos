@@ -4343,3 +4343,21 @@ processes exited zero and retained their original private-bus owner.
 Receipt: `target/local-review/updater/jammy-builder/activation-evidence-bookworm.JmQD5EI4/results/`.
 This confirms that the harness records the ownership and exits without
 changing the gate. It does not explain the earlier intermittent crash.
+
+### Git minimum-version compatibility audit
+
+A source audit of `374b433` ran Git 2.39.5 with its matching helper
+programs, rather than mixing the executable with newer host helpers.
+It exposed a compatibility regression: the scripted bisect command
+does not accept the separator before ordinary Good/Bad votes.
+`29878e3` fixes that path and retains escaped option-shaped terms on
+newer Git. All 17 focused bisect tests passed with the complete Git
+2.39.5 and 2.56.1 runtimes. Receipt:
+`target/local-review/bisect-vote-compat.hdss3HCq/`.
+
+The initial minimum-version audit also found that one sparse-index
+attribute line-count case differs on Git 2.39.5 and that merge preview
+has an explicit Git 2.43 minimum. These remain distinct from bisect
+coverage; do not treat the full minimum-version Git-core suite as green.
+Initial audit receipt:
+`target/local-review/bisect-release-git-minimum.vFqqgCUv/test.log`.
