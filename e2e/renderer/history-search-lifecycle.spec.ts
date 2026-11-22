@@ -18,7 +18,7 @@ async function prepare(page: Page, file: boolean): Promise<void> {
       });
       if (command === 'search_repository_history' || command === 'inspect_file_history_page') {
         const name = file ? args.path : args.query.message;
-        state.reads.push({ name, repoId: args.repoId });
+        state.reads.push({ name, repoId: args.repoId, revision: args.revision });
         if (state.reads.length === 1) return new Promise(resolve => { state.finishInitial = resolve; started(); });
         return Promise.resolve({ entries: [{ oid: 'a'.repeat(40), subject: name,
           authorName: 'Fixture', authorEmail: 'fixture@example.test', authoredAt: '2026-01-01T00:00:00Z',
@@ -45,6 +45,34 @@ async function showHistory(page: Page, file: boolean) {
   });
   return page.getByRole('region', { name: 'File history', exact: true });
 }
+
+test('file history keeps a pending alternate starting point only for the originating checkout and file', async ({ page }) => {
+  await prepare(page, true);
+  const result = await page.evaluate(async () => {
+    const state = (window as any).__historyLifecycle;
+    const { app, history } = state;
+    const cancellation = history.cancelFile();
+    const change = history.changeFileStartingPoint('HEAD', 'initial', 'refs/heads/release');
+    const resume = history.resumeFile('HEAD', 'initial');
+    state.cancellations[0].resolve(true);
+    await Promise.all([cancellation, change, resume]);
+    const startingPoint = history.fileStartingPoint('HEAD', 'initial');
+    await history.resumeFile('HEAD', 'another-file');
+    const stale = history.changeFileStartingPoint('HEAD', 'initial', 'refs/heads/obsolete');
+    const current = history.fileStartingPoint('HEAD', 'another-file');
+    const { git } = app;
+    const repo = git.repository();
+    git.repositories.update((repos: any[]) => [...repos, { ...repo, id: 'other-file-history', path: '/fixture/other-file-history' }]);
+    git.activateRepository('other-file-history');
+    const otherCheckout = history.changeFileStartingPoint('HEAD', 'another-file', 'refs/tags/obsolete');
+    state.finishInitial({ entries: [], cursor: null, complete: true });
+    await Promise.all([stale, otherCheckout, state.initial]);
+    return { startingPoint, current, afterSwitch: history.fileStartingPoint('HEAD', 'another-file'),
+      reads: state.reads.map(({name, revision}: any) => [name, revision]) };
+  });
+  expect(result).toEqual({ startingPoint: 'refs/heads/release', current: 'HEAD', afterSwitch: null,
+    reads: [['initial', 'HEAD'], ['initial', 'refs/heads/release'], ['another-file', 'HEAD']] });
+});
 
 for (const file of [false, true]) {
   test(`${file ? 'file history' : 'repository search'} retires a pending page when the same checkout is opened in another workspace`, async ({ page }) => {

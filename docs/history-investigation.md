@@ -45,6 +45,14 @@ open the removal diff. Choose an older entry to inspect the file as it
 existed then.
 
 From a file's diff, choose **History** and use **Load older file history**.
+To find the same repository-relative path on another branch or tag, or to
+start from a particular commit, expand **Starting point** and select
+**Search from revision**. This reads local Git history without fetching,
+switching branches, or changing files. Continuation pages stay pinned to the
+commit resolved on the first page, even if the ref moves. **Reload file
+history** resolves the selected ref again. **Use diff revision** restores the
+default starting point.
+
 Pages contain 100 entries and follow Git's documented single-path `--follow`
 rename traversal. Historical entries retain the path at that commit and the
 previous rename path; opening an entry uses those paths, not the current name.

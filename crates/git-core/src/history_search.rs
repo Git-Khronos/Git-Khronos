@@ -1056,6 +1056,8 @@ mod tests {
                 &format!("change {index}"),
             );
         }
+        let release = repo.run(&["rev-parse", "HEAD"]);
+        repo.run(&["branch", "release/1.0", &release]);
         let token = CancellationToken::default();
         let query = HistoryQuery {
             message: "needle".into(),
@@ -1079,16 +1081,23 @@ mod tests {
         assert!(matches.iter().any(|entry| entry.oid == hidden));
 
         let head = repo.run(&["rev-parse", "HEAD"]);
-        let mut cursor = None;
-        let mut entries = Vec::new();
-        loop {
-            let page = file_history_page(&repo.0, &head, current, cursor, &token).unwrap();
+        let branch = "refs/heads/release/1.0";
+        let first = file_history_page(&repo.0, branch, current, None, &token).unwrap();
+        let mut entries = first.entries;
+        assert_eq!(entries[0].commit.oid, release);
+        assert_ne!(entries[0].commit.oid, head);
+        assert_eq!(first.cursor.as_ref().unwrap().revision, release);
+        repo.run(&["branch", "-f", "release/1.0", &oldest]);
+        let mut cursor = first.cursor;
+        while cursor.is_some() {
+            let page = file_history_page(&repo.0, branch, current, cursor, &token).unwrap();
             entries.extend(page.entries);
             cursor = page.cursor;
-            if page.complete {
-                break;
-            }
         }
+        let reloaded = file_history_page(&repo.0, branch, current, None, &token).unwrap();
+        assert!(reloaded.complete && reloaded.entries.is_empty());
+        assert_eq!(repo.run(&["symbolic-ref", "--short", "HEAD"]), "main");
+        assert_eq!(repo.run(&["rev-parse", "HEAD"]), head);
         assert!(
             entries.len() > 200,
             "count={} last={:?}",

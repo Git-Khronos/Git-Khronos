@@ -11,6 +11,13 @@ interface HistoryReadOperation {
   scope: string;
 }
 
+interface FileHistoryTarget {
+  scope: string;
+  sourceRevision: string;
+  revision: string;
+  path: string;
+}
+
 export const emptyHistoryQuery = (): HistoryQuery => ({
   message: '', author: '', oid: '', since: '', until: '', path: '', scope: '',
 });
@@ -36,7 +43,8 @@ export class HistorySearchService {
   readonly fileCancellationRequested = signal(false);
   readonly fileError = signal<string | null>(null);
   private query = emptyHistoryQuery();
-  private readonly fileTarget = signal<{ scope: string; revision: string; path: string } | null>(null);
+  private readonly fileTarget = signal<FileHistoryTarget | null>(null);
+  private pendingFileTarget: FileHistoryTarget | null = null;
   private operation: HistoryReadOperation | null = null;
   private fileOperation: HistoryReadOperation | null = null;
   private generation = 0;
@@ -64,6 +72,7 @@ export class HistorySearchService {
     this.fileGeneration++;
     const cancellation = Promise.all([this.cancel(), this.cancelFile()]);
     this.clearSearch(); this.clearFileSearch(); this.fileTarget.set(null);
+    this.pendingFileTarget = null;
     this.query = emptyHistoryQuery();
     this.status.set(searchPrompt);
     await cancellation;
@@ -160,27 +169,57 @@ export class HistorySearchService {
     if (operation === this.operation && result !== 'accepted') this.cancelling.set(false);
   }
 
-  async openFile(revision: string, path: string): Promise<void> {
+  openFile(revision: string, path: string): Promise<void> {
+    return this.startFile(revision, path, revision);
+  }
+
+  private async startFile(sourceRevision: string, path: string, revision: string): Promise<void> {
     const generation = ++this.fileGeneration;
     const scope = this.git.activeRepositoryReadScope();
+    const target = { scope, sourceRevision, revision, path };
     // Old rows must not be presented or resumed while a replacement awaits cancellation.
     this.fileTarget.set(null);
+    this.pendingFileTarget = target;
     await this.cancelFile();
     if (generation !== this.fileGeneration || scope !== this.git.activeRepositoryReadScope()) return;
+    this.pendingFileTarget = null;
     this.clearFileSearch();
     if (!this.git.repository()) return;
-    this.fileTarget.set({ scope, revision, path });
+    this.fileTarget.set(target);
     await this.nextFile();
   }
 
-  matchesFile(revision: string, path: string): boolean {
-    const target = this.fileTarget();
+  private ownsFile(target: FileHistoryTarget | null, revision: string, path: string): target is FileHistoryTarget {
     return !!target && target.scope === this.git.activeRepositoryReadScope()
-      && target.revision === revision && target.path === path;
+      && target.sourceRevision === revision && target.path === path;
+  }
+
+  matchesFile(revision: string, path: string): boolean {
+    return this.ownsFile(this.fileTarget(), revision, path);
+  }
+
+  fileStartingPoint(revision: string, path: string): string | null {
+    const target = this.fileTarget();
+    return this.ownsFile(target, revision, path) ? target.revision : null;
+  }
+
+  async changeFileStartingPoint(sourceRevision: string, path: string, input: string): Promise<void> {
+    const target = this.fileTarget();
+    const revision = input.trim();
+    if (!revision || !this.ownsFile(target, sourceRevision, path)
+      || (this.fileBusy() && !this.fileCancellationRequested())) return;
+    await this.startFile(sourceRevision, path, revision);
+  }
+
+  async reloadFile(sourceRevision: string, path: string): Promise<void> {
+    const revision = this.fileStartingPoint(sourceRevision, path);
+    if (revision !== null) await this.changeFileStartingPoint(sourceRevision, path, revision);
   }
 
   async resumeFile(revision: string, path: string): Promise<void> {
-    if (!this.matchesFile(revision, path)) await this.openFile(revision, path);
+    if (!this.matchesFile(revision, path) && !this.ownsFile(this.pendingFileTarget, revision, path)) {
+      await this.openFile(revision, path);
+    }
   }
 
   async nextFile(): Promise<void> {

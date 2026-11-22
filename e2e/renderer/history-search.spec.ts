@@ -105,6 +105,78 @@ test('a retired exact path action cannot look up history on a different HEAD', a
   await expect(page.getByRole('region', { name: 'File history', exact: true })).toHaveCount(0);
 });
 
+test('file history can start from another local ref without switching the checkout', async ({ page }) => {
+  const path = 'release-only.txt';
+  const { head, tag, pinned } = await page.evaluate(() => {
+    const state = (window as any).__historyFixture;
+    const head = state.app.git.repository().headOid;
+    const tag = 'refs/tags/v1.0';
+    const pinned = 'e'.repeat(40);
+    const original = (window as any).__TAURI_INTERNALS__.invoke;
+    (window as any).__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+      if (command !== 'inspect_file_history_page') return original(command, args);
+      state.calls.push({ command, args });
+      if (args.revision === 'missing-tag') return Promise.reject({ message: 'Unknown revision: missing-tag' });
+      if (args.revision !== tag) return Promise.resolve({ entries: [], cursor: null, complete: true });
+      return Promise.resolve({
+        entries: [{ ...state.entry, oid: args.cursor ? state.parentOid : pinned,
+          subject: args.cursor ? 'Older release edit' : 'Release-only change', path: args.path }],
+        cursor: args.cursor ? null : { revision: pinned, requestedRevision: tag, path: args.path, historicalPath: args.path, offset: 100 },
+        complete: !!args.cursor,
+      });
+    };
+    return { head, tag, pinned };
+  });
+  const reads = () => page.evaluate(() => (window as any).__historyFixture.calls.filter((call: any) =>
+    call.command === 'inspect_file_history_page').map((call: any) => call.args));
+  await page.keyboard.press('Control+Shift+H');
+  await page.getByRole('combobox', { name: 'Search tracked files', exact: true }).fill(path);
+  await page.getByRole('option', { name: `File history for exact path: ${path}` }).click();
+  const pane = page.getByRole('region', { name: 'File history', exact: true });
+  await expect(pane).toContainText('No history was found');
+  expect(await reads()).toMatchObject([{ revision: head, path, cursor: null }]);
+
+  const startingPoint = pane.locator('summary');
+  await startingPoint.click();
+  const ref = pane.getByRole('textbox', { name: 'Branch, tag or commit' });
+  await ref.fill('missing-tag');
+  await ref.press('Enter');
+  await expect(pane.getByRole('alert')).toContainText('Unknown revision');
+  await expect(ref).toBeFocused();
+
+  await ref.fill(tag);
+  await pane.getByRole('button', { name: 'Search from revision' }).click();
+  await expect(startingPoint).toHaveText(`Starting point: ${tag}`);
+  await expect(pane.getByRole('alert')).toHaveCount(0);
+  await expect(pane.getByRole('button', { name: 'Release-only change' })).toBeVisible();
+  await pane.getByRole('button', { name: 'Load older file history' }).click();
+  await expect(pane.getByRole('button', { name: 'Older release edit' })).toBeVisible();
+  expect(await reads()).toMatchObject([
+    { revision: head, path, cursor: null },
+    { revision: 'missing-tag', path, cursor: null },
+    { revision: tag, path, cursor: null },
+    { revision: tag, path, cursor: { revision: pinned, requestedRevision: tag, offset: 100 } },
+  ]);
+
+  const toggle = page.locator('.diff-insight-toggle');
+  await toggle.getByRole('button', { name: 'Diff', exact: true }).click();
+  await toggle.getByRole('button', { name: 'History', exact: true }).click();
+  await expect(pane.getByRole('button', { name: 'Older release edit' })).toBeVisible();
+  expect(await reads()).toHaveLength(4);
+
+  await pane.getByRole('button', { name: 'Reload file history' }).click();
+  await expect(pane.getByRole('button', { name: 'Older release edit' })).toHaveCount(0);
+  expect((await reads()).at(-1)).toMatchObject({ revision: tag, path, cursor: null });
+  await pane.getByRole('button', { name: 'Use diff revision' }).click();
+  await expect(pane).toContainText('No history was found');
+  await expect(startingPoint).toHaveText('Starting point: Diff revision');
+  expect((await reads()).at(-1)).toMatchObject({ revision: head, path, cursor: null });
+  expect(await page.evaluate(() => {
+    const { app, calls } = (window as any).__historyFixture;
+    return { head: app.git.repository().headOid, checkouts: calls.filter((call: any) => call.command.includes('checkout')) };
+  })).toEqual({ head, checkouts: [] });
+});
+
 test('deferred history preserves entered filters across closing and restores the search opener', async ({ page }) => {
   const opener = page.getByRole('button', { name: 'Search all repository history', exact: true });
   await opener.click();
