@@ -1571,6 +1571,11 @@ demonstrated overwrite during local rebase and verified the new refusal.
 The same rebase manual describes Abort and the limits of `ORIG_HEAD`.
 Owned merge- and apply-backend fixtures identified the original tip and
 active markers and reproduced ignored-file loss during Abort.
+The Rebase Skip and Merge Abort safeguards use the documented operation
+behavior in the [rebase](https://git-scm.com/docs/git-rebase) and
+[merge](https://git-scm.com/docs/git-merge) manuals, including Merge Abort's
+autostash restore. Independent fixtures observed what the reset and stash
+restore actually wrote against an index that excluded the ignored path.
 No upstream code was copied.
 
 ## Fast-forward Pull and ignored files

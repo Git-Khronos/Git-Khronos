@@ -3365,6 +3365,22 @@ moving the file. The package and 76-scenario receipts are in
 This is focused installed evidence only; the complete-matrix handoff above
 is still `3320c2f`. No public release was made.
 
+The exact `8699760` package subsequently passed **77 focused installed
+scenarios** on Ubuntu 24.04: 12 detached-checkout, 56 setup/keyboard and
+9 workspace-Pull. That includes refusing Apply-backend Abort Rebase while
+an ignored file blocks the restore, then succeeding after moving the file.
+The package and matching `reports.json` are in
+`target/local-review/updater/jammy-builder/rebase-abort-focused-release.GZeYdsJC/`
+(SHA-256 `5890b54b1fa3cf2ea604dcf8d1d0f3b4b6231fb7e06c5144bc746bddec9fbc77`).
+The package uses the test publisher key; this is not a new full-matrix handoff.
+
+Owned Git fixtures also reproduced ignored local file loss in Merge Abort
+and the reset at the start of Rebase Skip (both backends), plus an ignored
+file overwritten when Merge Abort reapplied a native autostash. The source
+regressions exercise refusal and retry without altering Git's recovery
+commands. The earlier packaged Abort Rebase result does not cover these new
+paths. CLI evidence is in `target/local-review/abort-skip-ignored-probe.a1SmfFYd/`.
+
 ### Packaged GitLab TLS fixture readiness
 
 The packaged harness now uses the IPv4 address its fixture actually binds

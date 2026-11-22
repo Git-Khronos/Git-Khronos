@@ -3820,6 +3820,10 @@ pub fn abort_merge(path: &Path) -> Result<(), AppError> {
             None,
         ));
     }
+    merge_checkout_guard::ensure_head_reset_preserves_ignored_files(
+        path,
+        merge_checkout_guard::HeadReset::MergeAbort,
+    )?;
     run_mutation(path, &["merge", "--abort"], "abort the merge")
 }
 
@@ -9603,14 +9607,20 @@ fn run_rebase_control(path: &Path, action: &str, operation: &str) -> Result<(), 
             ));
         }
     }
-    if action == "--skip" && read_status(path)?.rebase_split.is_some() {
-        return Err(AppError::new(
-            "rebaseSplitIncomplete",
-            "Skip is unavailable during a guided split.",
-            Some(
-                "Complete and explicitly commit the split parts, then Continue; or Abort the entire rebase.",
-            ),
-        ));
+    if action == "--skip" {
+        if read_status(path)?.rebase_split.is_some() {
+            return Err(AppError::new(
+                "rebaseSplitIncomplete",
+                "Skip is unavailable during a guided split.",
+                Some(
+                    "Complete and explicitly commit the split parts, then Continue; or Abort the entire rebase.",
+                ),
+            ));
+        }
+        merge_checkout_guard::ensure_head_reset_preserves_ignored_files(
+            path,
+            merge_checkout_guard::HeadReset::RebaseSkip,
+        )?;
     }
     let output = git_in(path)
         .args(["rebase", action])

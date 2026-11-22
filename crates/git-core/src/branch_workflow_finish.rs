@@ -1497,6 +1497,12 @@ pub fn abort_branch_workflow_finish(
                 }
             }
             Integration::Conflicted | Integration::CanContinue => {
+                cancellable_read(cancellation, || {
+                    merge_checkout_guard::ensure_head_reset_preserves_ignored_files(
+                        path,
+                        merge_checkout_guard::HeadReset::MergeAbort,
+                    )
+                })?;
                 let output = run_finish_git(path, &["merge", "--abort"], cancellation)?;
                 ensure_success("abort the current workflow merge", &output)?;
                 if read_status(path)?.merge_in_progress {
@@ -1877,6 +1883,39 @@ mod tests {
         let production = fixture.git(&["rev-parse", "main"]);
         assert_contains(&fixture, &source, "main");
         assert!(tag_object(&fixture.repo, "conflict").unwrap().is_none());
+        fixture.git(&["rm", "-f", "file.txt"]);
+        let exclude = operation_storage::git_entry(&fixture.repo, "info/exclude").unwrap();
+        fs::create_dir_all(exclude.parent().unwrap()).unwrap();
+        fs::write(
+            exclude,
+            "/file.txt\n/saved.txt\n",
+        )
+        .unwrap();
+        fs::write(fixture.repo.join("file.txt"), "Ignored private data").unwrap();
+        let refs = fixture.refs();
+        let index = fixture.index();
+        let error = abort_branch_workflow_finish(
+            &fixture.repo,
+            &status.id,
+            status.revision,
+            &CancellationToken::default(),
+        )
+        .unwrap_err();
+        assert_eq!(error.kind, "mergeAbortLocalPathObstruction");
+        assert_eq!(fixture.refs(), refs);
+        assert_eq!(fixture.index(), index);
+        assert_eq!(fixture.git(&["rev-parse", "MERGE_HEAD"]), source);
+        assert_eq!(
+            fs::read(fixture.repo.join("file.txt")).unwrap(),
+            b"Ignored private data"
+        );
+        let status = load_journal(&fixture.repo).unwrap().unwrap().status;
+        assert_eq!(status.phase, BranchWorkflowFinishPhase::Conflicted);
+        fs::rename(
+            fixture.repo.join("file.txt"),
+            fixture.repo.join("saved.txt"),
+        )
+        .unwrap();
         let aborted = abort_branch_workflow_finish(
             &fixture.repo,
             &status.id,
@@ -1891,6 +1930,10 @@ mod tests {
         assert_eq!(
             fs::read(fixture.repo.join("file.txt")).unwrap(),
             b"development conflict\n"
+        );
+        assert_eq!(
+            fs::read(fixture.repo.join("saved.txt")).unwrap(),
+            b"Ignored private data"
         );
         assert!(fixture.git(&["status", "--porcelain"]).is_empty());
         acknowledge_branch_workflow_finish(&fixture.repo, &aborted.id, aborted.revision).unwrap();

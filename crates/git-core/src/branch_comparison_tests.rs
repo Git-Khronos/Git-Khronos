@@ -315,6 +315,170 @@ fn abort_rebase_preserves_ignored_data_and_uses_the_original_state_for_both_back
 }
 
 #[test]
+fn skipping_either_rebase_backend_preserves_ignored_files_restored_from_head() {
+    for backend in ["--merge", "--apply"] {
+        let fixture = Fixture::new();
+        fixture.commit_file("conflict", "Base");
+        fixture.git(&["switch", "-c", "upstream"]);
+        fixture.commit_file("conflict", "Upstream");
+        fixture.git(&["switch", "main"]);
+        fixture.commit_file("conflict", "Local");
+        let original = fixture.git(&["rev-parse", "HEAD"]);
+        run_mutation(
+            fixture.path(),
+            &["rebase", backend, "upstream"],
+            "begin owned rebase",
+        )
+        .unwrap_err();
+        let head = fixture.git(&["rev-parse", "HEAD"]);
+        assert_ne!(original, head);
+        let local_copy = replace_conflict_with_ignored_file(&fixture);
+        let index = fs::read(fixture.path().join(".git/index")).unwrap();
+
+        let error = skip_rebase(fixture.path()).unwrap_err();
+        assert_eq!(error.kind, "rebaseSkipLocalPathObstruction", "{backend}");
+        assert_eq!(fixture.git(&["rev-parse", "HEAD"]), head);
+        assert_eq!(fixture.git(&["rev-parse", "main"]), original);
+        assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+        assert_eq!(
+            fs::read_to_string(&local_copy).unwrap(),
+            "Local ignored data"
+        );
+        assert!(read_status(fixture.path()).unwrap().rebase_in_progress);
+
+        let saved = local_copy.with_extension("saved");
+        fs::rename(&local_copy, &saved).unwrap();
+        skip_rebase(fixture.path()).unwrap();
+        assert_eq!(fixture.git(&["rev-parse", "main"]), head);
+        assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/main");
+        assert_eq!(fs::read_to_string(&local_copy).unwrap(), "Upstream\n");
+        assert_eq!(fs::read_to_string(saved).unwrap(), "Local ignored data");
+        assert_eq!(
+            fs::read_to_string(fixture.path().join("unrelated.local")).unwrap(),
+            "Unrelated"
+        );
+        assert!(!read_status(fixture.path()).unwrap().rebase_in_progress);
+    }
+}
+
+#[test]
+fn aborting_merge_preserves_ignored_files_restored_from_head() {
+    let fixture = Fixture::new();
+    fixture.commit_file("conflict", "Base");
+    let base = fixture.git(&["rev-parse", "HEAD"]);
+    fixture.git(&["switch", "-c", "upstream"]);
+    fixture.commit_file("conflict", "Upstream");
+    fixture.git(&["switch", "main"]);
+    fixture.commit_file("conflict", "Current");
+    let head = fixture.git(&["rev-parse", "HEAD"]);
+    run_mutation(
+        fixture.path(),
+        &["merge", "--no-edit", "upstream"],
+        "begin owned merge",
+    )
+    .unwrap_err();
+    fixture.git(&["update-ref", "ORIG_HEAD", &base]);
+    let local_copy = replace_conflict_with_ignored_file(&fixture);
+    let index = fs::read(fixture.path().join(".git/index")).unwrap();
+    let merge_head = fixture.git(&["rev-parse", "MERGE_HEAD"]);
+
+    let error = abort_merge(fixture.path()).unwrap_err();
+    assert_eq!(error.kind, "mergeAbortLocalPathObstruction");
+    assert_eq!(fixture.git(&["rev-parse", "HEAD"]), head);
+    assert_eq!(fixture.git(&["rev-parse", "MERGE_HEAD"]), merge_head);
+    assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+    assert_eq!(
+        fs::read_to_string(&local_copy).unwrap(),
+        "Local ignored data"
+    );
+    assert!(repository_operation_state(fixture.path()).unwrap().merge);
+
+    let saved = local_copy.with_extension("saved");
+    fs::rename(&local_copy, &saved).unwrap();
+    abort_merge(fixture.path()).unwrap();
+    assert_eq!(fixture.git(&["rev-parse", "HEAD"]), head);
+    assert_eq!(fs::read_to_string(local_copy).unwrap(), "Current\n");
+    assert_eq!(fs::read_to_string(saved).unwrap(), "Local ignored data");
+    assert_eq!(
+        fs::read_to_string(fixture.path().join("unrelated.local")).unwrap(),
+        "Unrelated"
+    );
+    assert!(!repository_operation_state(fixture.path()).unwrap().merge);
+}
+
+#[test]
+fn aborting_merge_preserves_ignored_files_that_autostash_would_restore() {
+    let fixture = Fixture::new();
+    fixture.commit_file("conflict", "Base");
+    fixture.git(&["switch", "-c", "upstream"]);
+    fixture.commit_file("conflict", "Upstream");
+    fixture.git(&["switch", "main"]);
+    fixture.commit_file("conflict", "Current");
+    let head = fixture.git(&["rev-parse", "HEAD"]);
+    fs::write(fixture.path().join("new.local"), "Staged before merge").unwrap();
+    fixture.git(&["add", "new.local"]);
+    run_mutation(
+        fixture.path(),
+        &["merge", "--autostash", "--no-edit", "upstream"],
+        "begin owned merge with autostash",
+    )
+    .unwrap_err();
+    let autostash = fixture.git(&["rev-parse", "MERGE_AUTOSTASH"]);
+    let index = fs::read(fixture.path().join(".git/index")).unwrap();
+    let local_copy = fixture.path().join("new.local");
+    assert!(!local_copy.exists());
+    fs::write(fixture.path().join(".git/info/exclude"), "/new.local\n").unwrap();
+    fs::write(&local_copy, "Created during conflicted merge").unwrap();
+
+    let error = abort_merge(fixture.path()).unwrap_err();
+    assert_eq!(error.kind, "mergeAbortLocalPathObstruction");
+    assert!(error.message.contains("new.local"));
+    assert_eq!(fixture.git(&["rev-parse", "HEAD"]), head);
+    assert_eq!(fixture.git(&["rev-parse", "MERGE_AUTOSTASH"]), autostash);
+    assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
+    assert_eq!(
+        fs::read_to_string(&local_copy).unwrap(),
+        "Created during conflicted merge"
+    );
+    assert!(repository_operation_state(fixture.path()).unwrap().merge);
+
+    let saved = local_copy.with_extension("saved");
+    fs::rename(&local_copy, &saved).unwrap();
+    // An unrelated ignored file keeps the preflight enabled on the retry.
+    fs::write(
+        fixture.path().join(".git/info/exclude"),
+        "/new.local\n/new.saved\n",
+    )
+    .unwrap();
+    abort_merge(fixture.path()).unwrap();
+    assert_eq!(fixture.git(&["rev-parse", "HEAD"]), head);
+    assert_eq!(
+        fs::read_to_string(local_copy).unwrap(),
+        "Staged before merge"
+    );
+    assert_eq!(
+        fs::read_to_string(saved).unwrap(),
+        "Created during conflicted merge"
+    );
+    assert!(!fixture.path().join(".git/MERGE_AUTOSTASH").exists());
+    assert!(!repository_operation_state(fixture.path()).unwrap().merge);
+}
+
+fn replace_conflict_with_ignored_file(fixture: &Fixture) -> PathBuf {
+    fixture.git(&["rm", "-f", "conflict"]);
+    fs::write(
+        fixture.path().join(".git/info/exclude"),
+        "/conflict\n/unrelated.local\n",
+    )
+    .unwrap();
+    fs::write(fixture.path().join("unrelated.local"), "Unrelated").unwrap();
+    let local_copy = fixture.path().join("conflict");
+    fs::write(&local_copy, "Local ignored data").unwrap();
+    assert_eq!(fixture.git(&["check-ignore", "conflict"]), "conflict");
+    local_copy
+}
+
+#[test]
 fn rebase_preserves_ignored_files_in_the_way_of_the_new_base() {
     for reviewed in [false, true] {
         let fixture = Fixture::new();

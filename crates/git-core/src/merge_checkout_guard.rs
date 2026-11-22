@@ -33,6 +33,27 @@ fn rebase_abort_unavailable() -> AppError {
 
 type Unavailable = fn() -> AppError;
 
+pub(super) enum HeadReset {
+    MergeAbort,
+    RebaseSkip,
+}
+
+fn merge_abort_unavailable() -> AppError {
+    AppError::new(
+        "mergeAbortIgnoredPathsUnverified",
+        "Could not check which ignored local files Abort Merge might replace. The merge was not aborted.",
+        Some("Move or back up ignored local files, then retry Abort."),
+    )
+}
+
+fn rebase_skip_unavailable() -> AppError {
+    AppError::new(
+        "rebaseSkipIgnoredPathsUnverified",
+        "Could not check which ignored local files the Skip reset might replace. The rebase was not advanced.",
+        Some("Move or back up ignored local files, then retry Skip."),
+    )
+}
+
 fn bounded(path: &Path, args: &[&str], unavailable: Unavailable) -> Result<Output, AppError> {
     let (result, truncated) = run_git_with_stdout_limit(path, args, PATH_LIMIT)?;
     if truncated {
@@ -315,6 +336,96 @@ fn rebase_original_tip(directory: &Path) -> Result<String, AppError> {
     Ok(oid.to_owned())
 }
 
+fn restore_obstruction(
+    path: &Path,
+    ignored: &IgnoredPaths,
+    target: &str,
+    unavailable: Unavailable,
+) -> Result<Option<String>, AppError> {
+    // A recovery reset restores a tree against the current index, not
+    // HEAD's tree. A path tracked at HEAD may now be untracked and ignored.
+    let listing = bounded(
+        path,
+        &["ls-tree", "-r", "--full-tree", "--name-only", "-z", target],
+        unavailable,
+    )?;
+    if !listing.status.success() {
+        return Err(unavailable());
+    }
+    obstructing_path(ignored, &listing.stdout, unavailable)
+}
+
+fn merge_autostash_tip(path: &Path, unavailable: Unavailable) -> Result<Option<String>, AppError> {
+    let entry = operation_storage::git_entry(path, "MERGE_AUTOSTASH")?;
+    if operation_storage::file(&entry)
+        .map_err(|_| unavailable())?
+        .is_none()
+    {
+        return Ok(None);
+    }
+    reference_tip(path, "MERGE_AUTOSTASH")
+        .map(Some)
+        .ok_or_else(unavailable)
+}
+
+pub(super) fn ensure_head_reset_preserves_ignored_files(
+    path: &Path,
+    action: HeadReset,
+) -> Result<(), AppError> {
+    let (unavailable, kind, title, hint): (Unavailable, _, _, _) = match action {
+        HeadReset::MergeAbort => (
+            merge_abort_unavailable,
+            "mergeAbortLocalPathObstruction",
+            "Abort Merge",
+            "Move the ignored file or directory out of the way, then retry Abort.",
+        ),
+        HeadReset::RebaseSkip => (
+            rebase_skip_unavailable,
+            "rebaseSkipLocalPathObstruction",
+            "Skip Rebase Commit",
+            "Move the ignored file or directory out of the way, then retry Skip.",
+        ),
+    };
+    let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
+        return Ok(());
+    };
+    without_lazy_fetch(|| {
+        let head = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
+        let obstruction = |blocked: String| {
+            AppError::new(
+                kind,
+                format!("{title} could overwrite ignored local contents at '{blocked}'."),
+                Some(hint),
+            )
+        };
+        if let Some(blocked) = restore_obstruction(path, &ignored, &head, unavailable)? {
+            return Err(obstruction(blocked));
+        }
+        if matches!(action, HeadReset::MergeAbort) {
+            // Merge Abort reapplies its autostash after resetting. The stash
+            // can add paths which the receiving commit does not contain.
+            let stash = merge_autostash_tip(path, unavailable)?;
+            if let Some(stash) = &stash {
+                if reference_tip(path, &format!("{stash}^1")).as_ref() != Some(&head) {
+                    return Err(unavailable());
+                }
+                if let Some(blocked) =
+                    checkout_obstruction(path, &ignored, &head, stash, unavailable)?
+                {
+                    return Err(obstruction(blocked));
+                }
+            }
+            if merge_autostash_tip(path, unavailable)? != stash {
+                return Err(unavailable());
+            }
+        }
+        if reference_tip(path, "HEAD").as_ref() != Some(&head) {
+            return Err(unavailable());
+        }
+        Ok(())
+    })
+}
+
 pub(super) fn ensure_rebase_abort_preserves_ignored_files(path: &Path) -> Result<(), AppError> {
     let unavailable = rebase_abort_unavailable;
     let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
@@ -337,24 +448,12 @@ pub(super) fn ensure_rebase_abort_preserves_ignored_files(path: &Path) -> Result
     let original = rebase_original_tip(&directory)?;
     without_lazy_fetch(|| {
         let head = reference_tip(path, "HEAD").ok_or_else(unavailable)?;
-        // Abort restores the original tree against the current index, not
-        // against HEAD's tree. A path in both commits may now be untracked.
-        let listing = bounded(
+        if let Some(blocked) = restore_obstruction(
             path,
-            &[
-                "ls-tree",
-                "-r",
-                "--full-tree",
-                "--name-only",
-                "-z",
-                &format!("{original}^{{commit}}"),
-            ],
+            &ignored,
+            &format!("{original}^{{commit}}"),
             unavailable,
-        )?;
-        if !listing.status.success() {
-            return Err(unavailable());
-        }
-        if let Some(blocked) = obstructing_path(&ignored, &listing.stdout, unavailable)? {
+        )? {
             return Err(AppError::new(
                 "rebaseAbortLocalPathObstruction",
                 format!("Abort Rebase could overwrite ignored local contents at '{blocked}'."),

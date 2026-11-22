@@ -759,6 +759,13 @@ the app leaves both the checkout and operation in progress. Move the
 obstructing file and retry Abort. Native status recognizes the apply backend's
 rebase marker separately from `git am`; apply-based rebases get the normal
 Continue, Skip, and Abort controls without interactive Edit or Split controls.
+Skip checks its initial reset to the current commit against the current index,
+including paths that became ignored and untracked during conflict resolution.
+Merge Abort, including the branch workflow's Abort, checks the receiving
+tree and additions from a native autostash before resetting. A refusal
+keeps the native operation active; a branch workflow still consumes its
+command revision as before. These checks do not predict subsequent rebase
+replay or application of a rebase autostash.
 Merge, squash, fast-forward, and rebase from the branch context menu carry a
 separate review tied to that menu opening, the repository visit, and both
 branch tips. Their labels retain the selected receiver instead of mutating
