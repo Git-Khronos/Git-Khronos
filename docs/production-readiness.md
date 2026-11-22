@@ -4243,3 +4243,13 @@ contract check, strict Git core Clippy and 162 native-harness unit tests
 passed. Chromium passed 122 regressions before the final focus handoff
 and 17 focused palette and lookup tests after it. The initial bundle
 warning remains. Receipts: `target/local-review/previous-branch.T9p6grFK/`.
+
+The Ubuntu 24.04 installer from `cf2bed7` passed nine focused installed
+scenarios for exact and previous-branch selection. The previous-branch
+flow preserved the working tree until selection and opened the occupied
+checkout review without switching either worktree. The first run
+matched a whole menu item against only its heading; the corrected
+selector passed against the unchanged installer.
+SHA-256: `5058f7e6619c3f18e0e87d4e4f8210e093fd96decfcd9053d8f237a079722623`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/previous-branch-recheck.j6VNjRnG/reports.json`.

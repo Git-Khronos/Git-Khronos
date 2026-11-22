@@ -18,7 +18,7 @@ def previous_branch(driver, fixtures, report):
 
     def choose_previous(ref):
         driver.click_navigation('button[aria-label="Branch options"]')
-        driver.click_scrolled_text('#branch-options-menu button', 'Find previous local branch…', wait_for_ready=True)
+        driver.click_scrolled_text('#branch-options-menu button strong', 'Find previous local branch…', wait_for_ready=True)
         driver.wait("""
           const field = document.querySelector('.command-palette input[aria-label="Search branches"]');
           return field?.value === """ + repr(ref) + """ && document.activeElement === field
