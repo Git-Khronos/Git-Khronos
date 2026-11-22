@@ -714,6 +714,18 @@ their computed styles. The build comparison and browser request probe are
 in `target/local-review/lazy-feature-styles.dQF1Tebn/`. This is not a
 startup-latency measurement.
 
+Native startup with saved tabs now keeps a small progress view until the
+first checkout is ready. It does not request Welcome unless restoration
+fails or the user chooses to show the launcher. In a production Chromium
+probe with held native-bridge responses, the old app requested the
+26,367-byte Welcome chunk before Git answered; the new app made no
+request for it and opened the same saved path exactly once. The progress
+and fallback views add 2,808 raw initial bytes, for a net reduction of
+23,559 bytes on that saved-startup path. The initial total is 1,299,255
+bytes. These are asset measurements using a simulated native bridge,
+not installed WebKit timings. Receipts are in
+`target/local-review/saved-startup-launcher.G8ICdgQs/`.
+
 Deferring the commit editor and its private styles reduced the initial
 renderer from **1,333,972 to 1,331,513 bytes**. A production Chromium probe
 requested the form chunk only when the editor opened and confirmed focus
@@ -3249,6 +3261,16 @@ fixture-key package and successful APT simulation are in
 `target/local-review/qualified-0.1.6-62ac826/` (SHA-256
 `2098043f28c3b9a066adaf846e48d060c44922a079c70fd3ac28dbc6264d1745`).
 This handoff supersedes the earlier local package, not the public release.
+
+The subsequent `c4f6610` package passed the 20-case installed smoke suite
+on Ubuntu 24.04. Its Repository Files scenario verified that Linux keeps
+the nested entry browsable without a Delete action and that an eligible
+top-level file can still be deleted and recovered byte-for-byte. The
+package digest is
+`96b334cebbae9e58f6288487ff38a4a7298a83e43b0cbc226306f08d7946e28e`;
+package and reports are under
+`target/local-review/updater/jammy-builder/repository-files-smoke.zJYTbGpB/`.
+This is focused smoke evidence, not a complete Linux matrix for that build.
 
 ### Packaged GitLab TLS fixture readiness
 

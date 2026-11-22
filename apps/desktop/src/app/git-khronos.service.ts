@@ -289,6 +289,11 @@ export class GitKhronosService implements OnDestroy {
   readonly repository = computed(
     () => this.repositories().find((repository) => repository.id === this.activeRepositoryId()) ?? null,
   );
+  // Set before the first render as well as on explicit initialization, so
+  // restoring a saved native checkout does not eagerly instantiate Welcome.
+  private readonly startupRestoreWorkspace = signal(this.savedStartupWorkspace());
+  readonly restoringStartupRepository = computed(() =>
+    this.startupRestoreWorkspace() === this.activeWorkspaceId() && !this.repository());
   private readonly activeReadVisit = signal(0);
   readonly activeRepositoryReadScope = computed(() => JSON.stringify([
     this.activeReadVisit(), this.activeWorkspaceId(), this.activeRepositoryId(), this.repository()?.path ?? null,
@@ -441,6 +446,20 @@ export class GitKhronosService implements OnDestroy {
 
   async initialize(): Promise<void> {
     const initialization = ++this.incomingInitializationRequest;
+    this.startupRestoreWorkspace.set(this.savedStartupWorkspace());
+    try {
+      await this.initializeWorkspace(initialization);
+    } finally {
+      if (initialization === this.incomingInitializationRequest) this.startupRestoreWorkspace.set(null);
+    }
+  }
+
+  private savedStartupWorkspace(): string | null {
+    const workspace = this.activeWorkspace();
+    return isTauri() && !this.repository() && workspace?.repositoryPaths.length ? workspace.id : null;
+  }
+
+  private async initializeWorkspace(initialization: number): Promise<void> {
     this.incomingRepositoryLinksReady.set(false);
     try {
       const info = await ipc.system_info();

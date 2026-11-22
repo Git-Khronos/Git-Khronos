@@ -44,6 +44,7 @@ export class WelcomeLauncherComponent {
   readonly appTheme = input.required<AppTheme>();
   readonly primaryShortcutKey = input.required<string>();
   readonly favoriteShortcut = input.required<string>();
+  readonly focusOpenAction = input(false);
   readonly repositoryChosen = output<void>();
   readonly repositoryManagerOpened = output<RepositoryDialogMode>();
   readonly closedRepositoryReopened = output<void>();
@@ -57,7 +58,7 @@ export class WelcomeLauncherComponent {
     afterNextRender(() => {
       const hasRepositoryHistory = this.git.favoritePaths().length > 0
         || this.git.unpinnedRecentPaths().length > 0;
-      if (!hasRepositoryHistory && document.activeElement === document.body) {
+      if ((this.focusOpenAction() || !hasRepositoryHistory) && document.activeElement === document.body) {
         this.openRepositoryAction().nativeElement.focus();
       }
     });

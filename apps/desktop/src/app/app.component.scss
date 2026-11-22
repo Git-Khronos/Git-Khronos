@@ -1,5 +1,9 @@
 :host { display: block; height: 100vh; background: var(--bg); }
 .app-shell { height: 100%; position: relative; overflow: hidden; }
+.saved-startup { width: min(100%, 40rem); margin-inline: auto; padding: clamp(24px, 7vw, 80px) 20px; }
+.saved-startup h1 { margin: 16px 0 8px; font-size: 20px; }
+.saved-startup p { margin: 0 0 16px; color: var(--muted); }
+.saved-startup button { min-height: 44px; padding-inline: 12px; }
 /* Three-panel repository layout */
 .workspace { position: relative; min-height: 0; display: grid; grid-template-columns: 250px minmax(480px, 1fr) minmax(320px, 355px); height: calc(100% - 92px - var(--statusbar-height)); overflow: hidden; }
 .panel-hidden { display: none !important; }

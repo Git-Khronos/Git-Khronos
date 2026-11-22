@@ -172,12 +172,27 @@
     }
   }
   @if (!git.repository()) {
-    @defer (on immediate) {
-      <gc-welcome-launcher [workspaceControl]="workspaceControl" [appTheme]="appTheme()"
+    @defer (when !git.restoringStartupRepository() || startupLauncherRequested()) {
+      <gc-welcome-launcher [workspaceControl]="workspaceControl" [appTheme]="appTheme()" [focusOpenAction]="startupLauncherRequested()"
         [primaryShortcutKey]="primaryShortcutKey" [favoriteShortcut]="favoriteShortcut"
         (repositoryChosen)="chooseRepository()" (repositoryManagerOpened)="openRepositoryManager($event)"
         (closedRepositoryReopened)="reopenClosedRepository()" (favoriteOpened)="openFavoriteRepository($event)"
         (repositoryOpened)="openRepositoryPath($event)" (themeToggled)="toggleAppTheme()" (editorDraftRecoveryOpened)="openEditorDraftRecovery()" (applicationUpdatesOpened)="openApplicationUpdates()" />
+    } @placeholder {
+      @if (git.restoringStartupRepository()) {
+        <main class="saved-startup" aria-labelledby="saved-startup-title">
+          <img class="brand-mark" src="assets/icon.svg" width="38" height="38" alt="" />
+          <h1 id="saved-startup-title">Restoring saved repository…</h1>
+          <p role="status">Git Khronos is opening the last saved repository.</p>
+          <button class="secondary" type="button" (click)="startupLauncherRequested.set(true)">Show repository launcher</button>
+        </main>
+      }
+    } @error {
+      <main class="saved-startup" aria-labelledby="saved-startup-error-title">
+        <h1 id="saved-startup-error-title">Repository launcher unavailable</h1>
+        <p role="alert">The launcher could not load. You can still open a local repository or restart Git Khronos.</p>
+        <button #launcherFallbackOpen class="secondary" type="button" (click)="chooseRepository(launcherFallbackOpen)">Open repository…</button>
+      </main>
     }
   } @else if (git.repository(); as repo) {
     <header class="chrome">

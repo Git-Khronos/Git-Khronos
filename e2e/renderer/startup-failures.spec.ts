@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -85,6 +85,103 @@ test('preserves saved repository paths and reports when none can be restored', a
   expect(result.error).toContain('Could not restore 1 saved repository: missing-project');
   expect(result.storedPaths).toEqual(['/repos/missing-project']);
   expect(result.repositoryCount).toBe(0);
+});
+
+async function holdSavedRepositoryStartup(page: Page) {
+  const snapshot = await page.evaluate(() => ({
+    ...(window as any).ng.getComponent(document.querySelector('gc-root')).git.repository(),
+    id: 'saved-startup',
+    path: '/owned/startup-project',
+    name: 'startup-project',
+  }));
+  await page.addInitScript(repository => {
+    const scope = window as any;
+    const fixture: any = { mounts: 0, calls: [] };
+    scope.__savedStartup = fixture;
+    const workspace = { id: 'default', name: 'Default', repositoryPaths: [repository.path], activeRepositoryPath: repository.path };
+    localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify([workspace]));
+    localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([repository.path]));
+    new MutationObserver(records => {
+      fixture.mounts += records.flatMap(record => [...record.addedNodes]).filter(node =>
+        node instanceof Element && (node.matches('gc-welcome-launcher') || node.querySelector('gc-welcome-launcher')),
+      ).length;
+    }).observe(document, { subtree: true, childList: true });
+    scope.isTauri = true;
+    scope.__TAURI_INTERNALS__ = {
+      transformCallback: () => 1,
+      unregisterCallback: () => undefined,
+      invoke(command: string, args: any) {
+        fixture.calls.push({ command, args });
+        if (command === 'system_info') return new Promise(resolve => {
+          fixture.start = () => resolve({ appVersion: 'owned native startup', gitVersion: '2.53.0', gitSupported: true, minimumGitVersion: '2.39.0' });
+        });
+        if (command === 'plugin:event|listen') return Promise.resolve(1);
+        if (command === 'incoming_repository_links') return Promise.resolve({ requests: [], overflowed: false });
+        if (command === 'repository_link_read_policies') return Promise.resolve({});
+        if (command === 'open_repository') return new Promise((resolve, reject) => {
+          fixture.success = () => resolve(repository);
+          fixture.failure = () => reject(new Error('Owned repository unavailable'));
+        });
+        if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return Promise.resolve(repository);
+        if (command === 'refresh_repository_status') return Promise.resolve(repository.status);
+        return Promise.resolve(null);
+      },
+    };
+  }, snapshot);
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__savedStartup.start)).toBe('function');
+}
+
+test('restores a saved repository without mounting the welcome launcher', async ({ page }) => {
+  await holdSavedRepositoryStartup(page);
+  const startup = page.getByRole('heading', { name: 'Restoring saved repository…' });
+  await expect(startup).toBeVisible();
+  await expect(page.locator('gc-welcome-launcher')).toHaveCount(0);
+  await page.evaluate(() => (window as any).__savedStartup.start());
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__savedStartup.success)).toBe('function');
+  await expect(startup).toBeVisible();
+  await page.evaluate(() => (window as any).__savedStartup.success());
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await expect(startup).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__savedStartup.mounts)).toBe(0);
+});
+
+test('shows the welcome launcher after startup cannot restore a saved repository', async ({ page }) => {
+  await holdSavedRepositoryStartup(page);
+  await page.evaluate(() => (window as any).__savedStartup.start());
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__savedStartup.failure)).toBe('function');
+  await expect(page.locator('gc-welcome-launcher')).toHaveCount(0);
+  await page.evaluate(() => (window as any).__savedStartup.failure());
+  await expect(page.locator('gc-welcome-launcher').getByRole('button', { name: /Open repository/ })).toBeVisible();
+  await expect(page.locator('.error-toast')).toContainText('Could not restore 1 saved repository: startup-project');
+});
+
+test('a keyboard user can request the launcher before saved restoration completes', async ({ page }) => {
+  await holdSavedRepositoryStartup(page);
+  const show = page.getByRole('button', { name: 'Show repository launcher' });
+  await show.focus();
+  await show.press('Enter');
+  await expect(page.locator('gc-welcome-launcher').getByRole('button', { name: /Open repository/ })).toBeFocused();
+  await page.evaluate(() => (window as any).__savedStartup.start());
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__savedStartup.success)).toBe('function');
+  await page.evaluate(() => (window as any).__savedStartup.success());
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await expect(page.locator('gc-welcome-launcher')).toHaveCount(0);
+});
+
+test('keeps a local-open entry point if the welcome code cannot load', async ({ page }) => {
+  await page.route('**/chunk-*.js', async route => {
+    const response = await route.fetch();
+    const body = await response.text();
+    if (body.includes('gc-welcome-launcher') && body.includes('welcome-launcher-title')) await route.abort();
+    else await route.fulfill({ response, body });
+  });
+  await holdSavedRepositoryStartup(page);
+  await page.getByRole('button', { name: 'Show repository launcher' }).click();
+  const fallback = page.getByRole('main', { name: 'Repository launcher unavailable' });
+  await expect(fallback.getByRole('alert')).toContainText('The launcher could not load.');
+  await expect(fallback.getByRole('button', { name: 'Open repository…' })).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).__savedStartup.calls.filter((call: any) => call.command === 'open_repository'))).toEqual([]);
 });
 
 

@@ -1510,6 +1510,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly effectiveZoom = computed(() => effectiveZoom(this.autoZoom(), this.zoomPercent()));
   protected readonly defaultZoom = DEFAULT_ZOOM;
   protected readonly appTheme = signal<AppTheme>(this.readAppTheme());
+  protected readonly startupLauncherRequested = signal(false);
   protected readonly appThemeOptions = APP_THEME_OPTIONS;
   protected readonly workingTreeViewMode = signal<WorkingTreeViewMode>(this.readWorkingTreeViewMode());
   protected readonly fileFilter = signal('');
@@ -2231,6 +2232,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private zoomApplication = 0;
 
   constructor() {
+    effect(() => {
+      if (this.git.repository()) this.startupLauncherRequested.set(false);
+    });
     afterRenderEffect(() => {
       const operation = this.branchDropMenu();
       const element = this.branchDropMenuElement()?.nativeElement;
