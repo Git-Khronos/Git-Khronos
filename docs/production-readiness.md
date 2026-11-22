@@ -4122,6 +4122,37 @@ both Git 2.53 and 2.39.5 passed. Receipts:
 `target/local-review/revision-comparison.ufRxmcf3/`.
 This check does not include the later external-fetch watcher regression.
 
+The Ubuntu 24.04 installer from `ba283dd` passed eight focused installed
+revision comparison and source ZIP scenarios on Git 2.43. The first run
+used an obsolete file-row selector. The corrected harness reran the
+unchanged, checksum-verified installer.
+SHA-256: `dc14c6361c5957a9bbf190c843e7401e9768038dbf7da6b9151f2141e292f1e0`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/revision-comparison-recheck.yp7TBd14/reports.json`.
+
+### Export a committed comparison as a Git patch
+
+The comparison inspector saves all committed changes between the resolved
+base (or merge base) and target, even when a file filter hides every row.
+The save chooser cannot outlive its comparison or checkout visit. Native
+Git runs offline, ignores source and ambient Git configuration, verifies
+the complete patch against the target tree, and refuses to overwrite any
+existing path. The limit is 4 MiB or 2,000 paths; unsupported symlink and
+submodule changes refuse the entire export. This does not apply a patch or
+modify the active repository.
+
+Runtime coverage includes a binary modification, rename encoded as
+delete/add, executable mode, replacement refs, dirty checkout, and
+independent Git replay to the exact target tree ID. Source ZIP and merge
+preview retain their separate constraints.
+
+Thirteen patch and four source ZIP tests passed on Git 2.53 and 2.39.5;
+ten merge preview tests passed on Git 2.53 (preview requires Git 2.43).
+The production build, generated contract check, strict Git core Clippy,
+45 focused Chromium cases and 162 native harness unit tests passed.
+The initial bundle warning remains. Installed comparison-patch qualification
+is separate from these results.
+
 ### Deferred Worktree and Submodule sidebar actions
 
 The sidebars share one on-demand action component. The position, keyboard

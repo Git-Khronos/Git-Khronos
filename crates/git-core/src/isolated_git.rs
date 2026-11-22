@@ -4,6 +4,70 @@ use super::*;
 pub(super) struct IsolatedGit(PathBuf);
 
 impl IsolatedGit {
+    /// Read local objects without taking the source repository's config,
+    /// replacement refs, index or worktree into the new Git context.
+    pub(super) fn for_local_objects(
+        source: &Path,
+        purpose: &str,
+        cancellation: &CancellationToken,
+    ) -> Result<Self, AppError> {
+        exchange_files::require_local_exchange_objects(source)?;
+        let common = run_git(
+            source,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        )?;
+        ensure_success("locate Git metadata for isolated object access", &common)?;
+        let objects = git_absolute_path(&common.stdout)?.join("objects");
+        let object_path = objects
+            .to_str()
+            .filter(|value| objects.is_absolute() && !value.contains(['\n', '\r']))
+            .ok_or_else(|| Self::storage_error("the alternate object path cannot be encoded"))?;
+        let format = run_git(source, &["rev-parse", "--show-object-format"])?;
+        ensure_success(
+            "identify Git object format for isolated object access",
+            &format,
+        )?;
+        let format = match format.stdout.as_slice() {
+            b"sha1\n" => "--object-format=sha1",
+            b"sha256\n" => "--object-format=sha256",
+            _ => return Err(Self::storage_error("this Git object format is unsupported")),
+        };
+        let scratch = Self::new(purpose).map_err(Self::storage_error)?;
+        scratch.init_with_alternate(format, object_path, cancellation)?;
+        Ok(scratch)
+    }
+
+    pub(super) fn exact_commit(
+        &self,
+        oid: &str,
+        cancellation: &CancellationToken,
+    ) -> Result<String, AppError> {
+        validate_commit_oid(oid)?;
+        let oid = oid.to_ascii_lowercase();
+        let expression = format!("{oid}^{{commit}}");
+        let (commit, truncated) = run_cancellable_command_with_stdout_limit(
+            self.command(&["rev-parse", "--verify", "--end-of-options", &expression]),
+            cancellation,
+            Some(4096),
+        )?;
+        if truncated || !commit.status.success() || commit.stdout != format!("{oid}\n").as_bytes() {
+            return Err(AppError::new(
+                "invalidCommit",
+                "The selected ID is not an available commit object.",
+                Some("Refresh the repository and choose the commit again."),
+            ));
+        }
+        Ok(oid)
+    }
+
+    fn storage_error(error: impl std::fmt::Display) -> AppError {
+        AppError::new(
+            "isolatedGitStorage",
+            format!("Could not prepare isolated Git storage: {error}"),
+            None,
+        )
+    }
+
     pub(super) fn new(purpose: &str) -> Result<Self, std::io::Error> {
         let mut random = [0; 16];
         getrandom::fill(&mut random)
@@ -63,15 +127,8 @@ impl IsolatedGit {
         object_path: &str,
         cancellation: &CancellationToken,
     ) -> Result<(), AppError> {
-        let storage_error = |error: std::io::Error| {
-            AppError::new(
-                "isolatedGitStorage",
-                format!("Could not prepare isolated Git storage: {error}"),
-                None,
-            )
-        };
-        fs::write(self.0.join("empty-config"), b"").map_err(storage_error)?;
-        fs::create_dir(self.0.join("empty-template")).map_err(storage_error)?;
+        fs::write(self.0.join("empty-config"), b"").map_err(Self::storage_error)?;
+        fs::create_dir(self.0.join("empty-template")).map_err(Self::storage_error)?;
         let (init, truncated) = run_cancellable_command_with_stdout_limit(
             self.command(&[
                 "init",
@@ -96,7 +153,7 @@ impl IsolatedGit {
             self.0.join("objects/info/alternates"),
             format!("{object_path}\n"),
         )
-        .map_err(storage_error)
+        .map_err(Self::storage_error)
     }
 
     pub(super) fn remove(&self) -> std::io::Result<()> {

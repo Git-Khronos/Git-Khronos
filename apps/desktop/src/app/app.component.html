@@ -1529,7 +1529,17 @@
         } @else if (git.commitComparison() || selectedCommitRows().length > 1) {
           <div class="panel-title comparison-title"><strong>{{ git.commitComparison()?.workingTree ? 'Commit compared with WIP' : 'Revision comparison' }}</strong><div class="panel-title-actions"><button class="inspector-overflow-action" type="button" aria-label="Clear comparison" title="Clear comparison" (click)="clearHistoryComparison()"><gc-icon name="chevron-left" [size]="13" /></button><ng-container [ngTemplateOutlet]="commitPanelCloseControl" /></div></div>
           <section class="comparison-summary" aria-label="Selected commit range">
-            <header><strong>{{ git.commitComparison()?.workingTree ? 'Viewing working directory changes since this commit' : git.commitComparison()?.comparisonMode === 'mergeBase' ? 'Merge base → target comparison' : 'Direct-tip comparison' }}</strong></header>
+            <header>
+              <strong>{{ git.commitComparison()?.workingTree ? 'Viewing working directory changes since this commit' : git.commitComparison()?.comparisonMode === 'mergeBase' ? 'Merge base → target comparison' : 'Direct-tip comparison' }}</strong>
+              @if (git.commitComparison(); as comparison) {
+                @if (!comparison.workingTree) {
+                  <button class="comparison-patch-action" type="button"
+                    title="Save all committed changes between the resolved revisions, regardless of file filters"
+                    [disabled]="!comparison.files.length || git.browserPreview() || git.busy() || git.choosingComparisonPatchDestination()"
+                    (click)="git.saveComparisonPatch()">Save comparison patch…</button>
+                }
+              }
+            </header>
             @if (git.commitComparison()?.workingTree) {
               @if (selectedCommitRows()[0]; as row) {
                 <article class="comparison-commit-card">

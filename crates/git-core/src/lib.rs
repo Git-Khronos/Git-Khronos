@@ -203,7 +203,8 @@ pub use merge_rebase::{
 };
 mod patch_exchange;
 pub use patch_exchange::{
-    PatchRequest, PatchReview, PatchTarget, export_patch, import_patch, review_patch,
+    PatchRequest, PatchReview, PatchTarget, export_patch, export_revision_patch, import_patch,
+    review_patch,
 };
 mod bundle_exchange;
 pub use bundle_exchange::{

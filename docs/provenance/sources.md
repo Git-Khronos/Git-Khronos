@@ -269,7 +269,9 @@ Sources:
 
 Used to define public diff export, checked import and separate index/worktree
 effects. Original owned Git fixtures verify bytes, modes, path/state refusal,
-configuration isolation and linked-worktree scope. UI, bounds and review
+configuration isolation and linked-worktree scope. For committed comparisons,
+Git's binary/full-index format is replayed in a private bare repository and
+checked against the exact target tree ID. UI, bounds and review
 invalidation are independently designed. No external code or manual prose
 copied.
 

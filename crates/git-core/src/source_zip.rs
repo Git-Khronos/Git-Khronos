@@ -24,45 +24,8 @@ fn archive_bytes(
     cancellation: &CancellationToken,
     limit: usize,
 ) -> Result<Vec<u8>, AppError> {
-    exchange_files::require_local_exchange_objects(path)?;
-    validate_commit_oid(oid)?;
-    let oid = oid.to_ascii_lowercase();
-    let common = run_git(
-        path,
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-    )?;
-    ensure_success("locate source archive Git metadata", &common)?;
-    let objects = git_absolute_path(&common.stdout)?.join("objects");
-    let object_path = objects
-        .to_str()
-        .filter(|text| objects.is_absolute() && !text.contains(['\n', '\r']))
-        .ok_or_else(|| {
-            refused("The repository's object path cannot be represented in an offline archive.")
-        })?;
-    let format = run_git(path, &["rev-parse", "--show-object-format"])?;
-    ensure_success("inspect source archive object format", &format)?;
-    let object_format = match format.stdout.as_slice() {
-        b"sha1\n" if oid.len() == 40 => "--object-format=sha1",
-        b"sha256\n" if oid.len() == 64 => "--object-format=sha256",
-        _ => {
-            return Err(refused(
-                "The commit ID must match this repository's object format.",
-            ));
-        }
-    };
-    let scratch = IsolatedGit::new("source-archive").map_err(storage_error)?;
-    scratch.init_with_alternate(object_format, object_path, cancellation)?;
-    let expression = format!("{oid}^{{commit}}");
-    let (commit, truncated) = run_cancellable_command_with_stdout_limit(
-        scratch.command(&["rev-parse", "--verify", "--end-of-options", &expression]),
-        cancellation,
-        Some(4096),
-    )?;
-    if truncated || !commit.status.success() || commit.stdout != format!("{oid}\n").as_bytes() {
-        return Err(refused(
-            "The selected ID is not an available commit object.",
-        ));
-    }
+    let scratch = IsolatedGit::for_local_objects(path, "source-archive", cancellation)?;
+    let oid = scratch.exact_commit(oid, cancellation)?;
     let prefix = format!("--prefix=source-{}/", &oid[..12]);
     let (archive, truncated) = run_cancellable_command_with_stdout_limit(
         scratch.command(&["archive", "--format=zip", &prefix, &oid]),

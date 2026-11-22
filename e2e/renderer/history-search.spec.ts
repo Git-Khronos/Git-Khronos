@@ -569,6 +569,80 @@ async function openRevisionComparison(page: Page) {
   return comparison;
 }
 
+async function showExportableComparison(page: Page, picker: 'file' | 'cancel' | 'hold') {
+  await page.evaluate(mode => {
+    const fixture = (window as any).__historyFixture;
+    const native = (window as any).__TAURI_INTERNALS__, invoke = native.invoke;
+    const content = { status: 'M', path: 'changes.txt', previousPath: null, additions: 3, deletions: 1 };
+    native.invoke = (command: string, args: any) => {
+      if (command === 'compare_commit_file') return Promise.resolve({ oid: args.targetOid, path: args.path, patch: '', truncated: false });
+      if (command === 'compare_history_revisions' || command === 'plugin:dialog|save' || command === 'export_revision_patch') {
+        fixture.calls.push({ command, args });
+        if (command === 'compare_history_revisions') return Promise.resolve({
+          baseOid: fixture.parentOid, targetOid: fixture.oldOid, workingTree: false, lineTotalsPartial: false, files: [content],
+        });
+        if (command === 'export_revision_patch') return Promise.resolve(123);
+        if (mode === 'hold') return new Promise(resolve => fixture.releasePatchPicker = resolve);
+        return Promise.resolve(mode === 'cancel' ? null : '/owned/comparison.patch');
+      }
+      return invoke(command, args);
+    };
+  }, picker);
+  const dialog = await openRevisionComparison(page);
+  await dialog.getByLabel('Base ref or commit').fill('main');
+  await dialog.getByLabel('Target ref or commit').fill('topic');
+  await dialog.getByLabel('Comparison mode').selectOption('mergeBase');
+  await dialog.getByRole('button', { name: 'Compare revisions', exact: true }).click();
+  const save = page.getByRole('button', { name: 'Save comparison patch…', exact: true });
+  await expect(save).toBeEnabled();
+  return save;
+}
+
+test('comparison patch uses resolved merge-base endpoints without a file filter or a checkout', async ({ page }) => {
+  const save = await showExportableComparison(page, 'file');
+  await page.locator('.comparison-files').getByRole('searchbox', { name: 'Filter changed files' }).fill('no matches');
+  await save.click();
+  await expect(page.locator('[data-git-operation-status]')).toContainText('Saved comparison patch');
+  const received = await page.evaluate(() => {
+    const fixture = (window as any).__historyFixture;
+    return { repoId: fixture.app.git.activeRepositoryId(),
+      calls: fixture.calls.filter((call: any) => /dialog\|save|export_revision_patch|checkout_/.test(call.command)) };
+  });
+  expect(received.calls).toEqual([
+    { command: 'plugin:dialog|save', args: { options: expect.objectContaining({
+      defaultPath: `comparison-${'b'.repeat(12)}-${'a'.repeat(12)}.patch`,
+      filters: [{ name: 'Git patch', extensions: ['patch'] }],
+    }) } },
+    { command: 'export_revision_patch', args: {
+      repoId: received.repoId, baseOid: 'b'.repeat(40), targetOid: 'a'.repeat(40),
+      destination: '/owned/comparison.patch', operationId: expect.stringMatching(/^[a-f0-9-]{36}$/),
+    } },
+  ]);
+});
+
+test('cancelling a comparison patch save leaves the comparison open and writes nothing', async ({ page }) => {
+  const save = await showExportableComparison(page, 'cancel');
+  await save.click();
+  await expect(save).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).__historyFixture.calls
+    .filter((call: any) => /dialog\|save|export_revision_patch/.test(call.command))
+    .map((call: any) => call.command))).toEqual(['plugin:dialog|save']);
+});
+
+test('a retired comparison cannot export from a late save result and WIP has no comparison export', async ({ page }) => {
+  const save = await showExportableComparison(page, 'hold');
+  await save.click();
+  await expect(save).toBeDisabled();
+  await page.evaluate(() => {
+    const fixture = (window as any).__historyFixture;
+    fixture.app.git.commitComparison.update((result: any) => ({ ...result, workingTree: true }));
+    fixture.releasePatchPicker('/owned/late-comparison.patch');
+  });
+  await expect(save).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as any).__historyFixture.app.git.choosingComparisonPatchDestination())).toBe(false);
+  expect(await page.evaluate(() => (window as any).__historyFixture.calls.some((call: any) => call.command === 'export_revision_patch'))).toBe(false);
+});
+
 test('command palette opens revision comparison directly with grouped refs and reversible endpoints', async ({ page }) => {
   const expected = await page.evaluate(() => {
     const git = (window as any).__historyFixture.app.git;

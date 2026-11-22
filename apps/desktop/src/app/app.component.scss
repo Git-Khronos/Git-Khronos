@@ -493,8 +493,10 @@
 .commit-file-path:has(.previous-path) .current-path { flex-direction: row; align-items: baseline; gap: 5px; }
 .comparison-title { border-bottom: 0; }
 .comparison-summary { display: grid; gap: 6px; padding: 9px 10px 10px; border-bottom: 1px solid #343449; background: #20202f; }
-.comparison-summary > header { display: flex; align-items: center; min-height: 23px; color: #d6d5df; }
+.comparison-summary > header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px 9px; min-height: 23px; color: #d6d5df; }
 .comparison-summary > header strong { font-size: 12px; font-weight: 550; }
+.comparison-patch-action { min-height: 28px; padding: 3px 8px; border: 1px solid var(--inspector-control-border); border-radius: 4px; background: var(--inspector-control); color: var(--inspector-text-strong); font-size: var(--font-size-body); }
+.comparison-patch-action:hover:not(:disabled) { background: var(--inspector-control-hover); }
 .comparison-endpoint { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 .comparison-commit-card { position: relative; min-width: 0; display: grid; grid-template-columns: 29px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 48px; padding: 6px 8px; border: 1px solid #414057; border-radius: 3px; background: #29283a; box-shadow: inset 3px 0 #6b5eda; }
 .comparison-commit-card:last-child { box-shadow: inset 3px 0 var(--accent); }

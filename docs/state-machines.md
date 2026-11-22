@@ -893,6 +893,15 @@ Native comparison uses one frozen pair for both merge-base selection and the
 resulting file diff. The inspector shows the requested revisions and the
 object IDs actually compared. Neither entry point checks out a revision.
 
+Saving a comparison patch belongs to the displayed committed comparison and
+its checkout visit. If either changes while the destination chooser is open,
+that chooser cannot authorize a write. After dispatch, the native operation
+uses only the resolved IDs, not the names, file filter or selected diff.
+It verifies the full patch by applying it to a private index seeded with the
+base tree and checking the resulting target tree ID. Only then may it create
+a new destination file outside the checkout and Git metadata. WIP is not an
+eligible comparison export; it has its own tracked-patch workflow.
+
 ### Workspace clone queue
 
 Bulk clone takes up to 20 sources and one chosen parent folder. Reviewing the

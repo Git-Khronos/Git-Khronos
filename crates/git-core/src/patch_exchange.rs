@@ -3,6 +3,24 @@ use std::fs::OpenOptions;
 
 const MAX_PATCH_BYTES: usize = 4 * 1024 * 1024;
 const MAX_PATCH_FILES: usize = 2000;
+const REVISION_PATCH_DEADLINE: Duration = Duration::from_secs(30);
+const PATCH_DIFF_ARGS: &[&str] = &[
+    "diff",
+    "--binary",
+    "--full-index",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-color",
+    "--no-renames",
+    "--unified=3",
+    "--output-indicator-new=+",
+    "--output-indicator-old=-",
+    "--output-indicator-context= ",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    "--submodule=short",
+    "--ignore-submodules=none",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -84,12 +102,7 @@ pub(super) fn safe_stash_path(root: &Path, file: &str) -> Result<(), AppError> {
     safe_path_with_policy(root, file, true, true)
 }
 
-fn safe_path_with_policy(
-    root: &Path,
-    file: &str,
-    native_literal_names: bool,
-    allow_leaf_symlink: bool,
-) -> Result<(), AppError> {
+fn validate_patch_relative_name(file: &str, native_literal_names: bool) -> Result<(), AppError> {
     if file.is_empty()
         || file.contains('\0')
         || ((!native_literal_names || cfg!(windows)) && file.contains(['\\', ':']))
@@ -104,6 +117,16 @@ fn safe_path_with_policy(
             "Patch path is not a safe repository-relative file: {file:?}"
         )));
     }
+    Ok(())
+}
+
+fn safe_path_with_policy(
+    root: &Path,
+    file: &str,
+    native_literal_names: bool,
+    allow_leaf_symlink: bool,
+) -> Result<(), AppError> {
+    validate_patch_relative_name(file, native_literal_names)?;
     let mut candidate = root.to_path_buf();
     let mut components = Path::new(file).components().peekable();
     while let Some(part) = components.next() {
@@ -174,6 +197,22 @@ fn apply_command(path: &Path, patch: &[u8], flags: &[&str]) -> Result<Output, Ap
 }
 
 fn describe_patch(path: &Path, bytes: &[u8]) -> Result<(Vec<PatchFile>, String), AppError> {
+    let files = patch_paths(
+        bytes,
+        || apply_command(path, bytes, &["--numstat", "-z"]),
+        |file| safe_path(path, file),
+    )?;
+    let summary = apply_command(path, bytes, &["--summary"])?;
+    let summary = String::from_utf8(summary.stdout)
+        .map_err(|_| failure("Patch mode summary is not UTF-8."))?;
+    Ok((files, summary))
+}
+
+fn patch_paths(
+    bytes: &[u8],
+    numstat: impl FnOnce() -> Result<Output, AppError>,
+    validate: impl Fn(&str) -> Result<(), AppError>,
+) -> Result<Vec<PatchFile>, AppError> {
     if bytes.split(|byte| *byte == b'\n').any(|line| {
         line.starts_with(b"rename from ")
             || line.starts_with(b"copy from ")
@@ -192,7 +231,7 @@ fn describe_patch(path: &Path, bytes: &[u8]) -> Result<(Vec<PatchFile>, String),
             "Symlink, submodule, copy and extended-rename patches require local Git. Export renames as deletion/addition.",
         ));
     }
-    let report = apply_command(path, bytes, &["--numstat", "-z"])?;
+    let report = numstat()?;
     if !report.stdout.ends_with(&[0]) {
         return Err(failure("Git did not return a complete patch path list."));
     }
@@ -205,7 +244,7 @@ fn describe_patch(path: &Path, bytes: &[u8]) -> Result<(Vec<PatchFile>, String),
         }
         let file = std::str::from_utf8(fields[2])
             .map_err(|_| failure("Non-UTF-8 patch paths require local Git."))?;
-        safe_path(path, file)?;
+        validate(file)?;
         let count = |field: &[u8]| -> Result<Option<usize>, AppError> {
             if field == b"-" {
                 return Ok(None);
@@ -231,10 +270,7 @@ fn describe_patch(path: &Path, bytes: &[u8]) -> Result<(Vec<PatchFile>, String),
     if files.is_empty() {
         return Err(failure("The patch contains no file changes."));
     }
-    let summary = apply_command(path, bytes, &["--summary"])?;
-    let summary = String::from_utf8(summary.stdout)
-        .map_err(|_| failure("Patch mode summary is not UTF-8."))?;
-    Ok((files, summary))
+    Ok(files)
 }
 
 fn patch_root(path: &Path) -> Result<PathBuf, AppError> {
@@ -396,23 +432,7 @@ pub fn export_patch(
             ));
         }
     }
-    let mut args = vec![
-        "diff",
-        "--binary",
-        "--full-index",
-        "--no-ext-diff",
-        "--no-textconv",
-        "--no-color",
-        "--no-renames",
-        "--unified=3",
-        "--output-indicator-new=+",
-        "--output-indicator-old=-",
-        "--output-indicator-context= ",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        "--submodule=short",
-        "--ignore-submodules=none",
-    ];
+    let mut args = PATCH_DIFF_ARGS.to_vec();
     if staged {
         args.push("--cached");
     }
@@ -476,6 +496,119 @@ pub fn export_patch(
     Ok(diff.stdout.len())
 }
 
+fn revision_patch_bytes(
+    path: &Path,
+    base_oid: &str,
+    target_oid: &str,
+    cancellation: &CancellationToken,
+    limit: usize,
+) -> Result<Vec<u8>, AppError> {
+    let scratch =
+        isolated_git::IsolatedGit::for_local_objects(path, "revision-patch", cancellation)?;
+    let base = scratch.exact_commit(base_oid, cancellation)?;
+    let target = scratch.exact_commit(target_oid, cancellation)?;
+    let mut args = PATCH_DIFF_ARGS.to_vec();
+    args.extend([base.as_str(), target.as_str(), "--"]);
+    let (diff, truncated) = run_cancellable_command_with_stdout_limit(
+        scratch.command(&args),
+        cancellation,
+        Some(limit),
+    )?;
+    if truncated {
+        return Err(failure(
+            "The complete comparison exceeds 4 MiB. Use local Git for a larger patch.",
+        ));
+    }
+    ensure_success("export the committed comparison", &diff)?;
+    if diff.stdout.is_empty() {
+        return Err(failure(
+            "There are no committed file changes between these revisions.",
+        ));
+    }
+    let inspect = |args: &[&str], action: &str| {
+        let (output, truncated) = run_cancellable_command_with_stdout_limit(
+            scratch.command(args),
+            cancellation,
+            Some(4096),
+        )?;
+        ensure_success(action, &output)?;
+        if truncated {
+            return Err(failure(
+                "Git returned unexpected output during patch verification.",
+            ));
+        }
+        Ok(output.stdout)
+    };
+    let apply = |args: &[&str], action: &str| {
+        let output =
+            git_cancellation::run_input(scratch.command(args), &diff.stdout, cancellation)?;
+        ensure_success(action, &output)?;
+        if output.stdout.len() > MAX_PATCH_BYTES {
+            return Err(failure(
+                "Git patch report exceeds the complete review limit.",
+            ));
+        }
+        Ok(output)
+    };
+    patch_paths(
+        &diff.stdout,
+        || {
+            apply(
+                &["apply", "--numstat", "-z", "-"],
+                "inspect committed patch paths",
+            )
+        },
+        |file| validate_patch_relative_name(file, false),
+    )?;
+    inspect(
+        &["read-tree", &base],
+        "load the base tree in private storage",
+    )?;
+    apply(
+        &["apply", "--cached", "--whitespace=nowarn", "-"],
+        "replay the complete patch in private storage",
+    )?;
+    if inspect(&["write-tree"], "identify the replayed tree")?
+        != inspect(
+            &["rev-parse", &format!("{target}^{{tree}}")],
+            "identify the target tree",
+        )?
+    {
+        return Err(failure(
+            "The complete patch did not reproduce the target tree. No file was written.",
+        ));
+    }
+    scratch.remove().map_err(io_error)?;
+    Ok(diff.stdout)
+}
+
+/// Export the exact committed comparison, independently of the current index,
+/// checkout, display filters and configured Git diff helpers.
+pub fn export_revision_patch(
+    path: &Path,
+    base_oid: &str,
+    target_oid: &str,
+    destination: &Path,
+    cancellation: &CancellationToken,
+) -> Result<usize, AppError> {
+    let bytes = without_lazy_fetch_cancellable(cancellation, || {
+        git_cancellation::inspect_within(REVISION_PATCH_DEADLINE, || {
+            revision_patch_bytes(path, base_oid, target_oid, cancellation, MAX_PATCH_BYTES)
+        })
+    })
+    .map_err(|error| {
+        if error.kind == "gitInspectionTimeout" {
+            failure("The offline patch did not finish within 30 seconds.")
+        } else {
+            error
+        }
+    })?;
+    if cancellation.is_cancelled() {
+        return Err(operation_cancelled());
+    }
+    exchange_files::write_new_exchange_file(path, destination, &bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -529,11 +662,133 @@ mod tests {
         fn clean(&self) {
             self.git(&["restore", "--staged", "--worktree", "."]);
         }
+        fn head(&self) -> String {
+            String::from_utf8(self.output(&["rev-parse", "HEAD"]))
+                .unwrap()
+                .trim_end()
+                .to_owned()
+        }
     }
     impl Drop for Fixture {
         fn drop(&mut self) {
             fs::remove_dir_all(&self.directory).unwrap();
         }
+    }
+
+    #[test]
+    fn revision_patch_replays_the_exact_target_independently_of_the_checkout() {
+        let fixture = Fixture::new();
+        let base = fixture.head();
+        fixture.git(&["mv", "text", "config"]);
+        fixture.git(&["update-index", "--chmod=+x", "config"]);
+        fs::write(fixture.repository.join("binary"), [0, 4, 255]).unwrap();
+        fixture.git(&["add", "binary"]);
+        fixture.git(&["commit", "-m", "Comparison target"]);
+        let target = fixture.head();
+        let tree = fixture.output(&["rev-parse", "HEAD^{tree}"]);
+        // In the current checkout the historical patch path is a directory.
+        fs::remove_file(fixture.repository.join("config")).unwrap();
+        fs::create_dir(fixture.repository.join("config")).unwrap();
+        fs::write(fixture.repository.join("config/dirty"), b"not exported").unwrap();
+        fs::write(fixture.repository.join("binary"), b"staged bytes").unwrap();
+        fixture.git(&["add", "binary"]);
+        fixture.git(&["config", "diff.external", "false"]);
+        fixture.git(&["config", "diff.noprefix", "true"]);
+        fixture.git(&["replace", &target, &base]);
+        let refs = fixture.output(&["show-ref"]);
+        let status = fixture.output(&["status", "--porcelain"]);
+        let index = fs::read(fixture.repository.join(".git/index")).unwrap();
+        let destination = fixture.directory.join("range.patch");
+        let bytes = export_revision_patch(
+            &fixture.repository,
+            &base,
+            &target,
+            &destination,
+            &CancellationToken::default(),
+        )
+        .unwrap();
+        let patch = fs::read(&destination).unwrap();
+        assert_eq!(bytes, patch.len());
+        assert!(patch.windows(16).any(|part| part == b"GIT binary patch"));
+        assert_eq!(fixture.output(&["show-ref"]), refs);
+        assert_eq!(
+            fs::read(fixture.repository.join(".git/index")).unwrap(),
+            index
+        );
+        assert_eq!(fixture.output(&["status", "--porcelain"]), status);
+        let replay = fixture.directory.join("replay");
+        let run = |path: &Path, args: &[&str]| {
+            let result = run_git(path, args).unwrap();
+            ensure_success("independently replay revision patch", &result).unwrap();
+            result.stdout
+        };
+        run(
+            &fixture.directory,
+            &["clone", "--no-local", "-q", "repository", "replay"],
+        );
+        run(&replay, &["checkout", "--detach", &base]);
+        run(
+            &replay,
+            &["apply", "--index", destination.to_str().unwrap()],
+        );
+        assert_eq!(run(&replay, &["write-tree"]), tree);
+    }
+
+    #[test]
+    fn revision_patch_refuses_unavailable_empty_incomplete_or_unsafe_exports() {
+        let fixture = Fixture::new();
+        let base = fixture.head();
+        fs::write(fixture.repository.join("text"), b"updated\n").unwrap();
+        fixture.git(&["add", "text"]);
+        fixture.git(&["commit", "-m", "Update"]);
+        let target = fixture.head();
+        let token = CancellationToken::default();
+        let file = fixture.directory.join("range.patch");
+        let export = |base: &str, target: &str, file: &Path| {
+            export_revision_patch(&fixture.repository, base, target, file, &token)
+        };
+        for (old, new) in [
+            ("HEAD", target.as_str()),
+            (base.as_str(), base.as_str()),
+            (base.as_str(), "0000000000000000000000000000000000000000"),
+        ] {
+            export(old, new, &file).unwrap_err();
+            assert!(!file.exists());
+        }
+        assert!(revision_patch_bytes(&fixture.repository, &base, &target, &token, 5).is_err());
+        let inside = fixture.repository.join("inside.patch");
+        export(&base, &target, &inside).unwrap_err();
+        assert!(!inside.exists());
+        fs::write(&file, b"owner bytes").unwrap();
+        export(&base, &target, &file).unwrap_err();
+        assert_eq!(fs::read(&file).unwrap(), b"owner bytes");
+        fs::remove_file(&file).unwrap();
+        fixture.git(&[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("160000,{target},nested"),
+        ]);
+        fixture.git(&["commit", "-m", "Add a gitlink"]);
+        assert!(
+            export(&base, &fixture.head(), &file)
+                .unwrap_err()
+                .message
+                .contains("submodule")
+        );
+        fixture.git(&["config", "remote.origin.promisor", "true"]);
+        assert!(
+            export(&base, &target, &file)
+                .unwrap_err()
+                .message
+                .contains("promisor")
+        );
+        token.cancel();
+        assert_eq!(
+            export(&base, &target, &file).unwrap_err().kind,
+            "operationCancelled"
+        );
+        assert!(!file.exists());
     }
 
     #[test]

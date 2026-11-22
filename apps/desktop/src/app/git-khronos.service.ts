@@ -390,6 +390,7 @@ export class GitKhronosService implements OnDestroy {
   readonly selectedCommitFile = signal<string | null>(null);
   readonly inspectedStashReference = signal<string | null>(null);
   readonly commitComparison = signal<(CommitComparison & { inputRevisions?: { base: string; target: string } }) | null>(null);
+  readonly choosingComparisonPatchDestination = signal(false);
   readonly comparisonFileDiff = signal<CommitFileDiff | null>(null);
   readonly selectedComparisonFile = signal<string | null>(null);
   readonly detailsBusy = signal(false);
@@ -734,6 +735,35 @@ export class GitKhronosService implements OnDestroy {
       if (current()) this.error.set(this.formatError(error));
       return null;
     }
+  }
+
+  async saveComparisonPatch(): Promise<void> {
+    const repoId = this.activeRepositoryId();
+    const comparison = this.commitComparison();
+    if (!repoId || !comparison || comparison.workingTree || !comparison.files.length
+      || this.busy() || this.browserPreview() || this.choosingComparisonPatchDestination()) return;
+    const scope = this.activeRepositoryReadScope();
+    const current = () => this.activeRepositoryReadScope() === scope && this.commitComparison() === comparison;
+    const { baseOid, targetOid } = comparison;
+    let destination: string | null;
+    this.choosingComparisonPatchDestination.set(true);
+    try {
+      destination = await save({ title: 'Save committed comparison as patch',
+        defaultPath: `comparison-${baseOid.slice(0, 12)}-${targetOid.slice(0, 12)}.patch`,
+        filters: [{ name: 'Git patch', extensions: ['patch'] }] });
+    } catch (error: unknown) {
+      if (current()) this.error.set(this.formatError(error));
+      return;
+    } finally {
+      this.choosingComparisonPatchDestination.set(false);
+    }
+    if (!destination || !current() || this.busy()) return;
+    const outputFile = destination;
+    const operationId = crypto.randomUUID();
+    await this.run('Exporting committed comparison…', async report => {
+      const bytes = await ipc.export_revision_patch({ repoId, baseOid, targetOid, destination: outputFile, operationId });
+      report(`Saved comparison patch (${bytes} bytes) to ${outputFile}`);
+    }, repoId, operationId, false, false, { announceFailure: current });
   }
 
   async saveCommitSourceZip(repositoryId: string, oid: string): Promise<void> {
