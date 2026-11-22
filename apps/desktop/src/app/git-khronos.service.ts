@@ -427,7 +427,6 @@ export class GitKhronosService implements OnDestroy {
   private workspaceVisit = 0;
   private repositoryRestoration: RepositoryRestoration | null = null;
   private tagDetailsRequest = 0;
-  private readonly tagDetailsCache = new Map<string, TagDetails>();
   private readonly previewBisectStarts = new Map<string, { head: string; branch: string | null }>();
   private fileRequest = 0;
   private workingTreeRequest = 0;
@@ -2860,11 +2859,12 @@ export class GitKhronosService implements OnDestroy {
     const repository = this.repository();
     if (!repository) return;
     const request = ++this.tagDetailsRequest;
-    const cacheKey = `${repository.id}\0${name}\0${oid}`;
-    const cached = this.tagDetailsCache.get(cacheKey);
-    this.tagDetails.set(cached ?? null);
-    this.tagDetailsBusy.set(!cached);
-    if (cached) return;
+    const scope = this.activeRepositoryReadScope();
+    const current = () => request === this.tagDetailsRequest && scope === this.activeRepositoryReadScope();
+    // A new tag object can carry a different annotation at the same target
+    // commit. The graph's peeled OID is not a safe annotation cache key.
+    this.tagDetails.set(null);
+    this.tagDetailsBusy.set(true);
     try {
       const details = this.browserPreview()
         ? {
@@ -2877,11 +2877,9 @@ export class GitKhronosService implements OnDestroy {
           taggedAt: name === 'v0.1.0' ? '2026-10-03T11:42:00+00:00' : null,
         } satisfies TagDetails
         : await ipc.inspect_tag({ repoId: repository.id, name });
-      this.tagDetailsCache.set(cacheKey, details);
-      if (request !== this.tagDetailsRequest || repository.id !== this.activeRepositoryId()) return;
-      this.tagDetails.set(details);
+      if (current() && details.name === name && details.oid === oid) this.tagDetails.set(details);
     } catch {
-      if (request === this.tagDetailsRequest) this.tagDetails.set(null);
+      // A failed read has no tag kind; the tooltip reports it as unavailable.
     } finally {
       if (request === this.tagDetailsRequest) this.tagDetailsBusy.set(false);
     }

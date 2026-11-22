@@ -2378,3 +2378,10 @@ No source code was copied.
 - [Git clone manual](https://git-scm.com/docs/git-clone): source and
   destination semantics, default checkout and submodule options. The
   queue, review, and stop behavior are independent application design.
+
+## Exact tag preview
+
+[Git for-each-ref](https://git-scm.com/docs/git-for-each-ref) documents
+literal and slash-delimited prefix matches, full ref names, and peeled
+object fields. These defined the exact-match check; no source code was
+copied.

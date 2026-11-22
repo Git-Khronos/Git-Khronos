@@ -9649,12 +9649,25 @@ pub fn tag_details(path: &Path, name: &str) -> Result<TagDetails, AppError> {
         path,
         &[
             "for-each-ref",
-            "--format=%(objectname)%00%(*objectname)%00%(objecttype)%00%(taggername)%00%(taggeremail)%00%(taggerdate:iso-strict)%00%(contents:subject)",
+            "--count=1",
+            "--format=%(refname)%00%(objectname)%00%(*objectname)%00%(objecttype)%00%(taggername)%00%(taggeremail)%00%(taggerdate:iso-strict)%00%(contents:subject)",
             &reference,
         ],
         MAX_TAG_DETAILS_OUTPUT_BYTES,
     )?;
     ensure_success("read tag details", &output)?;
+    let not_found = || {
+        AppError::new(
+            "tagNotFound",
+            format!("Tag '{name}' was not found."),
+            Some("Refresh the repository and try again."),
+        )
+    };
+    // A ref filter can match a slash-delimited prefix. Never present another
+    // tag's annotation as the requested one, even if the old ref disappeared.
+    if output.stdout.split(|byte| *byte == 0).next() != Some(reference.as_bytes()) {
+        return Err(not_found());
+    }
     if truncated {
         return Err(AppError::new(
             "tagDetailsTooLarge",
@@ -9665,29 +9678,25 @@ pub fn tag_details(path: &Path, name: &str) -> Result<TagDetails, AppError> {
     let text = String::from_utf8_lossy(&output.stdout);
     let fields = text
         .trim_end_matches('\n')
-        .splitn(7, '\0')
+        .splitn(8, '\0')
         .collect::<Vec<_>>();
-    if fields.len() < 7 || fields[0].is_empty() {
-        return Err(AppError::new(
-            "tagNotFound",
-            format!("Tag '{name}' was not found."),
-            Some("Refresh the repository and try again."),
-        ));
+    if fields.len() < 8 || fields[1].is_empty() {
+        return Err(not_found());
     }
-    let annotated = fields[2] == "tag";
+    let annotated = fields[3] == "tag";
     let optional = |value: &str| (!value.is_empty()).then(|| value.to_owned());
     Ok(TagDetails {
         name: name.to_owned(),
-        oid: non_empty(fields[1]).unwrap_or_else(|| fields[0].to_owned()),
+        oid: non_empty(fields[2]).unwrap_or_else(|| fields[1].to_owned()),
         annotated,
         message: annotated
-            .then(|| fields[6].to_owned())
+            .then(|| fields[7].to_owned())
             .filter(|value| !value.is_empty()),
-        tagger_name: annotated.then(|| optional(fields[3])).flatten(),
+        tagger_name: annotated.then(|| optional(fields[4])).flatten(),
         tagger_email: annotated
-            .then(|| optional(fields[4].trim_matches(|character| matches!(character, '<' | '>'))))
+            .then(|| optional(fields[5].trim_matches(|character| matches!(character, '<' | '>'))))
             .flatten(),
-        tagged_at: annotated.then(|| optional(fields[5])).flatten(),
+        tagged_at: annotated.then(|| optional(fields[6])).flatten(),
     })
 }
 
@@ -20992,6 +21001,40 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
         assert!(!details.annotated);
         assert_eq!(details.oid, oid);
         assert!(details.message.is_none());
+    }
+
+    #[test]
+    fn tag_details_refuse_a_descendant_after_the_exact_tag_is_deleted() {
+        let repository = TestRepository::new();
+        repository.write("release.txt", "release\n");
+        stage_all(&repository.path).unwrap();
+        commit(&repository.path, "Release").unwrap();
+        let oid = snapshot(&repository.path).unwrap().head_oid.unwrap();
+        create_tag(&repository.path, "release", &oid, Some("Original")).unwrap();
+        assert_eq!(
+            tag_details(&repository.path, "release")
+                .unwrap()
+                .message
+                .as_deref(),
+            Some("Original")
+        );
+
+        repository.git(&["tag", "-d", "release"]);
+        create_tag(
+            &repository.path,
+            "release/candidate",
+            &oid,
+            Some("Not the original"),
+        )
+        .unwrap();
+        repository.git(&["pack-refs", "--all"]);
+        assert_eq!(
+            tag_details(&repository.path, "release").unwrap_err().kind,
+            "tagNotFound"
+        );
+        let exact = tag_details(&repository.path, "release/candidate").unwrap();
+        assert_eq!(exact.oid, oid);
+        assert_eq!(exact.message.as_deref(), Some("Not the original"));
     }
 
     #[test]

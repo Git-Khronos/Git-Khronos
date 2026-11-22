@@ -1752,9 +1752,10 @@
     }
   }
   @if (tagPreview(); as preview) {
+    @let details = git.tagDetails();
     <section id="tag-reference-preview" class="tag-reference-preview" role="tooltip" [style.left.px]="preview.x" [style.top.px]="preview.y">
-      <header><span><gc-icon name="tag" [size]="13" /></span><strong>{{ preview.name }}</strong><small>{{ git.tagDetailsBusy() ? 'Loading…' : git.tagDetails()?.annotated ? 'Annotated tag' : 'Lightweight tag' }}</small></header>
-      @if (git.tagDetails(); as details) {
+      <header><span><gc-icon name="tag" [size]="13" /></span><strong>{{ preview.name }}</strong><small>{{ git.tagDetailsBusy() ? 'Loading…' : details ? (details.annotated ? 'Annotated tag' : 'Lightweight tag') : 'Details unavailable' }}</small></header>
+      @if (details) {
         @if (details.message) { <p>{{ details.message }}</p> }
         @if (details.taggerName) { <div><strong>{{ details.taggerName }}</strong>@if (details.taggedAt) { <small>{{ details.taggedAt | date: 'mediumDate' }}</small> }</div> }
       }

@@ -32,6 +32,85 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('tag preview rereads an annotation at the same target and never guesses the tag kind', async ({ page }) => {
+  await page.evaluate(() => {
+    const host = window as any;
+    const git = host.ng.getComponent(document.querySelector('gc-root')).git;
+    const invoke = host.__TAURI_INTERNALS__.invoke;
+    const tag = git.repository().tags.find(({ name }: any) => name === 'v0.1.0');
+    host.__tagAnnotation = 'Original release note';
+    host.__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+      if (command !== 'inspect_tag') return invoke(command, args);
+      host.__referenceCalls.push({ command, args });
+      if (host.__tagAnnotation === null) return Promise.reject({ kind: 'tagNotFound', message: 'Tag deleted' });
+      return Promise.resolve({
+        ...tag, oid: host.__movedTag ? 'b'.repeat(40) : tag.oid, annotated: true,
+        message: host.__tagAnnotation, taggerName: null, taggerEmail: null, taggedAt: null,
+      });
+    };
+  });
+  const tag = page.locator('.tag-item').filter({ hasText: 'v0.1.0' });
+  const preview = page.getByRole('tooltip');
+  await tag.focus();
+  await expect(preview).toContainText('Original release note');
+  for (const reason of ['recreated', 'moved', 'deleted']) {
+    await tag.blur();
+    await page.evaluate(reason => {
+      (window as any).__tagAnnotation = reason === 'deleted' ? null : 'Replacement release note';
+      (window as any).__movedTag = reason === 'moved';
+    }, reason);
+    await tag.focus();
+    await expect(preview).toContainText(reason === 'recreated' ? 'Replacement release note' : 'Details unavailable');
+    await expect(preview).not.toContainText('Original release note');
+    await expect(preview).not.toContainText('Lightweight tag');
+  }
+  const reads = await page.evaluate(() => (window as any).__referenceCalls
+    .filter(({ command }: any) => command === 'inspect_tag'));
+  expect(reads).toHaveLength(4);
+});
+
+test('a pending tag preview cannot read or publish into a different checkout visit', async ({ page }) => {
+  await page.evaluate(() => {
+    const host = window as any;
+    const app = host.ng.getComponent(document.querySelector('gc-root'));
+    const git = app.git;
+    host.__changeTagCheckout = () => {
+      git.repositories.update((repositories: any[]) => repositories.map(repo =>
+        repo.id === git.activeRepositoryId() ? { ...repo, path: `${repo.path}-new-visit` } : repo));
+    };
+    const invoke = host.__TAURI_INTERNALS__.invoke;
+    host.__TAURI_INTERNALS__.invoke = (command: string, args: any) => {
+      if (command !== 'inspect_tag') return invoke(command, args);
+      host.__referenceCalls.push({ command, args });
+      return new Promise(resolve => { host.__finishTagInspection = resolve; });
+    };
+    document.querySelector('.tag-item')!.dispatchEvent(new MouseEvent('mouseenter'));
+    host.__changeTagCheckout();
+  });
+  // Confirm the original delayed pointer request has had time to fire.
+  await page.waitForFunction(() => (window as any).ng.getComponent(document.querySelector('gc-root')).tagPreviewTimer === null);
+  const tag = page.locator('.tag-item').filter({ hasText: 'v0.1.0' });
+  const preview = page.getByRole('tooltip');
+  await expect(preview).toBeHidden();
+  await tag.focus();
+  await expect(preview).toContainText('Loading…');
+  await page.evaluate(() => {
+    const host = window as any;
+    const app = host.ng.getComponent(document.querySelector('gc-root'));
+    const [tag] = app.git.repository().tags;
+    host.__changeTagCheckout();
+    host.__finishTagInspection({ ...tag, annotated: true, message: 'Retired annotation' });
+  });
+  await expect(preview).toBeHidden();
+  expect(await page.evaluate(() => {
+    const host = window as any;
+    return {
+      details: host.ng.getComponent(document.querySelector('gc-root')).git.tagDetails(),
+      reads: host.__referenceCalls.filter(({ command }: any) => command === 'inspect_tag').length,
+    };
+  })).toEqual({ details: null, reads: 1 });
+});
+
 test('signed tag refusal preserves the annotation and opt-in for explicit retry', async ({ page }) => {
   await page.evaluate(() => { (window as any).__referenceSigningError = true; });
   await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });

@@ -515,6 +515,16 @@ older request before it can select a commit, open a different file, or surface
 its error in the current view. Tests hold the native blame lookup across these
 transitions without weakening ordinary Parent navigation.
 
+### Tag preview read ownership
+
+Pointer and keyboard tag previews belong to the active checkout visit. A
+delayed pointer request cannot start in a different checkout; replies must
+still match the originating visit and the displayed tag name and target.
+The Git reader verifies the exact tag ref, not a descendant with the same
+prefix. A new preview reads the annotation again: the tag object may have
+changed even when its target commit has not. Missing or moved tags and failed
+reads report unavailable details rather than assuming a lightweight tag.
+
 ### Working-tree rename index actions
 
 An unambiguous Git rename row retains both literal paths. Stage and Unstage

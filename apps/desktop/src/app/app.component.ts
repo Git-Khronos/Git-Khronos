@@ -417,6 +417,7 @@ interface PendingStoredReferenceDelete {
 interface TagPreviewPopover {
   name: string;
   oid: string;
+  scope: string;
   x: number;
   y: number;
 }
@@ -1850,7 +1851,11 @@ export class AppComponent implements OnInit, OnDestroy {
     submodules: REFERENCE_SECTION_FALLBACK_HEIGHT,
   });
   protected readonly hoveredReferenceOid = signal<string | null>(null);
-  protected readonly tagPreview = signal<TagPreviewPopover | null>(null);
+  private readonly tagPreviewRequest = signal<TagPreviewPopover | null>(null);
+  protected readonly tagPreview = computed(() => {
+    const preview = this.tagPreviewRequest();
+    return preview?.scope === this.git.activeRepositoryReadScope() ? preview : null;
+  });
   protected readonly collapsedReferenceStackOid = signal<string | null>(null);
   protected readonly expandedReferenceStackOid = signal<string | null>(null);
   private readonly pinnedReferenceStackOid = signal<string | null>(null);
@@ -9330,13 +9335,17 @@ export class AppComponent implements OnInit, OnDestroy {
   protected scheduleTagPreview(event: Event, name: string, oid: string, immediate = false): void {
     if (this.tagPreviewTimer) clearTimeout(this.tagPreviewTimer);
     this.tagPreviewTimer = null;
-    const bounds = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect();
-    if (!bounds) return;
+    const target = event.currentTarget as HTMLElement | null;
+    if (!target) return;
+    const scope = this.git.activeRepositoryReadScope();
     const open = () => {
       this.tagPreviewTimer = null;
-      this.tagPreview.set({
+      if (!target.isConnected || scope !== this.git.activeRepositoryReadScope()) return;
+      const bounds = target.getBoundingClientRect();
+      this.tagPreviewRequest.set({
         name,
         oid,
+        scope,
         x: Math.max(8, Math.min(bounds.right + 8, window.innerWidth - 300)),
         y: Math.max(8, Math.min(bounds.top, window.innerHeight - 170)),
       });
@@ -9349,7 +9358,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected closeTagPreview(): void {
     if (this.tagPreviewTimer) clearTimeout(this.tagPreviewTimer);
     this.tagPreviewTimer = null;
-    this.tagPreview.set(null);
+    this.tagPreviewRequest.set(null);
     this.git.clearTagInspection();
   }
 
