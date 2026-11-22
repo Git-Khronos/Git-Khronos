@@ -93,7 +93,7 @@ import { WorkingTreeSummariesDirective, WorkingTreeSummaryComponent } from './wo
 import { WorktreeGraphRowComponent } from './worktree-graph-row.component';
 import { ReferenceActionDialogComponent, type ReferenceActionRequest, type ReferenceRenamed } from './reference-action-dialog.component';
 import { StashOptionsDialogComponent, type StashDialogRequest } from './stash-options-dialog.component';
-import { HistorySearchComponent } from './history-search.component';
+import { HistorySearchComponent, type HistorySearchOpenOptions } from './history-search.component';
 import type { HistorySearchService } from './history-search.service';
 import { FetchOptionsDialogComponent, type FetchDialogRequest } from './fetch-options-dialog.component';
 import { PreferencesDialogComponent } from './preferences-dialog.component';
@@ -885,8 +885,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly externalHistoryCommit = signal<CommitSummary | null>(null);
   private historyNavigationGeneration = 0;
   protected readonly repositoryHistorySearch = viewChild<HistorySearchComponent>('repositoryHistorySearch');
-  protected readonly historySearchRequested = signal(false);
-  private historySearchLoaderOpener: HTMLElement | null = null;
+  protected readonly historySearchRequested = signal<HistorySearchOpenOptions | null>(null);
   private readonly graphViewport = viewChild<GraphViewportComponent>('graphViewport');
   private readonly injector = inject(Injector);
   // Keep history-dependent computations insulated from status-only repository
@@ -3551,6 +3550,7 @@ export class AppComponent implements OnInit, OnDestroy {
     openContextFetchBranch: this.openContextFetchBranch.bind(this),
     contextShallowBoundary: this.contextShallowBoundary.bind(this),
     reviewContextHistoryDepth: this.reviewContextHistoryDepth.bind(this),
+    compareFromContextCommit: this.compareFromContextCommit.bind(this),
     openContextTagCreator: this.openContextTagCreator.bind(this),
     openContextWorktreeDialog: this.openContextWorktreeDialog.bind(this),
     openInteractiveRebaseFromContext: this.openInteractiveRebaseFromContext.bind(this),
@@ -3708,11 +3708,13 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   private readonly deferredHistoryFocus = afterRenderEffect(() => {
     const panel = this.repositoryHistorySearch();
-    if (panel) untracked(() => {
-      if (this.historySearchRequested()) {
-        if (this.historySearchLoaderOpener?.isConnected) this.historySearchLoaderOpener.focus();
-        panel.open();
-      }
+    const request = this.historySearchRequested();
+    if (!request) return;
+    if (request.scope !== this.git.activeRepositoryReadScope()) {
+      this.historySearchRequested.set(null);
+    } else if (panel) untracked(() => {
+      this.historySearchRequested.set(null);
+      panel.open(request);
     });
   });
 
@@ -8627,18 +8629,25 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected openHistorySearch(): void {
+  protected openHistorySearch(
+    mode: HistorySearchOpenOptions['mode'] = 'search',
+    returnFocus: HTMLElement | null = document.activeElement instanceof HTMLElement ? document.activeElement : null,
+    base?: string,
+  ): void {
+    if (!this.git.repository()) return;
+    const request: HistorySearchOpenOptions = { mode, returnFocus, scope: this.git.activeRepositoryReadScope(), base };
     const panel = this.repositoryHistorySearch();
-    if (panel) panel.open();
-    else {
-      this.historySearchLoaderOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      this.historySearchRequested.set(true);
-    }
+    if (panel) {
+      this.historySearchRequested.set(null);
+      panel.open(request);
+    } else this.historySearchRequested.set(request);
   }
 
   protected closeHistorySearchLoader(): void {
-    this.historySearchRequested.set(false);
-    if (this.historySearchLoaderOpener?.isConnected) this.historySearchLoaderOpener.focus();
+    const request = this.historySearchRequested();
+    this.historySearchRequested.set(null);
+    if (!request || request.scope !== this.git.activeRepositoryReadScope()) return;
+    if (request.returnFocus?.isConnected) request.returnFocus.focus();
     else this.historySearchToggle()?.nativeElement.focus();
   }
 
@@ -11719,6 +11728,7 @@ export class AppComponent implements OnInit, OnDestroy {
         break;
       case 'tag-create': this.openTagCreator(); break;
       case 'search': this.openHistorySearch(); break;
+      case 'compare-revisions': this.openHistorySearch('compare', paletteReturnFocus); break;
       case 'file-search': this.openCommandPalette('', 'files'); break;
       case 'file-tools': this.openFileTools(null, paletteReturnFocus); break;
       case 'editor-draft-recovery': this.openEditorDraftRecovery(paletteReturnFocus); break;
@@ -12751,6 +12761,15 @@ export class AppComponent implements OnInit, OnDestroy {
       || request.kind !== 'commit' || request.oids.length !== 1 || request.oids[0] !== request.oid) return;
     this.dismissGraphActionMenu(true);
     void this.git.saveCommitSourceZip(repo.id, request.oid);
+  }
+
+  protected compareFromContextCommit(request: ContextMenuState): void {
+    const repo = this.git.repository();
+    if (!repo || repo.id !== request.repositoryId || this.git.busy() || this.git.browserPreview() || this.contextMenu() !== request
+      || request.kind !== 'commit' || request.oids.length !== 1 || request.oids[0] !== request.oid) return;
+    const opener = this.contextMenuReturnFocus;
+    this.dismissGraphActionMenu();
+    this.openHistorySearch('compare', opener, request.oid);
   }
 
   protected compareContextReferenceWithWorkingTree(): void {

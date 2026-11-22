@@ -1,5 +1,5 @@
-import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, ElementRef, Injector, afterNextRender, effect, inject, input, output, signal, viewChild } from '@angular/core';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, ElementRef, Injector, afterNextRender, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { HistoryQuery } from '@git-khronos/contracts';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
@@ -7,9 +7,16 @@ import { GitKhronosService } from './git-khronos.service';
 import { HistorySearchService, emptyHistoryQuery } from './history-search.service';
 import { IconComponent } from './icon.component';
 
+export interface HistorySearchOpenOptions {
+  mode: 'search' | 'compare';
+  scope: string;
+  returnFocus: HTMLElement | null;
+  base?: string;
+}
+
 @Component({
   selector: 'gc-history-search',
-  imports: [BackgroundOperationWarningsComponent, FormsModule, DatePipe, IconComponent],
+  imports: [BackgroundOperationWarningsComponent, FormsModule, DatePipe, NgTemplateOutlet, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <dialog #dialog id="repository-history-dialog" aria-labelledby="history-search-heading" (close)="closed()">
@@ -17,16 +24,19 @@ import { IconComponent } from './icon.component';
         <header class="dialog-header">
           <span class="heading-icon" aria-hidden="true"><gc-icon name="search" [size]="18" /></span>
           <div class="heading-copy">
-            <h2 id="history-search-heading">Search repository history</h2>
-            <p>Find commits beyond the history currently loaded in the graph.</p>
+            <h2 id="history-search-heading">{{ comparisonOnly() ? 'Compare repository revisions' : 'Search repository history' }}</h2>
+            <p>{{ comparisonOnly() ? 'Compare branches, tags, or commits without checking them out.' : 'Find commits beyond the history currently loaded in the graph.' }}</p>
           </div>
-          <button class="icon-button close-button" type="button" aria-label="Close history search" title="Close" (click)="close()">
+          <button class="icon-button close-button" type="button" [attr.aria-label]="comparisonOnly() ? 'Close revision comparison' : 'Close history search'" title="Close" (click)="close()">
             <gc-icon name="x" [size]="17" />
           </button>
         </header>
 
         @if (git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
         <div class="dialog-body">
+          @if (comparisonOnly()) {
+            <ng-container [ngTemplateOutlet]="comparisonForm" />
+          } @else {
           <section class="search-section" aria-label="Repository history search">
             <form class="search-form" (ngSubmit)="history.search(query)">
               <div class="primary-query">
@@ -130,35 +140,68 @@ import { IconComponent } from './icon.component';
               <span class="summary-hint">Open a focused file comparison</span>
               <gc-icon class="disclosure-icon" name="chevron-down" [size]="15" />
             </summary>
+            <ng-container [ngTemplateOutlet]="comparisonForm" />
+          </details>
+          }
+        </div>
+      </div>
+    </dialog>
+    <ng-template #comparisonForm>
             <form (ngSubmit)="compare()">
-              <fieldset>
+              <fieldset [disabled]="comparing()">
                 <legend>Revision comparison</legend>
                 <div class="comparison-grid">
-                  <label>Base ref or commit<input name="base" [(ngModel)]="base" autocomplete="off" spellcheck="false" /></label>
-                  <span class="comparison-arrow" aria-hidden="true"><gc-icon name="chevron-right" [size]="17" /></span>
-                  <label>Target ref or commit<input name="target" [(ngModel)]="target" autocomplete="off" spellcheck="false" /></label>
+                  <div>
+                    <label>Base ref or commit<input #baseInput name="base" [(ngModel)]="base" autocomplete="off" spellcheck="false" /></label>
+                    <label>Choose base branch or tag
+                      <select id="revision-compare-base-ref" (change)="chooseRef($event, 'base')">
+                        <option value="">Choose a known ref</option>
+                        <ng-container [ngTemplateOutlet]="refOptions" />
+                      </select>
+                    </label>
+                  </div>
+                  <button type="button" class="quiet-action comparison-swap" aria-label="Swap base and target"
+                    title="Swap base and target" (click)="swapRevisions()">Swap</button>
+                  <div>
+                    <label>Target ref or commit<input name="target" [(ngModel)]="target" autocomplete="off" spellcheck="false" /></label>
+                    <label>Choose target branch or tag
+                      <select id="revision-compare-target-ref" (change)="chooseRef($event, 'target')">
+                        <option value="">Choose a known ref</option>
+                        <ng-container [ngTemplateOutlet]="refOptions" />
+                      </select>
+                    </label>
+                  </div>
                 </div>
+                <p class="comparison-hint">Refs are resolved when you compare. The lists show up to {{ refOptionLimit }} per group; you can also type a ref or commit ID.</p>
                 <div class="comparison-options">
                   <label>Comparison mode<select name="mode" [(ngModel)]="mode">
                     <option value="direct">Direct tips: base → target</option>
                     <option value="mergeBase">Merge base → target</option>
                   </select></label>
-                  <p>Direct compares both trees. Merge base shows target changes since the common ancestor.</p>
+                  <p>Direct compares both trees. Merge base shows target changes since their common ancestor and requires one distinct merge base.</p>
                 </div>
                 @if (comparisonError()) {
                   <div class="feedback error-feedback" role="alert"><gc-icon name="warning" [size]="17" /><span>{{ comparisonError() }}</span></div>
                 }
                 <div class="comparison-actions">
-                  <button class="primary-action" type="submit" [disabled]="comparing() || !base || !target">
+                  <button class="primary-action" type="submit" [disabled]="comparing() || !base.trim() || !target.trim()">
                     @if (comparing()) { Comparing… } @else { Compare revisions }
                   </button>
                 </div>
               </fieldset>
             </form>
-          </details>
-        </div>
-      </div>
-    </dialog>
+    </ng-template>
+    <ng-template #refOptions>
+      @for (group of comparisonRefGroups(); track group.label) {
+        @if (group.refs.length) {
+          <optgroup [label]="group.label">
+            @for (reference of group.refs; track reference.fullName) {
+              <option [value]="reference.fullName">{{ reference.name }}</option>
+            }
+          </optgroup>
+        }
+      }
+    </ng-template>
   `,
   styles: [`
     :host { display: contents; }
@@ -250,7 +293,9 @@ import { IconComponent } from './icon.component';
     fieldset { min-width: 0; margin: 10px 0 0; border: 1px solid var(--border); border-radius: 7px; padding: 12px; }
     legend { padding: 0 5px; color: var(--muted); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .05em; }
     .comparison-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 8px; }
-    .comparison-arrow { display: inline-flex; align-items: center; justify-content: center; height: 34px; color: var(--muted); }
+    .comparison-grid > div { display: grid; gap: 8px; min-width: 0; }
+    .comparison-swap { align-self: center; }
+    .comparison-hint { margin: 8px 0; color: var(--muted); font-size: 11px; }
     .comparison-options { display: grid; grid-template-columns: minmax(190px, .65fr) minmax(0, 1fr); align-items: end; gap: 12px; margin-top: 10px; }
     .comparison-options p { margin: 0 0 2px; color: var(--muted); font-size: 10px; line-height: 1.45; }
     .comparison-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
@@ -262,7 +307,7 @@ import { IconComponent } from './icon.component';
       .primary-query { grid-template-columns: 1fr; }
       .message-field { grid-column: auto; }
       .filters, .comparison-grid, .comparison-options { grid-template-columns: 1fr; }
-      .comparison-arrow { display: none; }
+      .comparison-swap { justify-self: start; }
       .filter-footer { align-items: flex-start; flex-direction: column; }
       .summary-hint { display: none; }
     }
@@ -279,13 +324,27 @@ export class HistorySearchComponent {
   readonly commitSelected = output<string>();
   readonly comparisonReady = output<void>();
   readonly opened = signal(false);
+  readonly comparisonOnly = signal(false);
+  readonly refOptionLimit = 100;
+  readonly comparisonRefGroups = computed(() => {
+    const repo = this.git.repository();
+    const branches = repo?.branches ?? [];
+    return [
+      { label: 'Local branches', refs: branches.filter(ref => !ref.remote).slice(0, this.refOptionLimit) },
+      { label: 'Remote-tracking branches', refs: branches.filter(ref => ref.remote).slice(0, this.refOptionLimit) },
+      { label: 'Tags', refs: (repo?.tags ?? []).slice(0, this.refOptionLimit) },
+    ];
+  });
   private readonly injector = inject(Injector);
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
-  private readonly messageInput = viewChild.required<ElementRef<HTMLInputElement>>('messageInput');
-  private readonly searchButton = viewChild.required<ElementRef<HTMLButtonElement>>('searchButton');
+  private readonly messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
+  private readonly baseInput = viewChild<ElementRef<HTMLInputElement>>('baseInput');
+  private readonly searchButton = viewChild<ElementRef<HTMLButtonElement>>('searchButton');
   private readonly cancelButton = viewChild<ElementRef<HTMLButtonElement>>('cancelButton');
   private wasBusy = false;
   private opener: HTMLElement | null = null;
+  private scope: string | null = null;
+  private lastFormScope: string | null = null;
   readonly comparing = signal(false);
   readonly comparisonError = signal<string | null>(null);
   private comparisonRequest = 0;
@@ -296,12 +355,16 @@ export class HistorySearchComponent {
 
   constructor() {
     effect(() => {
+      const scope = this.git.activeRepositoryReadScope();
+      if (this.opened() && this.scope !== scope) this.close();
+    });
+    effect(() => {
       const busy = this.history.busy();
       if (this.wasBusy && !busy && document.activeElement === this.cancelButton()?.nativeElement) {
         afterNextRender(() => {
           if (this.opened() && !this.history.busy()
             && (document.activeElement === document.body || document.activeElement === this.dialog().nativeElement)) {
-            this.searchButton().nativeElement.focus();
+            this.searchButton()?.nativeElement.focus();
           }
         }, { injector: this.injector });
       }
@@ -309,15 +372,32 @@ export class HistorySearchComponent {
     });
   }
 
-  open(): void {
-    this.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  open(options: HistorySearchOpenOptions): void {
+    if (options.scope !== this.git.activeRepositoryReadScope() || this.dialog().nativeElement.open) return;
+    this.opener = options.returnFocus;
+    this.scope = options.scope;
+    this.comparisonOnly.set(options.mode === 'compare');
+    if (options.mode === 'compare' || this.lastFormScope !== options.scope) {
+      this.base = options.base ?? 'HEAD~1';
+      this.target = 'HEAD';
+      this.mode = 'direct';
+      this.comparisonError.set(null);
+    }
+    this.lastFormScope = options.scope;
     this.opened.set(true);
     this.dialog().nativeElement.showModal();
-    this.messageInput().nativeElement.focus();
+    afterNextRender(() => {
+      if (this.opened() && this.scope === options.scope && this.git.activeRepositoryReadScope() === options.scope) {
+        (options.mode === 'compare' ? this.baseInput() : this.messageInput())?.nativeElement.focus();
+      }
+    }, { injector: this.injector });
   }
 
   close(): void { this.dialog().nativeElement.close(); }
   closed(): void {
+    if (this.dialog().nativeElement.open) return;
+    const scope = this.scope;
+    this.scope = null;
     this.opened.set(false);
     this.comparisonRequest++;
     this.comparing.set(false);
@@ -326,7 +406,9 @@ export class HistorySearchComponent {
     const target = this.opener?.isConnected && this.opener !== document.body && this.opener !== document.documentElement
       ? this.opener
       : this.returnFocusFallback();
-    setTimeout(() => target?.isConnected && target.focus());
+    setTimeout(() => {
+      if (!this.opened() && scope === this.git.activeRepositoryReadScope() && target?.isConnected) target.focus();
+    });
   }
   selectCommit(oid: string): void { this.commitSelected.emit(oid); this.close(); }
 
@@ -340,15 +422,30 @@ export class HistorySearchComponent {
     this.query = { ...emptyHistoryQuery(), message } satisfies HistoryQuery;
   }
 
+  chooseRef(event: Event, endpoint: 'base' | 'target'): void {
+    const select = event.target as HTMLSelectElement;
+    if (select.value) this[endpoint] = select.value;
+    select.value = '';
+    this.comparisonError.set(null);
+  }
+
+  swapRevisions(): void {
+    [this.base, this.target] = [this.target, this.base];
+    this.comparisonError.set(null);
+  }
+
   async compare(): Promise<void> {
+    if (this.comparing() || !this.base.trim() || !this.target.trim()) return;
     const request = ++this.comparisonRequest;
     this.comparing.set(true); this.comparisonError.set(null);
     try {
       const accepted = await this.history.compare(this.base, this.target, this.mode);
-      if (request !== this.comparisonRequest || !accepted) return;
+      if (request !== this.comparisonRequest || this.scope !== this.git.activeRepositoryReadScope() || !accepted) return;
       this.comparisonReady.emit(); this.close();
     } catch (error) {
-      if (request === this.comparisonRequest) this.comparisonError.set(typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error));
+      if (request === this.comparisonRequest && this.scope === this.git.activeRepositoryReadScope()) {
+        this.comparisonError.set(typeof error === 'object' && error && 'message' in error ? String(error.message) : String(error));
+      }
     } finally {
       if (request === this.comparisonRequest) this.comparing.set(false);
     }

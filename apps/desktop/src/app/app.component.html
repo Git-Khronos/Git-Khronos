@@ -617,22 +617,22 @@
     </header>
 
     @if (git.repository()) {
-      @defer (when historySearchRequested()) {
+      @defer (when !!historySearchRequested()) {
         <gc-history-search #repositoryHistorySearch [returnFocusFallback]="commitSearchToggle" (commitSelected)="selectCommit($event)" (comparisonReady)="showHistoryComparison()" />
       } @loading {
-        @if (historySearchRequested()) {
+        @if (historySearchRequested(); as request) {
           <div class="confirmation-backdrop">
-            <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading history search" (keydown)="handleReferenceLoaderKey($event, 'history')">
-              <p role="status">Loading history search…</p>
+            <section class="confirmation-dialog" role="dialog" aria-modal="true" [attr.aria-label]="request.mode === 'compare' ? 'Loading revision comparison' : 'Loading history search'" (keydown)="handleReferenceLoaderKey($event, 'history')">
+              <p role="status">{{ request.mode === 'compare' ? 'Loading revision comparison…' : 'Loading history search…' }}</p>
               <button #historyLoaderClose type="button" (click)="closeHistorySearchLoader()">Cancel</button>
             </section>
           </div>
         }
       } @error {
-        @if (historySearchRequested()) {
+        @if (historySearchRequested(); as request) {
           <div class="confirmation-backdrop">
-            <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="History search unavailable" (keydown)="handleReferenceLoaderKey($event, 'history')">
-              <p role="alert">History search could not load. Restart the application before retrying. No search was run by this panel.</p>
+            <section class="confirmation-dialog" role="dialog" aria-modal="true" [attr.aria-label]="request.mode === 'compare' ? 'Revision comparison unavailable' : 'History search unavailable'" (keydown)="handleReferenceLoaderKey($event, 'history')">
+              <p role="alert">{{ request.mode === 'compare' ? 'Revision comparison could not load. Restart the application before retrying. No comparison was run.' : 'History search could not load. Restart the application before retrying. No search was run by this panel.' }}</p>
               <button #historyLoaderClose type="button" (click)="closeHistorySearchLoader()">Close</button>
             </section>
           </div>
@@ -1552,7 +1552,15 @@
                 </article>
               }
             } @else if (git.commitComparison(); as comparison) {
-              <p><code>{{ shortOid(comparison.baseOid) }}</code> → <code>{{ shortOid(comparison.targetOid) }}</code></p>
+              @if (comparison.inputRevisions; as source) {
+                <p class="comparison-endpoint">
+                  {{ comparison.comparisonMode === 'mergeBase' ? 'Merge base of ' + source.base + ' and ' + source.target : source.base }}
+                  <code [title]="comparison.baseOid">{{ shortOid(comparison.baseOid) }}</code>
+                  <span aria-hidden="true"> → </span><span class="sr-only"> to </span>{{ source.target }} <code [title]="comparison.targetOid">{{ shortOid(comparison.targetOid) }}</code>
+                </p>
+              } @else {
+                <p><code>{{ shortOid(comparison.baseOid) }}</code> → <code>{{ shortOid(comparison.targetOid) }}</code></p>
+              }
             }
           </section>
           @if (!git.commitComparison() && !selectionIsContiguous()) {

@@ -389,7 +389,7 @@ export class GitKhronosService implements OnDestroy {
   readonly commitFileDiff = signal<CommitFileDiff | null>(null);
   readonly selectedCommitFile = signal<string | null>(null);
   readonly inspectedStashReference = signal<string | null>(null);
-  readonly commitComparison = signal<CommitComparison | null>(null);
+  readonly commitComparison = signal<(CommitComparison & { inputRevisions?: { base: string; target: string } }) | null>(null);
   readonly comparisonFileDiff = signal<CommitFileDiff | null>(null);
   readonly selectedComparisonFile = signal<string | null>(null);
   readonly detailsBusy = signal(false);
@@ -2935,7 +2935,7 @@ export class GitKhronosService implements OnDestroy {
       ? ipc.compare_history_revisions({ repoId: repository.id, base: baseOid, target: targetOid, mode })
       : this.browserPreview()
         ? import('./repository-preview').then(preview => preview.createPreviewCommitComparison(baseOid, targetOid))
-        : ipc.compare_commits({ repoId: repository.id, baseOid, targetOid }), mode);
+        : ipc.compare_commits({ repoId: repository.id, baseOid, targetOid }), mode, mode ? { base: baseOid, target: targetOid } : undefined);
   }
 
   async compareCommitWithWorkingTree(baseOid: string): Promise<void> {
@@ -2955,9 +2955,13 @@ export class GitKhronosService implements OnDestroy {
     repositoryId: string,
     load: () => Promise<CommitComparison>,
     mode?: CommitComparison['comparisonMode'],
+    inputRevisions?: { base: string; target: string },
   ): Promise<boolean> {
     this.clearComparisonInspection();
     const request = this.detailsRequest;
+    const scope = this.activeRepositoryReadScope();
+    const current = () => request === this.detailsRequest && repositoryId === this.activeRepositoryId()
+      && scope === this.activeRepositoryReadScope();
     const initialFileRequest = this.fileRequest;
     if (mode) this.historyComparisonRequest = request;
     this.clearWorkingTreeInspection();
@@ -2965,13 +2969,13 @@ export class GitKhronosService implements OnDestroy {
     this.error.set(null);
     try {
       const comparison = await load();
-      if (request !== this.detailsRequest || repositoryId !== this.activeRepositoryId()) return false;
-      this.commitComparison.set(mode ? { ...comparison, comparisonMode: mode } : comparison);
+      if (!current()) return false;
+      this.commitComparison.set(mode ? { ...comparison, comparisonMode: mode, inputRevisions } : comparison);
       const firstFile = comparison.files[0];
       if (firstFile) await this.inspectComparisonFile(firstFile);
-      return request === this.detailsRequest && repositoryId === this.activeRepositoryId();
+      return current();
     } catch (error: unknown) {
-      if (request === this.detailsRequest) {
+      if (current()) {
         // History dialogs own their inline errors; graph inspections use the toast.
         if (mode) throw error;
         this.error.set(this.formatError(error));

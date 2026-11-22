@@ -495,6 +495,7 @@
 .comparison-summary { display: grid; gap: 6px; padding: 9px 10px 10px; border-bottom: 1px solid #343449; background: #20202f; }
 .comparison-summary > header { display: flex; align-items: center; min-height: 23px; color: #d6d5df; }
 .comparison-summary > header strong { font-size: 12px; font-weight: 550; }
+.comparison-endpoint { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 .comparison-commit-card { position: relative; min-width: 0; display: grid; grid-template-columns: 29px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 48px; padding: 6px 8px; border: 1px solid #414057; border-radius: 3px; background: #29283a; box-shadow: inset 3px 0 #6b5eda; }
 .comparison-commit-card:last-child { box-shadow: inset 3px 0 var(--accent); }
 .comparison-commit-card + .comparison-commit-card::before { content: ''; position: absolute; top: -7px; left: 18px; width: 7px; height: 8px; background: var(--accent); clip-path: polygon(0 0, 100% 0, 50% 100%); }

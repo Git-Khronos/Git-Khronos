@@ -4099,6 +4099,27 @@ Four source ZIP tests passed on Git 2.53 and 2.39.5, including SHA-256 and
 shallow source commits. The production build, 28 focused Chromium tests,
 and 10 native merge-preview regression tests passed. Receipts:
 `target/local-review/source-zip.0PKLtjMX/`.
+
+The Ubuntu 24.04 installer from `3f993f2` passed eight focused installed
+ZIP and incremental-bundle scenarios. The ZIP test independently opened the
+archive, checked its exact commit comment and committed file bytes, and
+confirmed the configured local archive filter did not run.
+SHA-256: `c8065be6ae07ae96d3c9855de4578f3acb8a39ff9f699e1bdbd64c450315eaad`.
+Focused receipt:
+`target/local-review/updater/jammy-builder/source-zip-release.BdubTR6X/reports.json`.
+
+### Direct revision comparison entry
+
+The command palette opens comparison without a history query. Commit actions
+can open the same form with the selected OID as the base. Pickers supply
+qualified local branch, remote-tracking or tag names; typed revisions and
+swapping endpoints are supported. The inspector shows the requested names
+and the resolved object IDs. Native Git reuses those frozen endpoints for
+merge-base selection and the file comparison.
+
+The production build, 32 focused Chromium cases and 12 history tests on
+both Git 2.53 and 2.39.5 passed. Receipts:
+`target/local-review/revision-comparison.ufRxmcf3/`.
 This check does not include the later external-fetch watcher regression.
 
 ### Deferred Worktree and Submodule sidebar actions

@@ -559,6 +559,88 @@ test('explicit comparison mode reaches native merge-base command and displays un
   await expect.poll(() => page.evaluate(() => (window as any).__historyFixture.calls.find((call: any) => call.command === 'compare_history_revisions').args.mode)).toBe('mergeBase');
 });
 
+async function openRevisionComparison(page: Page) {
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await palette.getByRole('combobox', { name: 'Search commands' }).fill('compare revisions');
+  await palette.getByRole('option').filter({ hasText: 'Compare revisions…' }).click();
+  const comparison = page.getByRole('dialog', { name: 'Compare repository revisions' });
+  await expect(comparison.getByLabel('Base ref or commit')).toBeFocused();
+  return comparison;
+}
+
+test('command palette opens revision comparison directly with grouped refs and reversible endpoints', async ({ page }) => {
+  const expected = await page.evaluate(() => {
+    const git = (window as any).__historyFixture.app.git;
+    const repo = git.repository();
+    return { id: repo.id, head: repo.headOid, remote: repo.branches.find((branch: any) => branch.remote).fullName,
+      tag: repo.tags[0].fullName };
+  });
+  const dialog = await openRevisionComparison(page);
+  await expect(dialog.getByLabel('Message contains')).toHaveCount(0);
+  const base = dialog.getByLabel('Base ref or commit');
+  const target = dialog.getByLabel('Target ref or commit');
+  await dialog.getByLabel('Choose base branch or tag').selectOption(expected.remote);
+  await dialog.getByLabel('Choose target branch or tag').selectOption(expected.tag);
+  await expect(base).toHaveValue(expected.remote);
+  await expect(target).toHaveValue(expected.tag);
+  await dialog.getByRole('button', { name: 'Swap base and target' }).click();
+  await expect(base).toHaveValue(expected.tag);
+  await expect(target).toHaveValue(expected.remote);
+  await dialog.getByLabel('Comparison mode').selectOption('mergeBase');
+  await dialog.getByRole('button', { name: 'Compare revisions', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const summary = page.locator('.comparison-summary');
+  await expect(summary).toContainText('Merge base → target comparison');
+  await expect(summary).toContainText(expected.tag);
+  await expect(summary).toContainText(expected.remote);
+  const received = await page.evaluate(() => {
+    const fixture = (window as any).__historyFixture;
+    return { calls: fixture.calls.filter((call: any) => /compare_history|checkout_|fetch_/.test(call.command)),
+      active: fixture.app.git.activeRepositoryId(), head: fixture.app.git.repository().headOid };
+  });
+  expect(received).toEqual({ active: expected.id, head: expected.head,
+    calls: [{ command: 'compare_history_revisions', args: { repoId: expected.id, base: expected.tag, target: expected.remote, mode: 'mergeBase' } }] });
+});
+
+test('a commit action prefills its immutable ID without opening a comparison until confirmed', async ({ page }) => {
+  const actions = page.getByRole('button', { name: 'Commit actions for Add hunk-level staging actions', exact: true });
+  const oid = await actions.evaluate(node => node.closest<HTMLElement>('.commit-row')?.dataset['commitOid']);
+  await actions.click();
+  await page.getByRole('menuitem', { name: 'Compare from this commit…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Compare repository revisions' });
+  await expect(dialog.getByLabel('Base ref or commit')).toHaveValue(oid!);
+  await expect(dialog.getByLabel('Target ref or commit')).toHaveValue('HEAD');
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await expect(actions).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__historyFixture.calls.some((call: any) => call.command === 'compare_history_revisions'))).toBe(false);
+});
+
+test('an in-flight revision comparison cannot open results after changing checkout visits', async ({ page }) => {
+  await page.evaluate(() => {
+    const fixture = (window as any).__historyFixture;
+    const native = (window as any).__TAURI_INTERNALS__, invoke = native.invoke;
+    native.invoke = (command: string, args: any) => command === 'compare_history_revisions' ? new Promise(resolve => {
+      fixture.releaseComparison = () => resolve({ baseOid: fixture.parentOid, targetOid: fixture.oldOid,
+        workingTree: false, lineTotalsPartial: false, files: [] });
+    }) : invoke(command, args);
+  });
+  const dialog = await openRevisionComparison(page);
+  await dialog.getByRole('button', { name: 'Compare revisions', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__historyFixture.releaseComparison)).toBe('function');
+  await page.evaluate(() => {
+    const { git } = (window as any).__historyFixture.app;
+    const repository = git.repository();
+    git.repositories.update((rows: any[]) => [...rows, { ...repository, id: 'different-comparison-repository', path: '/owned/comparison-other' }]);
+    git.activeRepositoryId.set('different-comparison-repository');
+  });
+  await expect(dialog).not.toBeVisible();
+  await page.evaluate(() => (window as any).__historyFixture.releaseComparison());
+  await expect(page.locator('.comparison-summary')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__historyFixture.app.git.commitComparison())).toBeNull();
+});
+
 test('distinguishes timeout from empty completed results', async ({ page }) => {
   await page.getByRole('button', { name: 'Search all repository history' }).click();
   const dialog = page.getByRole('dialog', { name: 'Search repository history' });

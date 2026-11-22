@@ -3091,12 +3091,8 @@ async fn compare_history_revisions(
 ) -> Result<CommitComparison, AppError> {
     with_repository_background_read(repo_id, app, move |repository| {
         let token = CancellationToken::default();
-        let base = git_khronos_git_core::history_search::comparison_base(
+        let (base, target) = git_khronos_git_core::history_search::comparison_endpoints(
             repository, &base, &target, &mode, &token,
-        )?;
-        // The resolver validates and freezes the target, including symbolic refs.
-        let target = git_khronos_git_core::history_search::comparison_base(
-            repository, &target, &target, "direct", &token,
         )?;
         git_compare_commits(repository, &base, &target)
     })

@@ -37,6 +37,8 @@
         <button type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="view.compareContextCommitWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
         @if (menu.oids.length === 1) {
           <button type="button" role="menuitem" [disabled]="view.git.busy() || view.git.browserPreview()"
+            (click)="view.compareFromContextCommit(menu)"><span><gc-icon name="merge" [size]="13" /></span>Compare from this commit…</button>
+          <button type="button" role="menuitem" [disabled]="view.git.busy() || view.git.browserPreview()"
             title="Export the selected commit's files, without history or uncommitted changes" (click)="view.saveContextCommitSourceZip(menu)">
             <span><gc-icon name="archive" [size]="13" /></span>Save committed files as ZIP…
           </button>

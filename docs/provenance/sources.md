@@ -1879,6 +1879,11 @@ no third-party source code, asset or new dependency was added.
 
 ## Exact comparison sides
 
+The [Git merge-base manual](https://git-scm.com/docs/git-merge-base) defines
+the common-ancestor semantics for the named revision picker. The app keeps
+direct-tip comparison separate and does not pick an arbitrary merge base in
+the case of multiple best ancestors. No external implementation was used.
+
 Sources:
 
 - https://git-scm.com/docs/git-cat-file

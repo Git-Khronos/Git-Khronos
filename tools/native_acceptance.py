@@ -1199,7 +1199,7 @@ def main():
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
-        "commit-responsiveness", "ignore-responsiveness", "conflict-navigation",
+        "commit-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison",
     )
     forced_inherited = ("environment",)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1447,6 +1447,9 @@ def main():
             elif args.suite == "commit-source-zip":
                 from native_source_zip_scenarios import source_zip
                 repository, repo_id = source_zip(driver, fixtures, report)
+            elif args.suite == "revision-comparison":
+                from native_revision_comparison_scenarios import revision_comparison
+                repository, repo_id = revision_comparison(driver, fixtures, report)
             elif args.suite == "tracked-file-search":
                 from native_tracked_file_search_scenarios import deleted_file_history_from_exact_path, tracked_file_search_during_merge
                 tracked_file_search_during_merge(driver, fixtures, report)

@@ -750,17 +750,24 @@ pub fn file_history_page(
     })
 }
 
-pub fn comparison_base(
+/// Freeze both inputs once. The selected target must also be the target used
+/// to calculate the merge base, even if its ref moves during the read.
+pub fn comparison_endpoints(
     path: &Path,
     base: &str,
     target: &str,
     mode: &str,
     token: &CancellationToken,
-) -> Result<String, AppError> {
-    let base = resolve(path, base, token)?;
-    let target = resolve(path, target, token)?;
+) -> Result<(String, String), AppError> {
+    let base_oid = resolve(path, base, token)?;
+    let target = if base == target {
+        base_oid.clone()
+    } else {
+        resolve(path, target, token)?
+    };
+    let base = base_oid;
     match mode {
-        "direct" => Ok(base),
+        "direct" => Ok((base, target)),
         "mergeBase" => {
             let output = git(path, &["merge-base", "--all", &base, &target], token)?;
             let bases = String::from_utf8_lossy(&output.stdout);
@@ -772,7 +779,7 @@ pub fn comparison_base(
                     None,
                 ));
             }
-            Ok(bases[0].into())
+            Ok((bases[0].into(), target))
         }
 
         _ => Err(AppError::new(
@@ -946,10 +953,13 @@ mod tests {
         repo.run(&["commit", "-qm", "Delete the file"]);
         let deleted = repo.run(&["rev-parse", "HEAD"]);
         let index = fs::read(repo.0.join(".git/index")).unwrap();
-        let page = file_history_page(&repo.0, &deleted, name, None, &CancellationToken::default()).unwrap();
+        let page = file_history_page(&repo.0, &deleted, name, None, &CancellationToken::default())
+            .unwrap();
         assert!(page.complete && page.cursor.is_none());
         assert_eq!(page.entries.len(), 3);
-        let [removal, rename, creation] = page.entries.as_slice() else { unreachable!() };
+        let [removal, rename, creation] = page.entries.as_slice() else {
+            unreachable!()
+        };
         assert_eq!(removal.commit.oid, deleted);
         assert_eq!(removal.path, name);
         assert_eq!(removal.status.as_deref(), Some("D"));
@@ -962,7 +972,14 @@ mod tests {
         assert_eq!(creation.commit.author_name, "GC_HISTORY");
         assert_eq!(creation.commit.subject, "GC_HISTORY");
         assert_eq!(creation.status.as_deref(), Some("A"));
-        let absent = file_history_page(&repo.0, &deleted, "no such file.txt", None, &CancellationToken::default()).unwrap();
+        let absent = file_history_page(
+            &repo.0,
+            &deleted,
+            "no such file.txt",
+            None,
+            &CancellationToken::default(),
+        )
+        .unwrap();
         assert!(absent.complete && absent.entries.is_empty());
         assert_eq!(repo.run(&["rev-parse", "HEAD"]), deleted);
         assert_eq!(fs::read(repo.0.join(".git/index")).unwrap(), index);
@@ -1231,13 +1248,29 @@ mod tests {
         let main = repo.commit("main.txt", "main\n", "main branch");
         let token = CancellationToken::default();
         assert_eq!(
-            comparison_base(&repo.0, &main, &topic, "direct", &token).unwrap(),
-            main
+            comparison_endpoints(
+                &repo.0,
+                "refs/heads/main",
+                "refs/heads/topic",
+                "direct",
+                &token
+            )
+            .unwrap(),
+            (main.clone(), topic.clone())
         );
-        assert_eq!(
-            comparison_base(&repo.0, &main, &topic, "mergeBase", &token).unwrap(),
-            root
-        );
+        let frozen = comparison_endpoints(
+            &repo.0,
+            "refs/heads/main",
+            "refs/heads/topic",
+            "mergeBase",
+            &token,
+        )
+        .unwrap();
+        repo.run(&["update-ref", "refs/heads/topic", &main]);
+        assert_eq!(frozen, (root.clone(), topic.clone()));
+        let diff = crate::compare_commits(&repo.0, &frozen.0, &frozen.1).unwrap();
+        assert_eq!(diff.target_oid, topic);
+        assert!(!diff.files.iter().any(|file| file.path == "main.txt"));
         let blame = file_blame(&repo.0, &topic, "after.txt").unwrap();
         assert_eq!(blame[0].oid, root);
         assert_eq!(blame[0].path.as_deref(), Some("before.txt"));

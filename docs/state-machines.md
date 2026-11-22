@@ -882,6 +882,17 @@ The scan belongs to the workspace dialog instance. Stop retires the current
 result and prevents new reads; closing or changing workspace requests
 cancellation and cannot publish a late result in the next workspace.
 
+### Revision comparison entry
+
+History search and the dedicated comparison command share a comparison form.
+The opening request belongs to one checkout visit, even while its renderer
+code is loading. Closing the dialog or changing the visit retires pending
+comparison results. Starting from a commit supplies its exact object ID;
+typed refs and the branch/tag lists are resolved by native Git at submission.
+Native comparison uses one frozen pair for both merge-base selection and the
+resulting file diff. The inspector shows the requested revisions and the
+object IDs actually compared. Neither entry point checks out a revision.
+
 ### Workspace clone queue
 
 Bulk clone takes up to 20 sources and one chosen parent folder. Reviewing the
