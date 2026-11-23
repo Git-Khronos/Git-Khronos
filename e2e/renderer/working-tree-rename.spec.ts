@@ -4,7 +4,7 @@ async function installRename(page: Page): Promise<string> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   return page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repo = git.repository();
     const { status } = repo;

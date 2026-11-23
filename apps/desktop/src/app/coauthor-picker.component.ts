@@ -10,7 +10,7 @@ interface SuggestedCoAuthor {
 }
 
 @Component({
-  selector: 'gc-coauthor-picker',
+  selector: 'gk-coauthor-picker',
   imports: [IconComponent, TextValueDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './coauthor-picker.component.html',

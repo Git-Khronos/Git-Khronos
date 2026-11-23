@@ -20,9 +20,9 @@ def workspace_clone_recipe(driver, fixtures, report):
     repo_id = open_ui(driver, active)
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    driver.click_scrolled_text('gc-workspace-center button', 'Refresh local state', wait_for_ready=True)
+    driver.click_scrolled_text('gk-workspace-center button', 'Refresh local state', wait_for_ready=True)
     driver.wait("""return document.querySelector('[data-git-operation-status]')?.textContent.includes('Workspace overview refreshed')""", 40)
-    buttons = 'gc-workspace-clone button'
+    buttons = 'gk-workspace-clone button'
     driver.click_scrolled_text(buttons, 'Share clone recipe…', wait_for_ready=True)
     recipe_text = driver.wait("return document.getElementById('workspace-clone-recipe')?.value")
     assert json.loads(recipe_text) == {'format': 'git-khronos.clone-recipe', 'version': 1,
@@ -39,8 +39,8 @@ def workspace_clone_recipe(driver, fixtures, report):
     picker = respond_to_owned_picker(driver.owned_display, driver.owned_session_application_pid,
                                      'Choose a destination for the workspace clones', fixtures.root, destination)
     driver.click_scrolled_text(buttons, 'Review clones', wait_for_ready=True)
-    driver.wait("""return document.querySelector('gc-workspace-clone ol li input')?.value === 'portable-project'
-        && document.querySelector('gc-workspace-clone ol li code')?.textContent === """ + json.dumps(origin))
+    driver.wait("""return document.querySelector('gk-workspace-clone ol li input')?.value === 'portable-project'
+        && document.querySelector('gk-workspace-clone ol li code')?.textContent === """ + json.dumps(origin))
     assert not list(destination.iterdir())
     driver.wait('return document.querySelector(".status-repository-path")?.textContent.trim() === ' + json.dumps(str(active)))
     assert checkout_footprint(fixtures, active) == before
@@ -66,7 +66,7 @@ def workspace_clone(driver, fixtures, report):
     repo_id = open_ui(driver, active)
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    batch = 'gc-workspace-clone'
+    batch = 'gk-workspace-clone'
     driver.click_scrolled_text(batch + ' button', 'Clone multiple repositories', wait_for_ready=True)
     driver.wait('return !!document.querySelector("#workspace-clone-sources")')
     driver.script("""
@@ -78,13 +78,13 @@ def workspace_clone(driver, fixtures, report):
     picker = respond_to_owned_picker(driver.owned_display, driver.owned_session_application_pid,
                                      'Choose a destination for the workspace clones', fixtures.root, destination)
     driver.click_scrolled_text(batch + ' button', 'Review clones', wait_for_ready=True)
-    driver.wait('return document.querySelector("gc-workspace-clone section")?.textContent.includes('
+    driver.wait('return document.querySelector("gk-workspace-clone section")?.textContent.includes('
                 + json.dumps(str(destination)) + ')')
     assert list(destination.iterdir()) == [blocked]
     driver.click_scrolled_text(batch + ' button', 'Clone 3 repositories', wait_for_ready=True)
-    driver.wait('return document.querySelector("gc-workspace-clone [role=status]")?.textContent.trim() === '
+    driver.wait('return document.querySelector("gk-workspace-clone [role=status]")?.textContent.trim() === '
                 + json.dumps('Cloned 2 of 3 repositories.'), 70)
-    results = driver.script("""return [...document.querySelectorAll('gc-workspace-clone [aria-label="Clone results"] li')]
+    results = driver.script("""return [...document.querySelectorAll('gk-workspace-clone [aria-label="Clone results"] li')]
         .map(row => row.textContent.trim());""")
     assert len(results) == 3 and 'The clone destination already exists.' in results[1], results
     copies = [destination / sources[index].name for index in (0, 2)]

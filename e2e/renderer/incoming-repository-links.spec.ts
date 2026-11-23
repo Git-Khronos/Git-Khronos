@@ -14,7 +14,7 @@ async function prepare(page: Page, options: { bootstrap?: boolean; heldListener?
   await page.evaluate(async options => {
     const state: any = { callbacks: new Map(), handlers: new Map(), calls: [], listeners: [], unlisteners: [], next: 400,
       queue: { requests: options.requests, overflowed: options.overflowed }, heldListener: options.heldListener };
-    state.app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    state.app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     state.git = state.app.git;
     const repository = state.git.repository();
     await state.git.inspectCommit(repository.headOid);

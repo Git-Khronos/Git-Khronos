@@ -1,6 +1,6 @@
 <div class="confirmation-backdrop" (click)="closed.emit()">
   <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="prune-lfs-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-    <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
+    <div class="confirmation-icon danger"><gk-icon name="trash" [size]="19" /></div>
     <div class="confirmation-copy">
       <span>Clean Git LFS storage</span>
       <h2 id="prune-lfs-title">Remove unreferenced LFS objects?</h2>

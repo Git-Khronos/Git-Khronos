@@ -18,6 +18,6 @@ input { margin: 0; accent-color: var(--accent); }
 .column-settings-footer { padding: 7px; border-top: 1px solid var(--graph-menu-divider); background: var(--graph-menu-surface); }
 .fit-graph-column { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 5px; min-height: 33px; padding: 6px; border-radius: 3px; background: transparent; color: var(--graph-menu-text); font-size: var(--font-size-body); text-align: left; }
 .fit-graph-column:hover { background: var(--graph-menu-hover); color: white; }
-.fit-graph-column gc-icon { color: var(--accent); }
+.fit-graph-column gk-icon { color: var(--accent); }
 .fit-graph-column span { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .fit-graph-column small { flex: none; color: var(--overlay-muted-low); font-size: 12px; }

@@ -165,7 +165,7 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         driver.wait('return document.querySelector(".incoming-link-inbox b")?.textContent.trim() === ' + json.dumps(str(count)))
 
     def click(text):
-        driver.click_text('gc-repository-link-dialog button', text)
+        driver.click_text('gk-repository-link-dialog button', text)
 
     try:
         open_ui(driver, repository)
@@ -179,7 +179,7 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         assert driver.invoke('repository_link_read_policy', repoId=repo_id) == dict(noLazyReads=True, autoFetchPaused=True)
         assert driver.invoke('sync_repository', repoId=repo_id) is None
         driver.click('[aria-label="Incoming repository links"]')
-        driver.wait('return !!document.querySelector("gc-incoming-links-dialog")')
+        driver.wait('return !!document.querySelector("gk-incoming-links-dialog")')
         click('Review local context…')
         driver.wait('return !!document.querySelector(' + json.dumps('textarea[aria-label="Repository link"]') + ')')
         deliver(other)
@@ -187,7 +187,7 @@ def incoming_repository_links(driver, fixtures, original_repository, report):
         assert driver.script('return document.querySelector(' + json.dumps('textarea[aria-label="Repository link"]') + ').value') == uri
         assert driver.script("return localStorage.getItem('git-khronos.open-repositories.v1')") == tabs
         driver.click('[aria-label="Close repository link"]')
-        driver.wait('return !!document.querySelector("gc-incoming-links-dialog")')
+        driver.wait('return !!document.querySelector("gk-incoming-links-dialog")')
         assert snapshot()['requests'][0] == first
         report['scenarios'].append('native-incoming-warm-singleton-literal-argv-dedup-no-retarget-no-navigation-and-temporary-fetch-pause')
 

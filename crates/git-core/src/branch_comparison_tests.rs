@@ -166,8 +166,16 @@ fn merge_squash_and_rebase_keep_their_git_semantics() {
     let squashed = Fixture::new();
     squashed.diverge(1, 1);
     squashed.git(&["config", "branch.main.mergeOptions", "--no-squash"]);
-    fs::write(squashed.path().join(".git/info/exclude"), "/settings.local\n").unwrap();
-    fs::write(squashed.path().join("settings.local"), "Keep local settings\n").unwrap();
+    fs::write(
+        squashed.path().join(".git/info/exclude"),
+        "/settings.local\n",
+    )
+    .unwrap();
+    fs::write(
+        squashed.path().join("settings.local"),
+        "Keep local settings\n",
+    )
+    .unwrap();
     let before = squashed.git(&["rev-parse", "main"]);
     integrate_branch(squashed.path(), "feature", "squash").unwrap();
     assert_eq!(squashed.git(&["rev-parse", "main"]), before);
@@ -202,15 +210,25 @@ fn integration_review(fixture: &Fixture) -> BranchIntegrationReview {
 
 #[test]
 fn reviewed_branch_integration_honors_selected_mode_over_squash_defaults() {
-    for (strategy, ahead, ignored) in
-        [("merge", 1, false), ("merge", 1, true), ("ff-only", 0, true)]
-    {
+    for (strategy, ahead, ignored) in [
+        ("merge", 1, false),
+        ("merge", 1, true),
+        ("ff-only", 0, true),
+    ] {
         let fixture = Fixture::new();
         fixture.diverge(ahead, 1);
         fixture.git(&["config", "branch.main.mergeOptions", "--squash"]);
         if ignored {
-            fs::write(fixture.path().join(".git/info/exclude"), "/settings.local\n").unwrap();
-            fs::write(fixture.path().join("settings.local"), "Keep local settings\n").unwrap();
+            fs::write(
+                fixture.path().join(".git/info/exclude"),
+                "/settings.local\n",
+            )
+            .unwrap();
+            fs::write(
+                fixture.path().join("settings.local"),
+                "Keep local settings\n",
+            )
+            .unwrap();
         }
         let config = fs::read(fixture.path().join(".git/config")).unwrap();
         let review = integration_review(&fixture);
@@ -230,7 +248,10 @@ fn reviewed_branch_integration_honors_selected_mode_over_squash_defaults() {
             );
         }
         assert_eq!(fixture.git(&["status", "--porcelain"]), "");
-        assert_eq!(fs::read(fixture.path().join(".git/config")).unwrap(), config);
+        assert_eq!(
+            fs::read(fixture.path().join(".git/config")).unwrap(),
+            config
+        );
     }
 }
 
@@ -316,10 +337,7 @@ fn abort_rebase_preserves_ignored_data_and_uses_the_original_state_for_both_back
 
 #[test]
 fn abort_rebase_preserves_ignored_files_that_autostash_would_restore() {
-    for (backend, directory) in [
-        ("--merge", "rebase-merge"),
-        ("--apply", "rebase-apply"),
-    ] {
+    for (backend, directory) in [("--merge", "rebase-merge"), ("--apply", "rebase-apply")] {
         let fixture = Fixture::new();
         fixture.commit_file("conflict", "Base");
         fixture.git(&["switch", "-c", "upstream"]);
@@ -336,7 +354,11 @@ fn abort_rebase_preserves_ignored_files_that_autostash_would_restore() {
             "begin owned rebase with autostash",
         )
         .unwrap_err();
-        let autostash = fixture.path().join(".git").join(directory).join("autostash");
+        let autostash = fixture
+            .path()
+            .join(".git")
+            .join(directory)
+            .join("autostash");
         let stash_bytes = fs::read(&autostash).unwrap();
         let stopped = fixture.git(&["rev-parse", "HEAD"]);
         assert_ne!(original, stopped);
@@ -570,11 +592,26 @@ fn replace_conflict_with_ignored_file(fixture: &Fixture) -> PathBuf {
 #[test]
 fn replay_recovery_preserves_ignored_file_for_single_step_resets() {
     for (operation, action, no_commit, kind) in [
-        ("cherry-pick", "skip", false, "historySkipLocalPathObstruction"),
-        ("cherry-pick", "abort", false, "historyAbortLocalPathObstruction"),
+        (
+            "cherry-pick",
+            "skip",
+            false,
+            "historySkipLocalPathObstruction",
+        ),
+        (
+            "cherry-pick",
+            "abort",
+            false,
+            "historyAbortLocalPathObstruction",
+        ),
         ("revert", "skip", false, "historySkipLocalPathObstruction"),
         ("revert", "abort", false, "historyAbortLocalPathObstruction"),
-        ("cherry-pick", "abort", true, "historyAbortLocalPathObstruction"),
+        (
+            "cherry-pick",
+            "abort",
+            true,
+            "historyAbortLocalPathObstruction",
+        ),
     ] {
         let fixture = Fixture::new();
         fixture.commit_file("conflict", "Base");
@@ -609,7 +646,12 @@ fn replay_recovery_preserves_ignored_file_for_single_step_resets() {
         let saved = copy.with_extension("saved");
         fs::rename(&copy, &saved).unwrap();
         control_history_operation(fixture.path(), operation, action).unwrap();
-        assert!(repository_operation_state(fixture.path()).unwrap().history.is_none());
+        assert!(
+            repository_operation_state(fixture.path())
+                .unwrap()
+                .history
+                .is_none()
+        );
         assert_eq!(fixture.git(&["rev-parse", "HEAD"]), head);
         assert_eq!(fs::read_to_string(copy).unwrap(), "Receiver\n");
         assert_eq!(fs::read_to_string(saved).unwrap(), "Local ignored data");
@@ -652,7 +694,11 @@ fn replay_abort_checks_the_original_tree_of_a_multi_commit_sequence() {
         let sequence = fixture.path().join(".git/sequencer/head");
         assert_eq!(fs::read_to_string(&sequence).unwrap().trim_end(), original);
         fixture.git(&["update-ref", "ORIG_HEAD", &candidate]);
-        fs::write(fixture.path().join(".git/info/exclude"), "/restore\n/saved\n").unwrap();
+        fs::write(
+            fixture.path().join(".git/info/exclude"),
+            "/restore\n/saved\n",
+        )
+        .unwrap();
         fs::write(&restored, "Local ignored data").unwrap();
         let index = fs::read(fixture.path().join(".git/index")).unwrap();
         let owner = fs::read(&sequence).unwrap();
@@ -742,7 +788,10 @@ fn interactive_rebase_checks_both_the_source_checkout_and_the_base() {
         assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/main");
         assert_eq!(fixture.git(&["for-each-ref"]), refs);
         assert_eq!(fs::read(fixture.path().join(".git/index")).unwrap(), index);
-        assert_eq!(fs::read_to_string(local).unwrap(), "Owned ignored directory\n");
+        assert_eq!(
+            fs::read_to_string(local).unwrap(),
+            "Owned ignored directory\n"
+        );
     }
 }
 
@@ -751,7 +800,11 @@ fn rebase_preserves_ignored_files_outside_the_initial_base_changes() {
     let fixture = Fixture::new();
     fixture.diverge(1, 1);
     fs::write(fixture.path().join(".git/info/exclude"), "/local.cfg\n").unwrap();
-    fs::write(fixture.path().join("local.cfg"), "Owned unrelated settings\n").unwrap();
+    fs::write(
+        fixture.path().join("local.cfg"),
+        "Owned unrelated settings\n",
+    )
+    .unwrap();
     let review = integration_review(&fixture);
     integrate_branch_with_review(fixture.path(), "feature", "rebase", Some(&review)).unwrap();
     assert_eq!(fixture.git(&["rev-parse", "HEAD^"]), review.source_oid);
@@ -785,14 +838,26 @@ fn tag_or_remote_name_without_a_local_branch_does_not_satisfy_integration() {
     fixture.diverge(0, 1);
     let initial = fixture.git(&["rev-parse", "HEAD"]);
     fixture.git(&["tag", "feature-release", "feature"]);
-    fixture.git(&["update-ref", "refs/tags/refs/heads/feature-release", "feature"]);
-    fixture.git(&["update-ref", "refs/remotes/origin/feature-release", "feature"]);
+    fixture.git(&[
+        "update-ref",
+        "refs/tags/refs/heads/feature-release",
+        "feature",
+    ]);
+    fixture.git(&[
+        "update-ref",
+        "refs/remotes/origin/feature-release",
+        "feature",
+    ]);
     assert_eq!(
-        integrate_branch(fixture.path(), "feature-release", "ff-only").unwrap_err().kind,
+        integrate_branch(fixture.path(), "feature-release", "ff-only")
+            .unwrap_err()
+            .kind,
         "branchNotFound"
     );
     assert_eq!(
-        compare_branches(fixture.path(), "main", "feature-release").unwrap_err().kind,
+        compare_branches(fixture.path(), "main", "feature-release")
+            .unwrap_err()
+            .kind,
         "branchNotFound"
     );
     assert_eq!(fixture.git(&["rev-parse", "HEAD"]), initial);
@@ -825,13 +890,22 @@ fn reviewed_integration_refuses_either_moved_tip_or_another_current_branch() {
         let before_status = fixture.git(&["status", "--porcelain"]);
         assert_eq!(
             integrate_branch_with_review(fixture.path(), "feature", "ff-only", Some(&review))
-                .unwrap_err().kind,
+                .unwrap_err()
+                .kind,
             "integrationReviewChanged",
             "{moved}"
         );
         assert_eq!(fixture.git(&["rev-parse", "HEAD"]), before_head, "{moved}");
-        assert_eq!(fixture.git(&["for-each-ref", "refs/heads"]), before_refs, "{moved}");
-        assert_eq!(fixture.git(&["status", "--porcelain"]), before_status, "{moved}");
+        assert_eq!(
+            fixture.git(&["for-each-ref", "refs/heads"]),
+            before_refs,
+            "{moved}"
+        );
+        assert_eq!(
+            fixture.git(&["status", "--porcelain"]),
+            before_status,
+            "{moved}"
+        );
         assert!(!fixture.path().join("feature-0").exists(), "{moved}");
     }
 }
@@ -844,7 +918,9 @@ fn reviewed_checkout_does_not_switch_if_a_branch_moved_after_preview() {
     fixture.git(&["switch", "feature"]);
     fixture.commit_file("new-source", "New source tip");
     assert_eq!(
-        checkout_branch_for_integration(fixture.path(), "main", &review).unwrap_err().kind,
+        checkout_branch_for_integration(fixture.path(), "main", &review)
+            .unwrap_err()
+            .kind,
         "integrationReviewChanged"
     );
     assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/feature");
@@ -857,11 +933,21 @@ fn reviewed_checkout_then_merge_uses_the_reviewed_object_and_branch_subject() {
     fixture.diverge(1, 1);
     let review = integration_review(&fixture);
     fixture.git(&["switch", "feature"]);
-    fixture.git(&["tag", "-a", "-m", "Different object", "feature", "refs/heads/main"]);
+    fixture.git(&[
+        "tag",
+        "-a",
+        "-m",
+        "Different object",
+        "feature",
+        "refs/heads/main",
+    ]);
     checkout_branch_for_integration(fixture.path(), "main", &review).unwrap();
     integrate_branch_with_review(fixture.path(), "feature", "merge", Some(&review)).unwrap();
     assert_eq!(fixture.git(&["rev-parse", "HEAD^2"]), review.source_oid);
-    assert_eq!(fixture.git(&["log", "-1", "--format=%s"]), "Merge branch 'feature'");
+    assert_eq!(
+        fixture.git(&["log", "-1", "--format=%s"]),
+        "Merge branch 'feature'"
+    );
 }
 
 #[test]
@@ -882,7 +968,10 @@ fn reviewed_rebase_keeps_sibling_tips_even_when_git_is_configured_to_update_refs
     assert_eq!(fixture.git(&["symbolic-ref", "HEAD"]), "refs/heads/feature");
     assert_ne!(fixture.git(&["rev-parse", "HEAD"]), review.receiving_oid);
     assert_eq!(fixture.git(&["rev-parse", "HEAD^^"]), review.source_oid);
-    assert_eq!(fixture.git(&["rev-parse", "refs/heads/main"]), review.source_oid);
+    assert_eq!(
+        fixture.git(&["rev-parse", "refs/heads/main"]),
+        review.source_oid
+    );
     assert_eq!(fixture.git(&["rev-parse", "refs/heads/sibling"]), sibling);
     assert_eq!(fixture.git(&["config", "rebase.updateRefs"]), "true");
     assert_eq!(fixture.git(&["status", "--porcelain"]), "");

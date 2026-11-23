@@ -9,7 +9,7 @@ from native_window_close import process_running, request_owned_window_close
 
 def approve_editor_window_close(driver, text, pid, report):
     # Observe one visible enabled control, then dispatch exactly one real click.
-    element = driver.wait("return (() => {const buttons=[...document.querySelectorAll('gc-working-file-editor button')]"
+    element = driver.wait("return (() => {const buttons=[...document.querySelectorAll('gk-working-file-editor button')]"
                           + ".filter(button=>button.textContent.trim()===" + json.dumps(text)
                           + " && !button.matches(':disabled') && button.getClientRects().length);return buttons.length===1 ? buttons[0] : null;})()")
     identifier = element['element-6066-11e4-a52e-4f735466cecf']
@@ -42,15 +42,15 @@ def editor_window_close(driver, fixtures, original_repository, report):
     executable = driver.executable
 
     def button(text):
-        driver.click_scrolled_text('gc-working-file-editor button', text, wait_for_ready=True)
+        driver.click_scrolled_text('gk-working-file-editor button', text, wait_for_ready=True)
 
     def edit():
         open_ui(driver, repository)
         driver.click('.wip-nav')
         selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
         driver.context_click(selector)
-        driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
-        driver.click_scrolled_text('gc-file-content-dialog button', 'Edit working copy', wait_for_ready=True)
+        driver.click_scrolled_text('gk-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
+        driver.click_scrolled_text('gk-file-content-dialog button', 'Edit working copy', wait_for_ready=True)
         driver.wait("return !!document.querySelector('#working-editor-text') && !document.querySelector('#working-editor-text').readOnly")
 
     def text(value):
@@ -110,7 +110,7 @@ def editor_window_close(driver, fixtures, original_repository, report):
             try:
                 directory = Path(report['artifactsDirectory'])
                 driver.screenshot(directory / 'editor-window-close-failure.png')
-                (directory / 'editor-window-close-failure.json').write_text(json.dumps(driver.script("return {editor:document.querySelector('gc-working-file-editor')?.innerText,preview:document.querySelector('gc-file-content-dialog')?.innerText}"), indent=2))
+                (directory / 'editor-window-close-failure.json').write_text(json.dumps(driver.script("return {editor:document.querySelector('gk-working-file-editor')?.innerText,preview:document.querySelector('gk-file-content-dialog')?.innerText}"), indent=2))
             except Exception as error:
                 report.setdefault('windowCloseCaptureErrors', []).append(str(error))
         try:

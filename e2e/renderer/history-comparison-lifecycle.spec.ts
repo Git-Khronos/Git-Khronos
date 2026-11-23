@@ -4,7 +4,7 @@ async function prepare(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const state: any = { app, replies: [], calls: [], fresh: { baseOid: 'new-base', targetOid: 'new-target', workingTree: false, lineTotalsPartial: false, files: [] } };
     (window as any).__historyComparison = state;
@@ -91,7 +91,7 @@ for (const outcome of ['success', 'error']) {
     await expect(dialog).toBeVisible();
     await page.evaluate(() => {
       const state = (window as any).__historyComparison;
-      state.component = (window as any).ng.getComponent(document.querySelector('gc-history-search'));
+      state.component = (window as any).ng.getComponent(document.querySelector('gk-history-search'));
       state.first = state.component.compare();
     });
     await dialog.getByRole('button', { name: 'Close history search', exact: true }).click();
@@ -107,7 +107,7 @@ for (const outcome of ['success', 'error']) {
       else state.replies[0].resolve({ ...state.fresh, targetOid: 'obsolete-target' });
       await state.first;
       return { clearedOnClose, busyOnReopen, busy: state.component.comparing(), error: state.component.comparisonError(),
-        comparison: state.app.git.commitComparison(), dialogOpen: document.querySelector('gc-history-search dialog')?.hasAttribute('open') };
+        comparison: state.app.git.commitComparison(), dialogOpen: document.querySelector('gk-history-search dialog')?.hasAttribute('open') };
     }, outcome);
     expect(result).toEqual({ clearedOnClose: null, busyOnReopen: false, busy: true, error: null, comparison: null, dialogOpen: true });
     await page.evaluate(async () => {
@@ -127,7 +127,7 @@ test('current history comparison errors stay in the open dialog', async ({ page 
   await expect(dialog).toBeVisible();
   const error = await page.evaluate(async () => {
     const state = (window as any).__historyComparison;
-    const component = (window as any).ng.getComponent(document.querySelector('gc-history-search'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-history-search'));
     const pending = component.compare();
     state.replies[0].reject({ message: 'Current comparison failed' });
     await pending;

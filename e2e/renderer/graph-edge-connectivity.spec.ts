@@ -27,7 +27,7 @@ function randomTopology(seed: number, size: number): Topology {
 
 async function connectivityProblems(page: Page, topology: Topology, compact: boolean, width: number) {
   return page.evaluate(({ topology, compact, width }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repo = app.git.repository();
     const template = repo.commits[0];
     const commits = topology.map(([oid, parents]) => ({ ...template, oid, parents, subject: oid, decorations: [] }));

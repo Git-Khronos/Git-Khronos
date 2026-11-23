@@ -7,7 +7,7 @@ const privateOid = 'a'.repeat(40);
 
 async function installCheckpointFixture(page: Page): Promise<void> {
   await page.evaluate(({ privateRef, sharedRef, secondSharedRef, privateOid }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const base = structuredClone(git.repository());
     const state = {
@@ -326,7 +326,7 @@ test('distinguishes a checkpoint from a similarly named branch on the same commi
 test('keeps checkpoint history visible when a similarly named branch is hidden', async ({ page }) => {
   await showCheckpoints(page);
   await page.evaluate(({ privateRef, privateOid }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.repositories.update((repositories: any[]) => repositories.map((repository) =>
       repository.id === 'browser-preview' ? {
@@ -359,7 +359,7 @@ test('reports a moved checkpoint and refuses to delete after switching repositor
   await expect.poll(() => page.evaluate(() => (window as any).__checkpointTest.git.error()))
     .toContain('checkpoint has moved or no longer exists');
   await expect(checkpoint).toBeVisible();
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).changesOpen()))
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).changesOpen()))
     .toBe(true);
 
   await checkpoint.click();
@@ -422,7 +422,7 @@ for (const action of ['confirm', 'cancel']) {
     const dialog = page.getByRole('alertdialog', { name: 'Delete checkpoint reference?' });
     await expect(dialog).toBeVisible();
     await page.evaluate(({ action, sharedRef }) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const outgoing = document.querySelector<HTMLButtonElement>(action === 'confirm'
         ? '.checkpoint-confirmation-dialog .confirm-action' : '[data-checkpoint-dialog-cancel]')!;
       app.pendingStoredReferenceDelete.set({ ...app.pendingStoredReferenceDelete(),

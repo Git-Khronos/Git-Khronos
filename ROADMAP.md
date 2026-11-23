@@ -43,16 +43,28 @@ workflows run in the packaged desktop application—not merely in a browser mock
   (the production Debian package is extracted and driven through WebKitGTK;
   smoke runs on pull requests, full-toolkit acceptance runs on `dev`, and
   manual performance qualification records package hashes and retained
-  evidence—see [Linux packaged acceptance](docs/linux-acceptance.md))
+  evidence—see [Linux packaged acceptance](docs/linux-acceptance.md). The
+  accessible native startup shell defers workspace import; the current
+  production build's initial asset set is 292 kB versus 1.28 MB before the
+  split; current Debian package `4782ab3ce8358067102e931757c960a276022b66daa6d75141336604218ed21e`
+  passes all 301 full native scenarios. The separate inherited-environment and
+  large-history performance results are retained against their earlier exact
+  package hashes and do not qualify this artifact.)
 - [ ] System-installed Linux desktop acceptance
-  (headless extracted-package proof does not replace desktop-entry, host
-  integration, hardware-key, or real hosted-service validation)
+  (the locally built Debian package, installed executable and desktop entry
+  pass all 301 native scenarios on Ubuntu 26.04; pinned-shortcut/host
+  integration, hardware-key and real hosted-service validation remain)
 
 - [x] File, hunk, and line staging with safe discard recovery
   (new-file line selection and native displayed-diff guards are qualified with
   actual index/worktree fixtures and renderer journeys; packaged acceptance
   remains part of the professional Git roadmap)
 - [x] Commit amendment, tags, remotes, and stash workflows
+  (ordinary commit and message-only amendments preserve the previous HEAD and
+  tracked snapshot in Recovery History; packaged UI verifies restoring the
+  amended commit's original staged state on a new branch. Intentional empty
+  commits require the explicit policy, retain unstaged work, and still execute
+  hooks in packaged UI acceptance)
 - [x] Visible operation progress and durable activity logs
 - [x] Safe cancellation for long-running Git operations
 - [ ] In-app askpass bridge that delegates persistence to Git credential helpers
@@ -73,7 +85,7 @@ workflows run in the packaged desktop application—not merely in a browser mock
   release checksums/SBOM/signatures and packaged runtime qualification remain)
 - [ ] English accessibility review and externalized UI strings
   (an automated structural audit covers names, labels, dialogs, ARIA references,
-  focusability and reading order in 16 preview states and open overlays;
+  focusability and reading order in 17 preview states and open overlays;
   assistive-technology review and string externalization remain)
 
 ## Full power suite
@@ -89,6 +101,9 @@ workflows run in the packaged desktop application—not merely in a browser mock
   (consecutive HEAD series with configuration-isolated format-patch, exact
   review, protected original tip, Continue/Skip/Abort; 16 MiB/500-patch bounds)
 - [x] Merge lifecycle with three-way conflict resolution, continue, and abort
+  (packaged read-only previews now check clean fast-forward and clean merge-
+  commit outcome equivalence and prove the preview itself does not move refs or
+  write source files)
 - [x] Interactive rebase, cherry-pick, revert, and reset
 - [x] Explicit interactive fixup with retained-predecessor validation and
   original-source-tip recovery
@@ -127,8 +142,12 @@ workflows run in the packaged desktop application—not merely in a browser mock
   (staged/unstaged Continue refusal, later reword/fixup and hook-retry fixtures;
   broader packaged/platform acceptance remains)
 - [x] Explicit autosquash preview with exact subjects/unique commit IDs, stable
-  grouping, Reset and atomic ambiguous/unmatched/manual-action refusal
-  (partial subject matching and amend! message replacement remain unsupported)
+  grouping, unique subject-prefix matching, amend! message replacement, Reset and atomic
+  ambiguous/unmatched/manual-action refusal
+- [x] Prepare a `git commit --fixup` from staged changes against a reviewed
+  single commit; bind it to the captured checkout/HEAD, then use the existing
+  autosquash review to fold it in. The normal commit draft is preserved and
+  fixup mode never pushes.
 - [x] Non-drag rebase ordering with row move controls, Alt+Up/Down, retained
   focus/drafts/actions, position announcements and explicit invalid-order refusal
 - [x] Explicit mainline-parent review for single-merge cherry-pick and revert
@@ -171,7 +190,8 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Isolated real OpenPGP signing and effective signer diagnostics
   (trusted/unknown/missing-key/tampered results, preserved policy and explicit
   correction/retry; ordered legacy/format aliases and strict bounded settings;
-  interactive/hardware keys and packaged acceptance remain)
+  the packaged commit-form signing control is covered with an isolated key;
+  interactive/hardware keys and packaged diagnostics remain)
 - [x] Isolated offline X.509 signing through the configured Git signer
   (generated certificate, tampering/distrust/missing-key refusal and retry;
   fixture-only offline CRL scope, no production verification-policy changes;
@@ -180,7 +200,9 @@ workflows run in the packaged desktop application—not merely in a browser mock
   (SSH trust/revocation/tampering, existing-tag protection and raw signed-object
   recovery; unavailable-key refusal, retained annotation and explicit retry;
   verification follows configured Git policy, not automatic identity trust;
-  platform/interactive/packaged and online certificate acceptance remain)
+  Linux package acceptance covers lightweight and OpenPGP-signed UI creation,
+  SSH- and X.509-signed native creation, tag navigation and branching from the
+  exact tag; other platforms and online certificate acceptance remain)
 - [x] Explicit pull strategies with local divergence and refusal acceptance
   (menu choices override rebase/fast-forward defaults only for that pull;
   real-Git merge parents, replay, fast-forward, conflicts/abort, dirty-work
@@ -195,11 +217,15 @@ workflows run in the packaged desktop application—not merely in a browser mock
   explicit inspection is available below; broader maintenance acceptance remains)
 - [x] Explicit cancellable object/connectivity inspection using Git fsck
   (bounded stdout/stderr, incomplete-report distinction, no repair/downloads,
-  conservative promisor refusal; broader maintenance and packaged acceptance remain)
+  conservative promisor refusal; packaged acceptance covers held-fsck cancellation,
+  corruption reporting and mutation-free maintenance refusal; broader
+  filesystem/error and platform cases remain)
 - [x] Integrity-guarded non-pruning metadata maintenance
   (explicit commit-graph/pack-refs tasks, reviewed preferences action and shared
   command-palette scope; no GC, pruning, expiry, prefetch or scheduling changes;
-  not cancellable, broader maintenance and packaged acceptance remain)
+  not cancellable; exact-package UI coverage now verifies both corruption refusal
+  and successful maintenance preserving checkout, refs, index, config and an
+  unreachable object; broader platform cases remain)
 - [x] Confirmed force push with remote-update lease protection
 - [x] On-demand signer executable and key-selection diagnostics
 - [x] Searchable Git command hints with contextual help and official manual links
@@ -228,13 +254,20 @@ workflows run in the packaged desktop application—not merely in a browser mock
   reviewed single-file cache fetch with local-transfer retry/cancellation,
   SHA-256-verified single-pointer
   hydration and reviewed file lock/unlock/force-unlock against a local lock
-  server and reviewed removal of unreferenced cached objects are qualified; live
-  HTTPS/SSH LFS transfer, hosted-lock and packaged acceptance remain)
+  server and reviewed removal of unreferenced cached objects are qualified.
+  Current local acceptance passes 34 LFS core tests, seven authenticated
+  transport tests and a packaged UI lock/unlock/dirty-refusal/force-review
+  journey against a local protocol fixture. Live hosted HTTPS/SSH LFS transfer,
+  hosted-lock behavior, wider client/provider and platform qualification remain)
 - [x] Persistent continue/skip/abort flows for rebase, merge, cherry-pick, and revert
 - [ ] Operation previews and temporary recovery references
-  (durable discard, reset, branch-deletion and stash-deletion checkpoints,
-  explicit recovery cleanup and native stale-preview checks are qualified;
-  remaining destructive operations such as stash clear are not exposed)
+  (durable discard, reset, branch-deletion, stash-deletion and stash-clear
+  checkpoints, explicit recovery cleanup, native stale-review checks, and
+  pre-operation recovery for ordinary HEAD/message amendments are qualified.
+  Failed amendments retire the temporary checkpoint only when Git's failed
+  command is proven to have left the captured repository state unchanged;
+  uncertain or partial outcomes retain it. Remaining destructive operations
+  and cross-platform release acceptance remain)
 
 ## Stable multiplatform release
 

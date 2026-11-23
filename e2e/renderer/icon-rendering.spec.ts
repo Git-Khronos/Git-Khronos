@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { ICON_SHAPES, type IconName } from '../../apps/desktop/src/app/icon-shapes';
 
 async function verifyVisibleIcons(page: Page) {
-  const icons = await page.locator('gc-icon').evaluateAll(hosts => hosts
+  const icons = await page.locator('gk-icon').evaluateAll(hosts => hosts
     .filter(host => host.getClientRects().length)
     .map(host => {
       const component = (window as any).ng.getComponent(host);

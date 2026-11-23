@@ -1,12 +1,13 @@
 <div class="context-heading"><span>{{ request().stash.reference }}</span><strong>{{ request().stash.message }}</strong></div>
-<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('apply')"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply Stash</button>
-<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('apply-options')"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply with staged-state options…</button>
-<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('branch')"><span><gc-icon name="branch" [size]="13" /></span>Create branch from stash…</button>
-<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('pop')"><span><gc-icon name="archive" [size]="13" /></span>Pop Stash</button>
+<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('apply')"><span><gk-icon name="archive-restore" [size]="13" /></span>Apply Stash</button>
+<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('apply-options')"><span><gk-icon name="archive-restore" [size]="13" /></span>Apply with staged-state options…</button>
+<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('branch')"><span><gk-icon name="branch" [size]="13" /></span>Create branch from stash…</button>
+<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('pop')"><span><gk-icon name="archive" [size]="13" /></span>Pop Stash</button>
 <div class="context-divider"></div>
-<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('rename')"><span><gc-icon name="edit" [size]="13" /></span>Edit stash message…</button>
-<button type="button" role="menuitem" (click)="choose('visibility')"><span><gc-icon [name]="hidden() ? 'eye' : 'eye-off'" [size]="13" /></span>{{ hidden() ? 'Show stash in graph' : 'Hide stash in graph' }}</button>
-@if (canHideAll()) { <button type="button" role="menuitem" (click)="choose('hide-all')"><span><gc-icon name="eye-off" [size]="13" /></span>Hide all stashes</button> }
-@if (canShowAll()) { <button type="button" role="menuitem" (click)="choose('show-all')"><span><gc-icon name="eye" [size]="13" /></span>Show all stashes</button> }
+<button type="button" role="menuitem" [disabled]="busy()" (click)="choose('rename')"><span><gk-icon name="edit" [size]="13" /></span>Edit stash message…</button>
+<button type="button" role="menuitem" (click)="choose('visibility')"><span><gk-icon [name]="hidden() ? 'eye' : 'eye-off'" [size]="13" /></span>{{ hidden() ? 'Show stash in graph' : 'Hide stash in graph' }}</button>
+@if (canHideAll()) { <button type="button" role="menuitem" (click)="choose('hide-all')"><span><gk-icon name="eye-off" [size]="13" /></span>Hide all stashes</button> }
+@if (canShowAll()) { <button type="button" role="menuitem" (click)="choose('show-all')"><span><gk-icon name="eye" [size]="13" /></span>Show all stashes</button> }
 <div class="context-divider"></div>
-<button class="danger-item" type="button" role="menuitem" [disabled]="busy()" (click)="choose('delete')"><span><gc-icon name="trash" [size]="13" /></span>Delete Stash…</button>
+<button class="danger-item" type="button" role="menuitem" [disabled]="busy()" (click)="choose('delete')"><span><gk-icon name="trash" [size]="13" /></span>Delete Stash…</button>
+<button class="danger-item" type="button" role="menuitem" [disabled]="busy()" (click)="choose('clear-all')"><span><gk-icon name="trash" [size]="13" /></span>Clear All Stashes…</button>

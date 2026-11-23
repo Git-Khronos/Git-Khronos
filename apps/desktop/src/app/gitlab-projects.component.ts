@@ -14,7 +14,7 @@ function sameAccount(a: GitLabAccount, b: GitLabAccount): boolean {
 }
 
 @Component({
-  selector: 'gc-gitlab-projects',
+  selector: 'gk-gitlab-projects',
   imports: [GitLabCloneComponent, GitLabForksComponent, GitLabForkRecordsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './gitlab-projects.component.html',

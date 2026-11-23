@@ -1068,7 +1068,7 @@ application repair, timeout increase, system installation or release occurred.
 CI run [44667069442](https://github.com/Git-Khronos/Git-Khronos/actions/runs/44667069442)
 at `70aafcb` completed with one renderer failure in the final shard: the chrome
 identity test looked for `.app-menu-popover > header img.brand-mark`, but the
-header now belongs inside `gc-main-menu-content`. Windows boundaries, source
+header now belongs inside `gk-main-menu-content`. Windows boundaries, source
 checks, Jammy package/native/catalogue and all five installed Ubuntu/Debian jobs
 passed for that earlier commit/artifact; the overall run is not green.
 
@@ -1598,6 +1598,25 @@ decomposition is still needed before substantial new eager UI is added. The
 baseline statistics came from a successful Angular compile whose enclosing Nx
 command rejected caching an output outside the workspace; it is not recorded
 as a successful baseline Nx gate. The final gate used a workspace-local output.
+
+## Deferred workspace bootstrap — 2026-11-22
+
+The native root now paints a minimal accessible startup status before importing
+the full workspace component. This separates first paint from parsing the
+16,000-line application component and provides a visible retry state if the
+workspace chunk cannot load. The exact production Nx build passed its renderer
+preview guard and measured initial assets at **292,329 bytes**, down from
+**1,275,269 bytes** immediately before this change (a reduction of 982,940
+bytes, or 77%). The 900 kB initial warning is cleared without raising a budget.
+The workspace remains a separate 954.81 kB raw / 167.09 kB estimated-transfer
+chunk and is requested immediately after the startup component initializes;
+the size report therefore proves initial-asset reduction, **not** a measured
+startup-latency or total-download reduction. Debian package verification and
+the **301-scenario exact-package native acceptance suite** passed for package
+SHA-256 `388cb6b8916ece95b058c399840ac2be0478e11abf6e0867add3eafdde218746`;
+the separate packaged autosquash/fixup suite passed both amend-message and
+create-fixup/preserve-draft scenarios on the same package. This does not claim
+system-installed or cross-platform qualification.
 
 ## Follow-up reference-editor and harness checks — 2026-11-19
 

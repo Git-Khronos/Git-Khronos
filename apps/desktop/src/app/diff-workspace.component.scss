@@ -1,7 +1,7 @@
-gc-diff-workspace { display: contents; }
+gk-diff-workspace { display: contents; }
 
 /* Shared styles for the diff and its nested history and blame views. */
-:where(gc-diff-workspace) {
+:where(gk-diff-workspace) {
   .file-insight-panel { min-width: 0; min-height: 0; display: grid; grid-column: 1 / -1; grid-template-rows: 46px minmax(0, 1fr); background: #171722; }
   .file-insight-panel > header { display: flex; align-items: center; gap: 12px; padding: 0 14px; border-bottom: 1px solid #353449; background: #1e1e2c; }
   .file-insight-panel > header > div { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 2px; }
@@ -103,7 +103,7 @@ gc-diff-workspace { display: contents; }
 .diff-file-menu strong { font-size: var(--font-size-body); font-weight: 650; }
 .diff-file-menu small { color: var(--muted); font: var(--font-size-caption) var(--font-mono); }
 .diff-file-menu em { color: var(--overlay-muted-low); font-size: 11px; font-style: normal; }
-.diff-file-menu > button > gc-icon { color: var(--accent); }
+.diff-file-menu > button > gk-icon { color: var(--accent); }
 .diff-mode-toggle { display: flex; padding: 2px; border: 1px solid #44435a; border-radius: 4px; background: #191925; }
 .diff-mode-toggle button { min-width: 60px; padding: 5px 10px; border-radius: 3px; background: transparent; color: #8d8c9e; font-size: 12px; font-weight: 700; }
 .diff-mode-toggle button:hover { color: white; }

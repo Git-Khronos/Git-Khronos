@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, ViewEncapsulation } from '@angular/
 // Install shared form rules only while one of the deferred repository dialogs
 // renders. Selectors in the stylesheet are limited to those three hosts.
 @Component({
-  selector: 'gc-repository-form-styles',
+  selector: 'gk-repository-form-styles',
   template: '',
   host: { style: 'display: none' },
   styleUrl: './repository-form-styles.component.scss',

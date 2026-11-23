@@ -2,10 +2,10 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function authenticationFixture(page: Page, options: { holdListener?: number; failListener?: number; failSnapshot?: boolean; failUnlistener?: number; queuedSnapshot?: boolean } = {}): Promise<void> {
   await page.goto('/');
-  await expect(page.locator('gc-authentication')).toBeAttached();
+  await expect(page.locator('gk-authentication')).toBeAttached();
   await page.evaluate(options => {
     const state = window as any;
-    const component = state.ng.getComponent(document.querySelector('gc-authentication'));
+    const component = state.ng.getComponent(document.querySelector('gk-authentication'));
     const callbacks = new Map<number, (event: unknown) => void>();
     const handlers = new Map<string, (event: unknown) => void>();
     let callback = 100;

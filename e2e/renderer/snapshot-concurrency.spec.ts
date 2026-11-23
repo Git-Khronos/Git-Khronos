@@ -5,7 +5,7 @@ for (const order of ['in-order', 'reversed', 'same-turn']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async order => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const first = { ...repository, headOid: repository.commits[2].oid,
         status: { ...repository.status, branch: 'first-branch' } };
@@ -37,7 +37,7 @@ test('a pending branch action refuses another branch action until it finishes', 
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const calls: string[] = [];
     let finish!: (value: unknown) => void;
@@ -68,7 +68,7 @@ for (const reopen of [false, true]) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async reopen => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const fresh = { ...repository, headOid: repository.commits[3].oid };
       let finish!: (value: unknown) => void;
@@ -98,7 +98,7 @@ for (const reconcile of ['normal', 'newer-change', 'read-failure']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async reconcile => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const latest = { ...repository, headOid: repository.commits[3].oid };
       git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));

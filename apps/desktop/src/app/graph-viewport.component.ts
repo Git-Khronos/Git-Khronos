@@ -4,7 +4,7 @@ import { GraphRowComponent } from './graph-row.component';
 import type { VirtualWindow } from './virtual-list';
 
 @Component({
-  selector: 'gc-graph-viewport',
+  selector: 'gk-graph-viewport',
   imports: [GraphRowComponent],
   template: `
     @let window = windowSource()();
@@ -12,7 +12,7 @@ import type { VirtualWindow } from './virtual-list';
       [style.height.px]="window.topPadding + window.items.length * 40 + window.bottomPadding"
       [style.min-width.px]="widthSource()()">
       @for (slot of slotsSource()(); track $index) { @if (slot) {
-        <gc-graph-row [presenter]="presenter()" [graphRow]="slot.row" [top]="slot.top" />
+        <gk-graph-row [presenter]="presenter()" [graphRow]="slot.row" [top]="slot.top" />
       } }
     </div>
   `,

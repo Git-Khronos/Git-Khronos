@@ -1,4 +1,4 @@
-:where(gc-activity-log-drawer) {
+:where(gk-activity-log-drawer) {
   .activity-drawer { position: fixed; z-index: 22; right: 0; bottom: var(--statusbar-height); width: min(700px, calc(100vw - 20px)); display: flex; flex-direction: column; box-sizing: border-box; border: 1px solid var(--overlay-border); border-right: 0; border-bottom: 0; border-radius: 6px 0 0; background: var(--canvas); box-shadow: -12px -10px 40px #0009; }
   .activity-resizer { position: absolute; z-index: 2; top: -6px; right: 0; left: 0; height: 12px; cursor: ns-resize; touch-action: none; }
   .activity-resizer::after { position: absolute; top: 5px; left: 50%; width: 44px; height: 3px; border-radius: 2px; background: var(--overlay-muted-low); content: ''; opacity: .45; transform: translateX(-50%); transition: background-color var(--motion-feedback) var(--ease-out), opacity var(--motion-feedback) var(--ease-out); }
@@ -27,5 +27,5 @@
   .activity-line > code { display: flex; min-width: 0; flex-direction: column; align-items: end; gap: 1px; color: var(--overlay-muted); font-size: 12px; text-align: right; white-space: nowrap; }
   .activity-line > code > b { color: var(--overlay-muted); font: 700 var(--font-size-caption)/1.2 ui-sans-serif, system-ui, sans-serif; }.activity-line > code > span { color: var(--overlay-muted-low); font-size: 11px; font-variant-numeric: tabular-nums; }
   .activity-line.running > code > b { color: var(--orange); }.activity-line.success > code > b { color: var(--accent); }.activity-line.error > code > b { color: var(--danger); }.activity-line.cancelled > code > b { color: var(--overlay-muted); }
-  .activity-empty { height: 100%; display: grid; place-items: center; align-content: center; gap: 5px; color: var(--overlay-muted); }.activity-empty gc-icon { color: var(--overlay-muted-low); }.activity-empty strong { color: var(--overlay-text); font: var(--font-size-body) ui-sans-serif, system-ui, sans-serif; }.activity-empty small { font: var(--font-size-caption) ui-sans-serif, system-ui, sans-serif; }
+  .activity-empty { height: 100%; display: grid; place-items: center; align-content: center; gap: 5px; color: var(--overlay-muted); }.activity-empty gk-icon { color: var(--overlay-muted-low); }.activity-empty strong { color: var(--overlay-text); font: var(--font-size-body) ui-sans-serif, system-ui, sans-serif; }.activity-empty small { font: var(--font-size-caption) ui-sans-serif, system-ui, sans-serif; }
 }

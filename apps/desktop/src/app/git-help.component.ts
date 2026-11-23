@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core
 import { GitDocumentationService, type GitDocumentationTopic } from './git-documentation.service';
 
 @Component({
-  selector: 'gc-git-help',
+  selector: 'gk-git-help',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<button #opener type="button" (click)="documentation.open(topic(), opener)"
     [disabled]="disabled()" [attr.aria-label]="label()" aria-haspopup="dialog">{{ label() }}</button>`,

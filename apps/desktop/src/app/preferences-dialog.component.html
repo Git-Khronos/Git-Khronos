@@ -2,13 +2,13 @@
 @let host = view();
 <div class="preferences-backdrop" aria-hidden="true" (click)="closed.emit()"></div>
 <section class="preferences-popover" role="dialog" aria-modal="true" aria-labelledby="preferences-title" (keydown)="host.handleModalFocusKey($event)">
-  <header><span><gc-icon name="settings" [size]="14" /></span><div><strong id="preferences-title">Preferences</strong><small>Application and repository customization</small></div><button #closeButton type="button" title="Close preferences (Esc)" aria-label="Close preferences" (click)="closed.emit()"><gc-icon name="x" [size]="13" /></button></header>
+  <header><span><gk-icon name="settings" [size]="14" /></span><div><strong id="preferences-title">Preferences</strong><small>Application and repository customization</small></div><button #closeButton type="button" title="Close preferences (Esc)" aria-label="Close preferences" (click)="closed.emit()"><gk-icon name="x" [size]="13" /></button></header>
   <div class="preferences-body">
     <aside class="preferences-sidebar">
       <label class="preferences-search">
-        <gc-icon name="search" [size]="13" />
+        <gk-icon name="search" [size]="13" />
         <input type="search" autocomplete="off" placeholder="Find a setting" aria-label="Find a setting" [attr.aria-controls]="searchQuery().trim() ? 'preference-search-results' : null" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" (keydown)="handleSearchKeydown($event)" />
-        @if (searchQuery()) { <button type="button" aria-label="Clear preference search" (click)="searchQuery.set('')"><gc-icon name="x" [size]="11" /></button> }
+        @if (searchQuery()) { <button type="button" aria-label="Clear preference search" (click)="searchQuery.set('')"><gk-icon name="x" [size]="11" /></button> }
       </label>
       @if (searchQuery().trim()) {
         <div id="preference-search-results" class="preference-search-results" aria-live="polite">
@@ -16,21 +16,21 @@
             <small>{{ searchResults().length }} {{ searchResults().length === 1 ? 'match' : 'matches' }}</small>
             @for (result of searchResults(); track result.label) {
               <button type="button" [attr.aria-controls]="result.targetId" [class.active]="host.preferencesSection() === result.section" (click)="selectSearchResult(result)">
-                <gc-icon name="settings" [size]="12" />
+                <gk-icon name="settings" [size]="12" />
                 <span><strong>{{ result.label }}</strong><small>{{ result.category }}</small></span>
               </button>
             }
           } @else {
-            <div class="preference-search-empty"><gc-icon name="search" [size]="16" /><strong>No matching settings</strong><small>Try “theme”, “fetch”, “diff”, or “terminal”.</small></div>
+            <div class="preference-search-empty"><gk-icon name="search" [size]="16" /><strong>No matching settings</strong><small>Try “theme”, “fetch”, “diff”, or “terminal”.</small></div>
           }
         </div>
       }
     <nav class="preferences-navigation" role="tablist" aria-label="Preference categories" [hidden]="searchQuery().trim()" (keydown)="host.handlePreferencesTabKeydown($event)">
-      <button id="preferences-tab-general" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'general'" [attr.tabindex]="host.preferencesSection() === 'general' ? 0 : -1" [class.active]="host.preferencesSection() === 'general'" (click)="host.preferencesSection.set('general')"><gc-icon name="settings" [size]="13" /><span><strong>General</strong><small>Appearance and layout</small></span></button>
-      <button id="preferences-tab-graph" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'graph'" [attr.tabindex]="host.preferencesSection() === 'graph' ? 0 : -1" [class.active]="host.preferencesSection() === 'graph'" (click)="host.preferencesSection.set('graph')"><gc-icon name="git-commit" [size]="13" /><span><strong>Commit Graph</strong><small>Columns and navigation</small></span></button>
-      <button id="preferences-tab-git" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'git'" [attr.tabindex]="host.preferencesSection() === 'git' ? 0 : -1" [class.active]="host.preferencesSection() === 'git'" (click)="host.preferencesSection.set('git')"><gc-icon name="repo" [size]="13" /><span><strong>Git Features</strong><small>Sync, sparse checkout, LFS</small></span></button>
-      <button id="preferences-tab-editor" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'editor'" [attr.tabindex]="host.preferencesSection() === 'editor' ? 0 : -1" [class.active]="host.preferencesSection() === 'editor'" (click)="host.preferencesSection.set('editor')"><gc-icon name="file" [size]="13" /><span><strong>Diff Viewer</strong><small>Text and wrapping</small></span></button>
-      <button id="preferences-tab-terminal" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'terminal'" [attr.tabindex]="host.preferencesSection() === 'terminal' ? 0 : -1" [class.active]="host.preferencesSection() === 'terminal'" (click)="host.preferencesSection.set('terminal')"><gc-icon name="terminal" [size]="13" /><span><strong>Terminal</strong><small>New terminal tabs</small></span></button>
+      <button id="preferences-tab-general" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'general'" [attr.tabindex]="host.preferencesSection() === 'general' ? 0 : -1" [class.active]="host.preferencesSection() === 'general'" (click)="host.preferencesSection.set('general')"><gk-icon name="settings" [size]="13" /><span><strong>General</strong><small>Appearance and layout</small></span></button>
+      <button id="preferences-tab-graph" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'graph'" [attr.tabindex]="host.preferencesSection() === 'graph' ? 0 : -1" [class.active]="host.preferencesSection() === 'graph'" (click)="host.preferencesSection.set('graph')"><gk-icon name="git-commit" [size]="13" /><span><strong>Commit Graph</strong><small>Columns and navigation</small></span></button>
+      <button id="preferences-tab-git" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'git'" [attr.tabindex]="host.preferencesSection() === 'git' ? 0 : -1" [class.active]="host.preferencesSection() === 'git'" (click)="host.preferencesSection.set('git')"><gk-icon name="repo" [size]="13" /><span><strong>Git Features</strong><small>Sync, sparse checkout, LFS</small></span></button>
+      <button id="preferences-tab-editor" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'editor'" [attr.tabindex]="host.preferencesSection() === 'editor' ? 0 : -1" [class.active]="host.preferencesSection() === 'editor'" (click)="host.preferencesSection.set('editor')"><gk-icon name="file" [size]="13" /><span><strong>Diff Viewer</strong><small>Text and wrapping</small></span></button>
+      <button id="preferences-tab-terminal" type="button" role="tab" aria-controls="preferences-panel" [attr.aria-selected]="host.preferencesSection() === 'terminal'" [attr.tabindex]="host.preferencesSection() === 'terminal' ? 0 : -1" [class.active]="host.preferencesSection() === 'terminal'" (click)="host.preferencesSection.set('terminal')"><gk-icon name="terminal" [size]="13" /><span><strong>Terminal</strong><small>New terminal tabs</small></span></button>
     </nav>
     </aside>
     <div id="preferences-panel" class="preferences-grid" role="tabpanel" [attr.aria-labelledby]="'preferences-tab-' + host.preferencesSection()">
@@ -41,7 +41,7 @@
             <button type="button" role="radio" [attr.data-app-theme]="option.value" [attr.aria-checked]="host.appTheme() === option.value" [attr.tabindex]="host.appTheme() === option.value ? 0 : -1" [class.selected]="host.appTheme() === option.value" (click)="host.setAppTheme(option.value)" (keydown)="host.handleAppThemeKeydown($event, option.value)">
               <span class="theme-preview {{ option.value }}"><i></i><i></i><i></i></span>
               <span><strong>{{ option.label }}</strong><small>{{ option.value === 'khronos' ? 'Balanced deep color' : 'Crisp high contrast' }}</small></span>
-              @if (host.appTheme() === option.value) { <gc-icon name="check" [size]="12" /> }
+              @if (host.appTheme() === option.value) { <gk-icon name="check" [size]="12" /> }
             </button>
           }
         </div>
@@ -95,10 +95,10 @@
       </div>
       <div id="preference-signing" class="preference-group signing-preferences" [hidden]="host.preferencesSection() !== 'git'">
         <span>Commit Signing <small>repository</small></span>
-        <div class="signing-state" [class.enabled]="repo.signing.enabled"><span><gc-icon [name]="repo.signing.enabled ? 'check' : 'edit'" [size]="13" /></span><div><strong>{{ repo.signing.enabled ? 'Automatic signing enabled' : 'Automatic signing disabled' }}</strong><small>{{ repo.signing.enabled ? 'The commit form starts with signing selected.' : 'Signing remains available per commit.' }}</small></div></div>
+        <div class="signing-state" [class.enabled]="repo.signing.enabled"><span><gk-icon [name]="repo.signing.enabled ? 'check' : 'edit'" [size]="13" /></span><div><strong>{{ repo.signing.enabled ? 'Automatic signing enabled' : 'Automatic signing disabled' }}</strong><small>{{ repo.signing.enabled ? 'The commit form starts with signing selected.' : 'Signing remains available per commit.' }}</small></div></div>
         <dl><dt>Format</dt><dd>{{ repo.signing.format === 'openpgp' ? 'OpenPGP' : repo.signing.format.toUpperCase() }}</dd><dt>Key</dt><dd><code>{{ repo.signing.key || 'Git default key' }}</code></dd></dl>
-        <button class="signing-check" type="button" [disabled]="git.signingDiagnosticBusy()" (click)="git.diagnoseSigning()"><gc-icon [name]="git.signingDiagnosticBusy() ? 'refresh' : 'check'" [size]="12" />{{ git.signingDiagnosticBusy() ? 'Checking signer…' : 'Check Signer' }}</button>
-        @if (git.signingDiagnostic(); as diagnostic) { <div class="signing-diagnostic" [class.available]="diagnostic.available" [class.missing]="!diagnostic.available" aria-live="polite"><gc-icon [name]="diagnostic.available ? 'check' : 'warning'" [size]="13" /><span><strong>{{ diagnostic.available ? 'Signer available' : 'Signer unavailable' }}</strong><small>{{ diagnostic.message }}</small></span><code>{{ diagnostic.program }}</code></div> }
+        <button class="signing-check" type="button" [disabled]="git.signingDiagnosticBusy()" (click)="git.diagnoseSigning()"><gk-icon [name]="git.signingDiagnosticBusy() ? 'refresh' : 'check'" [size]="12" />{{ git.signingDiagnosticBusy() ? 'Checking signer…' : 'Check Signer' }}</button>
+        @if (git.signingDiagnostic(); as diagnostic) { <div class="signing-diagnostic" [class.available]="diagnostic.available" [class.missing]="!diagnostic.available" aria-live="polite"><gk-icon [name]="diagnostic.available ? 'check' : 'warning'" [size]="13" /><span><strong>{{ diagnostic.available ? 'Signer available' : 'Signer unavailable' }}</strong><small>{{ diagnostic.message }}</small></span><code>{{ diagnostic.program }}</code></div> }
         <small>Git owns signing. The commit checkbox overrides this default for one commit only.</small>
         <button #signingHelp class="preference-help-action" type="button" (click)="documentation.open('signing', signingHelp)" aria-haspopup="dialog">Learn about signing and verification…</button>
       </div>
@@ -108,21 +108,21 @@
         @if (repo.sparseCheckout.enabled && !repo.sparseCheckout.coneMode) { <small class="preference-warning">This repository currently uses pattern mode. Saving here converts the selection to directory-based cone mode.</small> }
         <label class="sparse-paths-field"><span>Directories</span><textarea maxlength="20000" rows="4" placeholder="apps/desktop&#10;crates/git-core" aria-label="Sparse checkout directories" [ngModel]="host.sparseCheckoutPaths()" (ngModelChange)="host.sparseCheckoutPaths.set($event)"></textarea></label>
         <label><input type="checkbox" [ngModel]="host.sparseCheckoutIndex()" (ngModelChange)="host.sparseCheckoutIndex.set($event)" /> Use sparse index for large repositories</label>
-        <div class="preference-actions"><button type="button" [disabled]="git.busy()" (click)="host.requestSparseCheckoutUpdate()"><gc-icon name="folder-git" [size]="12" />{{ repo.sparseCheckout.enabled ? 'Update Directories' : 'Enable Sparse Checkout' }}</button>@if (repo.sparseCheckout.enabled) { <button type="button" [disabled]="git.busy()" (click)="host.reapplySparseCheckout()"><gc-icon name="refresh" [size]="12" />Reapply</button><button class="danger" type="button" [disabled]="git.busy()" (click)="host.requestSparseCheckoutDisable()"><gc-icon name="x" [size]="12" />Disable</button> }</div>
+        <div class="preference-actions"><button type="button" [disabled]="git.busy()" (click)="host.requestSparseCheckoutUpdate()"><gk-icon name="folder-git" [size]="12" />{{ repo.sparseCheckout.enabled ? 'Update Directories' : 'Enable Sparse Checkout' }}</button>@if (repo.sparseCheckout.enabled) { <button type="button" [disabled]="git.busy()" (click)="host.reapplySparseCheckout()"><gk-icon name="refresh" [size]="12" />Reapply</button><button class="danger" type="button" [disabled]="git.busy()" (click)="host.requestSparseCheckoutDisable()"><gk-icon name="x" [size]="12" />Disable</button> }</div>
         <button #sparseHelp class="preference-help-action" type="button" (click)="documentation.open('sparse', sparseHelp)" aria-haspopup="dialog">Learn about sparse checkout…</button>
       </div>
       <div id="preference-lfs" class="preference-group lfs-preferences" [hidden]="host.preferencesSection() !== 'git'">
         <span>Git LFS <small>repository</small></span>
         @if (!repo.lfs.available) { <small>Git LFS was not found. Install Git LFS 3.0 or newer, then reopen this repository.</small> }
-        @else if (!repo.lfs.enabled) { <small>{{ repo.lfs.version }} is available but not initialized for this repository.</small><button type="button" [disabled]="git.busy()" (click)="host.initializeLfs()"><gc-icon name="server" [size]="12" />Initialize Git LFS</button> }
-        @else { <small>{{ repo.lfs.version }}@if (repo.lfs.trackedFiles !== null) { · {{ repo.lfs.trackedFiles }} tracked {{ repo.lfs.trackedFiles === 1 ? 'file' : 'files' }} }</small><label class="lfs-pattern-field"><span>Tracking pattern</span><input type="text" maxlength="500" placeholder="*.psd" aria-label="Git LFS tracking pattern" [ngModel]="host.lfsPattern()" (ngModelChange)="host.lfsPattern.set($event)" (keydown.enter)="$event.preventDefault(); host.addLfsPattern()" /></label><label><input type="checkbox" [ngModel]="host.lfsPatternLockable()" (ngModelChange)="host.lfsPatternLockable.set($event)" /> Require a lock before editing</label><button type="button" [disabled]="git.busy() || !host.lfsPattern().trim()" (click)="host.addLfsPattern()"><gc-icon name="plus" [size]="12" />Track Pattern</button> }
-        <button type="button" [disabled]="git.busy()" (click)="host.openLfsTracking()"><gc-icon name="server" [size]="12" />Manage tracking patterns…</button>
+        @else if (!repo.lfs.enabled) { <small>{{ repo.lfs.version }} is available but not initialized for this repository.</small><button type="button" [disabled]="git.busy()" (click)="host.initializeLfs()"><gk-icon name="server" [size]="12" />Initialize Git LFS</button> }
+        @else { <small>{{ repo.lfs.version }}@if (repo.lfs.trackedFiles !== null) { · {{ repo.lfs.trackedFiles }} tracked {{ repo.lfs.trackedFiles === 1 ? 'file' : 'files' }} }</small><label class="lfs-pattern-field"><span>Tracking pattern</span><input type="text" maxlength="500" placeholder="*.psd" aria-label="Git LFS tracking pattern" [ngModel]="host.lfsPattern()" (ngModelChange)="host.lfsPattern.set($event)" (keydown.enter)="$event.preventDefault(); host.addLfsPattern()" /></label><label><input type="checkbox" [ngModel]="host.lfsPatternLockable()" (ngModelChange)="host.lfsPatternLockable.set($event)" /> Require a lock before editing</label><button type="button" [disabled]="git.busy() || !host.lfsPattern().trim()" (click)="host.addLfsPattern()"><gk-icon name="plus" [size]="12" />Track Pattern</button> }
+        <button type="button" [disabled]="git.busy()" (click)="host.openLfsTracking()"><gk-icon name="server" [size]="12" />Manage tracking patterns…</button>
         <button #lfsHelp class="preference-help-action" type="button" (click)="documentation.open('lfs', lfsHelp)" aria-haspopup="dialog">Learn about Git LFS…</button>
       </div>
       <div id="preference-reference" class="preference-group repository-tool-preferences" [hidden]="host.preferencesSection() !== 'git'">
         <span>Repository tools</span><small>Review each tool's scope before running it. Reference pages never run commands.</small>
         <button #referenceHelp class="preference-help-action" type="button" (click)="documentation.open(null, referenceHelp)" aria-haspopup="dialog">Git command reference…</button>
-        @defer (when host.preferencesSection() === 'git') { <gc-integrity-panel [repositoryId]="repo.id" [disabled]="git.busy()" /><gc-patch-exchange-panel [repositoryId]="repo.id" [disabled]="git.busy()" /> }
+        @defer (when host.preferencesSection() === 'git') { <gk-integrity-panel [repositoryId]="repo.id" [disabled]="git.busy()" /><gk-patch-exchange-panel [repositoryId]="repo.id" [disabled]="git.busy()" /> }
         @loading { <p role="status">Loading repository tools…</p> }
         @error { <p role="alert">Repository tools unavailable. Restart to retry.</p> }
       </div>
@@ -139,11 +139,11 @@
         <label>Line height<select aria-label="Terminal line height" [ngModel]="host.terminalLineHeight()" (ngModelChange)="host.setTerminalPreference('line-height', $event)"><option [ngValue]="1">1.0</option><option [ngValue]="1.15">1.15</option><option [ngValue]="1.25">1.25</option><option [ngValue]="1.4">1.4</option><option [ngValue]="1.5">1.5</option></select></label>
         <label>Cursor<select aria-label="Terminal cursor style" [ngModel]="host.terminalCursorStyle()" (ngModelChange)="host.setTerminalPreference('cursor-style', $event)"><option value="block">Block</option><option value="underline">Underline</option><option value="bar">Bar</option></select></label>
       </div>
-      @if (host.preferencesSection() === 'terminal') { <div id="preference-programs" class="preference-group program-preferences"><gc-configured-tools-panel /></div> }
+      @if (host.preferencesSection() === 'terminal') { <div id="preference-programs" class="preference-group program-preferences"><gk-configured-tools-panel /></div> }
       <div id="preference-reset" class="preference-group reset-preferences" [hidden]="host.preferencesSection() !== 'general'">
         <span>Interface defaults</span><small>Restore the original layout and appearance. Repositories, Git configuration, credentials, and files are not changed.</small>
         @if (host.resetUiConfirmation()) { <div class="reset-preference-confirmation"><strong>Restore interface defaults?</strong><button type="button" (click)="host.restoreInterfaceDefaults()">Restore</button><button type="button" (click)="host.resetUiConfirmation.set(false)">Cancel</button></div> }
-        @else { <button type="button" (click)="host.resetUiConfirmation.set(true)"><gc-icon name="reset" [size]="12" />Restore Defaults</button> }
+        @else { <button type="button" (click)="host.resetUiConfirmation.set(true)"><gk-icon name="reset" [size]="12" />Restore Defaults</button> }
       </div>
     </div>
   </div>

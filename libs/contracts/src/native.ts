@@ -88,6 +88,7 @@ export type CommitComparison = { baseOid: string; targetOid: string; workingTree
 export type CommitDetails = { oid: string; message: string; signature: CommitSignature; files: CommitFile[]; filesTruncated: boolean }
 export type CommitFile = { status: string; path: string; previousPath: string | null; additions: number | null; deletions: number | null }
 export type CommitFileDiff = { oid: string; path: string; patch: string; truncated: boolean }
+export type CommitFixupTarget = { oid: string; expectedHeadOid: string; expectedBranch: string | null }
 export type CommitHistoryPage = { commits: CommitSummary[]; historyTruncated: boolean }
 export type CommitIdentity = { name: string; email: string }
 export type CommitPolicy = { signOff: boolean; allowEmpty: boolean; author?: CommitIdentity | null; committer?: CommitIdentity | null }
@@ -720,7 +721,7 @@ export const load_discard_recoveries: (args: { repoId: string }) => Promise<Disc
 export const apply_saved_discard: (args: { repoId: string; id: string; reverse: boolean; expectedSha256?: string | null }) => Promise<AppliedDiscardRecovery> = /* @__PURE__ */ __bindCommand__("apply_saved_discard");
 export const forget_saved_discard: (args: { repoId: string; id: string; expectedSha256?: string | null }) => Promise<boolean> = /* @__PURE__ */ __bindCommand__("forget_saved_discard");
 export const ignore_path: (args: { repoId: string; path: string; patternKind: string; stopTracking: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("ignore_path");
-export const commit_changes: (args: { repoId: string; message: string; amend: boolean; skipHooks: boolean; sign: boolean; policy?: CommitPolicy | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("commit_changes");
+export const commit_changes: (args: { repoId: string; message: string; amend: boolean; skipHooks: boolean; sign: boolean; policy?: CommitPolicy | null; fixupTarget?: CommitFixupTarget | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("commit_changes");
 export const update_head_message: (args: { repoId: string; checkout: CommitRewriteCheckout; message: string; skipHooks: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("update_head_message");
 export const edit_commit: (args: { repoId: string; checkout: CommitRewriteCheckout; targetOid: string; message: string; author: CommitAuthorInput; skipHooks: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("edit_commit");
 export const checkout_branch: (args: { repoId: string; name: string; review?: BranchIntegrationReview | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("checkout_branch");
@@ -849,6 +850,7 @@ export const pop_stash: (args: { repoId: string; expectedOid: string }) => Promi
 export const apply_stash: (args: { repoId: string; reference: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("apply_stash");
 export const pop_stash_entry: (args: { repoId: string; reference: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("pop_stash_entry");
 export const drop_stash: (args: { repoId: string; reference: string; expectedOid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("drop_stash");
+export const clear_stashes: (args: { repoId: string; expectedOids: string[] }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("clear_stashes");
 export const rename_stash: (args: { repoId: string; reference: string; expectedOid: string; message: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("rename_stash");
 export const create_tag: (args: { repoId: string; name: string; oid: string; message?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_tag");
 export const cherry_pick_commits: (args: { repoId: string; oids: string[]; mainline?: number | null; noCommit?: boolean | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("cherry_pick_commits");
@@ -1136,6 +1138,7 @@ export type CommandMap = {
   apply_stash: typeof apply_stash;
   pop_stash_entry: typeof pop_stash_entry;
   drop_stash: typeof drop_stash;
+  clear_stashes: typeof clear_stashes;
   rename_stash: typeof rename_stash;
   create_tag: typeof create_tag;
   cherry_pick_commits: typeof cherry_pick_commits;

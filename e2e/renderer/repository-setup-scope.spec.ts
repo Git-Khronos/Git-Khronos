@@ -5,7 +5,7 @@ const mutations = ['create_worktree', 'create_worktree_for_branch', 'add_submodu
 
 async function openEditor(page: Page, editor: Editor): Promise<void> {
   await page.evaluate(editor => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repository = app.git.repository();
     if (editor === 'worktree' || editor === 'existing-worktree') {
       if (editor === 'existing-worktree') {
@@ -46,7 +46,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'setup editor scope test' }));
     (window as any).__setupCalls = [];
@@ -98,7 +98,7 @@ for (const editor of ['worktree', 'existing-worktree', 'submodule', 'remote-add'
       await openEditor(page, editor);
       await expect(dialog(page, editor)).toBeVisible();
       await page.evaluate(async ({ editor, change }) => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const git = app.git, repository = git.repository();
         const other = { ...repository, id: change === 'repository' ? 'other-setup-repository' : repository.id, path: '/workspace/other-setup' };
         git.repositories.update((items: any[]) => change === 'repository' ? [...items, other]
@@ -126,7 +126,7 @@ for (const editor of ['worktree', 'existing-worktree', 'submodule', 'remote-add'
   test(`${editor} keeps its ordinary native payload and source ownership`, async ({ page }) => {
     await openEditor(page, editor);
     await expect(dialog(page, editor)).toBeVisible();
-    const sourceId = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().id);
+    const sourceId = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().id);
     await expect(dialog(page, editor).locator('.repository-editor-source')).toContainText('/home/maya/projects/git-khronos');
     const submit = editor.includes('worktree') ? 'Create worktree' : editor === 'submodule' ? 'Add Submodule'
       : editor === 'remote-add' ? 'Add Remote' : editor === 'remote-edit' ? 'Save Remote' : 'Remove Remote';
@@ -146,7 +146,7 @@ for (const editor of ['worktree', 'existing-worktree', 'submodule', 'remote-add'
     await openEditor(page, editor);
     await expect(dialog(page, editor)).toBeVisible();
     await dialog(page, editor).getByRole('button', { name: 'Cancel', exact: true }).click();
-    await page.evaluate(method => (window as any).ng.getComponent(document.querySelector('gc-root'))[method](), methodFor(editor));
+    await page.evaluate(method => (window as any).ng.getComponent(document.querySelector('gk-app'))[method](), methodFor(editor));
     const calls = await page.evaluate(() => (window as any).__setupCalls);
     expect(calls.filter((entry: any) => mutations.includes(entry.command))).toEqual([]);
   });
@@ -156,10 +156,10 @@ for (const editor of ['worktree', 'submodule', 'remote-add', 'remote-edit'] as c
   for (const completion of ['replacement', 'repository-change'] as const) {
     test(`${editor} late completion preserves ${completion} intent and the original write receipt`, async ({ page }) => {
       await openEditor(page, editor);
-      const sourceId = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().id);
+      const sourceId = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().id);
       await page.evaluate(({ method, command }) => {
         (window as any).__holdSetup = command;
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         (window as any).__pendingSetup = app[method]();
       }, { method: methodFor(editor), command: commandFor(editor) });
       await expect.poll(() => page.evaluate(() => typeof (window as any).__resolveSetup)).toBe('function');
@@ -167,11 +167,11 @@ for (const editor of ['worktree', 'submodule', 'remote-add', 'remote-edit'] as c
       await expect(form.locator('input, select').first()).toBeDisabled();
       expect(await form.locator('input, select').evaluateAll(controls => controls.every(control => (control as HTMLInputElement).disabled))).toBe(true);
       await expect(form.getByRole('button', { name: 'Cancel', exact: true })).toBeEnabled();
-      await page.evaluate(method => (window as any).ng.getComponent(document.querySelector('gc-root'))[method](), methodFor(editor));
+      await page.evaluate(method => (window as any).ng.getComponent(document.querySelector('gk-app'))[method](), methodFor(editor));
       await form.getByRole('button', { name: 'Cancel', exact: true }).click();
       if (completion === 'repository-change') {
         await page.evaluate(() => {
-          const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+          const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
           const other = { ...git.repository(), id: 'next-setup-repository', path: '/workspace/next-setup' };
           git.repositories.update((items: any[]) => [...items, other]);
           git.activeRepositoryId.set(other.id);
@@ -179,7 +179,7 @@ for (const editor of ['worktree', 'submodule', 'remote-add', 'remote-edit'] as c
       }
       await openEditor(page, editor);
       await page.evaluate(editor => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         if (editor === 'worktree') app.worktreeFolder.set('replacement-folder');
         else if (editor === 'submodule') app.submodulePath.set('vendor/replacement');
         else app.remoteUrl.set('/owned/replacement.git');
@@ -191,7 +191,7 @@ for (const editor of ['worktree', 'submodule', 'remote-add', 'remote-edit'] as c
       await expect(dialog(page, editor).getByLabel(field, { exact: true })).toHaveValue(editor === 'worktree'
         ? 'replacement-folder' : editor === 'submodule' ? 'vendor/replacement' : '/owned/replacement.git');
       const state = await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         return { calls: (window as any).__setupCalls, active: app.git.activeRepositoryId(), logs: app.git.activityLogs() };
       });
       expect(state.active).toBe(completion === 'repository-change' ? 'next-setup-repository' : sourceId);
@@ -206,13 +206,13 @@ for (const change of ['replacement', 'same-id-path'] as const) {
   test(`worktree directory replies cannot overwrite a ${change} review`, async ({ page }) => {
     await openEditor(page, 'worktree');
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       app.git.chooseDirectory = () => new Promise(resolve => { (window as any).__resolveDirectory = resolve; });
       (window as any).__pendingDirectory = app.chooseWorktreeParent();
     });
     await dialog(page, 'worktree').getByRole('button', { name: 'Cancel', exact: true }).click();
     if (change === 'same-id-path') await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.repositories.update((items: any[]) => items.map(item => item.id === git.activeRepositoryId() ? { ...item, path: '/workspace/moved-source' } : item));
     });
     await openEditor(page, 'worktree');
@@ -224,7 +224,7 @@ for (const change of ['replacement', 'same-id-path'] as const) {
 test('a confirmed remote rename migrates source preferences without changing a replacement remote draft', async ({ page }) => {
   await openEditor(page, 'remote-edit');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.remoteName.set('owned-origin');
     app.remoteDialogIcon.set('globe');
     app.remoteLocationIcons.set({ origin: 'globe' });
@@ -234,14 +234,14 @@ test('a confirmed remote rename migrates source preferences without changing a r
   await expect.poll(() => page.evaluate(() => typeof (window as any).__resolveSetup)).toBe('function');
   await dialog(page, 'remote-edit').getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.openEditRemoteDialog(app.git.repository().remotes.find((remote: any) => remote.name === 'upstream'));
     app.remoteName.set('replacement-upstream');
   });
   await page.evaluate(async () => { (window as any).__resolveSetup(); await (window as any).__pendingSetup; });
   await expect(dialog(page, 'remote-edit').getByLabel('Name', { exact: true })).toHaveValue('replacement-upstream');
   expect(await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { original: app.remoteDialogOriginalName(), icons: app.remoteLocationIcons() };
   })).toMatchObject({ original: 'upstream', icons: { 'owned-origin': 'globe' } });
 });
@@ -249,7 +249,7 @@ test('a confirmed remote rename migrates source preferences without changing a r
 test('worktree directory replies update the still-owned review normally', async ({ page }) => {
   await openEditor(page, 'worktree');
   const title = await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     let requestedTitle = '';
     app.git.chooseDirectory = (title: string) => { requestedTitle = title; return Promise.resolve('/owned/new-parent'); };
     await app.chooseWorktreeParent();
@@ -261,7 +261,7 @@ test('worktree directory replies update the still-owned review normally', async 
 
 test('a retired branch context cannot open an existing-branch worktree review in another checkout', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repository = app.git.repository();
     app.git.repositories.update((items: any[]) => items.map(item => item.id === repository.id
       ? { ...item, worktrees: item.worktrees.filter((worktree: any) => worktree.current) } : item));
@@ -281,7 +281,7 @@ for (const editor of ['worktree', 'existing-worktree', 'submodule', 'remote-add'
     const source = dialog(page, editor);
     await expect(source).toBeVisible();
     const connected = await source.evaluate((element, editor) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const git = app.git, repository = git.repository();
       const other = { ...repository, id: 'replacement-setup-source', path: '/workspace/replacement-source' };
       git.repositories.update((items: any[]) => [...items, other]);
@@ -316,7 +316,7 @@ for (const editor of ['worktree', 'submodule', 'remote-edit'] as const) {
   test(`${editor} ignores obsolete input from the previous rendered ownership lease`, async ({ page }) => {
     await openEditor(page, editor);
     await dialog(page, editor).evaluate((element, editor) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const name = editor === 'worktree' ? 'worktreeFolder' : editor === 'submodule' ? 'submodulePath' : 'remoteUrl';
       const input = element.querySelector<HTMLInputElement>(`[name=${name}]`)!;
       if (editor === 'worktree') { app.openWorktreeDialog(); app.worktreeFolder.set('replacement-draft'); }
@@ -335,7 +335,7 @@ test('retiring remote removal does not erase a replacement editor focus owner', 
   await openEditor(page, 'remote-remove');
   await expect(dialog(page, 'remote-remove')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git, repository = git.repository();
     const other = { ...repository, id: 'next-remote-editor', path: '/workspace/next-remote-editor' };
     git.repositories.update((items: any[]) => [...items, other]); git.activeRepositoryId.set(other.id);

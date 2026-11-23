@@ -25,7 +25,7 @@ export interface ReferenceRenamed {
 const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\/|\/\.|@\{|\.lock(\/|$)|^@$/;
 
 @Component({
-  selector: 'gc-reference-action-dialog',
+  selector: 'gk-reference-action-dialog',
   imports: [FormsModule, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -68,7 +68,7 @@ const INVALID_REFERENCE_NAME = /\s|\.\.|[~^:?*[\\\x00-\x1f\x7f]|^[-/.]|[/.]$|\/\
             <label class="check"><input type="checkbox" name="referenceRenameRemote" [ngModel]="renameOnRemote()"
               (ngModelChange)="toggleRemoteRename($event, target)" [disabled]="git.busy()" />Also rename the tag on a remote</label>
           }
-          <gc-git-help [topic]="target.action === 'delete-remote-branch' || target.action === 'rename-remote-branch' ? 'push' : 'tag'" label="Learn about local and remote references…" />
+          <gk-git-help [topic]="target.action === 'delete-remote-branch' || target.action === 'rename-remote-branch' ? 'push' : 'tag'" label="Learn about local and remote references…" />
           @if (target.action !== 'delete-tag' && (target.action !== 'rename-tag' || renameOnRemote())) {
             <label for="reference-remote">Remote</label>
               <select id="reference-remote" name="referenceRemote" [ngModel]="remote()" (ngModelChange)="changeRemote($event, target)"

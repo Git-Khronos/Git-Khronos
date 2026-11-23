@@ -6,9 +6,9 @@ from pathlib import Path
 
 def wait_for_ssh_clone_outcome(driver, journal):
     outcome = driver.wait("""
-      const dialog = document.querySelector('gc-repository-dialog');
+      const dialog = document.querySelector('gk-repository-dialog');
       if (!dialog) return { kind: 'closed' };
-      const error = dialog.querySelector('gc-gitlab-clone [role="alert"]');
+      const error = dialog.querySelector('gk-gitlab-clone [role="alert"]');
       const message = error?.getClientRects().length ? error.textContent.trim() : '';
       return message ? { kind: 'error', message: message.slice(0, 1024) } : null;
     """, 60)
@@ -42,7 +42,7 @@ def gitlab_ssh_clone(driver, fixtures, original_repository, report, connection,
         open_ui(driver, original_repository)
         driver.click('[aria-label="New repository tab"]')
         driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
+        driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
         button("Browse GitLab projects")
         driver.wait("return !!document.querySelector('#gitlab-account') && !document.querySelector('#gitlab-account').matches(':disabled') && [...document.querySelector('#gitlab-account').options].some(option => option.value === " + json.dumps(connection["connectionId"]) + ")")
         driver.script("""const select=document.querySelector('#gitlab-account');
@@ -55,18 +55,18 @@ def gitlab_ssh_clone(driver, fixtures, original_repository, report, connection,
         fill("#gitlab-clone-parent", str(fixtures.root))
         fill("#gitlab-clone-folder", "gitlab-native-real-ssh")
         fill("#gitlab-clone-branch", "topic/reviewed")
-        driver.click("gc-gitlab-clone label.check input")
+        driver.click("gk-gitlab-clone label.check input")
         driver.wait("return !!document.querySelector('#gitlab-clone-depth')")
         fill("#gitlab-clone-depth", "1")
-        button("Review GitLab clone", "gc-gitlab-clone button")
-        driver.wait("return !!document.querySelector('gc-gitlab-clone [aria-label=\"Review GitLab clone\"]')")
+        button("Review GitLab clone", "gk-gitlab-clone button")
+        driver.wait("return !!document.querySelector('gk-gitlab-clone [aria-label=\"Review GitLab clone\"]')")
         checkout = fixtures.root / "gitlab-native-real-ssh"
         assert not checkout.exists() and not journal.exists()
-        review = driver.script("return document.querySelector('gc-gitlab-clone [aria-label=\"Review GitLab clone\"]').textContent")
+        review = driver.script("return document.querySelector('gk-gitlab-clone [aria-label=\"Review GitLab clone\"]').textContent")
         assert url in review and str(checkout) in review and "Depth 1" in review
         assert "owned-api-fixture-token" not in review
         driver.screenshot(Path(report["artifactsDirectory"]) / "gitlab-clone-native-ssh-review.png")
-        button("Clone reviewed GitLab project", "gc-gitlab-clone button")
+        button("Clone reviewed GitLab project", "gk-gitlab-clone button")
         wait_for_ssh_clone_outcome(driver, journal)
         assert fixtures.git(checkout, "rev-parse", "HEAD") == head
         assert fixtures.git(checkout, "symbolic-ref", "--short", "HEAD") == "topic/reviewed"

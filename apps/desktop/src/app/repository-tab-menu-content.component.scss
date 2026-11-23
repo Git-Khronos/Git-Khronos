@@ -8,10 +8,10 @@
 .tab-menu-action { width: 100%; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 5px; padding: 7px 8px; border-radius: 3px; background: transparent; color: var(--toolbar-control-text); font-size: var(--font-size-body); text-align: left; }
 .tab-menu-action:hover:not(:disabled) { background: var(--overlay-hover); color: white; }
 .tab-menu-action:disabled { opacity: .35; }
-.tab-menu-action > gc-icon { color: var(--accent); }
+.tab-menu-action > gk-icon { color: var(--accent); }
 .tab-menu-action > small { color: var(--overlay-muted-low); font-size: 12px; font-variant-numeric: tabular-nums; }
 .tab-menu-action.danger { color: #e199aa; }
-.tab-menu-action.danger > gc-icon { color: #e57f96; }
+.tab-menu-action.danger > gk-icon { color: #e57f96; }
 .tab-menu-action.danger:hover { background: var(--overlay-danger-hover); color: #ffafc1; }
 .tab-alias-editor { display: grid; gap: 7px; padding: 5px; }
 .tab-alias-editor label { color: var(--overlay-list-text); font-size: 12px; font-weight: 700; }

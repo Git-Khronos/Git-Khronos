@@ -13,7 +13,7 @@ for (const scenario of ['load', 'cancel', 'retire', 'keep focus', 'error'] as co
     await page.route('**/chunk-*.js', async route => {
       const response = await route.fetch();
       const text = await response.text();
-      if (!text.includes('gc-commit-edit-form') || !text.includes('Save Commit')) {
+      if (!text.includes('gk-commit-edit-form') || !text.includes('Save Commit')) {
         await route.fulfill({ response, body: text });
         return;
       }

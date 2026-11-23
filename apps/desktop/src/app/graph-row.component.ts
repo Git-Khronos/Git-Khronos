@@ -6,7 +6,7 @@ import { SearchHighlightPipe } from './search-highlight.pipe';
 import { graphMergeArrowPoints } from './graph-layout';
 
 @Component({
-  selector: 'gc-graph-row',
+  selector: 'gk-graph-row',
   imports: [NgTemplateOutlet, IconComponent, SearchHighlightPipe],
   templateUrl: './graph-row.component.html',
   styles: ':host { display: contents; }',

@@ -21,7 +21,7 @@ import { IconComponent } from './icon.component';
 type CommandPaletteNavigation = number | 'first' | 'last';
 
 @Component({
-  selector: 'gc-command-palette',
+  selector: 'gk-command-palette',
   imports: [FormsModule, IconComponent],
   templateUrl: './command-palette.component.html',
   styleUrl: './command-palette.component.scss',

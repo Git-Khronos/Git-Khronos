@@ -4,7 +4,7 @@ async function prepare(page: Page) {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const root = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const root = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = root.git;
     const stash = { reference: 'stash@{0}', oid: 'a'.repeat(40), message: 'Owned selected stash' };
     const repository = { ...git.repository(), stashes: [stash] };
@@ -68,7 +68,7 @@ for (const change of ['shifted-stack', 'other-repository']) {
     await expect(page.getByRole('option', { name: /^Apply stash@/ })).toBeVisible();
     await page.evaluate(async (change) => {
       const state = (window as any).__stashAction;
-      const palette = (window as any).ng.getComponent(document.querySelector('gc-command-palette'));
+      const palette = (window as any).ng.getComponent(document.querySelector('gk-command-palette'));
       const actions = palette.commandActions().filter((action: any) =>
         ['apply-stash', 'pop'].includes(action.id) || action.id.startsWith('stash-apply:') || action.id.startsWith('stash-pop:'));
       if (change === 'shifted-stack') {

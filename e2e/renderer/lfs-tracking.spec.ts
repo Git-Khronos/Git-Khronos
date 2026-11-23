@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.repositories.update((items: any[]) => items.map((item) => ({ ...item,
@@ -225,7 +225,7 @@ test('repository switch prevents untracking rules in the previously reviewed rep
   const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
   await dialog.getByRole('button', { name: 'Review removal of *.psd' }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
   });
@@ -271,7 +271,7 @@ test('effective attributes remain available when LFS is missing, and inspection 
   await setup(page);
   await page.evaluate(() => {
     (window as any).__lfsTracking.loadFail = true;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map((item) => ({ ...item, lfs: { ...item.lfs, available: false, enabled: false } })));
   });
   await open(page);
@@ -319,7 +319,7 @@ test('reopening attributes in another repository does not retain the previous pa
   await expect(dialog.locator('.attribute-result')).toBeVisible();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
   });
@@ -429,7 +429,7 @@ test('LFS object scan blocks dismissals while pending and repository switches pr
   await page.evaluate(() => { (window as any).__lfsTracking.finish(); });
   await expect(dialog.locator('.object-result')).toBeFocused();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
   });
@@ -529,7 +529,7 @@ test('repository switch after LFS fetch review disables transfer without invokin
     await openFetchReview(page);
     const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
     await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
       git.activeRepositoryId.set('other');
     });
@@ -550,7 +550,7 @@ test('repository switch during LFS fetch completion does not scan the newly acti
   await page.evaluate(() => { (window as any).__lfsTracking.fetchHold = true; });
   await dialog.getByRole('button', { name: 'Fetch reviewed object', exact: true }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
     (window as any).__lfsTracking.finish();
@@ -665,7 +665,7 @@ test('LFS hydration repository switch blocks execution and reopening discards ol
   await openHydrationReview(page);
   const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
   });

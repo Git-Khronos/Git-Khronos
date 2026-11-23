@@ -1181,8 +1181,16 @@ mod tests {
     #[test]
     fn skip_and_abort_mail_patch_do_not_replace_ignored_local_files() {
         for (action, blocked, kind) in [
-            (MailPatchAction::Skip, "text", "mailPatchSkipLocalPathObstruction"),
-            (MailPatchAction::Abort, "restore", "mailPatchAbortLocalPathObstruction"),
+            (
+                MailPatchAction::Skip,
+                "text",
+                "mailPatchSkipLocalPathObstruction",
+            ),
+            (
+                MailPatchAction::Abort,
+                "restore",
+                "mailPatchAbortLocalPathObstruction",
+            ),
         ] {
             let fixture = Fixture::new();
             fixture.commit("text", b"base\n", "Base");
@@ -1224,7 +1232,10 @@ mod tests {
             assert!(error.message.contains(blocked));
             assert!(Fixture::in_progress(&target));
             let after = progress(&target, String::new(), None).unwrap();
-            assert_eq!((after.current, after.total), (stopped.current, stopped.total));
+            assert_eq!(
+                (after.current, after.total),
+                (stopped.current, stopped.total)
+            );
             assert_eq!(Fixture::head(&target), head);
             assert_eq!(fs::read(target.join(".git/index")).unwrap(), index);
             assert_eq!(Fixture::output(&target, &["show-ref"]), refs);
@@ -1260,7 +1271,11 @@ mod tests {
 
         let result = control_mail_patch(&target, MailPatchAction::Abort).unwrap();
         assert!(!result.stopped, "{}", result.message);
-        assert!(result.message.contains("Not rewinding"), "{}", result.message);
+        assert!(
+            result.message.contains("Not rewinding"),
+            "{}",
+            result.message
+        );
         assert_eq!(Fixture::head(&target), base);
         assert_eq!(fs::read(target.join(".git/index")).unwrap(), index);
         assert_eq!(fs::read(target.join("text")).unwrap(), b"receiver\n");

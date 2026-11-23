@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 
 test('foreground lifetime survives cleared logs and ends only after the last concurrent completion', async ({ page }) => {
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     let firstDone!: () => void;
     let secondDone!: () => void;
     const first = git.run('First…', () => new Promise<void>(resolve => { firstDone = resolve; }), null, null, false, false);
@@ -27,7 +27,7 @@ test('foreground lifetime survives cleared logs and ends only after the last con
 for (const outcome of ['success', 'cancelled']) {
   test(`cancellation acceptance remains distinct from ${outcome} completion and a refused request can retry`, async ({ page }) => {
     const result = await page.evaluate(async outcome => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       let complete!: () => void;
       let fail!: (error: unknown) => void;
       let attempts = 0;
@@ -60,7 +60,7 @@ for (const outcome of ['success', 'cancelled']) {
 for (const fails of [false, true]) {
   test(`background fetch owns its repository until ${fails ? 'failure' : 'completion after closure'} and does not retry failures`, async ({ page }) => {
     const result = await page.evaluate(async fails => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
       let complete!: (snapshot: unknown) => void;

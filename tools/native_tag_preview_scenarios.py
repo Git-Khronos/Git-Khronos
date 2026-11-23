@@ -48,4 +48,41 @@ def tag_preview(driver, fixtures, report):
     assert fixtures.git(repository, "rev-parse", "HEAD") == head
     assert ((repository / "fixture.txt").read_bytes(), (repository / ".git/index").read_bytes()) == before
     report["scenarios"].append("native-tag-preview-does-not-substitute-a-packed-descendant-tag")
-    return repository, repo_id
+
+    navigation_repository = fixtures.repository("tag-navigation-and-branch", commits=3)
+    original_head = fixtures.git(navigation_repository, "rev-parse", "HEAD")
+    target = fixtures.git(navigation_repository, "rev-parse", "HEAD~1")
+    fixtures.git(navigation_repository, "tag", "-a", "release-base", "-m", "Release base", target)
+    nav_repo_id = open_ui(driver, navigation_repository)
+    if driver.script(
+        "return document.querySelector('#reference-section-tags button.sidebar-heading')?.getAttribute('aria-expanded')"
+    ) == "false":
+        driver.click("#reference-section-tags button.sidebar-heading")
+    tag_selector = '[aria-label="Tag release-base"]'
+    driver.wait(f"return !!document.querySelector({json.dumps(tag_selector)})")
+    driver.click(tag_selector)
+    selected_row = f'.commit-row[data-commit-oid="{target}"].selected'
+    driver.wait(f"return !!document.querySelector({json.dumps(selected_row)})")
+    report["scenarios"].append("native-clicking-a-tag-navigates-to-its-peeled-commit")
+
+    driver.context_click(tag_selector)
+    driver.wait("return !!document.querySelector('.graph-action-menu [role=menu]') || !!document.querySelector('.graph-action-menu')")
+    driver.click_scrolled_text(
+        '[data-create-context-branch]', "Create branch here…", wait_for_ready=True,
+    )
+    form = ".context-create-branch-form"
+    driver.wait(f"return !!document.querySelector({json.dumps(form)})")
+    driver.script(
+        "const field = document.querySelector('#context-branch-name'); "
+        "field.value = 'owned-release-base'; field.dispatchEvent(new Event('input', {bubbles:true}));"
+    )
+    driver.click_visible(form + " button[type=submit]", "Create")
+    driver.wait(f"return !document.querySelector({json.dumps(form)})")
+    assert fixtures.git(navigation_repository, "symbolic-ref", "HEAD") == "refs/heads/owned-release-base"
+    assert fixtures.git(navigation_repository, "rev-parse", "HEAD") == target
+    assert fixtures.git(navigation_repository, "rev-parse", "refs/heads/owned-release-base") == target
+    assert fixtures.git(navigation_repository, "rev-parse", "refs/heads/main") == original_head
+    assert fixtures.git(navigation_repository, "rev-parse", "refs/tags/release-base^{}") == target
+    assert not fixtures.git(navigation_repository, "status", "--porcelain=v1")
+    report["scenarios"].append("native-ui-creates-and-checks-out-a-branch-at-the-tagged-commit")
+    return navigation_repository, nav_repo_id

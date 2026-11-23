@@ -9,7 +9,7 @@ export interface BranchDropAdvice {
 }
 
 @Component({
-  selector: 'gc-branch-drop-menu',
+  selector: 'gk-branch-drop-menu',
   imports: [IconComponent],
   templateUrl: './branch-drop-menu.component.html',
   styleUrl: './branch-drop-menu.component.scss',

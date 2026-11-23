@@ -98,7 +98,7 @@ for (const outcome of ['cancel', 'fail', 'load', 'switch'] as const) {
         // A different checkout can contain a submodule with the same
         // relative path. Its presence must not revive the original menu.
         await page.evaluate(() => {
-          const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+          const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
           const repo = git.repository();
           git.repositories.update((items: any[]) => [...items, { ...repo, id: 'sidebar-other', path: '/owned/other-sidebar' }]);
           git.activateRepository('sidebar-other');
@@ -241,7 +241,7 @@ test('a retired tab menu cannot close the active repository when reopened in the
   const close = menu.getByRole('menuitem', { name: 'Close repository', exact: true });
   await expect(close).toBeVisible();
   await close.evaluate(element => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.openRepositoryTabMenu(new MouseEvent('contextmenu', { clientX: 450, clientY: 100 }), app.git.activeRepositoryId());
     (element as HTMLButtonElement).click();
   });

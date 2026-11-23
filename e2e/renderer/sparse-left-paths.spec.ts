@@ -8,7 +8,7 @@ test('sparse selection names changed paths Git kept outside it and refreshes sta
   await page.goto('/?sparse-preview');
   await expect(page.locator('.app-shell')).toBeVisible();
   await page.evaluate((left) => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const calls: any[] = (window as any).__sparseCalls = [];
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       calls.push({ command, args });
@@ -39,7 +39,7 @@ test('stage all discloses changed paths outside the sparse selection and shows G
     message: 'Other changes were staged, but Git left 1 changed path(s) outside the sparse checkout selection unstaged: docs/guide.md.',
     hint: 'Add their directories to the sparse checkout selection and stage again, or restore those files.' };
   await page.evaluate((skipped) => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     // Exercise native reconciliation rather than the browser sample's deliberate
     // background-read suppression. The transport remains owned by this test.
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -61,7 +61,7 @@ test('stage all discloses changed paths outside the sparse selection and shows G
   await expect(alert).toContainText('docs/guide.md');
   const result = await page.evaluate(() => ({
     commands: (window as any).__sparseCalls.map((call: any) => call.command),
-    paths: (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().status.entries.map((entry: any) => entry.path),
+    paths: (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().status.entries.map((entry: any) => entry.path),
   }));
   expect(result.commands).toEqual(expect.arrayContaining(['stage_all', 'refresh_repository_status']));
   expect(result.paths).toContain('docs/guide.md');

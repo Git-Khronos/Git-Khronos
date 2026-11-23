@@ -59,7 +59,7 @@ def update_one_submodule(driver, fixtures, report):
     if driver.script(f"return document.querySelector({heading!r}).getAttribute('aria-expanded') === 'false'"):
         driver.click_visible(heading)
     actions = '.submodule-actions[aria-label="Submodule actions for modules/chosen"]'
-    dialog = 'gc-submodule-state-review [role="dialog"]'
+    dialog = 'gk-submodule-state-review [role="dialog"]'
     group = dialog + ' [aria-label="Update modules/chosen"]'
 
     def open_review():

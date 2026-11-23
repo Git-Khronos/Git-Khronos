@@ -27,7 +27,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'remote review boundary test' }));
     git.repositories.update((items: any[]) => items.map(item => ({ ...item,
@@ -96,7 +96,7 @@ for (const review of reviews) {
   test(`${review} valid confirmation keeps its reviewed repository`, async ({ page }) => {
     await open(page, review);
     const force = review === 'force' ? await page.evaluate(() => {
-      const review = (window as any).ng.getComponent(document.querySelector('gc-root')).pendingForcePush();
+      const review = (window as any).ng.getComponent(document.querySelector('gk-app')).pendingForcePush();
       return { remote: review.remote, branch: review.remoteBranch,
         expectedRemoteOid: review.expectedRemoteOid, expectedHeadOid: review.expectedHeadOid, expectedDestinationState: 'd'.repeat(64) };
     }) : null;
@@ -126,13 +126,13 @@ for (const review of reviews) {
 test('an obsolete publish selector cannot change a replacement draft', async ({ page }) => {
   await open(page, 'publish');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const outgoing = document.querySelector<HTMLSelectElement>('[name=publishRemote]')!;
     (window as any).__openRemoteReview('publish');
     app.publishRemote.set('replacement-choice');
     outgoing.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).publishRemote())).toBe('replacement-choice');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).publishRemote())).toBe('replacement-choice');
 });
 
 for (const outcome of ['success', 'failure']) {
@@ -146,7 +146,7 @@ for (const outcome of ['success', 'failure']) {
     await expect(page.locator('.lfs-prune-list')).toContainText('bbbbbbbbbbbb');
     await page.evaluate(outcome => outcome === 'success' ? (window as any).__previewReplies[0].resolve('a')
       : (window as any).__previewReplies[0].reject(), outcome);
-    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
     await expect(page.locator('.lfs-prune-list')).toContainText('bbbbbbbbbbbb');
     expect(await calls(page)).toEqual([]);
   });
@@ -158,8 +158,8 @@ test('an old preview finally block cannot end a newer LFS loading state', async 
   await page.evaluate(() => (window as any).__openRemoteReview('lfs'));
   await expect.poll(() => page.evaluate(() => (window as any).__previewReplies.length)).toBe(2);
   await page.evaluate(() => (window as any).__previewReplies[0].resolve('a'));
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).lfsPruneReviewing())).toBe(true);
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).lfsPrunePreview())).toBeNull();
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).lfsPruneReviewing())).toBe(true);
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).lfsPrunePreview())).toBeNull();
   await page.evaluate(() => (window as any).__previewReplies[1].resolve('b'));
   await expect(page.locator('.lfs-prune-list')).toContainText('bbbbbbbbbbbb');
 });
@@ -167,7 +167,7 @@ test('an old preview finally block cannot end a newer LFS loading state', async 
 test('LFS preview arrival does not steal focus from the advanced section', async ({ page }) => {
   await page.evaluate(() => (window as any).__holdPreviews = true);
   await page.evaluate(() => (window as any).__openRemoteReview('lfs'));
-  const summary = page.locator('gc-lfs-prune-dialog summary');
+  const summary = page.locator('gk-lfs-prune-dialog summary');
   await summary.click();
   await expect(summary).toBeFocused();
   await page.evaluate(() => (window as any).__previewReplies[0].resolve('a'));
@@ -179,7 +179,7 @@ test('LFS preview arrival does not steal focus from the advanced section', async
 for (const change of ['repository', 'replacement']) {
   test(`an outgoing Add Remote action cannot consume a ${change} publish review`, async ({ page }) => {
     await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.repositories.update((items: any[]) => items.map(item => ({ ...item, remotes: [] })));
     });
     const modal = await open(page, 'publish');
@@ -198,7 +198,7 @@ for (const change of ['repository', 'replacement']) {
 
 test('a valid Add Remote handoff retains its publish source checkout', async ({ page }) => {
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map(item => ({ ...item, remotes: [] })));
   });
   const modal = await open(page, 'publish');
@@ -206,7 +206,7 @@ test('a valid Add Remote handoff retains its publish source checkout', async ({ 
   const editor = page.getByRole('dialog', { name: 'Add Remote', exact: true });
   await expect(editor).toBeVisible();
   const owner = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return app.remoteEditorOwner();
   });
   expect(owner.repositoryId).toBe(await page.evaluate(() => (window as any).__sourceId));
@@ -226,9 +226,9 @@ for (const retirement of ['cancel', 'repository', 'path']) {
     else await page.evaluate(retirement => (window as any).__changeRemoteScope(retirement), retirement);
     await expect(modal).not.toBeVisible();
     await page.evaluate(() => (window as any).__destinationReplies[0].resolve());
-    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
     await expect(modal).not.toBeVisible();
-    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).forcePushDestination())).toBeNull();
+    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).forcePushDestination())).toBeNull();
     expect(await calls(page)).toEqual([]);
   });
 }
@@ -240,7 +240,7 @@ test('a failed force destination inspection preserves the error and dispatches n
   await expect.poll(() => page.evaluate(() => (window as any).__destinationReplies.length)).toBe(1);
   await page.evaluate(() => (window as any).__destinationReplies[0].reject());
   await expect(modal).not.toBeVisible();
-  await expect(page.locator('gc-error-toast')).toContainText('Owned destination inspection refusal');
+  await expect(page.locator('gk-error-toast')).toContainText('Owned destination inspection refusal');
   expect(await calls(page)).toEqual([]);
 });
 

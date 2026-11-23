@@ -8,7 +8,7 @@ function sameAccount(a: GitLabAccount, b: GitLabAccount): boolean {
 }
 
 @Component({
-  selector: 'gc-gitlab-clone',
+  selector: 'gk-gitlab-clone',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './gitlab-clone.component.html',
   styleUrl: './gitlab-clone.component.scss',

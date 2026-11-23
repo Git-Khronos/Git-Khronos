@@ -20,7 +20,7 @@ export interface FileContentDialogRequest {
 }
 
 @Component({
-  selector: 'gc-file-content-dialog',
+  selector: 'gk-file-content-dialog',
   imports: [BackgroundOperationWarningsComponent, FileMediaComponent, WorkingFileEditorComponent, FileToolsDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -28,9 +28,9 @@ export interface FileContentDialogRequest {
       <section role="dialog" aria-modal="true" [attr.aria-labelledby]="editing() ? 'working-editor-title' : 'standalone-content-title'"
         [class.editing]="editing()" [class.has-content-warnings]="git.backgroundOperationWarnings().length > 0" [inert]="!!toolRequest()"
         (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-        @if (git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
+        @if (git.backgroundOperationWarnings().length) { <gk-background-operation-warnings /> }
         @if (editing()) {
-          <gc-working-file-editor [request]="{ repoId: request().selection.repoId, path: request().selection.request.path, recovery: editorRecovery() }"
+          <gk-working-file-editor [request]="{ repoId: request().selection.repoId, path: request().selection.request.path, recovery: editorRecovery() }"
             (closed)="leaveEditor()" (recoveryResolved)="resolvedRecovery.set($event)" (externalRequested)="reviewExternalEditor($event)" />
         } @else {
         <header>
@@ -56,14 +56,14 @@ export interface FileContentDialogRequest {
               @else { <pre tabindex="0">{{ readOnlyText() }}</pre> }
             </section>
           }
-          <gc-file-media [selection]="request().selection" [showWorkingText]="showWorkingText()" (reloadRequested)="refreshWorkingText()" />
+          <gk-file-media [selection]="request().selection" [showWorkingText]="showWorkingText()" (reloadRequested)="refreshWorkingText()" />
         </div>
         }
       </section>
     </div>
     @for (tool of toolRequest() ? [toolRequest()!] : []; track tool.id) {
       @defer (on immediate) {
-        <gc-file-tools-dialog [request]="tool" (closed)="closeTool()" (changed)="changed.emit($event)" />
+        <gk-file-tools-dialog [request]="tool" (closed)="closeTool()" (changed)="changed.emit($event)" />
       } @placeholder {
         <div class="tool-loader"><section role="dialog" aria-modal="true" aria-label="Opening file tools" (keydown)="handleToolLoaderKey($event)"><p role="status">Opening file tools…</p><button #toolLoaderClose type="button" (click)="closeToolLoader()">Cancel</button></section></div>
       } @error {

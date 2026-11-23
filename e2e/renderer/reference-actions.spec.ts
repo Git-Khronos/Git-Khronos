@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15000 });
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     app.tagsOpen.set(true);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
 test('tag preview rereads an annotation at the same target and never guesses the tag kind', async ({ page }) => {
   await page.evaluate(() => {
     const host = window as any;
-    const git = host.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = host.ng.getComponent(document.querySelector('gk-app')).git;
     const invoke = host.__TAURI_INTERNALS__.invoke;
     const tag = git.repository().tags.find(({ name }: any) => name === 'v0.1.0');
     host.__tagAnnotation = 'Original release note';
@@ -72,7 +72,7 @@ test('tag preview rereads an annotation at the same target and never guesses the
 test('a pending tag preview cannot read or publish into a different checkout visit', async ({ page }) => {
   await page.evaluate(() => {
     const host = window as any;
-    const app = host.ng.getComponent(document.querySelector('gc-root'));
+    const app = host.ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     host.__changeTagCheckout = () => {
       git.repositories.update((repositories: any[]) => repositories.map(repo =>
@@ -88,7 +88,7 @@ test('a pending tag preview cannot read or publish into a different checkout vis
     host.__changeTagCheckout();
   });
   // Confirm the original delayed pointer request has had time to fire.
-  await page.waitForFunction(() => (window as any).ng.getComponent(document.querySelector('gc-root')).tagPreviewTimer === null);
+  await page.waitForFunction(() => (window as any).ng.getComponent(document.querySelector('gk-app')).tagPreviewTimer === null);
   const tag = page.locator('.tag-item').filter({ hasText: 'v0.1.0' });
   const preview = page.getByRole('tooltip');
   await expect(preview).toBeHidden();
@@ -96,7 +96,7 @@ test('a pending tag preview cannot read or publish into a different checkout vis
   await expect(preview).toContainText('Loading…');
   await page.evaluate(() => {
     const host = window as any;
-    const app = host.ng.getComponent(document.querySelector('gc-root'));
+    const app = host.ng.getComponent(document.querySelector('gk-app'));
     const [tag] = app.git.repository().tags;
     host.__changeTagCheckout();
     host.__finishTagInspection({ ...tag, annotated: true, message: 'Retired annotation' });
@@ -105,7 +105,7 @@ test('a pending tag preview cannot read or publish into a different checkout vis
   expect(await page.evaluate(() => {
     const host = window as any;
     return {
-      details: host.ng.getComponent(document.querySelector('gc-root')).git.tagDetails(),
+      details: host.ng.getComponent(document.querySelector('gk-app')).git.tagDetails(),
       reads: host.__referenceCalls.filter(({ command }: any) => command === 'inspect_tag').length,
     };
   })).toEqual({ details: null, reads: 1 });
@@ -147,7 +147,7 @@ test('a stale tag editor cannot dispatch into a newly selected repository', asyn
   const dialog = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
   await dialog.getByLabel('Tag name', { exact: true }).fill('source-only');
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const other = { ...git.repository(), id: 'other-tag-repository', path: '/workspace/other-tag-repository' };
     git.repositories.update((repositories: any[]) => [...repositories, other]);
@@ -166,7 +166,7 @@ test('a stale upstream editor cannot change an identically named branch in anoth
   const dialog = page.getByRole('dialog', { name: 'Set upstream for main' });
   await expect(dialog.getByLabel('Upstream branch')).toHaveValue('origin/main');
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const other = { ...git.repository(), id: 'other-upstream-repository', path: '/workspace/other-upstream-repository' };
     git.repositories.update((repositories: any[]) => [...repositories, other]);
@@ -184,7 +184,7 @@ test('source path changes retire a tag review even when the repository ID stays 
   const dialog = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
   await dialog.getByLabel('Tag name', { exact: true }).fill('do-not-dispatch');
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.repositories.update((repositories: any[]) => repositories.map(repository =>
       repository.id === git.activeRepositoryId() ? { ...repository, path: '/workspace/changed-path' } : repository));
@@ -197,7 +197,7 @@ test('source path changes retire a tag review even when the repository ID stays 
 
 test('valid tag and upstream reviews retain their original native command payloads', async ({ page }) => {
   const source = await page.evaluate(() => {
-    const repository = (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository();
+    const repository = (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository();
     return { id: repository.id, oid: repository.tags[0].oid };
   });
   await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
@@ -239,14 +239,14 @@ test('a completed tag write cannot close or clear a replacement draft', async ({
   await expect.poll(() => page.evaluate(() => typeof (window as any).__finishOwnedTag)).toBe('function');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.showTagCreator(app.git.repository().headOid, 'replacement review');
     app.contextTagName.set('keep-this-new-draft');
   });
   dialog = page.getByRole('dialog', { name: 'Create tag at replacement review' });
   await expect(dialog).toBeVisible();
   await page.evaluate(() => (window as any).__finishOwnedTag());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(dialog.getByLabel('Tag name', { exact: true })).toHaveValue('keep-this-new-draft');
   await expect(dialog).toBeVisible();
   expect(await page.evaluate(() => (window as any).__referenceCalls
@@ -320,7 +320,7 @@ test('selected tag push chooses one remote and pins the displayed target', async
   await dialog.getByRole('button', { name: 'Push tag' }).click();
   const result = await page.evaluate(() => ({
     call: (window as any).__referenceCalls.find((call: any) => call.command === 'transport_reference'),
-    tag: (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().tags[0],
+    tag: (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().tags[0],
   }));
   expect(result.call.args).toMatchObject({ request: { remote: 'upstream', name: 'v0.1.0', kind: 'tag',
     delete: false, expectedOid: result.tag.oid }, operationId: expect.any(String) });
@@ -334,7 +334,7 @@ test('compact reference confirmation separates its field and wraps its actions',
   const dialog = page.getByRole('alertdialog', { name: 'Delete tag on remote', exact: true });
   await page.getByRole('button', { name: 'Check remote tag', exact: true }).click();
   await page.setViewportSize({ width: 320, height: 650 });
-  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).setZoom(200));
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).setZoom(200));
   expect(await dialog.getByLabel('Remote', { exact: true }).evaluate(select => {
     const label = (select as HTMLSelectElement).labels![0];
     return select.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
@@ -441,7 +441,7 @@ test('separate push URLs are advanced and save both destinations in one operatio
 
 test('renaming a remote saves URL changes in one operation and keeps its preferences', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     (window as any).__renameFailure = null;
     const invoke = (window as any).__TAURI_INTERNALS__.invoke;
@@ -473,7 +473,7 @@ test('renaming a remote saves URL changes in one operation and keeps its prefere
   });
 
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.hiddenBranches.set(['origin/docs', 'upstream/main']);
   });
   await page.getByRole('region', { name: 'Remote origin' })
@@ -517,7 +517,7 @@ test('renaming a remote saves URL changes in one operation and keeps its prefere
   await expect(page.getByRole('region', { name: 'Remote team/primary' })
     .getByRole('button', { name: 'Expand remote team/primary' })).toHaveAttribute('aria-expanded', 'false');
   const preferences = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { icons: app.remoteLocationIcons(), collapsed: app.collapsedRemoteLocations(), hidden: app.hiddenBranches() };
   });
   expect(preferences.hidden).toEqual(['team/primary/docs', 'upstream/main']);
@@ -529,7 +529,7 @@ test('renaming a remote saves URL changes in one operation and keeps its prefere
 
 test('tag rename validates the new name and can rename the remote copy after checking it', async ({ page }) => {
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const id = git.activeRepositoryId();
     git.repositories.update((repositories: any[]) => repositories.map((repository) => repository.id !== id ? repository : {
       ...repository,
@@ -588,7 +588,7 @@ test('local-only tag rename sends no remote and keeps the dialog open on failure
 
 test('remote branch rename pins the remote and commit and carries graph filters to the new name', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.hiddenBranches.set(['origin/docs', 'upstream/docs']);
     app.soloBranches.set([]);
   });
@@ -605,7 +605,7 @@ test('remote branch rename pins the remote and commit and carries graph filters 
   await dialog.getByRole('button', { name: 'Rename remote branch', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const result = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return {
       call: (window as any).__referenceCalls.find((call: any) => call.command === 'rename_reference'),
       oid: app.git.repository().branches.find((branch: any) => branch.name === 'origin/docs').oid,
@@ -619,7 +619,7 @@ test('remote branch rename pins the remote and commit and carries graph filters 
 });
 test('local branch rename carries hidden and pinned preferences to the new name', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.hiddenBranches.set(['feature/partial-staging', 'origin/docs']);
     app.soloBranches.set([]);
     app.pinnedBranch.set('feature/partial-staging');
@@ -636,7 +636,7 @@ test('local branch rename carries hidden and pinned preferences to the new name'
   await expect.poll(() => page.evaluate(() => (window as any).__referenceCalls
     .some((call: any) => call.command === 'rename_branch'))).toBe(true);
   const result = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return {
       call: (window as any).__referenceCalls.find((call: any) => call.command === 'rename_branch'),
       hidden: app.hiddenBranches(),

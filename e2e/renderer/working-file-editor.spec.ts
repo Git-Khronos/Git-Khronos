@@ -126,7 +126,7 @@ test('repository switches retain a draft and disable writes to another repositor
 test('an unmounted held open is cancelled and its late context is closed', async ({ page }) => {
   await open(page, 'held-open');
   await page.getByRole('button', { name: 'Back to preview', exact: true }).click();
-  await expect(page.locator('gc-working-file-editor')).toHaveCount(0);
+  await expect(page.locator('gk-working-file-editor')).toHaveCount(0);
   await page.evaluate(() => (window as any).__editor.finish());
   await expect.poll(() => page.evaluate(() => (window as any).__editor.calls.filter((c: any) => c.command === 'close_working_file_editor').length)).toBe(1);
   expect(await page.evaluate(() => (window as any).__editor.calls.some((c: any) => c.command === 'cancel_git_operation'))).toBe(true);
@@ -256,7 +256,7 @@ test('dirty window-close review preserves the draft and cancels the close intent
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
   await expect(text).toHaveValue('retained for window close\n');
   await page.getByRole('button', { name: 'Save file', exact: true }).click();
-  await expect(page.locator('gc-working-file-editor [role=status]')).toContainText('File saved.');
+  await expect(page.locator('gk-working-file-editor [role=status]')).toContainText('File saved.');
   expect(await destroyedWindows(page)).toBe(0);
 });
 
@@ -283,7 +283,7 @@ test('a lost save reply retains a window-close draft without requesting destruct
   await open(page, 'transport-error');
   const text = page.getByRole('textbox', { name: 'Working file text', exact: true }); await text.fill('uncertain save\n');
   await requestWindowClose(page); await page.getByRole('button', { name: 'Save draft', exact: true }).click();
-  await expect(page.locator('gc-working-file-editor [role=alert]')).toContainText('Retain your draft');
+  await expect(page.locator('gk-working-file-editor [role=alert]')).toContainText('Retain your draft');
   await expect(text).toHaveValue('uncertain save\n'); expect(await destroyedWindows(page)).toBe(0);
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Review unsaved draft' })).toHaveCount(0);
@@ -307,7 +307,7 @@ test('a refused window destruction retains the draft and requires an explicit re
   const text = page.getByRole('textbox', { name: 'Working file text', exact: true }); await text.fill('keep after close failure\n');
   await page.evaluate(() => { (window as any).__editor.windowDestroyError = true; });
   await requestWindowClose(page); await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
-  await expect(page.locator('gc-working-file-editor [role=alert]')).toContainText('Your draft is retained');
+  await expect(page.locator('gk-working-file-editor [role=alert]')).toContainText('Your draft is retained');
   expect(await destroyedWindows(page)).toBe(1); await expect(text).toHaveValue('keep after close failure\n');
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
   expect(await destroyedWindows(page)).toBe(1);
@@ -320,19 +320,19 @@ test('late window-close listener registration is removed without opening an edit
   await prepare(page, 'held-close-listen');
   await page.getByRole('button', { name: 'Edit working copy', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Preparing editor…', exact: true })).toBeDisabled();
-  await expect(page.locator('gc-working-file-editor')).toHaveCount(0);
+  await expect(page.locator('gk-working-file-editor')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => typeof (window as any).__editor.finishWindowListen)).toBe('function');
   await page.getByRole('button', { name: 'Close file content', exact: true }).click();
   await page.evaluate(() => (window as any).__editor.finishWindowListen());
   await expect.poll(() => page.evaluate(() => (window as any).__editor.windowUnlistens.length)).toBe(1);
-  await expect(page.locator('gc-working-file-editor')).toHaveCount(0); expect(await destroyedWindows(page)).toBe(0);
+  await expect(page.locator('gk-working-file-editor')).toHaveCount(0); expect(await destroyedWindows(page)).toBe(0);
 });
 
 test('failed close protection refuses editing and permits explicit installation retry', async ({ page }) => {
   await prepare(page, 'close-listen-error');
   await page.getByRole('button', { name: 'Edit working copy', exact: true }).click();
-  await expect(page.locator('gc-file-content-dialog [role=alert]')).toContainText('Editing has not opened');
-  await expect(page.locator('gc-working-file-editor')).toHaveCount(0);
+  await expect(page.locator('gk-file-content-dialog [role=alert]')).toContainText('Editing has not opened');
+  await expect(page.locator('gk-working-file-editor')).toHaveCount(0);
   await page.evaluate(() => { (window as any).__editor.mode = 'ready'; });
   await page.getByRole('button', { name: 'Edit working copy', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Working file text', exact: true })).toHaveValue('before\n');
@@ -351,6 +351,6 @@ test('late close protection does not open an editor for a replaced file request'
   await expect(page.locator('#standalone-content-title')).toHaveText('replacement.md');
   await page.evaluate(() => (window as any).__editor.finishWindowListen());
   await expect.poll(() => page.evaluate(() => (window as any).__editor.windowUnlistens.length)).toBe(1);
-  await expect(page.locator('gc-working-file-editor')).toHaveCount(0);
+  await expect(page.locator('gk-working-file-editor')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__editor.calls.filter((c: any) => c.command === 'open_working_file_editor'))).toEqual([]);
 });

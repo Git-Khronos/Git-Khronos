@@ -10,7 +10,7 @@ export type SidebarItemAction = 'open' | 'copy-path' | 'move' | 'repair' | 'regi
   | 'toggle-lock' | 'remove' | 'remove-and-delete' | 'initialize' | 'update' | 'copy-url';
 
 @Component({
-  selector: 'gc-sidebar-item-actions',
+  selector: 'gk-sidebar-item-actions',
   imports: [IconComponent],
   templateUrl: './sidebar-item-actions.component.html',
   styleUrl: './sidebar-item-actions.component.scss',

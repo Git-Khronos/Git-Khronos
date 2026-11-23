@@ -15,15 +15,15 @@ export interface RepositoryLinkDialogRequest {
 }
 
 @Component({
-  selector: 'gc-repository-link-dialog',
+  selector: 'gk-repository-link-dialog',
   imports: [FormsModule, RepositoryDialogComponent, IncomingLinksDialogComponent],
   providers: [RepositoryFormDrafts],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (cloneReview()) {
-      <gc-repository-dialog mode="clone" [cloneOnly]="true" (closed)="cloneReview.set(false)" (opening)="opening.emit()" (opened)="afterClone()" />
+      <gk-repository-dialog mode="clone" [cloneOnly]="true" (closed)="cloneReview.set(false)" (opening)="opening.emit()" (opened)="afterClone()" />
     } @else if (inboxView()) {
-      <gc-incoming-links-dialog (closed)="close()" (review)="reviewIncoming($event)" />
+      <gk-incoming-links-dialog (closed)="close()" (review)="reviewIncoming($event)" />
     } @else {
       <div class="link-backdrop" (click)="close()">
         <section #dialog role="dialog" aria-modal="true" aria-labelledby="repository-link-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)" [attr.aria-busy]="busy()">

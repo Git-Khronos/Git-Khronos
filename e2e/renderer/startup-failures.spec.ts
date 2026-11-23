@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { lazyChunkForExport, requestIsChunk } from './lazy-chunk-routing';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
@@ -7,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 
 test('reports native startup failures without presenting sample data', async ({ page }) => {
   const result = await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.repositories.set([]);
     git.activeRepositoryId.set(null);
@@ -43,7 +44,7 @@ test('reports native startup failures without presenting sample data', async ({ 
 
 test('preserves saved repository paths and reports when none can be restored', async ({ page }) => {
   const result = await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const savedWorkspace = {
       id: 'default',
@@ -88,8 +89,10 @@ test('preserves saved repository paths and reports when none can be restored', a
 });
 
 async function holdSavedRepositoryStartup(page: Page) {
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
   const snapshot = await page.evaluate(() => ({
-    ...(window as any).ng.getComponent(document.querySelector('gc-root')).git.repository(),
+    ...(window as any).ng.getComponent(document.querySelector('gk-app')).git.repository(),
     id: 'saved-startup',
     path: '/owned/startup-project',
     name: 'startup-project',
@@ -103,7 +106,7 @@ async function holdSavedRepositoryStartup(page: Page) {
     localStorage.setItem('git-khronos.recent-repositories.v1', JSON.stringify([repository.path]));
     new MutationObserver(records => {
       fixture.mounts += records.flatMap(record => [...record.addedNodes]).filter(node =>
-        node instanceof Element && (node.matches('gc-welcome-launcher') || node.querySelector('gc-welcome-launcher')),
+        node instanceof Element && (node.matches('gk-welcome-launcher') || node.querySelector('gk-welcome-launcher')),
       ).length;
     }).observe(document, { subtree: true, childList: true });
     scope.isTauri = true;
@@ -136,7 +139,7 @@ test('restores a saved repository without mounting the welcome launcher', async 
   await holdSavedRepositoryStartup(page);
   const startup = page.getByRole('heading', { name: 'Restoring saved repository…' });
   await expect(startup).toBeVisible();
-  await expect(page.locator('gc-welcome-launcher')).toHaveCount(0);
+  await expect(page.locator('gk-welcome-launcher')).toHaveCount(0);
   await page.evaluate(() => (window as any).__savedStartup.start());
   await expect.poll(() => page.evaluate(() => typeof (window as any).__savedStartup.success)).toBe('function');
   await expect(startup).toBeVisible();
@@ -150,9 +153,9 @@ test('shows the welcome launcher after startup cannot restore a saved repository
   await holdSavedRepositoryStartup(page);
   await page.evaluate(() => (window as any).__savedStartup.start());
   await expect.poll(() => page.evaluate(() => typeof (window as any).__savedStartup.failure)).toBe('function');
-  await expect(page.locator('gc-welcome-launcher')).toHaveCount(0);
+  await expect(page.locator('gk-welcome-launcher')).toHaveCount(0);
   await page.evaluate(() => (window as any).__savedStartup.failure());
-  await expect(page.locator('gc-welcome-launcher').getByRole('button', { name: /Open repository/ })).toBeVisible();
+  await expect(page.locator('gk-welcome-launcher').getByRole('button', { name: /Open repository/ })).toBeVisible();
   await expect(page.locator('.error-toast')).toContainText('Could not restore 1 saved repository: startup-project');
 });
 
@@ -161,19 +164,21 @@ test('a keyboard user can request the launcher before saved restoration complete
   const show = page.getByRole('button', { name: 'Show repository launcher' });
   await show.focus();
   await show.press('Enter');
-  await expect(page.locator('gc-welcome-launcher').getByRole('button', { name: /Open repository/ })).toBeFocused();
+  await expect(page.locator('gk-welcome-launcher').getByRole('button', { name: /Open repository/ })).toBeFocused();
   await page.evaluate(() => (window as any).__savedStartup.start());
   await expect.poll(() => page.evaluate(() => typeof (window as any).__savedStartup.success)).toBe('function');
   await page.evaluate(() => (window as any).__savedStartup.success());
   await expect(page.locator('.commit-row').first()).toBeVisible();
-  await expect(page.locator('gc-welcome-launcher')).toHaveCount(0);
+  await expect(page.locator('gk-welcome-launcher')).toHaveCount(0);
 });
 
 test('keeps a local-open entry point if the welcome code cannot load', async ({ page }) => {
+  let welcomeChunk: string | null = null;
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
     const body = await response.text();
-    if (body.includes('gc-welcome-launcher') && body.includes('welcome-launcher-title')) await route.abort();
+    welcomeChunk = lazyChunkForExport(body, 'WelcomeLauncherComponent') ?? welcomeChunk;
+    if (requestIsChunk(route.request().url(), welcomeChunk)) await route.abort();
     else await route.fulfill({ response, body });
   });
   await holdSavedRepositoryStartup(page);
@@ -187,7 +192,7 @@ test('keeps a local-open entry point if the welcome code cannot load', async ({ 
 
 test('preserves unavailable paths when another saved repository restores', async ({ page }) => {
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const snapshot = { ...git.repository(), path: '/repos/available-project' };
     const savedWorkspace = {
@@ -219,7 +224,7 @@ test('preserves unavailable paths when another saved repository restores', async
   });
   await expect(page.locator('.error-toast')).toContainText('Could not restore 1 saved repository: missing-project');
   const state = await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return {
       restoredPaths: git.repositories().map((repo: { path: string }) => repo.path),
       savedPaths: JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!)[0].repositoryPaths,
@@ -229,7 +234,7 @@ test('preserves unavailable paths when another saved repository restores', async
   expect(state.savedPaths).toEqual(['/repos/missing-project', '/repos/available-project']);
 
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.activateRepository(git.activeRepositoryId());
     await git.switchWorkspace('other');
   });
@@ -237,7 +242,7 @@ test('preserves unavailable paths when another saved repository restores', async
   expect(afterSwitch).toEqual(['/repos/missing-project', '/repos/available-project']);
 
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     await git.switchWorkspace('default');
     git.closeRepository(git.activeRepositoryId());
   });
@@ -250,7 +255,7 @@ test('announces operation outcomes in a persistent status region', async ({ page
   await expect(status).toHaveAttribute('role', 'status');
   await expect(status).toHaveAttribute('aria-live', 'polite');
   await page.evaluate(() => {
-    (window as any).ng.getComponent(document.querySelector('gc-root')).git.activity.set('Fetch completed');
+    (window as any).ng.getComponent(document.querySelector('gk-app')).git.activity.set('Fetch completed');
   });
   await expect(status).toHaveText('Git status: Fetch completed');
 });
@@ -266,7 +271,7 @@ test('discloses an unavailable LFS count without reporting zero or blocking LFS 
   await page.goto('/?lfs-preview');
   await expect(page.locator('.lfs-pointer-count')).toHaveText('2');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((repositories: any[]) => repositories.map(repo => ({
       ...repo, lfs: { ...repo.lfs, trackedFiles: null, pointerFiles: null },
     })));

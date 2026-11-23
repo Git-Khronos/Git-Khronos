@@ -10,7 +10,7 @@ export interface ExternalEditorRequest { repoId: string; path: string; line: num
 export interface WorkingFileEditorRequest { repoId: string; path: string; recovery?: EditorDraftReference; }
 
 @Component({
-  selector: 'gc-working-file-editor',
+  selector: 'gk-working-file-editor',
   imports: [MarkdownPreviewComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -71,7 +71,7 @@ export interface WorkingFileEditorRequest { repoId: string; path: string; recove
       </section>
     }
     @if (markdown()) {
-      <gc-markdown-preview [text]="draft()" />
+      <gk-markdown-preview [text]="draft()" />
     } @else {
     <label class="visually-hidden" for="working-editor-text">Working file text</label>
     <textarea #textArea id="working-editor-text" spellcheck="false" [value]="draft()"

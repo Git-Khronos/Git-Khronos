@@ -5,7 +5,7 @@ for (const command of ['push_repository', 'force_push_repository', 'publish_bran
     await page.goto('/');
     await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
     const result = await page.evaluate(async (command) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const git = app.git;
       const before = git.repository();
       // Prime the graph cache before accepting a snapshot with unchanged commit OIDs.
@@ -89,7 +89,7 @@ test('a rejected push never moves the remote decoration to the local tip', async
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const before = git.repository();
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));

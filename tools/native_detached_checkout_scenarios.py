@@ -755,7 +755,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
     untracked.write_text('Owned untracked contents.\n')
     files = ('fixture.txt', staged.name, untracked.name)
     index_blob = fixtures.git(repository, 'rev-parse', ':' + staged.name)
-    dialog = 'gc-history-review-dialog [role=alertdialog]'
+    dialog = 'gk-history-review-dialog [role=alertdialog]'
     detached = '.statusbar button[aria-label^="View detached HEAD commit"]'
 
     def open_review(branch):
@@ -781,7 +781,7 @@ def reviewed_detached_checkout(driver, fixtures, report):
         driver.wait(f'return document.activeElement?.matches({json.dumps(dialog + " [data-history-dialog-cancel]")})')
         return driver.script('return document.querySelector(arguments[0]).textContent', dialog)
 
-    driver.wait('return !!document.querySelector("gc-root")')
+    driver.wait('return !!document.querySelector("gk-root")')
     repo_id = open_ui(driver, repository)
     before = checkout_footprint(fixtures, repository, files)
     review = open_review('main')

@@ -5,7 +5,7 @@ async function prepare(page: Page) {
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
     const state = window as any;
-    const app = state.ng.getComponent(document.querySelector('gc-root'));
+    const app = state.ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer tools fixture' }));
     state.toolCalls = []; let sequence = 0, callback = 100;
     state.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined };
@@ -49,7 +49,7 @@ test('persists a default with literal arguments and starts only on an explicit t
   expect(await page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command.startsWith('open_')))).toEqual([]);
   await dialog.getByRole('button', { name: 'Close preferences' }).click();
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
-  await expect(page.locator('gc-terminal-panel').getByRole('tab', { name: 'Owned shell 1', exact: true })).toBeVisible();
+  await expect(page.locator('gk-terminal-panel').getByRole('tab', { name: 'Owned shell 1', exact: true })).toBeVisible();
   const calls = await page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command === 'open_configured_terminal'));
   expect(calls).toHaveLength(1);
   expect(calls[0].args.profile.executable).toBe('/owned/program path');
@@ -77,7 +77,7 @@ test('selects a non-default terminal profile and retries its captured command af
   await expect(page.getByRole('status').filter({ hasText: 'Profile saved.' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close preferences' }).click();
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
   const opener = panel.getByRole('button', { name: 'Choose terminal profile' });
   await opener.click();
@@ -118,7 +118,7 @@ test('shows legacy profiles as terminal profiles without starting or silently de
   expect(await page.evaluate(() => (window as any).toolCalls.filter((c: any) => c.command.startsWith('open_')))).toEqual([]);
   await dialog.getByRole('button', { name: 'Close preferences' }).click();
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
   await panel.getByRole('button', { name: 'Choose terminal profile' }).click();
   await panel.getByRole('button', { name: 'Open terminal', exact: true }).click();
@@ -137,7 +137,7 @@ test('requires another selection when an open terminal profile is deleted', asyn
   }
   await dialog.getByRole('button', { name: 'Close preferences' }).click();
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
   await panel.getByRole('button', { name: 'Choose terminal profile' }).click();
   await panel.getByLabel('Terminal profile', { exact: true }).selectOption({ label: 'Deleted shell' });
@@ -187,7 +187,7 @@ for (const width of [320, 700]) {
     await page.setViewportSize({ width, height: 800 });
     await prepare(page);
     await page.keyboard.press('Alt+t');
-    const panel = page.locator('gc-terminal-panel');
+    const panel = page.locator('gk-terminal-panel');
     await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
     await panel.getByRole('button', { name: 'Choose terminal profile' }).click();
     const chooser = panel.locator('.terminal-profile-launcher');
@@ -217,7 +217,7 @@ for (const width of [320, 700]) {
 test('opens the system terminal from the terminal panel and reports a missing terminal', async ({ page }) => {
   await prepare(page);
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await expect(panel.getByRole('tab', { name: 'system shell 1', exact: true })).toBeVisible();
   const external = panel.getByRole('button', { name: 'Open in system terminal' });
   await expect(external).toBeEnabled();

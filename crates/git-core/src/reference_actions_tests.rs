@@ -1491,15 +1491,24 @@ fn reviewed_implicit_pull_refuses_multiple_merge_sources_before_fetching() {
     let (repository, publisher, base, incoming) = pull_fixture(false, false);
     let path = &repository.0;
     run_mutation(
-        &publisher, &["switch", "-c", "extra", &base], "branch from fixture base",
+        &publisher,
+        &["switch", "-c", "extra", &base],
+        "branch from fixture base",
     )
     .unwrap();
     fs::write(publisher.join("extra.txt"), b"unselected branch\n").unwrap();
     stage_all(&publisher).unwrap();
     commit(&publisher, "Independent extra changes").unwrap();
-    run_mutation(&publisher, &["push", "origin", "extra"], "seed extra branch").unwrap();
     run_mutation(
-        path, &["config", "--add", "branch.main.merge", "refs/heads/extra"], "configure extra upstream",
+        &publisher,
+        &["push", "origin", "extra"],
+        "seed extra branch",
+    )
+    .unwrap();
+    run_mutation(
+        path,
+        &["config", "--add", "branch.main.merge", "refs/heads/extra"],
+        "configure extra upstream",
     )
     .unwrap();
 
@@ -1512,8 +1521,8 @@ fn reviewed_implicit_pull_refuses_multiple_merge_sources_before_fetching() {
     let fetch_head = fs::read(path.join(".git/FETCH_HEAD")).ok();
     let index = fs::read(path.join(".git/index")).unwrap();
     let configuration = fs::read(path.join(".git/config")).unwrap();
-    let error = pull_for_checkout_cancellable(path, "merge", None, None, &checkout, &token)
-        .unwrap_err();
+    let error =
+        pull_for_checkout_cancellable(path, "merge", None, None, &checkout, &token).unwrap_err();
     assert_eq!(error.kind, "multiplePullUpstreams");
     assert_eq!(repository.oid(), base);
     assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
@@ -1563,7 +1572,13 @@ fn pull_strategies_integrate_the_parent_gitlink_without_fetching_or_updating_sub
         .unwrap();
         for args in [
             vec![
-                "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--", "lib",
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "update",
+                "--init",
+                "--",
+                "lib",
             ],
             vec!["config", "user.name", "Test"],
             vec!["config", "user.email", "test@example.test"],
@@ -1610,10 +1625,13 @@ fn pull_strategies_integrate_the_parent_gitlink_without_fetching_or_updating_sub
             branch: Some("main".into()),
         };
         let object_exists = || {
-            run_git(&lib, &["cat-file", "-e", &format!("{new_module}^{{commit}}")])
-                .unwrap()
-                .status
-                .success()
+            run_git(
+                &lib,
+                &["cat-file", "-e", &format!("{new_module}^{{commit}}")],
+            )
+            .unwrap()
+            .status
+            .success()
         };
         assert!(!object_exists());
         let child_refs = run_git(&lib, &["show-ref"]).unwrap().stdout;
@@ -1814,8 +1832,8 @@ fn pull_rebase_continue_preserves_an_unreviewed_branch_after_conflict_resolution
         "save an unreviewed branch",
     )
     .unwrap();
-    let error = pull_from_remote_with_strategy(path, "rebase", Some("origin"), Some("main"))
-        .unwrap_err();
+    let error =
+        pull_from_remote_with_strategy(path, "rebase", Some("origin"), Some("main")).unwrap_err();
     assert_eq!(error.kind, "gitFailure");
     let status = read_status(path).unwrap();
     assert_eq!(status.conflicted, 1);
@@ -1964,8 +1982,7 @@ fn pull_refuses_when_a_detached_head_or_complex_options_cannot_carry_the_ignore_
         assert_eq!(fs::read(&ignored).unwrap(), b"ignored local data\n");
         fs::remove_file(&ignored).unwrap();
         if mode != "missing-option-value" {
-            pull_from_remote_with_strategy(path, "ff-only", Some("origin"), Some("main"))
-                .unwrap();
+            pull_from_remote_with_strategy(path, "ff-only", Some("origin"), Some("main")).unwrap();
             assert_eq!(repository.oid(), incoming);
         }
     }
@@ -2802,7 +2819,11 @@ fn large_ignored_tree_only_blocks_merges_with_a_possible_collision() {
     // The ignored settings share an otherwise unignored directory. Git must
     // still report the ignored entry when it summarizes the build directory.
     fs::create_dir(path.join("mixed")).unwrap();
-    fs::write(path.join("mixed/untracked.txt"), b"ordinary untracked data\n").unwrap();
+    fs::write(
+        path.join("mixed/untracked.txt"),
+        b"ordinary untracked data\n",
+    )
+    .unwrap();
     fs::write(path.join("mixed/settings.local"), b"existing settings\n").unwrap();
     let limit = 64;
     let check = merge_checkout_guard::ensure_ignored_files_preserved_with_limit;
@@ -3142,7 +3163,10 @@ fn worktree_and_branch_removal_keeps_the_checkout_when_recovery_cannot_be_saved(
         remove_worktree(path, target, true, false).unwrap_err().kind,
         "worktreeRecoveryUnavailable"
     );
-    assert!(linked.join("file").is_file(), "Recovery failure removed the checkout");
+    assert!(
+        linked.join("file").is_file(),
+        "Recovery failure removed the checkout"
+    );
     assert_eq!(rev(path, "refs/heads/recovery-required"), head);
     assert_eq!(
         run_git(path, &["worktree", "list", "--porcelain", "-z"])
@@ -3159,7 +3183,10 @@ fn worktree_and_branch_removal_keeps_the_checkout_when_recovery_cannot_be_saved(
     .unwrap();
     let untracked = linked.join("pending.txt");
     fs::write(&untracked, b"uncommitted linked checkout data\n").unwrap();
-    assert_eq!(remove_worktree(path, target, true, false).unwrap_err().kind, "gitFailure");
+    assert_eq!(
+        remove_worktree(path, target, true, false).unwrap_err().kind,
+        "gitFailure"
+    );
     assert!(untracked.is_file());
     assert!(operation_recoveries(path).unwrap().is_empty());
     remove_worktree(path, target, true, true).unwrap();
@@ -3182,7 +3209,14 @@ fn worktree_removal_reports_partial_success_and_keeps_recovery_when_git_refuses_
     let target = linked.to_str().unwrap();
     run_mutation(
         path,
-        &["worktree", "add", "-b", "owned-blocked-delete", target, &head],
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "owned-blocked-delete",
+            target,
+            &head,
+        ],
         "create owned linked checkout",
     )
     .unwrap();
@@ -3241,7 +3275,9 @@ fn reference_actions_occupied_branch_checkout_and_deletion_preserve_both_worktre
         .stdout;
     let refs = run_git(path, &["show-ref"]).unwrap().stdout;
     assert_eq!(
-        checkout_branch(path, "absent-local-branch").unwrap_err().kind,
+        checkout_branch(path, "absent-local-branch")
+            .unwrap_err()
+            .kind,
         "localBranchNotFound"
     );
     let blocked = checkout_branch(path, "occupied").unwrap_err();
@@ -3290,7 +3326,12 @@ fn reference_actions_checkout_explains_a_branch_reserved_by_a_detached_rebase() 
         stage_path(checkout, "file").unwrap();
         commit(checkout, contents.trim()).unwrap();
     }
-    assert!(!run_git(&linked, &["rebase", "main"]).unwrap().status.success());
+    assert!(
+        !run_git(&linked, &["rebase", "main"])
+            .unwrap()
+            .status
+            .success()
+    );
     let status = read_status(&linked).unwrap();
     assert!(status.rebase_in_progress && status.branch.is_none());
 
@@ -3307,7 +3348,10 @@ fn reference_actions_checkout_explains_a_branch_reserved_by_a_detached_rebase() 
         blocked.kind, "gitFailure",
         "a detached owner is not a normal checkout"
     );
-    assert!(blocked.message.contains(linked.to_str().unwrap()), "{blocked:?}");
+    assert!(
+        blocked.message.contains(linked.to_str().unwrap()),
+        "{blocked:?}"
+    );
     let hint = blocked.hint.as_deref().unwrap();
     assert!(
         hint.contains("Worktrees") && hint.contains("rebase") && hint.contains("bisect"),
@@ -3321,7 +3365,9 @@ fn reference_actions_checkout_explains_a_branch_reserved_by_a_detached_rebase() 
         main
     );
     assert_eq!(
-        run_git(&linked, &["ls-files", "--stage", "-z"]).unwrap().stdout,
+        run_git(&linked, &["ls-files", "--stage", "-z"])
+            .unwrap()
+            .stdout,
         conflict
     );
     assert_eq!(fs::read(linked.join("file")).unwrap(), linked_file);
@@ -7074,7 +7120,12 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     // An additional advertised branch is absent from the depth-one clone.
     // Git 2.56's mixed-tip fetch can download it without sending a want for
     // main, which already matches its tracking ref and still needs parents.
-    run_mutation(&source.0, &["branch", "older-side", "HEAD~3"], "side branch").unwrap();
+    run_mutation(
+        &source.0,
+        &["branch", "older-side", "HEAD~3"],
+        "side branch",
+    )
+    .unwrap();
     let url = format!("file://{}", source.0.display());
     let clone = clone_repository(&url, &parent, "work", None, Some(1)).unwrap();
     run_mutation(&clone, &["remote", "add", "mirror", &url], "mirror").unwrap();
@@ -7099,7 +7150,12 @@ fn fetch_deepens_and_completes_shallow_history_from_one_remote() {
     let side_present = || {
         run_git(
             &clone,
-            &["show-ref", "--verify", "--quiet", "refs/remotes/origin/older-side"],
+            &[
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/older-side",
+            ],
         )
         .unwrap()
         .status
@@ -10842,13 +10898,23 @@ fn branch_from_stash_preserves_ignored_files_before_creating_a_branch() {
         commit(path, "Advance after creating stash").unwrap();
         let head = repository.oid();
 
-        fs::write(path.join(".git/info/exclude"), "/settings.local\n/saved.settings\n").unwrap();
+        fs::write(
+            path.join(".git/info/exclude"),
+            "/settings.local\n/saved.settings\n",
+        )
+        .unwrap();
         fs::write(&settings, b"Only local copy\n").unwrap();
-        assert!(run_git(path, &["check-ignore", "--", "settings.local"]).unwrap().status.success());
+        assert!(
+            run_git(path, &["check-ignore", "--", "settings.local"])
+                .unwrap()
+                .status
+                .success()
+        );
         let refs = run_git(path, &["show-ref"]).unwrap().stdout;
         let index = fs::read(path.join(".git/index")).unwrap();
 
-        let error = create_branch_from_stash(path, &stash.reference, &stash.oid, "recovered").unwrap_err();
+        let error =
+            create_branch_from_stash(path, &stash.reference, &stash.oid, "recovered").unwrap_err();
         assert_eq!(error.kind, "stashBranchLocalPathObstruction", "{error:?}");
         assert!(error.message.contains("settings.local"));
         assert_eq!(repository.oid(), head);
@@ -10861,12 +10927,21 @@ fn branch_from_stash_preserves_ignored_files_before_creating_a_branch() {
         fs::rename(&settings, &saved).unwrap();
         create_branch_from_stash(path, &stash.reference, &stash.oid, "recovered").unwrap();
         assert_eq!(repository.oid(), base);
-        assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("recovered"));
+        assert_eq!(
+            read_status(path).unwrap().branch.as_deref(),
+            Some("recovered")
+        );
         assert_eq!(fs::read(settings).unwrap(), b"Saved data\n");
         assert_eq!(fs::read(saved).unwrap(), b"Only local copy\n");
         assert_eq!(
-            run_git(path, &["ls-files", "--", "settings.local"]).unwrap().stdout,
-            if stage { b"settings.local\n".as_slice() } else { b"".as_slice() }
+            run_git(path, &["ls-files", "--", "settings.local"])
+                .unwrap()
+                .stdout,
+            if stage {
+                b"settings.local\n".as_slice()
+            } else {
+                b"".as_slice()
+            }
         );
         assert_eq!(read_stashes(path).unwrap()[0].oid, stash.oid);
     }
@@ -10888,19 +10963,37 @@ fn branch_from_stash_checks_ignored_files_again_after_checkout_hooks() {
     fs::write(path.join(".git/info/exclude"), "/settings.local\n").unwrap();
     let hooks = path.join(".git/owned-hooks");
     fs::create_dir(&hooks).unwrap();
-    run_mutation(path, &["config", "core.hooksPath", ".git/owned-hooks"], "set fixture hook").unwrap();
+    run_mutation(
+        path,
+        &["config", "core.hooksPath", ".git/owned-hooks"],
+        "set fixture hook",
+    )
+    .unwrap();
     let hook = hooks.join("post-checkout");
-    fs::write(&hook, "#!/bin/sh\nprintf 'Created by checkout hook\\n' > settings.local\n").unwrap();
+    fs::write(
+        &hook,
+        "#!/bin/sh\nprintf 'Created by checkout hook\\n' > settings.local\n",
+    )
+    .unwrap();
     fs::set_permissions(hook, fs::Permissions::from_mode(0o700)).unwrap();
 
-    let error = create_branch_from_stash(path, &stash.reference, &stash.oid, "recovered").unwrap_err();
+    let error =
+        create_branch_from_stash(path, &stash.reference, &stash.oid, "recovered").unwrap_err();
     assert_eq!(error.kind, "stashBranchPartiallyRestored");
     assert!(error.message.contains("settings.local"));
-    assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("recovered"));
+    assert_eq!(
+        read_status(path).unwrap().branch.as_deref(),
+        Some("recovered")
+    );
     assert_eq!(repository.oid(), base);
     assert_eq!(fs::read(settings).unwrap(), b"Created by checkout hook\n");
     assert_eq!(read_stashes(path).unwrap()[0].oid, stash.oid);
-    assert!(run_git(path, &["diff-index", "--cached", "--quiet", &base]).unwrap().status.success());
+    assert!(
+        run_git(path, &["diff-index", "--cached", "--quiet", &base])
+            .unwrap()
+            .status
+            .success()
+    );
 }
 
 #[test]

@@ -33,14 +33,14 @@ def feature_rebase_on_configured_development(driver, fixtures, report):
     config = (repository / '.git/config').read_bytes()
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'first.txt', 'second.txt'))
     repo_id = open_ui(driver, repository)
-    workflow = 'gc-branch-workflow-dialog'
-    integration = 'gc-integrate-branch-dialog'
+    workflow = 'gk-branch-workflow-dialog'
+    integration = 'gk-integrate-branch-dialog'
 
     def button(owner, name):
         driver.click_scrolled_text(owner + ' button', name, wait_for_ready=True)
 
     def ready():
-        driver.wait('return [...document.querySelectorAll("gc-branch-workflow-dialog button")].some(button => '
+        driver.wait('return [...document.querySelectorAll("gk-branch-workflow-dialog button")].some(button => '
                     'button.textContent.trim() === "Reload workflow state" && !button.disabled)')
 
     def enter_finish():
@@ -53,17 +53,17 @@ def feature_rebase_on_configured_development(driver, fixtures, report):
 
     def review_rebase():
         button(workflow, f'Review feature rebase onto {development}…')
-        driver.wait('return document.querySelector("gc-integrate-branch-dialog [role=dialog] h2")?.textContent.trim() '
+        driver.wait('return document.querySelector("gk-integrate-branch-dialog [role=dialog] h2")?.textContent.trim() '
                     '=== "Review feature rebase"')
-        driver.wait('return [...document.querySelectorAll("gc-integrate-branch-dialog button")].some(button => '
+        driver.wait('return [...document.querySelectorAll("gk-integrate-branch-dialog button")].some(button => '
                     'button.textContent.trim() === ' + json.dumps(f'Rebase {topic} onto {development}')
                     + ' && !button.disabled)')
-        assert not driver.script('return !!document.querySelector("gc-branch-workflow-dialog, #integrate-source")')
+        assert not driver.script('return !!document.querySelector("gk-branch-workflow-dialog, #integrate-source")')
 
     enter_finish()
     review_rebase()
     button(integration, 'Cancel')
-    driver.wait('return !document.querySelector("gc-integrate-branch-dialog")')
+    driver.wait('return !document.querySelector("gk-integrate-branch-dialog")')
     assert checkout_footprint(fixtures, repository, ('fixture.txt', 'first.txt', 'second.txt')) == before
 
     enter_finish()
@@ -89,7 +89,7 @@ def feature_rebase_on_configured_development(driver, fixtures, report):
     assert (repository / '.git/config').read_bytes() == config
 
     enter_finish()
-    driver.wait('return document.querySelector("gc-branch-workflow-dialog .review")?.textContent.includes('
+    driver.wait('return document.querySelector("gk-branch-workflow-dialog .review")?.textContent.includes('
                 + json.dumps(rebased) + ')')
     report['featureRebase'] = {'oldTip': source, 'rebasedTip': rebased, 'developmentTip': target,
                                'siblingTip': sibling, 'repositoryConfigUnchanged': True,

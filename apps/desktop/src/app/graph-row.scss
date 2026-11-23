@@ -35,10 +35,10 @@
 .wip-row.linked-worktree { background: var(--row-wip-linked); --row-surface: var(--row-wip-linked); }
 .wip-row.linked-worktree:hover { background: var(--row-wip-linked-hover); --row-surface: var(--row-wip-linked-hover); }
 .wip-worktree-label { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 5px; border: 1px solid #42656b; border-radius: 4px; background: #293b40; color: #c2e3e6; }
-.wip-worktree-label gc-icon { flex: none; color: #69c6c4; }
+.wip-worktree-label gk-icon { flex: none; color: #69c6c4; }
 .wip-worktree-label > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .wip-worktree-label.linked { border-color: #5c5484; background: #35314d; color: #d8d2f5; }
-.wip-worktree-label.linked gc-icon { color: #a99df0; }
+.wip-worktree-label.linked gk-icon { color: #a99df0; }
 .wip-row .row-menu { display: grid; place-items: center; color: #8e8d9f; }
 .draggable-reference { cursor: grab; }
 .draggable-reference:active { cursor: grabbing; }

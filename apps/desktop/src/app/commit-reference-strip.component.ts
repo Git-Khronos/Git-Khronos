@@ -5,7 +5,7 @@ import type { AppComponent } from './app.component';
 import { IconComponent } from './icon.component';
 
 @Component({
-  selector: 'gc-commit-reference-strip',
+  selector: 'gk-commit-reference-strip',
   imports: [IconComponent, NgTemplateOutlet],
   templateUrl: './commit-reference-strip.component.html',
   styles: [`

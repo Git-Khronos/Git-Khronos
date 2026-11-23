@@ -8,7 +8,7 @@ import { type UnlistenFn } from '@tauri-apps/api/event';
 import { GitKhronosService } from './git-khronos.service';
 
 @Component({
-  selector: 'gc-authentication',
+  selector: 'gk-authentication',
   imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

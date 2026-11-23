@@ -1,6 +1,6 @@
 @let menu = view();
 <header class="toolbar-menu-context">
-  <gc-icon name="branch" [size]="14" />
+  <gk-icon name="branch" [size]="14" />
   <span>
     <small>{{ menu.repositoryName }}</small>
     <strong [title]="'Current branch: ' + (menu.branchName)">{{ menu.branchName }}</strong>
@@ -8,40 +8,40 @@
   <b [title]="menu.remoteTarget ? 'Pull and push: ' + menu.remoteTarget : 'No pull and push remote selected'">{{ menu.remoteTarget ?? 'No remote' }}</b>
 </header>
 <div class="menu-caption compact-menu-caption toolbar-branch-overflow" role="separator" aria-label="Branch navigation">Branch navigation</div>
-<button class="toolbar-branch-overflow" type="button" role="menuitem" (click)="activate.emit('switchBranch')"><gc-icon name="branch" [size]="13" /><span><strong>Switch branch…</strong><small>Current: {{ menu.branchName }}</small></span></button>
+<button class="toolbar-branch-overflow" type="button" role="menuitem" (click)="activate.emit('switchBranch')"><gk-icon name="branch" [size]="13" /><span><strong>Switch branch…</strong><small>Current: {{ menu.branchName }}</small></span></button>
 @if (menu.remotes.length) {
   <div class="menu-caption toolbar-remote-overflow">Pull and push remote</div>
   @for (remote of menu.remotes; track remote.name) {
     <button class="toolbar-remote-overflow" type="button" role="menuitemradio" [attr.aria-checked]="remote.name === menu.selectedRemote" (click)="activate.emit({ remote: remote.name })">
-      <gc-icon [name]="remote.icon" [size]="13" />
+      <gk-icon [name]="remote.icon" [size]="13" />
       <span>
         <strong>{{ remote.name }}</strong>
         <small>{{ remote.name === menu.selectedRemote ? 'Current pull and push remote' : 'Use for pull and push' }}</small>
       </span>
-      @if (remote.name === menu.selectedRemote) { <gc-icon class="menu-item-check" name="check" [size]="11" /> }
+      @if (remote.name === menu.selectedRemote) { <gk-icon class="menu-item-check" name="check" [size]="11" /> }
     </button>
   }
   <div class="menu-separator toolbar-remote-overflow"></div>
 }
 <div class="menu-caption compact-menu-caption toolbar-repository-overflow" role="separator" aria-label="Repository tools">Repository tools</div>
-<button class="toolbar-fetch-overflow" type="button" role="menuitem" (click)="activate.emit('fetchAll')" [disabled]="menu.fetchDisabled"><gc-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Fetch updates without pruning</small></span></button>
-<button class="toolbar-fetch-overflow toolbar-fetch-options-overflow" type="button" role="menuitem" (click)="activate.emit('fetchOptions')" [disabled]="menu.busy"><gc-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
-<button class="toolbar-terminal-overflow" type="button" role="menuitem" aria-keyshortcuts="Alt+T Control+` Meta+`" [class.current]="menu.terminalShown" (click)="activate.emit('terminal')"><gc-icon name="terminal" [size]="13" /><span><strong>{{ menu.terminalShown ? 'Hide repository terminal' : 'Open repository terminal' }}</strong><small>Use a shell in the current repository · {{ menu.alternateShortcut }} T / {{ menu.primaryShortcut }} `</small></span></button>
+<button class="toolbar-fetch-overflow" type="button" role="menuitem" (click)="activate.emit('fetchAll')" [disabled]="menu.fetchDisabled"><gk-icon name="refresh" [size]="13" /><span><strong>Fetch all remotes</strong><small>Fetch updates without pruning</small></span></button>
+<button class="toolbar-fetch-overflow toolbar-fetch-options-overflow" type="button" role="menuitem" (click)="activate.emit('fetchOptions')" [disabled]="menu.busy"><gk-icon name="remote" [size]="13" /><span><strong>Fetch branches with options…</strong><small>Choose remotes, pruning, and history depth</small></span></button>
+<button class="toolbar-terminal-overflow" type="button" role="menuitem" aria-keyshortcuts="Alt+T Control+` Meta+`" [class.current]="menu.terminalShown" (click)="activate.emit('terminal')"><gk-icon name="terminal" [size]="13" /><span><strong>{{ menu.terminalShown ? 'Hide repository terminal' : 'Open repository terminal' }}</strong><small>Use a shell in the current repository · {{ menu.alternateShortcut }} T / {{ menu.primaryShortcut }} `</small></span></button>
 <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Operation history">Operation history</div>
-<button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!menu.undoLabel || menu.busy" (click)="activate.emit('undo')"><gc-icon name="undo" [size]="13" /><span><strong>{{ menu.undoLabel ?? 'Undo' }}</strong><small>Reverse the last supported action</small></span><kbd>{{ menu.undoShortcut }}</kbd></button>
-<button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!menu.redoLabel || menu.busy" (click)="activate.emit('redo')"><gc-icon name="redo" [size]="13" /><span><strong>{{ menu.redoLabel ?? 'Redo' }}</strong><small>Repeat the action just undone</small></span><kbd>{{ menu.redoShortcut }}</kbd></button>
+<button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!menu.undoLabel || menu.busy" (click)="activate.emit('undo')"><gk-icon name="undo" [size]="13" /><span><strong>{{ menu.undoLabel ?? 'Undo' }}</strong><small>Reverse the last supported action</small></span><kbd>{{ menu.undoShortcut }}</kbd></button>
+<button class="toolbar-secondary-overflow" type="button" role="menuitem" [disabled]="!menu.redoLabel || menu.busy" (click)="activate.emit('redo')"><gk-icon name="redo" [size]="13" /><span><strong>{{ menu.redoLabel ?? 'Redo' }}</strong><small>Repeat the action just undone</small></span><kbd>{{ menu.redoShortcut }}</kbd></button>
 <div class="menu-caption compact-menu-caption toolbar-secondary-overflow" role="separator" aria-label="Working directory">Working directory</div>
-<button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('stashAll')" [disabled]="!menu.hasChanges || menu.busy"><gc-icon name="archive" [size]="13" /><span><strong>Stash changes</strong><small>Include untracked files</small></span></button>
-<button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('stashOptions')" [disabled]="!menu.hasChanges || menu.busy"><gc-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose which changes and files to save</small></span></button>
-<button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('popStash')" [disabled]="!menu.hasStashes || menu.busy"><gc-icon name="archive-restore" [size]="13" /><span><strong>Pop latest stash</strong><small>Apply and remove the newest stash</small></span></button>
+<button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('stashAll')" [disabled]="!menu.hasChanges || menu.busy"><gk-icon name="archive" [size]="13" /><span><strong>Stash changes</strong><small>Include untracked files</small></span></button>
+<button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('stashOptions')" [disabled]="!menu.hasChanges || menu.busy"><gk-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose which changes and files to save</small></span></button>
+<button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('popStash')" [disabled]="!menu.hasStashes || menu.busy"><gk-icon name="archive-restore" [size]="13" /><span><strong>Pop latest stash</strong><small>Apply and remove the newest stash</small></span></button>
 @if (menu.lfsEnabled) {
   <div class="menu-separator toolbar-secondary-overflow"></div>
-  <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('pullLfs')" [disabled]="menu.busy || !menu.lfsAvailable"><gc-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects for the current checkout</small></span></button>
-  <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('pruneLfs')" [disabled]="menu.busy || !menu.lfsAvailable"><gc-icon name="trash" [size]="13" /><span><strong>Clean LFS storage…</strong><small>Review unreferenced local objects</small></span></button>
+  <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('pullLfs')" [disabled]="menu.busy || !menu.lfsAvailable"><gk-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects for the current checkout</small></span></button>
+  <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('pruneLfs')" [disabled]="menu.busy || !menu.lfsAvailable"><gk-icon name="trash" [size]="13" /><span><strong>Clean LFS storage…</strong><small>Review unreferenced local objects</small></span></button>
 }
 @if (menu.sparseEnabled) {
   <div class="menu-separator toolbar-secondary-overflow"></div>
-  <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('editSparse')" [disabled]="menu.busy"><gc-icon name="edit" [size]="13" /><span><strong>Edit sparse checkout</strong><small>Choose working-tree directories</small></span></button>
-  <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('reapplySparse')" [disabled]="menu.busy"><gc-icon name="refresh" [size]="13" /><span><strong>Reapply sparse checkout</strong><small>Restore the configured selection</small></span></button>
-  <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('disableSparse')" [disabled]="menu.busy"><gc-icon name="x" [size]="13" /><span><strong>Disable sparse checkout…</strong><small>Restore every tracked file</small></span></button>
+  <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('editSparse')" [disabled]="menu.busy"><gk-icon name="edit" [size]="13" /><span><strong>Edit sparse checkout</strong><small>Choose working-tree directories</small></span></button>
+  <button class="toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('reapplySparse')" [disabled]="menu.busy"><gk-icon name="refresh" [size]="13" /><span><strong>Reapply sparse checkout</strong><small>Restore the configured selection</small></span></button>
+  <button class="danger-item toolbar-secondary-overflow" type="button" role="menuitem" (click)="activate.emit('disableSparse')" [disabled]="menu.busy"><gk-icon name="x" [size]="13" /><span><strong>Disable sparse checkout…</strong><small>Restore every tracked file</small></span></button>
 }

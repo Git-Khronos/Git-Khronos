@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const repository = git.repository();
@@ -62,13 +62,13 @@ async function setup(page: Page): Promise<void> {
   });
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
-  await expect(page.locator('gc-bundle-exchange-panel')).toBeVisible();
-  await page.locator('gc-bundle-exchange-panel summary').click();
+  await expect(page.locator('gk-bundle-exchange-panel')).toBeVisible();
+  await page.locator('gk-bundle-exchange-panel summary').click();
 }
 
 test('complete branch export passes captured tip and original branch name without altering the draft', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await expect(panel.getByRole('button', { name: 'Save branch bundle…', exact: true })).toBeDisabled();
   const branch = await page.evaluate(() => (window as any).__bundle.repository.branches.find((branch: any) => !branch.remote));
   await panel.getByLabel('Source branch', { exact: true }).selectOption(branch.name);
@@ -83,7 +83,7 @@ test('complete branch export passes captured tip and original branch name withou
 
 async function prepareIncremental(page: Page) {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   const branch = await page.evaluate(() => (window as any).__bundle.repository.branches.find((branch: any) => !branch.remote));
   await panel.getByLabel('Source branch', { exact: true }).selectOption(branch.name);
   await panel.getByRole('checkbox', { name: 'Export incrementally from a commit the recipient already has' }).check();
@@ -143,7 +143,7 @@ test('moving the reviewed source while the save picker is open prevents incremen
   await save.click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__bundle.finishSave)).toBe('function');
   await page.evaluate(name => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.repositories.update((rows: any[]) => rows.map(row => row.id === git.activeRepositoryId() ? {
       ...row, branches: row.branches.map((item: any) => item.name === name && !item.remote ? { ...item, oid: 'e'.repeat(40) } : item),
     } : row));
@@ -157,7 +157,7 @@ test('moving the reviewed source while the save picker is open prevents incremen
 
 test('bundle review exposes all tips but requires explicit branch-only choice before exact recovery import', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await panel.getByRole('button', { name: 'Choose and verify bundle…', exact: true }).click();
   const review = panel.getByRole('region', { name: 'Bundle import review' });
   await expect(review).toBeFocused();
@@ -178,7 +178,7 @@ test('bundle review exposes all tips but requires explicit branch-only choice be
 
 test('bundle chooser cancellations perform no native bundle operations', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await page.evaluate(() => { (window as any).__bundle.selectedFile = null; (window as any).__bundle.destination = null; });
   await panel.getByRole('button', { name: 'Choose and verify bundle…' }).click();
   await expect(panel.getByRole('status')).toContainText('No objects imported');
@@ -192,7 +192,7 @@ test('bundle chooser cancellations perform no native bundle operations', async (
 
 test('prerequisite and partial recovery failures focus explicit errors and cannot silently repeat imports', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await page.evaluate(() => { (window as any).__bundle.refused = true; });
   await panel.getByRole('button', { name: 'Choose and verify bundle…' }).click();
   await expect(panel.getByRole('alert')).toContainText('Missing prerequisite');
@@ -209,7 +209,7 @@ test('prerequisite and partial recovery failures focus explicit errors and canno
 
 test('post-import refresh refusal keeps the successful recovery reference visible and prevents blind retry', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await panel.getByRole('button', { name: 'Choose and verify bundle…' }).click();
   await panel.getByLabel('Advertised branch to preserve').selectOption('refs/heads/shared/branch');
   await page.evaluate(() => { (window as any).__bundle.refreshRefused = true; });
@@ -224,7 +224,7 @@ test('compact bundle review wraps long refs, links official help and cancels wit
   await setup(page);
   await page.setViewportSize({ width: 550, height: 700 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await panel.getByRole('button', { name: 'Choose and verify bundle…' }).click();
   const help = panel.getByRole('button', { name: 'Learn about offline bundles…', exact: true });
   await help.click();
@@ -243,7 +243,7 @@ test('compact bundle review wraps long refs, links official help and cancels wit
 
 test('complete advertised tips and prerequisite report remain keyboard-scrollable without importing objects', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await page.evaluate(() => {
     for (let index = 0; index < 30; index++) (window as any).__bundle.request.tips.push({ reference: `refs/heads/scroll-${index}`, oid: 'a'.repeat(40) });
   });
@@ -262,7 +262,7 @@ test('complete advertised tips and prerequisite report remain keyboard-scrollabl
 
 test('changed branch export refuses explicitly rather than claiming a saved file', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   const branch = await page.evaluate(() => {
     (window as any).__bundle.refused = true;
     return (window as any).__bundle.repository.branches.find((branch: any) => !branch.remote).name;
@@ -277,11 +277,11 @@ test('changed branch export refuses explicitly rather than claiming a saved file
 
 test('loaded bundle review and explicit selection clear on repository switch without importing elsewhere', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await panel.getByRole('button', { name: 'Choose and verify bundle…' }).click();
   await panel.getByLabel('Advertised branch to preserve').selectOption('refs/heads/shared/branch');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const source = (window as any).__bundle.repository;
     git.repositories.update((items: any[]) => [...items, { ...source, id: 'bundle-loaded-other', path: '/owned/loaded-other' }]);
     git.activeRepositoryId.set('bundle-loaded-other');
@@ -292,22 +292,22 @@ test('loaded bundle review and explicit selection clear on repository switch wit
 
 test('late verified bundle never returns after switching away and back', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-bundle-exchange-panel');
+  const panel = page.locator('gk-bundle-exchange-panel');
   await page.evaluate(() => { (window as any).__bundle.deferred = true; });
   await panel.getByRole('button', { name: 'Choose and verify bundle…' }).click();
   await expect.poll(() => page.evaluate(() => !!(window as any).__bundle.finish)).toBe(true);
   await expect(panel.getByRole('status')).toContainText('Verifying complete offline bundle');
   await expect(panel.getByRole('button', { name: 'Choose and verify bundle…' })).toBeDisabled();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const source = (window as any).__bundle.repository;
     git.repositories.update((items: any[]) => [...items, { ...source, id: 'bundle-other', path: '/owned/other' }]);
     git.activeRepositoryId.set('bundle-other');
   });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('bundle-other');
-  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId.set((window as any).__bundle.repository.id));
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe(await page.evaluate(() => (window as any).__bundle.repository.id));
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId())).toBe('bundle-other');
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId.set((window as any).__bundle.repository.id));
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId())).toBe(await page.evaluate(() => (window as any).__bundle.repository.id));
   await page.evaluate(() => (window as any).__bundle.finish());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(panel.getByRole('region', { name: 'Bundle import review' })).toHaveCount(0);
 });

@@ -13,7 +13,7 @@ async function setStatus(page: Page, status: Partial<RepositoryStatus>): Promise
   await page.evaluate(status => {
     const app = (window as unknown as {
       ng: { getComponent(element: Element | null): CharacterizationApp };
-    }).ng.getComponent(document.querySelector('gc-root'));
+    }).ng.getComponent(document.querySelector('gk-app'));
     const repository = app.git.repository();
     app.git.repositories.update(items => items.map(item => item.id !== repository.id ? item : {
       ...item,
@@ -33,7 +33,7 @@ async function operationCommands(page: Page): Promise<Record<string, boolean>> {
   const commands = await page.evaluate(() => {
     const palette = (window as unknown as {
       ng: { getComponent(element: Element | null): { commandActions: Signal<Array<{ id: string; enabled: boolean }>> } };
-    }).ng.getComponent(document.querySelector('gc-command-palette'));
+    }).ng.getComponent(document.querySelector('gk-command-palette'));
     return Object.fromEntries(palette.commandActions()
       .filter(action => /^(merge-|history-operation-|bisect-)/.test(action.id))
       .map(action => [action.id, action.enabled]));

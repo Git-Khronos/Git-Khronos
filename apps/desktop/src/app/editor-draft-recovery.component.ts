@@ -4,7 +4,7 @@ import { GitKhronosService } from './git-khronos.service';
 import { discardReviewedEditorDraft, type EditorDraftOpenRequest, type EditorDraftReference } from './editor-draft-recovery';
 
 @Component({
-  selector: 'gc-editor-draft-recovery',
+  selector: 'gk-editor-draft-recovery',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" (click)="requestClose()">

@@ -7,7 +7,7 @@ export type FileMenuAction = 'merge-tool' | 'content' | 'take-current' | 'take-i
   | 'history' | 'blame' | 'apply-stash' | 'restore';
 
 @Component({
-  selector: 'gc-file-action-menu',
+  selector: 'gk-file-action-menu',
   imports: [IconComponent],
   templateUrl: './file-action-menu.component.html',
   styleUrl: './file-action-menu.component.scss',

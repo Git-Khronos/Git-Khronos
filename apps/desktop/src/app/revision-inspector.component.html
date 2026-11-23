@@ -5,13 +5,13 @@
   @let isComparison = source === 'comparison';
   @let emptyMessage = isComparison ? 'These commits have identical file trees' : 'This commit has no file changes';
   <section class="commit-file-section" [class.comparison-files]="isComparison">
-    <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="view.changedFilesOpen()" (click)="view.toggleChangedFiles()"><gc-icon [name]="view.changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ total }}{{ truncated ? '+' : '' }})</button><ng-container [ngTemplateOutlet]="recap()" [ngTemplateOutletContext]="{ $implicit: stats }" /></div>
+    <div class="file-section-title"><button class="file-section-toggle" type="button" [attr.aria-expanded]="view.changedFilesOpen()" (click)="view.toggleChangedFiles()"><gk-icon [name]="view.changedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Changed Files ({{ total }}{{ truncated ? '+' : '' }})</button><ng-container [ngTemplateOutlet]="recap()" [ngTemplateOutletContext]="{ $implicit: stats }" /></div>
     @if (view.changedFilesOpen()) {
       @let files = isComparison ? view.displayedComparisonFiles() : view.displayedCommitFiles();
       <div class="working-tree-view-toolbar commit-file-view-toolbar">
         <button class="file-sort-direction" type="button" title="Sort files {{ view.workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ view.workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="view.toggleWorkingTreeSort()"><span>A</span><b>{{ view.workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
-        <label class="file-filter"><gc-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gcTextValue]="view.fileFilter()" (gcTextValueChange)="view.setFileFilter($event)" (keydown.escape)="$event.stopPropagation(); view.setFileFilter('')" />@if (view.fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ files.length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="view.setFileFilter('')"><gc-icon name="x" [size]="9" /></button> }</label>
-        <div class="file-view-switch" role="group" aria-label="Changed files layout" (keydown)="view.handleFileViewModeKeydown($event)"><button type="button" data-file-view-mode="path" [class.active]="view.workingTreeViewMode() === 'path'" [attr.aria-pressed]="view.workingTreeViewMode() === 'path'" [attr.tabindex]="view.workingTreeViewMode() === 'path' ? 0 : -1" (click)="view.setWorkingTreeViewMode('path')"><gc-icon name="file" [size]="11" />Path</button><button type="button" data-file-view-mode="tree" [class.active]="view.workingTreeViewMode() === 'tree'" [attr.aria-pressed]="view.workingTreeViewMode() === 'tree'" [attr.tabindex]="view.workingTreeViewMode() === 'tree' ? 0 : -1" (click)="view.setWorkingTreeViewMode('tree')"><gc-icon name="folder-git" [size]="11" />Tree</button></div>
+        <label class="file-filter"><gk-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gkTextValue]="view.fileFilter()" (gkTextValueChange)="view.setFileFilter($event)" (keydown.escape)="$event.stopPropagation(); view.setFileFilter('')" />@if (view.fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ files.length }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="view.setFileFilter('')"><gk-icon name="x" [size]="9" /></button> }</label>
+        <div class="file-view-switch" role="group" aria-label="Changed files layout" (keydown)="view.handleFileViewModeKeydown($event)"><button type="button" data-file-view-mode="path" [class.active]="view.workingTreeViewMode() === 'path'" [attr.aria-pressed]="view.workingTreeViewMode() === 'path'" [attr.tabindex]="view.workingTreeViewMode() === 'path' ? 0 : -1" (click)="view.setWorkingTreeViewMode('path')"><gk-icon name="file" [size]="11" />Path</button><button type="button" data-file-view-mode="tree" [class.active]="view.workingTreeViewMode() === 'tree'" [attr.aria-pressed]="view.workingTreeViewMode() === 'tree'" [attr.tabindex]="view.workingTreeViewMode() === 'tree' ? 0 : -1" (click)="view.setWorkingTreeViewMode('tree')"><gk-icon name="folder-git" [size]="11" />Tree</button></div>
       </div>
       @if (!isComparison) {
         @if (view.selectedStash(); as stash) {
@@ -30,7 +30,7 @@
         <div class="virtual-file-spacer" [style.height.px]="window.topPadding" aria-hidden="true"></div>
         @for (row of window.items; track row.key) {
           @if (row.kind === 'directory') {
-            <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!view.isCommitDirectoryCollapsed(row.path)" (click)="view.toggleCommitDirectory(row.path)"><gc-icon [name]="view.isCommitDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gc-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
+            <button class="file-tree-directory" type="button" [style.padding-left.px]="9 + row.depth * 12" [attr.aria-expanded]="!view.isCommitDirectoryCollapsed(row.path)" (click)="view.toggleCommitDirectory(row.path)"><gk-icon [name]="view.isCommitDirectoryCollapsed(row.path) ? 'chevron-right' : 'chevron-down'" [size]="10" /><gk-icon name="folder-git" [size]="11" /><span>{{ row.label }}</span></button>
           } @else if (row.file; as file) {
             @let selected = view.isPanelFileSelected(file.path, source);
             <button class="commit-file" [class.tree-commit-file]="tree" type="button" [style.padding-left.px]="tree ? 10 + row.depth * 12 : null"
@@ -52,7 +52,7 @@
               <span class="file-line-stats">
                 @if (file.additions !== null) { <span>+{{ file.additions }}</span><i>−{{ file.deletions }}</i> }
                 @else { <em>{{ source === 'comparison' ? 'not counted' : 'binary' }}</em> }
-                <gc-icon class="commit-file-open" name="chevron-right" [size]="10" />
+                <gk-icon class="commit-file-open" name="chevron-right" [size]="10" />
               </span>
             </button>
           }
@@ -85,7 +85,7 @@
         </article>
       }
       <article class="comparison-commit-card working-tree-target">
-        <span class="comparison-avatar"><gc-icon name="file" [size]="12" /></span>
+        <span class="comparison-avatar"><gk-icon name="file" [size]="12" /></span>
         <div><strong>Working directory</strong><small>{{ workingChanges() }} current {{ workingChanges() === 1 ? 'change' : 'changes' }}</small></div>
         <code>WIP</code><b>TO</b>
       </article>
@@ -110,7 +110,7 @@
     }
   </section>
   @if (!git.commitComparison() && !view.selectionIsContiguous()) {
-    <div class="comparison-unavailable"><span><gc-icon name="git-commit" [size]="18" /></span><strong>Combined diff unavailable</strong><p>Select consecutive commits with Shift, or select exactly two commits with Ctrl/Cmd.</p></div>
+    <div class="comparison-unavailable"><span><gk-icon name="git-commit" [size]="18" /></span><strong>Combined diff unavailable</strong><p>Select consecutive commits with Shift, or select exactly two commits with Ctrl/Cmd.</p></div>
   } @else if (git.commitComparison(); as comparison) {
     <ng-container [ngTemplateOutlet]="revisionChangedFiles" [ngTemplateOutletContext]="{
       $implicit: 'comparison', revision: comparison.targetOid, total: comparison.files.length, truncated: false,
@@ -125,14 +125,14 @@
 } @else if (view.selectedCommitData(); as commit) {
   @if (!view.selectedStash() && !view.commitMessageEditing()) {
     <nav class="commit-quick-actions" aria-label="Selected commit actions">
-      <button type="button" aria-label="Compare selected commit with working directory" title="Compare selected commit with working directory" [disabled]="git.busy()" (click)="view.compareSelectedCommitWithWorkingTree(commit.oid)"><gc-icon name="file" [size]="12" /><span aria-hidden="true">Compare</span></button>
-      <button type="button" title="Cherry-pick selected commit" [disabled]="git.busy()" (click)="view.requestSelectedCommitCherryPick(commit, $event)"><gc-icon name="cherry-pick" [size]="12" /><span>Cherry-pick</span></button>
-      <button class="inspector-overflow-action" [class.menu-open]="view.contextMenu()?.kind === 'commit' && view.contextMenu()?.oid === commit.oid" type="button" title="More commit actions" aria-label="More commit actions" aria-haspopup="menu" [attr.aria-expanded]="view.contextMenu()?.kind === 'commit' && view.contextMenu()?.oid === commit.oid" (click)="view.openCommitMenu($event, commit, true)"><gc-icon name="more" [size]="15" /></button>
+      <button type="button" aria-label="Compare selected commit with working directory" title="Compare selected commit with working directory" [disabled]="git.busy()" (click)="view.compareSelectedCommitWithWorkingTree(commit.oid)"><gk-icon name="file" [size]="12" /><span aria-hidden="true">Compare</span></button>
+      <button type="button" title="Cherry-pick selected commit" [disabled]="git.busy()" (click)="view.requestSelectedCommitCherryPick(commit, $event)"><gk-icon name="cherry-pick" [size]="12" /><span>Cherry-pick</span></button>
+      <button class="inspector-overflow-action" [class.menu-open]="view.contextMenu()?.kind === 'commit' && view.contextMenu()?.oid === commit.oid" type="button" title="More commit actions" aria-label="More commit actions" aria-haspopup="menu" [attr.aria-expanded]="view.contextMenu()?.kind === 'commit' && view.contextMenu()?.oid === commit.oid" (click)="view.openCommitMenu($event, commit, true)"><gk-icon name="more" [size]="15" /></button>
     </nav>
   }
   @if (!view.selectedStash() && commit.decorations.length) {
     @defer (on immediate) {
-      <gc-commit-reference-strip #commitReferenceStrip [selection]="commit" [model]="view.commitReferenceStripView" />
+      <gk-commit-reference-strip #commitReferenceStrip [selection]="commit" [model]="view.commitReferenceStripView" />
     } @loading (after 120ms) {
       <p class="commit-reference-strip-state" role="status">Loading commit references…</p>
     } @error {
@@ -142,11 +142,11 @@
   @if (view.selectedStash(); as stash) {
     <div class="selected-stash-actions">
       <button class="apply-stash" type="button" title="Apply the stash and keep it saved" [disabled]="git.busy()" (click)="view.applyStashFromMenu(false)">
-        <gc-icon name="archive-restore" [size]="13" />
+        <gk-icon name="archive-restore" [size]="13" />
         <span><strong>Apply Stash</strong><small>Keep saved</small></span>
       </button>
       <button class="pop-stash" type="button" title="Apply the stash and remove it after success" [disabled]="git.busy()" (click)="view.applyStashFromMenu(true)">
-        <gc-icon name="archive" [size]="13" />
+        <gk-icon name="archive" [size]="13" />
         <span><strong>Pop Stash</strong><small>Remove after applying</small></span>
       </button>
     </div>
@@ -155,7 +155,7 @@
   @if (view.commitEditReview(); as editReview) {
     @for (request of [editReview]; track request) {
       @defer (on immediate) {
-        <gc-commit-edit-form #commitEditForm [model]="view.commitEditFormView"
+        <gk-commit-edit-form #commitEditForm [model]="view.commitEditFormView"
           (changed)="view.updateCommitEditField(request, $event)" (removed)="view.removeReviewedCommitCoAuthor(request, $event)"
           (saved)="view.submitCommitMessageEdit(request)" (dismissed)="view.cancelReviewedCommitEdit(request)" />
       } @placeholder {
@@ -172,7 +172,7 @@
     }
   } @else if (view.canEditSelectedCommitMessage()) {
     <button #commitEditTrigger class="editable-commit-message" type="button" title="Edit the author, message and co-authors of this commit" (click)="view.beginCommitMessageEdit()">
-      <span><gc-icon name="edit" [size]="12" /> Edit commit</span>
+      <span><gk-icon name="edit" [size]="12" /> Edit commit</span>
       <h2>{{ commit.subject || '(no commit message)' }}</h2>
       @if (view.selectedCommitBody()) { <p class="commit-body">{{ view.selectedCommitBody() }}</p> }
     </button>
@@ -192,14 +192,14 @@
       <span class="avatar large-avatar" [style.--author-color]="view.authorColor(author.name, author.email)">{{ view.initials(author.name) }}</span>
       <span><strong>{{ author.name }} <em>Co-author</em></strong><small>{{ author.email }}</small></span>
       @if (!view.commitMessageEditing() && view.canEditSelectedCommitMessage()) {
-        <button class="coauthor-remove" type="button" title="Remove this co-author (you can review before saving)" aria-label="Remove co-author {{ author.name }} from this commit" (click)="view.removeSelectedCommitCoAuthor(author.email)"><gc-icon name="x" [size]="11" /></button>
+        <button class="coauthor-remove" type="button" title="Remove this co-author (you can review before saving)" aria-label="Remove co-author {{ author.name }} from this commit" (click)="view.removeSelectedCommitCoAuthor(author.email)"><gk-icon name="x" [size]="11" /></button>
       }
     </div>
   }
   </section>
   @if (!view.selectedStash() && git.commitDetails(); as details) {
     @defer (on immediate) {
-      <gc-commit-signature [signature]="details.signature" />
+      <gk-commit-signature [signature]="details.signature" />
     } @placeholder {
       <div class="commit-signature-placeholder" role="status" aria-label="Loading signature verification">
         <span class="signature-placeholder-icon" aria-hidden="true"></span>
@@ -210,9 +210,9 @@
     }
   }
   <dl class="commit-relations">
-    <dt>Parents</dt><dd class="related-commits">@for (parent of commit.parents; track $index) { @let parentSubject = view.relatedCommitSubject(parent); <button class="related-commit-link" type="button" title="{{ parentSubject || parent }}" aria-label="Jump to parent commit {{ parent }}{{ parentSubject ? ': ' + parentSubject : '' }}" (click)="view.jumpToCommit(parent)"><gc-icon name="git-commit" [size]="9" /><code>{{ view.shortOid(parent) }}</code>@if (parentSubject) { <span>{{ parentSubject }}</span> }</button> } @empty { <span class="root-commit-label">Root commit</span> }</dd>
+    <dt>Parents</dt><dd class="related-commits">@for (parent of commit.parents; track $index) { @let parentSubject = view.relatedCommitSubject(parent); <button class="related-commit-link" type="button" title="{{ parentSubject || parent }}" aria-label="Jump to parent commit {{ parent }}{{ parentSubject ? ': ' + parentSubject : '' }}" (click)="view.jumpToCommit(parent)"><gk-icon name="git-commit" [size]="9" /><code>{{ view.shortOid(parent) }}</code>@if (parentSubject) { <span>{{ parentSubject }}</span> }</button> } @empty { <span class="root-commit-label">Root commit</span> }</dd>
     @if (view.selectedCommitChildren().length) {
-      <dt>Children</dt><dd class="related-commits">@for (child of view.selectedCommitChildren(); track child.oid) { <button class="related-commit-link" type="button" title="{{ child.subject || child.oid }}" aria-label="Jump to child commit {{ child.oid }}{{ child.subject ? ': ' + child.subject : '' }}" (click)="view.jumpToCommit(child.oid)"><gc-icon name="git-commit" [size]="9" /><code>{{ view.shortOid(child.oid) }}</code>@if (child.subject) { <span>{{ child.subject }}</span> }</button> }</dd>
+      <dt>Children</dt><dd class="related-commits">@for (child of view.selectedCommitChildren(); track child.oid) { <button class="related-commit-link" type="button" title="{{ child.subject || child.oid }}" aria-label="Jump to child commit {{ child.oid }}{{ child.subject ? ': ' + child.subject : '' }}" (click)="view.jumpToCommit(child.oid)"><gk-icon name="git-commit" [size]="9" /><code>{{ view.shortOid(child.oid) }}</code>@if (child.subject) { <span>{{ child.subject }}</span> }</button> }</dd>
     }
   </dl>
   @if (git.commitDetails(); as details) {

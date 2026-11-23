@@ -44,7 +44,7 @@ export interface RepositorySetupView {
 }
 
 @Component({
-  selector: 'gc-repository-setup-dialog',
+  selector: 'gk-repository-setup-dialog',
   imports: [RepositoryFormStylesComponent, IconComponent, TextValueDirective],
   templateUrl: './repository-setup-dialog.component.html',
   styleUrl: './repository-setup-dialog.component.scss',

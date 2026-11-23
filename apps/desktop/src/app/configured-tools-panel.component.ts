@@ -4,7 +4,7 @@ import type { ToolProfile } from '@git-khronos/contracts';
 import { CONFIGURED_TOOLS } from './configured-tools.service';
 
 @Component({
-  selector: 'gc-configured-tools-panel',
+  selector: 'gk-configured-tools-panel',
   imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`

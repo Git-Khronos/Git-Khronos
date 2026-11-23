@@ -86,7 +86,7 @@ async function prepare(page: Page, editing = false, mode = 'ready') {
     };
   });
 }
-const panel = (page: Page) => page.locator('gc-file-tools-dialog');
+const panel = (page: Page) => page.locator('gk-file-tools-dialog');
 const calls = (page: Page, command: string) => page.evaluate(command => (window as any).__tools.calls.filter((c: any) => c.command === command), command);
 async function review(page: Page) {
   await panel(page).getByRole('button', { name: 'Review external program launch', exact: true }).click();
@@ -174,7 +174,7 @@ test('a replaced external-tool loader retains focus instead of the previous open
   await expect(loader.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
   await expect.poll(() => typeof release).toBe('function');
   await page.evaluate(() => {
-    const dialog = (window as any).ng.getComponent(document.querySelector('gc-file-content-dialog'));
+    const dialog = (window as any).ng.getComponent(document.querySelector('gk-file-content-dialog'));
     const request = dialog.toolRequest();
     dialog.closeToolLoader();
     dialog.toolRequest.set({ ...request, id: 'replacement-tool-request' });

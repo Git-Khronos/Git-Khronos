@@ -3,13 +3,13 @@ import { expect, test, type Page } from '@playwright/test';
 async function setup(page: Page, picker: 'file' | 'cancel' | 'hold' = 'file') {
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
-  const head = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().headOid as string);
+  const head = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().headOid as string);
   const actions = page.getByRole('button', { name: 'Commit actions for Add hunk-level staging actions', exact: true });
   const row = page.locator('.commit-row[data-commit-oid]').filter({ has: actions });
   await expect(row).toBeVisible();
   await page.evaluate(mode => {
     const host = window as any;
-    const app = host.ng.getComponent(document.querySelector('gc-root'));
+    const app = host.ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     app.commitMessage.set('Leave the local draft alone');
@@ -45,7 +45,7 @@ test('source ZIP is pinned to the context commit, not HEAD or uncommitted files'
   await save.click();
   await expect(menu).toHaveCount(0);
   await expect(page.locator('[data-git-operation-status]')).toContainText('Saved source ZIP');
-  const repoId = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId());
+  const repoId = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId());
   expect(await calls(page)).toEqual([
     { command: 'plugin:dialog|save', args: { options: expect.objectContaining({
       title: `Save committed files from ${oid.slice(0, 12)} as ZIP`, defaultPath: `source-${oid.slice(0, 12)}.zip`,
@@ -56,7 +56,7 @@ test('source ZIP is pinned to the context commit, not HEAD or uncommitted files'
     } },
   ]);
   expect(await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { draft: app.commitMessage(), head: app.git.repository().headOid };
   })).toEqual({ draft: 'Leave the local draft alone', head });
 });
@@ -73,7 +73,7 @@ test('a source ZIP picker from another checkout visit cannot write an archive', 
   await save.click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__sourceZip.release)).toBe('function');
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = git.repository();
     git.repositories.update((rows: any[]) => [...rows, { ...source, id: 'other-archive-repo', path: '/owned/other-archive' }]);
     git.activeRepositoryId.set('other-archive-repo');

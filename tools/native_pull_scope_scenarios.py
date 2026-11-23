@@ -212,7 +212,7 @@ def workspace_pull_upstreams(driver, fixtures, report):
     fetch_head = ambiguous / '.git/FETCH_HEAD'
     assert not fetch_head.exists()
 
-    driver.wait('return !!document.querySelector("gc-root")', 60)
+    driver.wait('return !!document.querySelector("gk-root")', 60)
     driver.script("""
         localStorage.clear();
         localStorage.setItem('git-khronos.open-repositories.v1', JSON.stringify(arguments[0]));
@@ -224,7 +224,7 @@ def workspace_pull_upstreams(driver, fixtures, report):
     driver.wait('return document.querySelectorAll(".repo-tab-main[role=tab]").length === 2', 60)
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    overview = 'gk-workspace-center [aria-label="Workspace center"]'
     results = overview + ' [aria-label="Repository action results"]'
     for checkout in (ambiguous, ordinary):
         driver.click_visible(overview + ' article[aria-label=' + json.dumps(checkout.name) + '] input[type=checkbox]')
@@ -255,7 +255,7 @@ def workspace_pull_upstreams(driver, fixtures, report):
     assert any(line.startswith(ordinary.name + ' — success') for line in summary), summary
     report['scenarios'].append('native-workspace-pull-skips-multiple-upstreams-before-fetch-and-continues-the-batch')
 
-    driver.click_visible('gc-workspace-center header button', 'Close')
+    driver.click_visible('gk-workspace-center header button', 'Close')
     _toolbar_pull(driver)
     selected = checkout_footprint(fixtures, ambiguous, ('fixture.txt', 'main.txt'))
     assert selected['head'] == main and not (ambiguous / 'extra.txt').exists(), (

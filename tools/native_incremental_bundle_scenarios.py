@@ -22,7 +22,7 @@ def incremental_bundle_export(driver, fixtures, report):
     receiver_before = checkout_footprint(fixtures, receiver)
     repo_id = open_ui(driver, source)
 
-    panel = 'gc-bundle-exchange-panel'
+    panel = 'gk-bundle-exchange-panel'
     driver.click_visible('[aria-label="Preferences"]')
     driver.click_visible('#preferences-tab-git')
     driver.click_scrolled_text(panel + ' summary', 'Offline Git bundles', wait_for_ready=True)

@@ -5,7 +5,7 @@ import { IconComponent } from './icon.component';
 import { TextValueDirective } from './text-value.directive';
 
 @Component({
-  selector: 'gc-workspace-edit-dialogs',
+  selector: 'gk-workspace-edit-dialogs',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RepositoryFormStylesComponent, IconComponent, TextValueDirective],
   templateUrl: './workspace-edit-dialogs.component.html',

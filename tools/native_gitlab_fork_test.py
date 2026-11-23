@@ -6,6 +6,7 @@ from unittest.mock import ANY, MagicMock, call, patch
 from urllib.error import URLError
 
 from native_acceptance import Driver
+from native_gitlab_fork_scenarios import click_fork_button
 from native_repository_navigation import open_repository_dialog
 
 
@@ -28,8 +29,48 @@ class CatalogueEntryTests(unittest.TestCase):
         script = driver.script.call_args.args[0]
         self.assertIn('.tabbar [aria-label="New repository tab"]', script)
         self.assertIn('elementFromPoint', script)
-        self.assertNotIn('gc-welcome-launcher', script)
+        self.assertNotIn('gk-welcome-launcher', script)
         self.assertNotIn('.click(', script)
+
+    def test_catalogue_navigation_reacquires_only_after_explicit_stale_refusal(self):
+        driver = MagicMock()
+        driver.click_scrolled_text.side_effect = [
+            RuntimeError(json.dumps({'error': 'stale element reference', 'message': 'detached'})),
+            None,
+        ]
+        driver.click_navigation = lambda selector, text, *, scroll: Driver.click_navigation(
+            driver, selector, text, scroll=scroll, timeout=1)
+        with patch('native_acceptance.time.sleep'):
+            click_fork_button(driver, 'gk-repository-dialog button', 'Browse GitLab projects')
+        self.assertEqual(driver.click_scrolled_text.call_count, 2)
+        driver.click_scrolled_text.assert_has_calls([
+            call('gk-repository-dialog button', 'Browse GitLab projects'),
+            call('gk-repository-dialog button', 'Browse GitLab projects'),
+        ])
+
+    def test_fork_submission_controls_never_use_stale_click_replay(self):
+        driver = MagicMock()
+        click_fork_button(driver, 'gk-gitlab-fork-create button', 'Submit reviewed fork request')
+        driver.click_navigation.assert_not_called()
+        driver.click_scrolled_text.assert_called_once_with(
+            'gk-gitlab-fork-create button', 'Submit reviewed fork request')
+
+    def test_navigation_does_not_replay_uncertain_or_intercepted_clicks(self):
+        errors = [
+            TimeoutError('lost click reply'),
+            RuntimeError(json.dumps({'error': 'element click intercepted'})),
+        ]
+        for error in errors:
+            with self.subTest(error=str(error)):
+                driver = MagicMock()
+                driver.click_scrolled_text.side_effect = error
+                driver.click_navigation = lambda selector, text, *, scroll: Driver.click_navigation(
+                    driver, selector, text, scroll=scroll, timeout=1)
+                with self.assertRaises(type(error)) as failure, patch('native_acceptance.time.sleep'):
+                    click_fork_button(driver, 'gk-repository-dialog button', 'Browse GitLab projects')
+                self.assertIs(failure.exception, error)
+                driver.click_scrolled_text.assert_called_once_with(
+                    'gk-repository-dialog button', 'Browse GitLab projects')
 
     def test_stale_refusal_reacquires_the_current_entry_for_both_error_shapes(self):
         for wrapped in (False, True):

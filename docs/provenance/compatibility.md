@@ -1208,24 +1208,36 @@ No upstream source or distinctive product interface copied.
 
 ## Reviewed autosquash grouping
 
-The editor explicitly previews fixup!/squash! grouping on an all-Pick plan.
-It matches earlier unique exact subjects or full/unique abbreviated IDs (at
-least four hex characters), resolves nested marker targets to their retained
-root and moves matching rows after that root in stable source order. Message
-drafts, unique membership and independent-row ordering remain intact.
-Existing manual actions, duplicate IDs, unsupported amend! markers and any
+The editor explicitly previews fixup!/squash!/amend! grouping on an all-Pick plan.
+It matches earlier unique exact subjects, full/unique abbreviated IDs (at least
+four hex characters), or unique subject prefixes; exact subjects take
+precedence over broader prefixes. It resolves nested marker targets to their
+retained root and moves matching rows after that root in stable source order.
+Message drafts, unique membership and independent-row ordering remain intact.
+Existing manual actions, duplicate IDs, malformed markers and any
 ambiguous/unmatched target refuse the entire preview without partial changes.
-This deliberately does not implement Git's partial-subject matching or
-amend! message-replacement variants. Reset restores the original plan; Start
-Rebase remains a separate explicit action using existing native validation,
-recovery and plain fixup/squash todo commands, not a second native matcher.
+An isolated Git 2.53 black-box probe confirms both unique subject-prefix
+matching and exact-subject precedence. The application deliberately refuses
+ambiguous prefixes rather than selecting one. `amend!` maps to Git's `fixup -C` action, replacing the target message with the complete amend
+commit message while combining its tree. Reset restores the original plan; Start Rebase
+remains a separate explicit action using existing native validation and recovery;
+the reviewed action plan emits Git's fixup -C todo command for amend! commits.
 
-Original unit fixtures qualify exact/hash/nested matching, stable grouping,
+Original unit fixtures qualify exact/hash/prefix/nested matching, stable grouping,
 atomic refusal and input immutability. Renderer fixtures qualify visible
 preview/refusal, retained manual reword draft, Reset and exact final IPC order.
 A real-Git fixture replays the reviewed reordered plan and verifies exact final
 tree, retained target/squash messages, discarded fixup message, independent
 commit order and original-tip recovery.
+
+The commit graph also offers a scoped “Prepare fixup commit from staged
+changes” action for a single commit in the active checkout. It captures the
+target OID, current HEAD and branch; native code rechecks checkout identity,
+target ancestry and staged changes before invoking `git commit --fixup`. The
+composer preserves the ordinary draft, labels the target, excludes unstaged
+changes, and suppresses push-after-commit. The resulting marker can be reviewed
+with the autosquash flow above. Native tests cover successful creation plus
+stale checkout and no-staged-change refusal.
 
 Source: public Git rebase documentation. Independent matcher, UI and fixtures;
 no external implementation copied. Broader matching variants remain unsupported.
@@ -1846,10 +1858,13 @@ Independent implementation:
   failure. Configuration, dirty files and staged contents remain intact.
   Git may refresh cache-tree metadata in an index during a failed commit; the
   preservation assertion checks actual staged entries, not incidental bytes.
-- Unix fixtures verify custom hooks paths and the exact `--no-verify` boundary:
+- Unix real-Git fixtures verify custom hook paths and the `--no-verify` boundary:
   pre-commit/commit-msg can be explicitly bypassed, but prepare-commit-msg still
-  edits messages and can refuse a commit. The interface calls this "Skip checks"
-  and discloses that hook side effects are not rolled back.
+  edits messages and can refuse a commit. A core integration test verifies that a
+  refusing pre-commit hook leaves HEAD and staged work intact until the caller
+  explicitly requests bypass. The interface calls this "Skip hooks", includes a
+  tooltip, and exposes an announced inline warning while enabled that explains
+  the remaining hooks and that side effects are not rolled back.
 - Renderer signing/hook refusals retain message and selected policy for explicit
   retry. Online certificate revocation/CA chains, interactive/hardware-key and
   native packaged signing remain unqualified.

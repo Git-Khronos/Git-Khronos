@@ -23,6 +23,7 @@ import type {
   CommitFileDiff,
   CommitHistoryPage,
   CommitPolicy,
+  CommitFixupTarget,
   ConflictDetails,
   DiscardPreview,
   DiscardRecovery,
@@ -1657,21 +1658,23 @@ export class GitKhronosService implements OnDestroy {
 
   async commit(
     message: string,
-    options: { amend?: boolean; skipHooks?: boolean; sign?: boolean } & Partial<CommitPolicy> = {},
+    options: { amend?: boolean; skipHooks?: boolean; sign?: boolean; fixupTarget?: CommitFixupTarget } & Partial<CommitPolicy> = {},
   ): Promise<{ headOid: string | null } | null> {
-    if (!message.trim()) return null;
+    if (!message.trim() && !options.fixupTarget) return null;
     const repository = this.repository();
     const beforeOid = repository?.headOid;
-    const outcome = await this.mutateWithResult('commit_changes', options.amend ? 'Amending commit…' : 'Creating commit…', options.amend ? 'Commit amended' : 'Commit created', {
+    const fixup = !!options.fixupTarget;
+    const outcome = await this.mutateWithResult('commit_changes', fixup ? 'Creating fixup commit…' : options.amend ? 'Amending commit…' : 'Creating commit…', fixup ? 'Fixup commit created' : options.amend ? 'Commit amended' : 'Commit created', {
       message: message.trim(),
       amend: options.amend ?? false,
       skipHooks: options.skipHooks ?? false,
       sign: options.sign ?? false,
+      fixupTarget: options.fixupTarget ?? null,
       policy: { signOff: options.signOff ?? false, allowEmpty: options.allowEmpty ?? false,
         author: options.author ?? null, committer: options.committer ?? null },
     });
     if (outcome?.status !== 'success') return null;
-    this.recordHeadChange(repository?.id, beforeOid, options.amend ? 'Amend Commit' : 'Commit', outcome.responseHeadOid);
+    this.recordHeadChange(repository?.id, beforeOid, fixup ? 'Fixup Commit' : options.amend ? 'Amend Commit' : 'Commit', outcome.responseHeadOid);
     return { headOid: outcome.responseHeadOid };
   }
 
@@ -2636,6 +2639,11 @@ export class GitKhronosService implements OnDestroy {
   async dropStash(reference: string, expectedOid: string, repositoryId: string): Promise<boolean> {
     if (!this.requireRecoveryRepository(repositoryId)) return false;
     return await this.mutate('drop_stash', `Deleting ${reference}…`, `${reference} deleted`, { reference, expectedOid }) === 'success';
+  }
+
+  async clearStashes(expectedOids: string[], repositoryId: string): Promise<boolean> {
+    if (this.busy() || !this.requireRecoveryRepository(repositoryId)) return false;
+    return await this.mutate('clear_stashes', `Preserving ${expectedOids.length} stashes…`, 'Stash list cleared; all entries are in Recovery History', { expectedOids }) === 'success';
   }
 
   async renameStash(reference: string, expectedOid: string, message: string, repositoryId: string): Promise<boolean> {

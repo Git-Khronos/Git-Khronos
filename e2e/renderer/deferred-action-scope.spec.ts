@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const state: any = { app, git, repository, calls: [], pickers: [] };
@@ -39,7 +39,7 @@ test.beforeEach(async ({ page }) => {
 
 async function open(page: Page, kind: string) {
   await page.evaluate(kind => (window as any).__deferredScope.open(kind), kind);
-  const dialog = page.locator(kind === 'fetch' ? 'gc-fetch-options-dialog [role=dialog]' : 'gc-worktree-move-dialog [role=dialog]');
+  const dialog = page.locator(kind === 'fetch' ? 'gk-fetch-options-dialog [role=dialog]' : 'gk-worktree-move-dialog [role=dialog]');
   await expect(dialog).toBeVisible();
   if (kind === 'move') await dialog.getByLabel('New folder name').fill('owned-moved');
   if (kind === 'repair') await dialog.getByLabel('Actual moved worktree directory').fill('/owned/moved-linked');
@@ -52,7 +52,7 @@ for (const kind of kinds) {
     test(`${kind} retires and refuses a pre-effect ${change} change`, async ({ page }) => {
       const dialog = await open(page, kind);
       await page.evaluate(({ kind, change }) => {
-        const selector = kind === 'fetch' ? 'gc-fetch-options-dialog' : 'gc-worktree-move-dialog';
+        const selector = kind === 'fetch' ? 'gk-fetch-options-dialog' : 'gk-worktree-move-dialog';
         const confirm = document.querySelector<HTMLButtonElement>(selector + ' button[type=submit]')!;
         (window as any).__deferredScope.change(change); confirm.click();
       }, { kind, change });
@@ -76,7 +76,7 @@ for (const kind of kinds) {
     test(`outgoing ${kind} ${action} cannot consume its replacement`, async ({ page }) => {
       const dialog = await open(page, kind);
       await page.evaluate(({ kind, action }) => {
-        const component = kind === 'fetch' ? 'gc-fetch-options-dialog' : 'gc-worktree-move-dialog';
+        const component = kind === 'fetch' ? 'gk-fetch-options-dialog' : 'gk-worktree-move-dialog';
         const control = document.querySelector<HTMLButtonElement>(component + (action === 'confirm' ? ' button[type=submit]' : ' footer button[type=button]'))!;
         (window as any).__deferredScope.open(kind); control.click();
       }, { kind, action });
@@ -132,7 +132,7 @@ for (const kind of kinds) {
     const field = dialog.locator(kind === 'fetch' ? '#fetch-options-remote' : kind === 'move' ? '#move-folder' : '#repair-directory');
     await field.focus();
     await field.press('Control+p');
-    await expect(page.locator('gc-command-palette')).toHaveCount(0);
+    await expect(page.locator('gk-command-palette')).toHaveCount(0);
     await expect(dialog).toBeVisible();
     expect(await page.evaluate(writes => (window as any).__deferredScope.calls.filter((call: any) => writes.includes(call.command)), writes)).toEqual([]);
   });
@@ -148,14 +148,14 @@ for (const kind of ['reference', 'stash']) {
       if (kind === 'reference') s.app.referenceAction.set({ ...owner, action: 'delete-tag', name: 'v0.1.0', oid: s.repository.headOid });
       else s.app.stashDialog.set({ ...owner, action: 'save' });
     }, kind);
-    await expect(page.locator(kind === 'reference' ? 'gc-reference-action-dialog [role=alertdialog]' : 'gc-stash-options-dialog [role=dialog]')).toBeVisible();
+    await expect(page.locator(kind === 'reference' ? 'gk-reference-action-dialog [role=alertdialog]' : 'gk-stash-options-dialog [role=dialog]')).toBeVisible();
     await page.evaluate(kind => {
       const s = (window as any).__deferredScope; s.oldFocus = 0;
       document.addEventListener('focusin', event => { if ((event.target as HTMLElement).id === 'owned-deferred-opener') s.oldFocus++; });
       document.querySelector<HTMLButtonElement>(kind === 'reference' ? '[data-reference-cancel]' : '[data-stash-cancel]')!.click();
       s.open('fetch');
     }, kind);
-    await expect(page.locator('gc-fetch-options-dialog [data-fetch-cancel]')).toBeFocused();
+    await expect(page.locator('gk-fetch-options-dialog [data-fetch-cancel]')).toBeFocused();
     expect(await page.evaluate(() => (window as any).__deferredScope.oldFocus)).toBe(0);
   });
 }

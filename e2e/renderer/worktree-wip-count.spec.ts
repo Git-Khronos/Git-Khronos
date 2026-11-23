@@ -6,7 +6,7 @@ for (const mode of ['background', 'manual', 'mutation', 'overview'] as const) {
       await page.goto('/');
       await expect(page.locator('.commit-row').first()).toBeVisible();
       const fixture = await page.evaluate(async ({ mode, trackedCount }) => {
-        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
         const repository = git.repository();
         const tracked = trackedCount
           ? [{ path: 'tracked.txt', indexStatus: 'M', worktreeStatus: 'M', conflicted: false }]
@@ -73,7 +73,7 @@ test('counts a newly tracked file once while preserving other untracked changes'
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const tracked = { path: 'tracked.txt', indexStatus: 'M', worktreeStatus: 'M', conflicted: false };
     const untracked = Array.from({ length: 5 }, (_, index) => ({
@@ -121,7 +121,7 @@ test('retains the WIP count when untracked paths are outside a truncated status'
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const entry = { path: 'tracked.txt', indexStatus: 'M', worktreeStatus: 'M', conflicted: false };
     const previous = { ...repository.status, staged: 1, unstaged: 1, untracked: 5, conflicted: 0,
@@ -163,7 +163,7 @@ for (const count of [0, 6]) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async count => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const entries = Array.from({ length: count }, (_, index) => ({
         path: `new-${index}.txt`, indexStatus: '?', worktreeStatus: '?', conflicted: false,
@@ -201,7 +201,7 @@ test('keeps repository identities when status and current worktree already agree
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const unchanged = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repositories = git.repositories();
     const repository = git.repository();
     const status = { ...repository.status, entries: repository.status.entries.map((entry: any) => ({ ...entry })) };

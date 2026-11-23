@@ -115,13 +115,16 @@ impl ChromeColors {
 
     /// The surface color as RGBA bytes, for the web view's pre-paint background.
     pub fn page_rgba(&self) -> (u8, u8, u8, u8) {
-        let channel = |i: usize| u8::from_str_radix(&self.page[1 + i * 2..3 + i * 2], 16).unwrap_or(0);
+        let channel =
+            |i: usize| u8::from_str_radix(&self.page[1 + i * 2..3 + i * 2], 16).unwrap_or(0);
         (channel(0), channel(1), channel(2), 255)
     }
 
     /// Whether the background is dark, by perceived luminance.
     pub fn is_dark(&self) -> bool {
-        let channel = |i: usize| f64::from(u8::from_str_radix(&self.background[1 + i * 2..3 + i * 2], 16).unwrap_or(0));
+        let channel = |i: usize| {
+            f64::from(u8::from_str_radix(&self.background[1 + i * 2..3 + i * 2], 16).unwrap_or(0))
+        };
         0.299 * channel(0) + 0.587 * channel(1) + 0.114 * channel(2) < 128.0
     }
 
@@ -143,7 +146,12 @@ impl ChromeColors {
 /// title-bar button image under `widget`. GTK rebuilds these images and swaps
 /// the maximize/restore icon on window-state changes, so this stays idempotent.
 #[cfg(target_os = "linux")]
-fn scale_titlebutton_icons(widget: &gtk::Widget, in_button: bool, pixels: i32, thin: bool) -> usize {
+fn scale_titlebutton_icons(
+    widget: &gtk::Widget,
+    in_button: bool,
+    pixels: i32,
+    thin: bool,
+) -> usize {
     use gtk::prelude::*;
 
     let in_button = in_button || widget.style_context().has_class("titlebutton");
@@ -162,7 +170,8 @@ fn scale_titlebutton_icons(widget: &gtk::Widget, in_button: bool, pixels: i32, t
         }
     }
     if let Some(container) = widget.downcast_ref::<gtk::Container>() {
-        container.forall(|child| updated += scale_titlebutton_icons(child, in_button, pixels, thin));
+        container
+            .forall(|child| updated += scale_titlebutton_icons(child, in_button, pixels, thin));
     }
     updated
 }
@@ -171,7 +180,11 @@ fn scale_titlebutton_icons(widget: &gtk::Widget, in_button: bool, pixels: i32, t
 /// on common desktop title bars). They are filled shapes so GTK recolors them.
 #[cfg(target_os = "linux")]
 const THIN_GLYPHS: [(&str, &str, &str); 4] = [
-    ("window-minimize-symbolic", "gk-window-minimize-symbolic", "M5 10h10v1H5z"),
+    (
+        "window-minimize-symbolic",
+        "gk-window-minimize-symbolic",
+        "M5 10h10v1H5z",
+    ),
     (
         "window-maximize-symbolic",
         "gk-window-maximize-symbolic",
@@ -264,7 +277,8 @@ fn refresh_titlebutton_icons() -> usize {
 /// state change that rebuilt the buttons. Repeated requests coalesce.
 #[cfg(target_os = "linux")]
 fn schedule_titlebutton_refresh() {
-    let already_pending = CHROME.with(|state| std::mem::replace(&mut state.borrow_mut().refresh_pending, true));
+    let already_pending =
+        CHROME.with(|state| std::mem::replace(&mut state.borrow_mut().refresh_pending, true));
     if already_pending {
         return;
     }
@@ -290,7 +304,10 @@ fn hook_window_state_changes() {
         let hooked = CHROME.with(|state| {
             let mut state = state.borrow_mut();
             state.hooked.retain(|weak| weak.upgrade().is_some());
-            state.hooked.iter().any(|weak| weak.upgrade().as_ref() == Some(&window))
+            state
+                .hooked
+                .iter()
+                .any(|weak| weak.upgrade().as_ref() == Some(&window))
         });
         if hooked {
             continue;
@@ -397,14 +414,17 @@ impl ChromeSnapshot {
     pub fn default_theme() -> Self {
         Self {
             percent: None,
-            colors: ChromeColors::parse("#101019", "#f2f2f7", "#343449", "#151521").expect("valid default colors"),
+            colors: ChromeColors::parse("#101019", "#f2f2f7", "#343449", "#151521")
+                .expect("valid default colors"),
         }
     }
 
     pub fn serialize(&self) -> String {
         format!(
             "percent={}\nbackground={}\nforeground={}\nborder={}\npage={}\n",
-            self.percent.map(|value| value.to_string()).unwrap_or_default(),
+            self.percent
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
             self.colors.background,
             self.colors.foreground,
             self.colors.border,
@@ -416,14 +436,22 @@ impl ChromeSnapshot {
     pub fn parse(text: &str) -> Self {
         let value = |key: &str| {
             text.lines()
-                .find_map(|line| line.strip_prefix(key).and_then(|rest| rest.strip_prefix('=')))
+                .find_map(|line| {
+                    line.strip_prefix(key)
+                        .and_then(|rest| rest.strip_prefix('='))
+                })
                 .unwrap_or("")
         };
         let defaults = Self::default_theme();
         Self {
             percent: value("percent").trim().parse().ok(),
-            colors: ChromeColors::parse(value("background"), value("foreground"), value("border"), value("page"))
-                .unwrap_or(defaults.colors),
+            colors: ChromeColors::parse(
+                value("background"),
+                value("foreground"),
+                value("border"),
+                value("page"),
+            )
+            .unwrap_or(defaults.colors),
         }
     }
 
@@ -457,7 +485,11 @@ pub fn apply_saved_window_chrome(directory: &std::path::Path) -> Option<ChromeCo
 
 /// Remembers a change of scale or colors for the next launch.
 #[cfg(target_os = "linux")]
-pub fn remember_window_chrome(directory: &std::path::Path, percent: Option<u32>, colors: Option<ChromeColors>) {
+pub fn remember_window_chrome(
+    directory: &std::path::Path,
+    percent: Option<u32>,
+    colors: Option<ChromeColors>,
+) {
     let mut snapshot = ChromeSnapshot::load(directory);
     if percent.is_some() {
         snapshot.percent = percent;
@@ -482,7 +514,10 @@ mod tests {
         let defaults = ChromeSnapshot::default_theme();
         assert!(defaults.colors.is_dark());
         assert_eq!(ChromeSnapshot::parse(""), defaults);
-        assert_eq!(ChromeSnapshot::parse("percent=oops\nbackground=red"), defaults);
+        assert_eq!(
+            ChromeSnapshot::parse("percent=oops\nbackground=red"),
+            defaults
+        );
         let saved = ChromeSnapshot {
             percent: Some(130),
             colors: ChromeColors::parse("#090e15", "#f4f7fb", "#35445b", "#0c1119").unwrap(),
@@ -598,7 +633,12 @@ mod tests {
         fn collect_names(widget: &gtk::Widget, in_button: bool, found: &mut Vec<String>) {
             let in_button = in_button || widget.style_context().has_class("titlebutton");
             if in_button && let Some(image) = widget.downcast_ref::<gtk::Image>() {
-                found.push(image.icon_name().map(|name| name.to_string()).unwrap_or_default());
+                found.push(
+                    image
+                        .icon_name()
+                        .map(|name| name.to_string())
+                        .unwrap_or_default(),
+                );
             }
             if let Some(container) = widget.downcast_ref::<gtk::Container>() {
                 container.forall(|child| collect_names(child, in_button, found));
@@ -606,7 +646,10 @@ mod tests {
         }
         collect_names(window.upcast_ref(), false, &mut names);
         assert_eq!(names.len(), 3);
-        assert!(names.iter().all(|name| name.starts_with("gk-window-")), "{names:?}");
+        assert!(
+            names.iter().all(|name| name.starts_with("gk-window-")),
+            "{names:?}"
+        );
 
         window.close();
     }

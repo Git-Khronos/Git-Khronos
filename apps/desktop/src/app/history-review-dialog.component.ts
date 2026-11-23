@@ -16,7 +16,7 @@ export type PendingHistoryAction = {
 );
 
 @Component({
-  selector: 'gc-history-review-dialog',
+  selector: 'gk-history-review-dialog',
   imports: [FormsModule, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './history-review-dialog.component.html',

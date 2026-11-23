@@ -14,7 +14,7 @@ for (const [name, failure] of Object.entries(failures)) {
     await page.goto('/');
     await expect(page.locator('#unstaged-files-list')).toBeVisible();
     const before = await page.evaluate((failure) => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       (window as any).__openCalls = [];
       (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
         (window as any).__openCalls.push({ command, args });
@@ -22,12 +22,12 @@ for (const [name, failure] of Object.entries(failures)) {
       } };
       return { id: git.activeRepositoryId(), count: git.repositories().length };
     }, failure);
-    await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.openRepository('/srv/shared.git/refs'));
+    await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.openRepository('/srv/shared.git/refs'));
     const alert = page.getByRole('alert').filter({ hasText: failure.hint });
     await expect(alert).toBeVisible();
     await expect(alert).toContainText('Git reported:');
     const after = await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       return { id: git.activeRepositoryId(), count: git.repositories().length, calls: (window as any).__openCalls.map((call: any) => call.command) };
     });
     expect(after).toEqual({ ...before, calls: ['open_repository'] });
@@ -38,7 +38,7 @@ test('opening a bare repository browses history read-only', async ({ page }) => 
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const current = git.repository();
     const snapshot = {
       ...current, id: 'bare-shared', name: 'shared.git', path: '/srv/shared.git', bare: true,
@@ -72,7 +72,7 @@ for (const scan of ['clean', 'failed then dirty'] as const) {
     await page.goto('/');
     await expect(page.locator('#unstaged-files-list')).toBeVisible();
     const fixture = await page.evaluate(async (scan) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const git = app.git;
       const current = git.repository();
       app.setAutoFetchInterval(0);

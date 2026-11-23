@@ -3,9 +3,9 @@ import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
 @Component({
-  selector: 'gc-error-toast',
+  selector: 'gk-error-toast',
   imports: [IconComponent],
-  template: `<div class="error-toast" role="alert" (keydown.escape)="git.dismissError(); $event.stopPropagation()"><span aria-hidden="true">!</span><p><strong>Git needs attention</strong>{{ error() }}</p><button class="view-error-log" type="button" (click)="logRequested.emit()">View log</button><button type="button" aria-label="Dismiss error" (click)="git.dismissError()"><gc-icon name="x" [size]="15" /></button></div>`,
+  template: `<div class="error-toast" role="alert" (keydown.escape)="git.dismissError(); $event.stopPropagation()"><span aria-hidden="true">!</span><p><strong>Git needs attention</strong>{{ error() }}</p><button class="view-error-log" type="button" (click)="logRequested.emit()">View log</button><button type="button" aria-label="Dismiss error" (click)="git.dismissError()"><gk-icon name="x" [size]="15" /></button></div>`,
   styles: [`
     /* Persistent feedback must not intercept retries beneath its message. */
     .error-toast { pointer-events: none; }

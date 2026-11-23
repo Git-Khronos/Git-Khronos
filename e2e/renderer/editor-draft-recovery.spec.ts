@@ -184,7 +184,7 @@ test('unmount during a held snapshot reply prevents dispatching a late file save
   await page.getByRole('button', { name: 'Save file', exact: true }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__editor.finishSnapshot)).toBe('function');
   await page.evaluate(() => { const s = (window as any).__editor; s.app.fileContentDialog.set(null); });
-  await expect(page.locator('gc-working-file-editor')).toHaveCount(0);
+  await expect(page.locator('gk-working-file-editor')).toHaveCount(0);
   await page.evaluate(() => (window as any).__editor.finishSnapshot());
   expect(await mutations(page)).toEqual([]);
   expect(await page.evaluate(() => Object.values((window as any).__editor.copies).map((copy: any) => copy.record.text))).toEqual(['retained before unmount']);

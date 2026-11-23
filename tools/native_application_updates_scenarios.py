@@ -15,7 +15,7 @@ def application_updates_workflow(driver, fixtures, report):
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt'))
     driver.click('[aria-label="Main menu"]')
     driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Updates')
-    modal = 'gc-application-updates-dialog [role=dialog]'
+    modal = 'gk-application-updates-dialog [role=dialog]'
     expect_trust = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST') == '1'
     driver.wait('return document.querySelector(' + json.dumps(modal) + ')?.textContent.includes("Running version")')
     state = driver.script('''const dialog = document.querySelector(arguments[0]);
@@ -80,7 +80,7 @@ def application_update_consent(driver, fixtures, report):
     files = (tracked.name, note.name)
     repo_id = open_ui(driver, repository)
     before = checkout_footprint(fixtures, repository, files)
-    dialog = 'gc-application-updates-dialog [role=dialog]'
+    dialog = 'gk-application-updates-dialog [role=dialog]'
     checkbox = dialog + ' input[type=checkbox]'
     feedback = dialog + ' .feedback'
     evidence = report['applicationUpdateConsent'] = {}

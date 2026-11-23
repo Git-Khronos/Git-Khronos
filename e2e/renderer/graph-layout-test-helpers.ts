@@ -55,7 +55,7 @@ function probeGraphLayout({ expectedTitles, fit, explain }: GraphLayoutProbe): b
   // heading. The last heading never spills past the visible header, and the settings button stays
   // at the panel's right end.
   const gear = settings.getBoundingClientRect();
-  const layoutIcon = settings.querySelector('gc-icon');
+  const layoutIcon = settings.querySelector('gk-icon');
   const last = boxes.at(-1);
   const overflow = list.scrollWidth - list.clientWidth;
   const visibleRight = header.getBoundingClientRect().left + header.clientWidth - parseFloat(getComputedStyle(header).paddingRight);

@@ -134,8 +134,12 @@ def require_owned_xvfb(owned_display, input_kind):
     if not owned_display:
         raise RuntimeError(f'Native {input_kind} input requires an owned private Xvfb display')
     display_name, server = owned_display
+    args = server.args if server else ()
+    automatic_display = isinstance(args, (list, tuple)) and tuple(args[:2]) == ('Xvfb', '-displayfd')
+    explicit_display = (isinstance(args, (list, tuple)) and len(args) >= 2
+                        and args[0] == 'Xvfb' and args[1] == display_name)
     if (not re.fullmatch(r':\d+', display_name) or not server
-        or not isinstance(server.args, (list, tuple)) or tuple(server.args[:2]) != ('Xvfb', '-displayfd')
+        or not (automatic_display or explicit_display)
         or server.pid <= 1 or server.poll() is not None
         or os.getpgid(server.pid) != server.pid):
         raise RuntimeError(f'Refusing {input_kind} input without the live, owned Xvfb process')

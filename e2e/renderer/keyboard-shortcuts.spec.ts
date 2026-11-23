@@ -178,15 +178,15 @@ test('toggles the repository terminal with both advertised shortcuts', async ({ 
 test('text field Home and End shortcuts edit the field without selecting graph commits', async ({page}) => {
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.selectedCommit.set(app.git.repository().headOid);
   });
-  const before = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).selectedCommit());
+  const before = await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).selectedCommit());
   const search = page.getByPlaceholder('Filter references');
   await search.fill('main');
   await search.press('Control+Home');
   expect(await search.evaluate((element: HTMLInputElement) => element.selectionStart)).toBe(0);
   await search.press('Control+End');
   expect(await search.evaluate((element: HTMLInputElement) => element.selectionStart)).toBe(4);
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).selectedCommit())).toBe(before);
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).selectedCommit())).toBe(before);
 });

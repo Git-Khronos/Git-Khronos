@@ -10,7 +10,7 @@ header small, .coauthor-suggestions > small, .manual-coauthor > small { color: #
 .coauthor-suggestions strong, .coauthor-suggestions small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .coauthor-suggestions strong { color: #d1d0dc; font-size: 12px; }
 .coauthor-suggestions button small { color: #8d8c9d; font-size: 12px; }
-.coauthor-suggestions button > gc-icon { color: var(--accent); }
+.coauthor-suggestions button > gk-icon { color: var(--accent); }
 .manual-coauthor { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 8px; border-top: 1px solid #3d3c51; }
 .manual-coauthor > small { grid-column: 1 / -1; }
 .manual-coauthor-field { min-width: 0; display: grid; gap: 4px; color: #aaa9b9; font-size: 12px; font-weight: 700; }

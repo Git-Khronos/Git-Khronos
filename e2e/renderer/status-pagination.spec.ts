@@ -5,7 +5,7 @@ for (const interruption of ['stage', 'reopen']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async interruption => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const old = { ...repository.status, staged: 0, unstaged: 0, untracked: 1,
         entryCount: 1, entriesTruncated: true,
@@ -42,7 +42,7 @@ test('expanded status updates the current worktree change count', async ({ page 
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const status = { ...repository.status, staged: 0, unstaged: 0, untracked: 0,
       entryCount: 0, entries: [], entriesTruncated: false };

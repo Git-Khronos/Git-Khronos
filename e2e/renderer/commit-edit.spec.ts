@@ -7,7 +7,7 @@ const olderBody = 'Stage, unstage, and discard individual diff hunks.';
 async function installBackend(page: Page): Promise<void> {
   await page.evaluate(({ older, olderBody }) => {
     const host = window as any;
-    const git = host.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = host.ng.getComponent(document.querySelector('gk-app')).git;
     const coAuthors = 'Co-authored-by: Sam Rivera <sam@example.test>\nCo-authored-by: Alex Kim <alex@example.test>';
     git.repositories.update((repositories: any[]) => repositories.map(repository => ({
       ...repository,
@@ -123,7 +123,7 @@ for (const change of ['tip', 'branch', 'visit'] as const) {
     const editor = page.getByRole('form', { name: 'Edit commit' });
     await editor.getByLabel('Summary').fill('Owned draft');
     await page.evaluate(({ change, older }) => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const original = git.repository();
       if (change === 'visit') {
         git.repositories.update((items: any[]) => [...items, { ...original, id: 'edit-other', path: '/owned/edit-other' }]);
@@ -154,7 +154,7 @@ test('a completed rewrite cannot override a newer commit selection', async ({ pa
   await expect(editor).toHaveCount(0);
   await page.evaluate(() => (window as any).__releaseEdit());
   await expect.poll(() => page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { busy: app.git.busy(), selected: app.selectedCommit(), head: app.git.repository().headOid };
   })).toEqual({ busy: false, selected: older, head: 'a'.repeat(40) });
 });
@@ -168,7 +168,7 @@ test('selects the replacement of an older commit when its review stays active', 
   await editor.getByRole('button', { name: 'Save Commit' }).click();
   await expect(editor).toHaveCount(0);
   await expect.poll(() => page.evaluate(() =>
-    (window as any).ng.getComponent(document.querySelector('gc-root')).selectedCommit(),
+    (window as any).ng.getComponent(document.querySelector('gk-app')).selectedCommit(),
   )).toBe('c'.repeat(40));
 });
 
@@ -179,7 +179,7 @@ test('an obsolete rendered form cannot submit a newer review in the same checkou
   await expect(editor.getByLabel('Summary')).toBeFocused();
   await page.evaluate(older => {
     const retired = document.querySelector<HTMLFormElement>('.commit-message-editor')!;
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.selectCommit(older);
     app.beginCommitMessageEdit();
     retired.requestSubmit();

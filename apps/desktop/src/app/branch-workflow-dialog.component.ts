@@ -8,7 +8,7 @@ export interface WorkflowConflictTarget { branch: string; oid: string }
 const DEFAULTS: BranchWorkflowSettings = { version: 1, production: 'main', development: 'develop', featurePrefix: 'feature/', releasePrefix: 'release/', hotfixPrefix: 'hotfix/', tagPrefix: '' };
 
 @Component({
-  selector: 'gc-branch-workflow-dialog',
+  selector: 'gk-branch-workflow-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" (click)="close()"><section #dialog role="dialog" aria-modal="true" aria-labelledby="workflow-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">

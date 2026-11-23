@@ -519,7 +519,11 @@ fn application_update_admission_retires_its_receipt_if_new_activity_prevents_lau
     .unwrap();
     assert_eq!(runtime.model.phase, UpdatePhase::Installing);
     assert_eq!(
-        model::load_preferences(&path).unwrap().attempt.unwrap().token,
+        model::load_preferences(&path)
+            .unwrap()
+            .attempt
+            .unwrap()
+            .token,
         "after-activity"
     );
 }
@@ -560,8 +564,16 @@ fn application_update_admission_automatic_retry_still_requires_current_consent()
         .is_err()
     );
     assert!(runtime.model.can_automatically_install());
-    assert!(!runtime.model.can_check(origin), "Waiting for idle must keep the verified offer");
-    assert!(model::load_preferences(&runtime.store).unwrap().attempt.is_none());
+    assert!(
+        !runtime.model.can_check(origin),
+        "Waiting for idle must keep the verified offer"
+    );
+    assert!(
+        model::load_preferences(&runtime.store)
+            .unwrap()
+            .attempt
+            .is_none()
+    );
     runtime.model.set_automatic(false).unwrap();
     assert!(
         admit_install(
@@ -626,7 +638,10 @@ fn application_update_admission_uncertain_retirement_blocks_new_attempts() {
         assert!(runtime.storage_error.is_some());
         assert!(runtime.model.preferences.attempt.is_some());
         assert_eq!(
-            model::load_preferences(&runtime.store).unwrap().attempt.is_none(),
+            model::load_preferences(&runtime.store)
+                .unwrap()
+                .attempt
+                .is_none(),
             simulate_post_rename
         );
         assert!(

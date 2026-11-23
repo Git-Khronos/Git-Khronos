@@ -33,7 +33,7 @@ test('buffers composed reference searches until the composition ends', async ({ 
 
 test('keeps commit text, options, and co-author data synchronized', async ({ page }) => {
   await page.evaluate(() => {
-    const root = document.querySelector('gc-root');
+    const root = document.querySelector('gk-app');
     if (!root) throw new Error('Application root not found');
     const app = (window as Window & {
       ng: {
@@ -96,7 +96,7 @@ for (const success of [true, false]) {
     const stashMessage = page.getByRole('textbox', { name: 'Stash message' });
     await expect(stashMessage).toHaveValue('Initial');
     await page.evaluate(success => {
-      const root = document.querySelector('gc-root');
+      const root = document.querySelector('gk-app');
       if (!root) throw new Error('Application root not found');
       const app = (window as Window & {
         ng: {

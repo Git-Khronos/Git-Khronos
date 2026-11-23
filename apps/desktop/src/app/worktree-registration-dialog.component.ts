@@ -18,12 +18,12 @@ export interface WorktreeRegistrationRequest {
 }
 
 @Component({
-  selector: 'gc-worktree-registration-dialog',
+  selector: 'gk-worktree-registration-dialog',
   imports: [GitHelpComponent, SubmoduleStateReviewComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (request()?.submodules) {
-      <gc-submodule-state-review [request]="request()" (closed)="closed.emit()" />
+      <gk-submodule-state-review [request]="request()" (closed)="closed.emit()" />
     } @else if (request(); as target) {
       <div class="backdrop" (click)="close()">
         <section #dialog role="dialog" aria-modal="true" aria-labelledby="worktree-registration-title"
@@ -89,7 +89,7 @@ export interface WorktreeRegistrationRequest {
               reconnect it or lock the registration. Pruning can lose administrative index/reflog metadata;
               do not use it to clean dirty or recoverable work. Locked and main registrations are never removed here.</p>
           }
-          <gc-git-help topic="worktree" label="Learn about worktree registration and pruning…" />
+          <gk-git-help topic="worktree" label="Learn about worktree registration and pruning…" />
           <footer><button type="button" [disabled]="unavailable()" (click)="reload()">Reload review</button>
             <button data-registration-close type="button" [disabled]="loading() || pending() || git.busy()" (click)="close()">Close</button></footer>
         </section>

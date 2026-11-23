@@ -1,5 +1,5 @@
 // Shared by the three deferred repository form surfaces.
-:where(gc-repository-dialog, gc-repository-setup-dialog, gc-workspace-edit-dialogs) {
+:where(gk-repository-dialog, gk-repository-setup-dialog, gk-workspace-edit-dialogs) {
   .repository-backdrop { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 24px; background: #090910d9; backdrop-filter: blur(3px); }
   .repository-dialog { width: min(680px, calc(100vw - 32px)); max-height: min(720px, calc(100vh - 32px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #4a4962; border-radius: 7px; background: #1d1d2b; box-shadow: 0 28px 90px #000c; }
   .repository-dialog-header { z-index: 3; height: 58px; display: flex; flex: 0 0 58px; align-items: center; gap: 10px; padding: 0 15px; border-bottom: 1px solid #343449; background: #242437; }

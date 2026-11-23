@@ -32,7 +32,7 @@ async function prepare(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/'); await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(({ connectionId, recordId, token }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root')), git = app.git;
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app')), git = app.git;
     git.systemInfo.update((value: any) => ({ ...value, appVersion: 'owned fork creation fixture' }));
     const account = { origin: 'https://gitlab.example.test', id: '9007199254740993', login: 'owned-user' };
     const source = { id: '10', name: 'Owned source', fullPath: 'team/upstream', url: account.origin + '/team/upstream', description: null, defaultBranch: 'main', archived: false, visibility: 'private' };

@@ -5,7 +5,7 @@ import { TextValueDirective } from './text-value.directive';
 
 /** Optional presentation only. Root owns requests, focus, positioning and Git writes. */
 @Component({
-  selector: 'gc-graph-action-menu',
+  selector: 'gk-graph-action-menu',
   imports: [IconComponent, TextValueDirective],
   templateUrl: './graph-action-menu.component.html',
   styleUrl: './graph-action-menu.component.scss',

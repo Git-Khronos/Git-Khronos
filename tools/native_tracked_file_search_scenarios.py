@@ -1,4 +1,6 @@
 """Verify a real unmerged Git index through the installed file-search palette."""
+import json
+
 from native_setup_keyboard_scenarios import _chord
 
 
@@ -43,20 +45,20 @@ def tracked_file_search_during_merge(driver, fixtures, report):
     report['scenarios'].append('native-tracked-file-search-uses-distinct-unmerged-paths-before-the-result-limit')
 
     _chord(driver, 'h', shift=True)
-    driver.wait("""const field = document.querySelector('gc-command-palette input[aria-label="Search tracked files"]');
+    driver.wait("""const field = document.querySelector('gk-command-palette input[aria-label="Search tracked files"]');
       return !!field && document.activeElement === field;""")
     driver.script("""const field = document.activeElement;
       field.value = 'scoped-search-'; field.dispatchEvent(new Event('input', { bubbles: true }));""")
-    driver.wait("""return [...document.querySelectorAll('gc-command-palette [role=option] strong')]
+    driver.wait("""return [...document.querySelectorAll('gk-command-palette [role=option] strong')]
       .some(node => node.textContent.includes('scoped-search-neighbour.txt'));""")
-    options = driver.script("""return [...document.querySelectorAll('gc-command-palette [role=option] strong')]
+    options = driver.script("""return [...document.querySelectorAll('gk-command-palette [role=option] strong')]
       .map(node => node.textContent.trim());""")
     assert sorted(options) == sorted([
         *(prefix + path for prefix in ('File History: ', 'Blame: ') for path in paths),
         'File history for exact path: scoped-search-',
     ]), options
     driver.key('\ue00c')
-    driver.wait("return !document.querySelector('gc-command-palette')")
+    driver.wait("return !document.querySelector('gk-command-palette')")
     assert footprint() == before, 'Reading tracked-file results changed an active merge or its files'
     report['trackedFileSearchPaths'] = paths
     report['scenarios'].append('native-tracked-file-palette-keeps-one-history-and-blame-per-path-without-changing-merge-state')
@@ -74,6 +76,9 @@ def deleted_file_history_from_exact_path(driver, fixtures, report):
     fixtures.git(repository, 'commit', '-qm', 'GC_HISTORY')
     fixtures.git(repository, 'mv', '--', oldest.name, path)
     fixtures.git(repository, 'commit', '-qm', 'Rename historical file')
+    rename_tip = fixtures.git(repository, 'rev-parse', 'HEAD')
+    fixtures.git(repository, 'tag', 'history-start', rename_tip)
+    fixtures.git(repository, 'branch', 'history/branch', rename_tip)
     fixtures.git(repository, 'rm', '--', path)
     fixtures.git(repository, 'commit', '-qm', 'Delete historical file')
     tip = fixtures.git(repository, 'rev-parse', 'HEAD')
@@ -81,15 +86,31 @@ def deleted_file_history_from_exact_path(driver, fixtures, report):
     repo_id = open_ui(driver, repository)
 
     _chord(driver, 'h', shift=True)
-    driver.wait("""const field = document.querySelector('gc-command-palette input[aria-label="Search tracked files"]');
+    driver.wait("""const field = document.querySelector('gk-command-palette input[aria-label="Search tracked files"]');
       return !!field && document.activeElement === field;""")
     driver.script("""const field = document.activeElement;
       field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));""", path)
-    driver.click_scrolled_text('gc-command-palette [role=option] strong', 'File history for exact path: ' + path, wait_for_ready=True)
+    driver.click_scrolled_text('gk-command-palette [role=option] strong', 'File history for exact path: ' + path, wait_for_ready=True)
     driver.wait("""return [...document.querySelectorAll('.file-insight-panel .history-entry small')]
       .some(node => node.textContent.includes('Deleted'));""")
     subjects = driver.script("return [...document.querySelectorAll('.file-insight-panel .history-entry button')].map(node => node.textContent.trim())")
     assert subjects == ['Delete historical file', 'Rename historical file', 'GC_HISTORY'], subjects
+    driver.click('gk-file-history .history-start summary')
+    driver.script("const field=document.querySelector('gk-file-history .history-start input'); if(!field) throw Error('Missing history starting point field'); field.value='history-start'; field.dispatchEvent(new Event('input',{bubbles:true}));")
+    driver.click_scrolled_text('gk-file-history .history-start button', 'Search from revision', wait_for_ready=True)
+    driver.wait("return document.querySelector('gk-file-history .history-start summary')?.textContent.includes('history-start') && [...document.querySelectorAll('gk-file-history .history-entry button')].map(button=>button.textContent.trim()).join('|') === 'Rename historical file|GC_HISTORY'")
+    for starting_point in ('history/branch', rename_tip):
+        driver.script("const field=document.querySelector('gk-file-history .history-start input'); field.value=arguments[0]; field.dispatchEvent(new Event('input',{bubbles:true}));", starting_point)
+        driver.click_scrolled_text('gk-file-history .history-start button', 'Search from revision', wait_for_ready=True)
+        driver.wait(f"return document.querySelector('gk-file-history .history-start summary')?.textContent.includes({json.dumps(starting_point)}) && [...document.querySelectorAll('gk-file-history .history-entry button')].map(button=>button.textContent.trim()).join('|') === 'Rename historical file|GC_HISTORY'")
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == tip
+    assert (repository / '.git/index').read_bytes() == index
+    driver.click_scrolled_text('gk-file-history .history-start button', 'Use diff revision', wait_for_ready=True)
+    driver.wait("return [...document.querySelectorAll('gk-file-history .history-entry button')].map(button=>button.textContent.trim())[0] === 'Delete historical file'")
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == tip
+    assert (repository / '.git/index').read_bytes() == index
+    report['scenarios'].append('native-file-history-selects-tag-branch-and-commit-start-points-and-restores-diff-revision')
+
     driver.click_scrolled_text('.file-insight-panel .history-entry button', 'Delete historical file', wait_for_ready=True)
     driver.wait("return document.querySelector('.diff-primary-view')?.textContent.includes('last committed contents before deletion')")
     assert fixtures.git(repository, 'rev-parse', 'HEAD') == tip

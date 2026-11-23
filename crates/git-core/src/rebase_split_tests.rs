@@ -191,9 +191,15 @@ fn guided_split_retains_all_files_unstaged_requires_two_parts_and_resumes_exact_
     begin_rebase_split(&repository.0, &stopped).unwrap();
     assert_eq!(repository.head(), base);
     assert_eq!(
-        update_head_message(&repository.0, &base, None, "Forbidden parent message edit", false)
-            .unwrap_err()
-            .kind,
+        update_head_message(
+            &repository.0,
+            &base,
+            None,
+            "Forbidden parent message edit",
+            false
+        )
+        .unwrap_err()
+        .kind,
         "rebaseSplitCommit"
     );
     let status = read_status(&repository.0).unwrap();

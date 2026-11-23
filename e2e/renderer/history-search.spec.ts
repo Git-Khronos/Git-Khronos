@@ -4,7 +4,7 @@ async function installHistoryFixture(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const oldOid = 'a'.repeat(40);
     const parentOid = 'b'.repeat(40);
     const query = { message: '', author: '', oid: '', since: '', until: '', path: '', scope: '' };
@@ -511,7 +511,7 @@ test('file history keeps its scroll position when returning from Diff', async ({
     const history = await app.loadHistorySearch();
     history.files.set(Array.from({length: 100}, (_, i) => ({...entry, oid: (i + 1).toString(16).padStart(40, '0'), path: 'new.txt', previousPath: null})));
   });
-  const viewport = page.locator('gc-file-history .history-list');
+  const viewport = page.locator('gk-file-history .history-list');
   const commitButton = viewport.locator('.history-entry button').first();
   await expect(commitButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(commitButton).toHaveCSS('text-align', 'left');

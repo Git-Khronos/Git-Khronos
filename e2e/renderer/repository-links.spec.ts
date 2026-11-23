@@ -8,7 +8,7 @@ async function prepare(page: Page, held: 'discover' | 'open' | 'create' | null =
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(({ remote, uri, held }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = { ...git.repository(), remotes: [{ name: 'origin', fetchUrl: remote, pushUrl: remote }] };
     git.repositories.set([repository]);

@@ -92,11 +92,21 @@ fn assert_bulk_index_operation_preserves_conflict(
     assert!(!unmerged.is_empty());
 
     let result = operation(&repo.0);
-    assert_eq!(fs::read(repo.0.join(".git/index")).unwrap(), index, "bulk command wrote the index");
+    assert_eq!(
+        fs::read(repo.0.join(".git/index")).unwrap(),
+        index,
+        "bulk command wrote the index"
+    );
     assert_eq!(repo.git(&["ls-files", "--unmerged", "-z"]), unmerged);
     assert_eq!(fs::read(repo.0.join(conflicted_path)).unwrap(), conflict);
-    assert_eq!(repo.git(&["rev-parse", "HEAD"]), format!("{main}\n").as_bytes());
-    assert_eq!(repo.git(&["rev-parse", "MERGE_HEAD"]), format!("{side}\n").as_bytes());
+    assert_eq!(
+        repo.git(&["rev-parse", "HEAD"]),
+        format!("{main}\n").as_bytes()
+    );
+    assert_eq!(
+        repo.git(&["rev-parse", "MERGE_HEAD"]),
+        format!("{side}\n").as_bytes()
+    );
     assert_eq!(result.unwrap_err().kind, "bulkIndexConflicts");
 }
 
@@ -126,7 +136,10 @@ fn bulk_stage_and_unstage_still_work_before_the_first_commit() {
     assert_eq!(repo.git(&["ls-files", "-z"]), b"first.txt\0");
     unstage_all(&repo.0).unwrap();
     assert!(repo.git(&["ls-files", "-z"]).is_empty());
-    assert_eq!(fs::read(repo.0.join("first.txt")).unwrap(), b"keep these bytes\n");
+    assert_eq!(
+        fs::read(repo.0.join("first.txt")).unwrap(),
+        b"keep these bytes\n"
+    );
 }
 
 fn only_selected(diff: CommitFileDiff) {
@@ -1090,7 +1103,10 @@ fn untracked_statistics_use_attributes_inside_sparse_index_directories() {
         .iter()
         .find(|entry| entry.path == "excluded/selected.owned")
         .unwrap();
-    let recap = working_tree_summaries(&repository.0).unwrap().unstaged.unwrap();
+    let recap = working_tree_summaries(&repository.0)
+        .unwrap()
+        .unstaged
+        .unwrap();
     assert_eq!(
         (recap.additions, recap.deletions, recap.uncounted_files),
         (0, 0, 1)
@@ -1830,9 +1846,21 @@ fn unstaged_summary_excludes_staged_only_changes_and_handles_unborn_repositories
     repository.write("staged.txt", b"staged\n");
     repository.git(&["add", "staged.txt"]);
     let summary = working_tree_change_summary(&repository.0).unwrap();
-    assert_eq!((summary.additions, summary.deletions, summary.uncounted_files), (0, 0, 0));
+    assert_eq!(
+        (
+            summary.additions,
+            summary.deletions,
+            summary.uncounted_files
+        ),
+        (0, 0, 0)
+    );
     repository.write("staged.txt", b"staged\nworking\n");
-    assert_eq!(working_tree_change_summary(&repository.0).unwrap().additions, 1);
+    assert_eq!(
+        working_tree_change_summary(&repository.0)
+            .unwrap()
+            .additions,
+        1
+    );
 }
 
 #[test]
@@ -1840,7 +1868,11 @@ fn unstaged_summary_counts_only_edits_in_an_intent_to_add_rename() {
     let repository = Repository::new();
     repository.write("before.txt", b"alpha\nbeta\ngamma\ndelta\n");
     repository.commit("Base");
-    fs::rename(repository.0.join("before.txt"), repository.0.join("after.txt")).unwrap();
+    fs::rename(
+        repository.0.join("before.txt"),
+        repository.0.join("after.txt"),
+    )
+    .unwrap();
     repository.git(&["add", "-N", "--", "after.txt"]);
     let index = fs::read(repository.0.join(".git/index")).unwrap();
 
@@ -1848,7 +1880,10 @@ fn unstaged_summary_counts_only_edits_in_an_intent_to_add_rename() {
     let staged = pure.staged.unwrap();
     let unstaged = pure.unstaged.unwrap();
     assert_eq!((staged.additions, staged.deletions), (0, 0));
-    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.partial), (0, 0, false));
+    assert_eq!(
+        (unstaged.additions, unstaged.deletions, unstaged.partial),
+        (0, 0, false)
+    );
 
     repository.write("after.txt", b"alpha\nbeta\ngamma\nchanged\n");
     // Neither local status nor local diff configuration may split the same
@@ -1856,7 +1891,15 @@ fn unstaged_summary_counts_only_edits_in_an_intent_to_add_rename() {
     repository.git(&["config", "status.renames", "false"]);
     repository.git(&["config", "diff.renames", "false"]);
     let edited = working_tree_change_summary(&repository.0).unwrap();
-    assert_eq!((edited.additions, edited.deletions, edited.uncounted_files, edited.partial), (1, 1, 0, false));
+    assert_eq!(
+        (
+            edited.additions,
+            edited.deletions,
+            edited.uncounted_files,
+            edited.partial
+        ),
+        (1, 1, 0, false)
+    );
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
 }
 
@@ -1884,7 +1927,11 @@ fn reviewed_index_rename_moves_both_literal_paths_and_preserves_unrelated_edits(
     let head = repository.git(&["rev-parse", "HEAD"]);
     assert!(baseline.starts_with(format!(" R {destination}\0{source}\0").as_bytes()));
     let shown = read_status(&repository.0).unwrap();
-    let row = shown.entries.iter().find(|entry| entry.path == destination).unwrap();
+    let row = shown
+        .entries
+        .iter()
+        .find(|entry| entry.path == destination)
+        .unwrap();
     assert_eq!(row.previous_path.as_deref(), Some(source));
 
     let wrong = stage_worktree_rename(&repository.0, "unstaged.txt", destination).unwrap_err();
@@ -1909,11 +1956,20 @@ fn reviewed_index_rename_moves_both_literal_paths_and_preserves_unrelated_edits(
     // destination is now untracked rather than a grouped worktree rename.
     let unstaged = status();
     assert!(unstaged.starts_with(format!(" D {source}\0").as_bytes()));
-    assert!(unstaged.ends_with(format!("M  staged.txt\0 M unstaged.txt\0?? {destination}\0").as_bytes()));
+    assert!(
+        unstaged
+            .ends_with(format!("M  staged.txt\0 M unstaged.txt\0?? {destination}\0").as_bytes())
+    );
     assert_eq!(repository.git(&["rev-parse", "HEAD"]), head);
-    assert_eq!(repository.git(&["show", ":staged.txt"]), b"separate staged edit\n");
+    assert_eq!(
+        repository.git(&["show", ":staged.txt"]),
+        b"separate staged edit\n"
+    );
     assert_eq!(fs::read(repository.0.join(destination)).unwrap(), contents);
-    assert_eq!(fs::read(repository.0.join("unstaged.txt")).unwrap(), b"separate unstaged edit\n");
+    assert_eq!(
+        fs::read(repository.0.join("unstaged.txt")).unwrap(),
+        b"separate unstaged edit\n"
+    );
 }
 
 #[test]
@@ -1941,16 +1997,30 @@ fn reviewed_index_rename_refuses_directory_pathspec_expansion() {
     repository.git(&["add", "-N", "--", "to"]);
     let index = || fs::read(repository.0.join(".git/index")).unwrap();
     let status = || repository.git(&["--no-optional-locks", "status", "--porcelain=v1", "-z"]);
-    assert!(status().windows(b" R to\0from\0".len()).any(|part| part == b" R to\0from\0"));
+    assert!(
+        status()
+            .windows(b" R to\0from\0".len())
+            .any(|part| part == b" R to\0from\0")
+    );
     let before = index();
-    assert_eq!(stage_worktree_rename(&repository.0, "from", "to").unwrap_err().kind, "staleWorkingTreeRename");
+    assert_eq!(
+        stage_worktree_rename(&repository.0, "from", "to")
+            .unwrap_err()
+            .kind,
+        "staleWorkingTreeRename"
+    );
     assert_eq!(index(), before);
 
     fs::remove_dir_all(repository.0.join("from")).unwrap();
     repository.git(&["add", "--", "from", "to"]);
     assert!(status().starts_with(b"R  to\0from\0D  to/keep\0"));
     let before = index();
-    assert_eq!(unstage_index_rename(&repository.0, "from", "to").unwrap_err().kind, "staleWorkingTreeRename");
+    assert_eq!(
+        unstage_index_rename(&repository.0, "from", "to")
+            .unwrap_err()
+            .kind,
+        "staleWorkingTreeRename"
+    );
     assert_eq!(index(), before);
 }
 
@@ -1986,16 +2056,38 @@ fn reviewed_working_tree_rename_diff_shows_only_actual_edits_on_either_side() {
         assert!(patch.patch.contains("\n-old\n+new\n"));
         assert!(!patch.patch.contains("\n+retained"));
         assert!(!patch.patch.contains("\n-retained"));
-        assert_eq!(working_tree_rename_diff(&repository.0, source, destination, !staged).unwrap_err().kind,
-            "staleWorkingTreeRename");
-        assert_eq!(working_tree_rename_diff(&repository.0, "wrong", destination, staged).unwrap_err().kind,
-            "staleWorkingTreeRename");
-        assert_eq!(apply_working_tree_hunk_with_preview(&repository.0, destination, staged, 0,
-            if staged { "unstage" } else { "stage" }, Some(&patch.patch)).unwrap_err().kind, "wholeRenameRequired");
+        assert_eq!(
+            working_tree_rename_diff(&repository.0, source, destination, !staged)
+                .unwrap_err()
+                .kind,
+            "staleWorkingTreeRename"
+        );
+        assert_eq!(
+            working_tree_rename_diff(&repository.0, "wrong", destination, staged)
+                .unwrap_err()
+                .kind,
+            "staleWorkingTreeRename"
+        );
+        assert_eq!(
+            apply_working_tree_hunk_with_preview(
+                &repository.0,
+                destination,
+                staged,
+                0,
+                if staged { "unstage" } else { "stage" },
+                Some(&patch.patch)
+            )
+            .unwrap_err()
+            .kind,
+            "wholeRenameRequired"
+        );
         assert_eq!(index(), before);
         assert_eq!(fs::read(repository.0.join(destination)).unwrap(), changed);
     }
-    repository.write(destination, b"retained alpha\nretained beta\nretained gamma\nlater\n");
+    repository.write(
+        destination,
+        b"retained alpha\nretained beta\nretained gamma\nlater\n",
+    );
     let unstaged_edit = working_tree_file_diff(&repository.0, destination, false).unwrap();
     assert!(unstaged_edit.previous_path.is_none());
     assert!(unstaged_edit.patch.contains("\n-new\n+later\n"));
@@ -2005,7 +2097,8 @@ fn reviewed_working_tree_rename_diff_shows_only_actual_edits_on_either_side() {
 #[test]
 fn unstaged_summary_counts_symlink_blob_without_opening_its_target() {
     let repository = Repository::new();
-    std::os::unix::fs::symlink("/outside/never-open-this-target", repository.0.join("link")).unwrap();
+    std::os::unix::fs::symlink("/outside/never-open-this-target", repository.0.join("link"))
+        .unwrap();
     let summary = working_tree_change_summary(&repository.0).unwrap();
     assert_eq!((summary.additions, summary.deletions), (1, 0));
     assert!(!summary.partial);
@@ -2025,31 +2118,56 @@ fn unstaged_summary_never_fetches_a_promised_missing_index_blob() {
     let repository = Repository::new();
     repository.write("tracked.txt", b"old\n");
     repository.commit("Base");
-    let oid = String::from_utf8(repository.git(&["rev-parse", "HEAD:tracked.txt"])).unwrap().trim().to_owned();
+    let oid = String::from_utf8(repository.git(&["rev-parse", "HEAD:tracked.txt"]))
+        .unwrap()
+        .trim()
+        .to_owned();
     repository.write("tracked.txt", b"working\n");
     let remote = repository.0.join(".git/owned-promisor.git");
     repository.git(&["init", "--bare", remote.to_str().unwrap()]);
     let marker = repository.0.join(".git/unexpected-fetch");
     let helper = repository.0.join(".git/owned-upload-pack");
-    fs::write(&helper, format!("#!/bin/sh\nprintf attempted > '{}'\nexit 1\n", marker.display())).unwrap();
+    fs::write(
+        &helper,
+        format!(
+            "#!/bin/sh\nprintf attempted > '{}'\nexit 1\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
     fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
     for (key, value) in [
-        ("extensions.partialClone", "owned"), ("remote.owned.promisor", "true"),
-        ("remote.owned.url", remote.to_str().unwrap()), ("remote.owned.uploadpack", helper.to_str().unwrap()),
+        ("extensions.partialClone", "owned"),
+        ("remote.owned.promisor", "true"),
+        ("remote.owned.url", remote.to_str().unwrap()),
+        ("remote.owned.uploadpack", helper.to_str().unwrap()),
         ("protocol.file.allow", "always"),
-    ] { repository.git(&["config", key, value]); }
+    ] {
+        repository.git(&["config", key, value]);
+    }
     let index = fs::read(repository.0.join(".git/index")).unwrap();
     let config = fs::read(repository.0.join(".git/config")).unwrap();
-    let object = repository.0.join(".git/objects").join(&oid[..2]).join(&oid[2..]);
+    let object = repository
+        .0
+        .join(".git/objects")
+        .join(&oid[..2])
+        .join(&oid[2..]);
     fs::remove_file(&object).unwrap();
     assert!(working_tree_change_summary(&repository.0).is_err());
-    assert!(!marker.exists(), "Optional unstaged totals attempted an implicit fetch");
+    assert!(
+        !marker.exists(),
+        "Optional unstaged totals attempted an implicit fetch"
+    );
     assert!(!object.exists());
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     assert_eq!(fs::read(repository.0.join(".git/config")).unwrap(), config);
     // The normal recap stays read-only even with inherited file transport.
     let inherited = Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", "literal_file_tests::unstaged_summary_never_fetches_a_promised_missing_index_blob", "--nocapture"])
+        .args([
+            "--exact",
+            "literal_file_tests::unstaged_summary_never_fetches_a_promised_missing_index_blob",
+            "--nocapture",
+        ])
         .env(CHILD, &repository.0)
         .env("GIT_ALLOW_PROTOCOL", "file")
         .output()
@@ -2064,7 +2182,11 @@ fn unstaged_summary_never_fetches_a_promised_missing_index_blob() {
     assert!(!object.exists());
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     assert_eq!(fs::read(repository.0.join(".git/config")).unwrap(), config);
-    let control = git_in(&repository.0).args(["cat-file", "-t", &oid]).env_remove("GIT_NO_LAZY_FETCH").output().unwrap();
+    let control = git_in(&repository.0)
+        .args(["cat-file", "-t", &oid])
+        .env_remove("GIT_NO_LAZY_FETCH")
+        .output()
+        .unwrap();
     assert!(!control.status.success());
     assert_eq!(fs::read(marker).unwrap(), b"attempted");
 }
@@ -2075,11 +2197,23 @@ fn unstaged_summary_does_not_rewrite_custom_protocol_configuration() {
     repository.git(&["config", "protocol.owned.allow", "always"]);
     repository.git(&["config", "protocol.file.allow", "always"]);
     repository.write("new.txt", b"local\n");
-    assert_eq!(working_tree_change_summary(&repository.0).unwrap().additions, 1);
+    assert_eq!(
+        working_tree_change_summary(&repository.0)
+            .unwrap()
+            .additions,
+        1
+    );
     for key in ["protocol.owned.allow", "protocol.file.allow"] {
         assert_eq!(repository.git(&["config", "--get", key]), b"always\n");
     }
-    assert!(!git_in(&repository.0).args(["config", "--get", "protocol.allow"]).output().unwrap().status.success());
+    assert!(
+        !git_in(&repository.0)
+            .args(["config", "--get", "protocol.allow"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
 }
 
 #[test]
@@ -2097,8 +2231,23 @@ fn staged_summary_counts_head_relative_lines_and_pure_renames_independently() {
     let recaps = working_tree_summaries(&repository.0).unwrap();
     let staged = recaps.staged.unwrap();
     let unstaged = recaps.unstaged.unwrap();
-    assert_eq!((staged.additions, staged.deletions, staged.uncounted_files, staged.partial), (1, 1, 1, false));
-    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files), (1, 0, 0));
+    assert_eq!(
+        (
+            staged.additions,
+            staged.deletions,
+            staged.uncounted_files,
+            staged.partial
+        ),
+        (1, 1, 1, false)
+    );
+    assert_eq!(
+        (
+            unstaged.additions,
+            unstaged.deletions,
+            unstaged.uncounted_files
+        ),
+        (1, 0, 0)
+    );
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
 }
 
@@ -2112,7 +2261,15 @@ fn staged_summary_counts_inaugural_commit_but_not_intent_to_add() {
     let recaps = working_tree_summaries(&repository.0).unwrap();
     let staged = recaps.staged.unwrap();
     let unstaged = recaps.unstaged.unwrap();
-    assert_eq!((staged.additions, staged.deletions, staged.uncounted_files, staged.partial), (2, 0, 0, false));
+    assert_eq!(
+        (
+            staged.additions,
+            staged.deletions,
+            staged.uncounted_files,
+            staged.partial
+        ),
+        (2, 0, 0, false)
+    );
     assert_eq!((unstaged.additions, unstaged.deletions), (1, 0));
 }
 
@@ -2128,14 +2285,29 @@ fn staged_summary_ignores_unmerged_entries_while_counting_other_index_changes() 
     repository.git(&["switch", main.trim()]);
     repository.write("conflict.txt", b"ours\n");
     repository.commit("Main");
-    assert!(!git_in(&repository.0).args(["merge", "--no-edit", "side"]).output().unwrap().status.success());
+    assert!(
+        !git_in(&repository.0)
+            .args(["merge", "--no-edit", "side"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
     repository.write("independent.txt", b"added\n");
     repository.git(&["add", "--", "independent.txt"]);
     repository.write("independent.txt", b"added\nworking\n");
     let recaps = working_tree_summaries(&repository.0).unwrap();
     let staged = recaps.staged.unwrap();
     let unstaged = recaps.unstaged.unwrap();
-    assert_eq!((staged.additions, staged.deletions, staged.uncounted_files, staged.partial), (1, 0, 0, false));
+    assert_eq!(
+        (
+            staged.additions,
+            staged.deletions,
+            staged.uncounted_files,
+            staged.partial
+        ),
+        (1, 0, 0, false)
+    );
     assert_eq!((unstaged.additions, unstaged.deletions), (1, 0));
 }
 
@@ -2154,8 +2326,19 @@ fn staged_summary_discloses_its_bound_without_erasing_the_unstaged_side() {
     let recaps = working_tree_summaries(&repository.0).unwrap();
     let staged = recaps.staged.unwrap();
     let unstaged = recaps.unstaged.unwrap();
-    assert_eq!((staged.additions, staged.deletions, staged.partial), (2000, 0, true));
-    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial), (3, 1, 0, false));
+    assert_eq!(
+        (staged.additions, staged.deletions, staged.partial),
+        (2000, 0, true)
+    );
+    assert_eq!(
+        (
+            unstaged.additions,
+            unstaged.deletions,
+            unstaged.uncounted_files,
+            unstaged.partial
+        ),
+        (3, 1, 0, false)
+    );
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
 }
 
@@ -2173,12 +2356,24 @@ fn unstaged_summary_does_not_join_or_read_files_by_lossy_names() {
     repository.commit("Two distinct byte paths");
     fs::write(&first, b"first\nsecond\n").unwrap();
     fs::write(&second, b"one\ntwo\nthree\n").unwrap();
-    fs::write(repository.0.join(OsStr::from_bytes(b"u\xff")), b"other bytes\n").unwrap();
+    fs::write(
+        repository.0.join(OsStr::from_bytes(b"u\xff")),
+        b"other bytes\n",
+    )
+    .unwrap();
     repository.write("u\u{fffd}", b"one\ntwo\n");
 
     let recaps = working_tree_summaries(&repository.0).unwrap();
     let unstaged = recaps.unstaged.unwrap();
-    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial), (7, 2, 1, true));
+    assert_eq!(
+        (
+            unstaged.additions,
+            unstaged.deletions,
+            unstaged.uncounted_files,
+            unstaged.partial
+        ),
+        (7, 2, 1, true)
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -2195,8 +2390,17 @@ fn summary_status_byte_limit_does_not_hide_a_small_unstaged_recap() {
     repository.git(&["switch", branch.trim()]);
     repository.write("conflicted.txt", b"ours\n");
     repository.commit("Ours");
-    assert!(!git_in(&repository.0).args(["merge", "--no-edit", "other"]).output().unwrap().status.success());
-    let parent = std::iter::repeat_n("a".repeat(250), 6).collect::<Vec<_>>().join("/");
+    assert!(
+        !git_in(&repository.0)
+            .args(["merge", "--no-edit", "other"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+    );
+    let parent = std::iter::repeat_n("a".repeat(250), 6)
+        .collect::<Vec<_>>()
+        .join("/");
     fs::create_dir_all(repository.0.join(&parent)).unwrap();
     for index in 0..3000 {
         repository.write(&format!("{parent}/file-{index:04}.txt"), b"one line\n");
@@ -2211,9 +2415,25 @@ fn summary_status_byte_limit_does_not_hide_a_small_unstaged_recap() {
     let recaps = working_tree_summaries(&repository.0).unwrap();
     let staged = recaps.staged.unwrap();
     let unstaged = recaps.unstaged.unwrap();
-    assert_eq!((staged.additions, staged.deletions, staged.partial), (2000, 0, true));
-    assert_eq!((unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial), (3, 1, 0, false));
-    assert_eq!(working_tree_change_summary(&repository.0).unwrap().additions, 3);
+    assert_eq!(
+        (staged.additions, staged.deletions, staged.partial),
+        (2000, 0, true)
+    );
+    assert_eq!(
+        (
+            unstaged.additions,
+            unstaged.deletions,
+            unstaged.uncounted_files,
+            unstaged.partial
+        ),
+        (3, 1, 0, false)
+    );
+    assert_eq!(
+        working_tree_change_summary(&repository.0)
+            .unwrap()
+            .additions,
+        3
+    );
     assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
 }
 
@@ -2249,22 +2469,37 @@ fn working_tree_recaps_reap_stalled_git_without_misreporting_counts() {
                 let recaps = result.unwrap();
                 let staged = recaps.staged.unwrap();
                 let unstaged = recaps.unstaged.unwrap();
-                assert_eq!((staged.additions, staged.deletions, staged.partial), (1, 1, false));
-                assert_eq!((unstaged.additions, unstaged.deletions, unstaged.partial), (1, 1, false));
+                assert_eq!(
+                    (staged.additions, staged.deletions, staged.partial),
+                    (1, 1, false)
+                );
+                assert_eq!(
+                    (unstaged.additions, unstaged.deletions, unstaged.partial),
+                    (1, 1, false)
+                );
             }
             "unstaged" => {
                 let recaps = result.unwrap();
                 let staged = recaps.staged.unwrap();
-                assert_eq!((staged.additions, staged.deletions, staged.partial), (1, 1, false));
+                assert_eq!(
+                    (staged.additions, staged.deletions, staged.partial),
+                    (1, 1, false)
+                );
                 assert!(recaps.unstaged.is_none());
             }
             "untracked" => {
-                assert!(!marker.exists(), "untracked-only recap ran tracked-file diff");
+                assert!(
+                    !marker.exists(),
+                    "untracked-only recap ran tracked-file diff"
+                );
                 let recaps = result.unwrap();
                 let staged = recaps.staged.unwrap();
                 let unstaged = recaps.unstaged.unwrap();
                 assert_eq!((staged.additions, staged.deletions), (1, 1));
-                assert_eq!((unstaged.additions, unstaged.deletions, unstaged.partial), (2, 0, false));
+                assert_eq!(
+                    (unstaged.additions, unstaged.deletions, unstaged.partial),
+                    (2, 0, false)
+                );
                 return;
             }
             "untracked_grew" => {
@@ -2272,7 +2507,12 @@ fn working_tree_recaps_reap_stalled_git_without_misreporting_counts() {
                 let recaps = result.unwrap();
                 let unstaged = recaps.unstaged.unwrap();
                 assert_eq!(
-                    (unstaged.additions, unstaged.deletions, unstaged.uncounted_files, unstaged.partial),
+                    (
+                        unstaged.additions,
+                        unstaged.deletions,
+                        unstaged.uncounted_files,
+                        unstaged.partial
+                    ),
                     (0, 0, 1, true),
                 );
                 return;
@@ -2290,7 +2530,9 @@ fn working_tree_recaps_reap_stalled_git_without_misreporting_counts() {
     let fixture = Repository::new();
     let marker = fixture.0.join("pid");
     let helper = fixture.0.join("git");
-    fs::write(&helper, r#"#!/bin/sh
+    fs::write(
+        &helper,
+        r#"#!/bin/sh
 case "$GIT_KHRONOS_RECAP_FIXTURE_MODE:$3:$5" in
   status:-c:status)
     printf '%s\n' "$$" >"$GIT_KHRONOS_RECAP_FIXTURE_MARKER"
@@ -2313,7 +2555,9 @@ case "$GIT_KHRONOS_RECAP_FIXTURE_MODE:$3:$4" in
     exec sleep 10 ;;
 esac
 exec "$GIT_KHRONOS_RECAP_FIXTURE_REAL_GIT" "$@"
-"#).unwrap();
+"#,
+    )
+    .unwrap();
     fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
     let original_path = std::env::var_os("PATH").unwrap_or_default();
     let real_git = std::env::split_paths(&original_path)
@@ -2322,7 +2566,8 @@ exec "$GIT_KHRONOS_RECAP_FIXTURE_REAL_GIT" "$@"
         .expect("Git must be available on PATH");
     let path = std::env::join_paths(
         std::iter::once(fixture.0.clone()).chain(std::env::split_paths(&original_path)),
-    ).unwrap();
+    )
+    .unwrap();
     for mode in ["untracked_grew", "untracked", "status", "unstaged", "limit"] {
         let result = Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "literal_file_tests::working_tree_recaps_reap_stalled_git_without_misreporting_counts", "--nocapture"])
@@ -2332,7 +2577,8 @@ exec "$GIT_KHRONOS_RECAP_FIXTURE_REAL_GIT" "$@"
             .env(REAL, &real_git)
             .output().unwrap();
         assert!(
-            result.status.success(), "{mode}:\n{}\n{}",
+            result.status.success(),
+            "{mode}:\n{}\n{}",
             String::from_utf8_lossy(&result.stdout),
             String::from_utf8_lossy(&result.stderr),
         );
@@ -2353,7 +2599,14 @@ fn staged_summary_fails_locally_when_head_blob_is_missing_but_unstaged_still_cou
     repository.write("tracked.txt", b"staged replacement\n");
     repository.git(&["add", "--", "tracked.txt"]);
     repository.write("untracked.txt", b"separate working file\n");
-    fs::remove_file(repository.0.join(".git/objects").join(&oid[..2]).join(&oid[2..])).unwrap();
+    fs::remove_file(
+        repository
+            .0
+            .join(".git/objects")
+            .join(&oid[..2])
+            .join(&oid[2..]),
+    )
+    .unwrap();
     let recaps = working_tree_summaries(&repository.0).unwrap();
     assert!(recaps.staged.is_none());
     assert_eq!(recaps.unstaged.unwrap().additions, 1);

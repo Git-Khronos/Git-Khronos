@@ -3,12 +3,12 @@ import type { CommitSignature } from '@git-khronos/contracts';
 import { IconComponent, type IconName } from './icon.component';
 
 @Component({
-  selector: 'gc-commit-signature',
+  selector: 'gk-commit-signature',
   imports: [IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="commit-signature {{ signature().status }}" [attr.aria-label]="label()" [title]="detail()">
-      <span><gc-icon [name]="icon()" [size]="12" /></span>
+      <span><gk-icon [name]="icon()" [size]="12" /></span>
       <div><strong>{{ label() }}</strong><small>{{ detail() }}</small></div>
     </div>
   `,

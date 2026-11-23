@@ -632,7 +632,12 @@ pub fn create_branch_from_stash(
         let index = run_git(
             path,
             &[
-                "diff-index", "--cached", "--quiet", "--ignore-submodules=none", &base, "--",
+                "diff-index",
+                "--cached",
+                "--quiet",
+                "--ignore-submodules=none",
+                &base,
+                "--",
             ],
         )?;
         if !head.status.success()
@@ -646,7 +651,11 @@ pub fn create_branch_from_stash(
                 None,
             ));
         }
-        merge_checkout_guard::ensure_stash_branch_preserves_ignored_files(path, &base, expected_oid)?;
+        merge_checkout_guard::ensure_stash_branch_preserves_ignored_files(
+            path,
+            &base,
+            expected_oid,
+        )?;
         run_mutation(
             path,
             &["stash", "apply", "--index", expected_oid],

@@ -27,7 +27,7 @@ for (const outcome of ['cancel', 'failure'] as const) {
       await expect(page.locator('.commit-row').first()).toBeVisible();
       expect(requests).toBe(0);
       await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const calls: string[] = (window as any).__paletteCalls = [];
         app.git.stageAll = async () => { calls.push('stage'); return null; };
         app.git.commit = async () => { calls.push('commit'); return false; };
@@ -214,7 +214,7 @@ test('opens a grouped branch switcher from the compact repository toolbar', asyn
 
 test('a late tracked-file search cannot populate a later visit to the same checkout', async ({ page }) => {
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const original = git.repository();
     git.repositories.update((repos: any[]) => [...repos, { ...original, id: 'other-search-checkout', path: '/owned/other' }]);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'tracked file search test' }));
@@ -241,7 +241,7 @@ test('a late tracked-file search cannot populate a later visit to the same check
   const requestCount = () => page.evaluate(() => (window as any).__fileQueryLease.requests.length);
   await expect.poll(requestCount).toBe(1);
   const changedVisit = await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__fileQueryLease;
     const before = git.activeRepositoryReadScope();
     git.activateRepository('other-search-checkout');
@@ -259,7 +259,7 @@ test('a late tracked-file search cannot populate a later visit to the same check
 
 test('a tracked-file search timeout is announced and a later query can succeed', async ({ page }) => {
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'tracked file search test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       if (command === 'search_tracked_files') {

@@ -33,14 +33,15 @@
 .rebase-step.action-drop { opacity: .55; }
 .rebase-step.action-drop .rebase-commit-copy strong { text-decoration: line-through; }
 .rebase-step.action-reword, .rebase-step.action-edit { border-left: 2px solid #67b8ff; }
-.rebase-step.action-squash, .rebase-step.action-fixup { border-left: 2px solid #f1a25d; }
+.rebase-step.action-squash, .rebase-step.action-fixup, .rebase-step.action-fixup-reword { border-left: 2px solid #f1a25d; }
 .rebase-grip { color: #aaa9bc; font-size: 16px; cursor: grab; }
 .rebase-step select { width: 92px; padding: 5px 20px 5px 7px; border: 1px solid #45445b; border-radius: 3px; background: #1a1a28; color: #c6c5d2; font-size: 12px; text-transform: uppercase; }
 .rebase-step.action-pick select { color: #6fd4b7; }
 .rebase-step.action-reword select, .rebase-step.action-edit select { color: #67b8ff; }
-.rebase-step.action-squash select, .rebase-step.action-fixup select { color: #f1a25d; }
+.rebase-step.action-squash select, .rebase-step.action-fixup select, .rebase-step.action-fixup-reword select { color: #f1a25d; }
 .rebase-step.action-drop select { color: #e07f94; }
 .rebase-step > .avatar { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: #3e7969; color: white; font-size: 12px; }
+.rebase-message-preview { grid-column: 4; min-width: 0; overflow: hidden; color: #f1c28f; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .rebase-commit-copy { display: grid; gap: 3px; min-width: 0; }
 .rebase-commit-copy strong { overflow: hidden; color: #dddce7; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .rebase-commit-copy small { color: #aaa9bc; font-family: var(--mono); font-size: 12px; }

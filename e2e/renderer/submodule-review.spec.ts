@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     app.referencePaneVisibility.update((panes: any) => ({ ...panes, submodules: true }));
     app.submodulesOpen.set(true);
@@ -94,7 +94,7 @@ const opener = (page: Page) => page.locator('.submodule-actions').first();
 test('opening an uninitialized submodule reviews one path and requires explicit consent', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const active = git.repository();
     git.repositories.update((items: any[]) => items.map(item => item.id === active.id ? {
       ...item, submodules: [...item.submodules.filter((module: any) => module.path !== 'plugins/diff-driver'),
@@ -323,7 +323,7 @@ test('pending submodule review blocks dismissal and a repository switch discards
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
     (window as any).__submoduleReview.finish();

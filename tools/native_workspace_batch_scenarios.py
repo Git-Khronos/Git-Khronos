@@ -95,7 +95,7 @@ def workspace_batch_stop(driver, fixtures, report):
                 assert refs == previous['references']
         assert fixtures.git(upstream, 'show-ref') == upstream_refs
 
-    driver.wait('return !!document.querySelector("gc-root")', 60)
+    driver.wait('return !!document.querySelector("gk-root")', 60)
     driver.script("""
       localStorage.clear();
       localStorage.setItem('git-khronos.open-repositories.v1', JSON.stringify(arguments[0]));
@@ -108,7 +108,7 @@ def workspace_batch_stop(driver, fixtures, report):
     assert_git_state(set())
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    overview = 'gk-workspace-center [aria-label="Workspace center"]'
     result = overview + ' [aria-label="Repository action results"]'
 
     def checkbox(repository):
@@ -194,7 +194,7 @@ def workspace_batch_pull_strategy(driver, fixtures, report):
     driver.click_visible('button[aria-label="Pull options"]')
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    overview = 'gk-workspace-center [aria-label="Workspace center"]'
     result = overview + ' [aria-label="Repository action results"]'
     for checkout in (first, second):
         driver.click_visible(overview + ' article[aria-label=' + json.dumps(checkout.name) + '] input[type=checkbox]')
@@ -250,7 +250,7 @@ def workspace_batch_pull_checkout(driver, fixtures, report):
     driver.wait('return document.querySelectorAll(".repo-tab-main[role=tab]").length === 2', 60)
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    overview = 'gk-workspace-center [aria-label="Workspace center"]'
     result = overview + ' [aria-label="Repository action results"]'
 
     def checkbox(repository):

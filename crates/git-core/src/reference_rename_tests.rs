@@ -262,8 +262,7 @@ fn remote_branch_rename_preserves_tracking_refs_moved_during_local_sync() {
     const MODE: &str = "KHRONOS_RENAME_TRACKING_MODE";
     const OLD: &str = "refs/remotes/origin/source";
     const NEW: &str = "refs/remotes/origin/destination";
-    const TEST: &str =
-        "reference_rename_tests::remote_branch_rename_preserves_tracking_refs_moved_during_local_sync";
+    const TEST: &str = "reference_rename_tests::remote_branch_rename_preserves_tracking_refs_moved_during_local_sync";
 
     if let Some(path) = std::env::var_os(FIXTURE) {
         let result = rename_remote_branch(
@@ -329,10 +328,9 @@ exec "$real" "$@"
         )
         .unwrap();
         fs::set_permissions(shim, fs::Permissions::from_mode(0o700)).unwrap();
-        let search = std::env::join_paths(
-            std::iter::once(bin)
-                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
-        )
+        let search = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))
         .unwrap();
         let child = Command::new(std::env::current_exe().unwrap())
             .args(["--exact", TEST])
@@ -351,7 +349,9 @@ exec "$real" "$@"
         );
 
         assert_eq!(
-            fixture.remote_tip(&remote, "refs/heads/destination").as_deref(),
+            fixture
+                .remote_tip(&remote, "refs/heads/destination")
+                .as_deref(),
             Some(expected.as_str())
         );
         assert_eq!(fixture.remote_tip(&remote, "refs/heads/source"), None);

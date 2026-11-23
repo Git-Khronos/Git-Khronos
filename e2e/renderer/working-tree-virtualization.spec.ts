@@ -29,7 +29,7 @@ async function loadLargeWorkingTree(page: Page): Promise<void> {
         repositories: { update(fn: (repositories: Repository[]) => Repository[]): void };
       };
     }
-    const root = document.querySelector('gc-root');
+    const root = document.querySelector('gk-app');
     if (!root) throw new Error('Application root not found');
     const debug = (window as Window & { ng?: { getComponent(element: Element): Harness } }).ng;
     if (!debug) throw new Error('Angular debug API unavailable');
@@ -96,7 +96,7 @@ test('stages and unstages the correct file after scrolling', async ({ page }) =>
   await page.evaluate(() => {
     interface Status { entries: Array<{ path: string; indexStatus: string; worktreeStatus: string }> }
     interface Harness { git: { repository(): { status: Status } } }
-    const root = document.querySelector('gc-root');
+    const root = document.querySelector('gk-app');
     if (!root) throw new Error('Application root not found');
     const debug = (window as Window & { ng?: { getComponent(element: Element): Harness } }).ng;
     if (!debug) throw new Error('Angular debug API unavailable');

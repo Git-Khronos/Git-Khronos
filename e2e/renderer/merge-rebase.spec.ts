@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.branch-item').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const original = git.repository();
@@ -155,20 +155,20 @@ test('late preparation after switching away and back cannot reopen captured merg
   await openReview(page);
   await expect.poll(() => page.evaluate(() => !!(window as any).__mergeRebase.finish)).toBe(true);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = (window as any).__mergeRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'merge-other', path: '/owned/other' }]);
     app.git.activateRepository('merge-other');
   });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('merge-other');
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId())).toBe('merge-other');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.activateRepository((window as any).__mergeRebase.original.id);
   });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId()))
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId()))
     .toBe(await page.evaluate(() => (window as any).__mergeRebase.original.id));
   await page.evaluate(() => { (window as any).__mergeRebase.finish(); });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.getByRole('dialog', { name: 'Rebase preserving merges', exact: true })).toHaveCount(0);
 });
 
@@ -177,7 +177,7 @@ test('loaded merge review closes on repository switch without rewriting another 
   const dialog = page.getByRole('dialog', { name: 'Rebase preserving merges', exact: true });
   await expect(dialog).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = (window as any).__mergeRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'merge-other', path: '/owned/other' }]);
     app.git.activateRepository('merge-other');
@@ -193,7 +193,7 @@ test('a merge-preserving review cannot start after returning to the same checkou
   const start = dialog.getByRole('button', { name: 'Start merge-preserving rebase', exact: true });
   await expect(start).toBeEnabled();
   await start.evaluate(button => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const original = git.repository();
     git.repositories.update((items: any[]) => [...items, { ...original, id: 'merge-other', path: '/owned/merge-other' }]);
     git.activateRepository('merge-other');

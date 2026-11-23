@@ -5,7 +5,7 @@ import { ipc, type HostedEntry, type HostedReview, type HostingPage, type Hostin
 import { GitKhronosService } from './git-khronos.service';
 
 @Component({
-  selector: 'gc-hosting-panel',
+  selector: 'gk-hosting-panel',
   imports: [HostedPagerComponent, HostedWritePanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -20,7 +20,7 @@ import { GitKhronosService } from './git-khronos.service';
       @if (busy()) { <button type="button" [disabled]="cancelling()" (click)="cancel()">Cancel hosted request</button> }
     </div>
     <p>Repository: {{ git.repository()?.path ?? 'No repository selected' }}</p>
-    @if (writeIntent(); as intent) { <gc-hosted-write-panel [remote]="remote()" [intent]="intent" (dismiss)="closeWrite()" (submitted)="invalidateHostedSnapshot()" (unconfirmed)="invalidateHostedSnapshot()" /> }
+    @if (writeIntent(); as intent) { <gk-hosted-write-panel [remote]="remote()" [intent]="intent" (dismiss)="closeWrite()" (submitted)="invalidateHostedSnapshot()" (unconfirmed)="invalidateHostedSnapshot()" /> }
     @if (!remotes().length) { <p>Select a repository with a github.com fetch remote. Other hosting providers remain accessible through repository browser links.</p> }
     @if (error()) { <p role="alert">{{ error() }}</p> }
     @if (busy()) { <p role="status">Loading hosted data…</p> }
@@ -28,7 +28,7 @@ import { GitKhronosService } from './git-khronos.service';
       <p data-hosted-page-status tabindex="-1" role="status">{{ page.entries.length }} records loaded for {{ page.repository }}. Snapshot from the last explicit load.</p>
       <label>Filter this page<input type="search" [value]="query()" (input)="query.set($any($event.target).value)" /></label>
       @if (page.mayHaveMore) { <p>More records may exist. Use the page controls to continue reading.</p> }
-      <gc-hosted-pager label="hosted records" [page]="page.page" [more]="page.nextPage !== null" [disabled]="busy() || git.busy()" (pageChange)="load($event)" />
+      <gk-hosted-pager label="hosted records" [page]="page.page" [more]="page.nextPage !== null" [disabled]="busy() || git.busy()" (pageChange)="load($event)" />
       @for (entry of entries(); track entry.number) {
         <article><h4>#{{ entry.number }} {{ entry.title }}</h4><p>{{ entry.state }} · {{ entry.author }} @if (entry.branch) { · {{ entry.branch }} }</p>
           @if (entry.commitOid) { <code>{{ entry.commitOid }}</code> }
@@ -49,23 +49,23 @@ import { GitKhronosService } from './git-khronos.service';
             @if (item.commitOid !== review.headOid) { · Review on another commit: {{ item.commitOid || 'commit not reported' }} }
           </li> } @empty { <li>No submitted approval or change-request decisions.</li> }</ul>
           <h4>Review history</h4>
-          <gc-hosted-pager label="review history" [page]="review.query.reviewsPage" [more]="review.reviewsMayHaveMore" [disabled]="busy() || git.busy()" (pageChange)="reviewPage('reviewsPage', $event)" />
+          <gk-hosted-pager label="review history" [page]="review.query.reviewsPage" [more]="review.reviewsMayHaveMore" [disabled]="busy() || git.busy()" (pageChange)="reviewPage('reviewsPage', $event)" />
           @for (item of review.reviews; track $index) { <article><strong>{{ item.name }} · {{ item.state }}</strong><pre>{{ item.body }}</pre></article> } @empty { <p>No review events on this page.</p> }
         }
         <h4>Checks at this head commit</h4>
         @if (review.sections.checks) {
-          <gc-hosted-pager label="check runs" [page]="review.query.checksPage" [more]="review.checksMayHaveMore" [disabled]="busy() || git.busy()" (pageChange)="reviewPage('checksPage', $event)" />
+          <gk-hosted-pager label="check runs" [page]="review.query.checksPage" [more]="review.checksMayHaveMore" [disabled]="busy() || git.busy()" (pageChange)="reviewPage('checksPage', $event)" />
           @for (item of review.checks; track $index) { <p>{{ item.name }} · {{ item.state }}</p> } @empty { <p>No check runs returned. This does not establish that CI passed.</p> }
         }
         <h4>Commit status contexts</h4>
         @if (review.sections.statuses) {
           <p>Provider combined commit-status state: {{ review.legacyState }}. Check runs and branch rules are separate.</p>
-          <gc-hosted-pager label="status contexts" [page]="review.query.statusesPage" [more]="review.statusesMayHaveMore" [disabled]="busy() || git.busy()" (pageChange)="reviewPage('statusesPage', $event)" />
+          <gk-hosted-pager label="status contexts" [page]="review.query.statusesPage" [more]="review.statusesMayHaveMore" [disabled]="busy() || git.busy()" (pageChange)="reviewPage('statusesPage', $event)" />
           @for (item of review.legacyStatuses; track $index) { <p>{{ item.name }} · {{ item.state }} · {{ item.body }}</p> } @empty { <p>No commit status contexts on this page.</p> }
         }
         <h4>Changed files</h4>
         @if (review.sections.files) {
-          <gc-hosted-pager label="changed files" [page]="review.query.filesPage" [more]="review.filesMayHaveMore" [disabled]="busy() || git.busy()" (pageChange)="reviewPage('filesPage', $event)" />
+          <gk-hosted-pager label="changed files" [page]="review.query.filesPage" [more]="review.filesMayHaveMore" [disabled]="busy() || git.busy()" (pageChange)="reviewPage('filesPage', $event)" />
           @for (file of review.files; track file.path) { <details><summary>{{ file.path }} · {{ file.state }} · +{{ file.additions }} −{{ file.deletions }}</summary>
             @if (file.patch) { <pre>{{ file.patch }}</pre> } @else { <p>No textual patch supplied by the provider. Open GitHub for the complete file.</p> }
           </details> } @empty { <p>No changed files on this page.</p> }

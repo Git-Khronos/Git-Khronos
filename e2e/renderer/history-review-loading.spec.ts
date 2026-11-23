@@ -23,7 +23,7 @@ for (const mode of ['load', 'cancel', 'failure', 'switch'] as const) {
     await page.goto('/');
     await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
     const before = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repository = app.git.repository();
       const commit = repository.commits.find((commit: any) => commit.parents.length === 1);
       (window as any).__historyLoadCalls = [];
@@ -47,7 +47,7 @@ for (const mode of ['load', 'cancel', 'failure', 'switch'] as const) {
     await page.keyboard.press('Shift+Tab');
     await expect(close).toBeFocused();
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       app.historyNoCommit.set(true);
     });
     if (mode === 'load') {
@@ -64,19 +64,19 @@ for (const mode of ['load', 'cancel', 'failure', 'switch'] as const) {
       await expect(dialog.getByRole('checkbox')).toBeFocused();
       await page.keyboard.press('Tab');
       await expect(cancel).toBeFocused();
-      expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).pendingHistoryAction().oid))
+      expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).pendingHistoryAction().oid))
         .toBe(before.oid);
       await page.keyboard.press('Escape');
     } else if (mode === 'switch') {
       await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const original = app.git.repository();
         app.git.repositories.update((items: any[]) => [...items, { ...original, id: 'history-loading-other', name: 'Other repository' }]);
         app.git.activeRepositoryId.set('history-loading-other');
       });
       await expect(loading).toHaveCount(0);
       await page.evaluate(id => {
-        (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId.set(id);
+        (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId.set(id);
       }, before.id);
       release();
     } else {
@@ -89,7 +89,7 @@ for (const mode of ['load', 'cancel', 'failure', 'switch'] as const) {
     await expect(page.getByRole('alertdialog')).toHaveCount(0);
     await expect(loading).toHaveCount(0);
     const result = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       return { head: app.git.repository().headOid, draft: app.commitMessage(), calls: (window as any).__historyLoadCalls };
     });
     expect(result.head).toBe(before.head);

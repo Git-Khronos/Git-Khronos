@@ -121,7 +121,7 @@ for (const { welcome, width } of [
       })),
     )));
     await page.goto(welcome ? '/?welcome-preview' : '/');
-    await expect(page.locator(welcome ? 'gc-welcome-launcher' : '.commit-row').first()).toBeVisible();
+    await expect(page.locator(welcome ? 'gk-welcome-launcher' : '.commit-row').first()).toBeVisible();
     const toggle = page.getByRole('button', { name: 'Workspace: Default', exact: true });
     const menu = page.getByRole('menu', { name: 'Workspaces', exact: true });
     const identities = menu.getByRole('menuitem', { name: 'Identity profiles', exact: true });

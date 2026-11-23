@@ -1,17 +1,17 @@
 @let view = model();
 <form novalidate class="commit-message-editor" aria-label="Edit commit" (submit)="$event.preventDefault(); saved.emit()">
   <div class="commit-author-fields">
-    <label>Author name<input name="editedCommitAuthorName" autocomplete="off" [gcTextValue]="view.authorName()" (gcTextValueChange)="changed.emit({ field: 'authorName', value: $event })" /></label>
-    <label>Author email<input name="editedCommitAuthorEmail" type="email" autocomplete="off" [gcTextValue]="view.authorEmail()" (gcTextValueChange)="changed.emit({ field: 'authorEmail', value: $event })" /></label>
+    <label>Author name<input name="editedCommitAuthorName" autocomplete="off" [gkTextValue]="view.authorName()" (gkTextValueChange)="changed.emit({ field: 'authorName', value: $event })" /></label>
+    <label>Author email<input name="editedCommitAuthorEmail" type="email" autocomplete="off" [gkTextValue]="view.authorEmail()" (gkTextValueChange)="changed.emit({ field: 'authorEmail', value: $event })" /></label>
   </div>
-  <label>Summary<input #editedCommitSummaryInput name="editedCommitSummary" autocomplete="off" [gcTextValue]="view.summary()" (gcTextValueChange)="changed.emit({ field: 'summary', value: $event })" /></label>
-  <label>Description<textarea name="editedCommitDescription" rows="5" [gcTextValue]="view.description()" (gcTextValueChange)="changed.emit({ field: 'description', value: $event })"></textarea></label>
+  <label>Summary<input #editedCommitSummaryInput name="editedCommitSummary" autocomplete="off" [gkTextValue]="view.summary()" (gkTextValueChange)="changed.emit({ field: 'summary', value: $event })" /></label>
+  <label>Description<textarea name="editedCommitDescription" rows="5" [gkTextValue]="view.description()" (gkTextValueChange)="changed.emit({ field: 'description', value: $event })"></textarea></label>
   <div class="edit-coauthors">
     <span class="edit-coauthors-label">Co-authors</span>
     @if (view.coAuthors().length) {
       <div class="coauthor-chips edit-coauthor-chips" aria-label="Commit co-authors">
         @for (author of view.coAuthors(); track author.email) {
-          <span title="{{ author.name }} &lt;{{ author.email }}&gt;"><i [style.--author-color]="view.authorColor(author.name, author.email)">{{ view.initials(author.name) }}</i>{{ author.name }}<button type="button" aria-label="Remove co-author {{ author.name }}" (click)="removed.emit(author.email)"><gc-icon name="x" [size]="9" /></button></span>
+          <span title="{{ author.name }} &lt;{{ author.email }}&gt;"><i [style.--author-color]="view.authorColor(author.name, author.email)">{{ view.initials(author.name) }}</i>{{ author.name }}<button type="button" aria-label="Remove co-author {{ author.name }}" (click)="removed.emit(author.email)"><gk-icon name="x" [size]="9" /></button></span>
         }
       </div>
     } @else {

@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const branch = repository.branches.find((item: any) => !item.current && !item.remote).name;
@@ -114,7 +114,7 @@ test('rename dialog traps focus, isolates background shortcuts and restores its 
   await expect(field).toBeFocused();
   await expect(dialog).toContainText(await page.evaluate(() => (window as any).__renameScope.repository.path));
   await field.press('Control+p');
-  await expect(page.locator('gc-command-palette')).toHaveCount(0);
+  await expect(page.locator('gk-command-palette')).toHaveCount(0);
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Rename Branch', exact: true }).focus();
   await page.keyboard.press('Tab');

@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const state: any = { app, git, repository, calls: [], callbacks: new Map(), listeners: new Map(), sequence: 0,
@@ -174,7 +174,7 @@ for (const action of ['install', 'automatic', 'close', 'browse']) {
     await dialog.getByRole('button', { name: 'Check for updates', exact: true }).click();
     await dialog.getByRole('button', { name: 'Download and verify', exact: true }).click();
     await page.evaluate(action => {
-      const old = document.querySelector('gc-application-updates-dialog')!;
+      const old = document.querySelector('gk-application-updates-dialog')!;
       const s = (window as any).__updates;
       const request = s.app.applicationUpdatesRequest(); s.app.closeApplicationUpdates(request); s.app.openApplicationUpdates();
       if (action === 'automatic') {
@@ -331,7 +331,7 @@ test('a held poll cannot re-enable installation after a native activity update a
   await expect.poll(() => page.evaluate(() => typeof (window as any).__updates.finishStatus)).toBe('function');
   const observed = await page.evaluate(async () => {
     const state = (window as any).__updates;
-    const service = (window as any).ng.getComponent(document.querySelector('gc-application-updates-dialog')).updates;
+    const service = (window as any).ng.getComponent(document.querySelector('gk-application-updates-dialog')).updates;
     const earlier = state.status;
     state.status = { ...earlier, canInstall: false, message: 'Owned native Git work started' };
     state.emit();

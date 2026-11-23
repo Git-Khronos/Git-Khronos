@@ -16,24 +16,24 @@ export interface HistorySearchOpenOptions {
 }
 
 @Component({
-  selector: 'gc-history-search',
+  selector: 'gk-history-search',
   imports: [BackgroundOperationWarningsComponent, FormsModule, DatePipe, NgTemplateOutlet, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <dialog #dialog id="repository-history-dialog" aria-labelledby="history-search-heading" (close)="closed()">
       <div class="dialog-shell" [class.has-warnings]="git.backgroundOperationWarnings().length > 0">
         <header class="dialog-header">
-          <span class="heading-icon" aria-hidden="true"><gc-icon name="search" [size]="18" /></span>
+          <span class="heading-icon" aria-hidden="true"><gk-icon name="search" [size]="18" /></span>
           <div class="heading-copy">
             <h2 id="history-search-heading">{{ comparisonOnly() ? 'Compare repository revisions' : 'Search repository history' }}</h2>
             <p>{{ comparisonOnly() ? 'Compare branches, tags, or commits without checking them out.' : 'Find commits beyond the history currently loaded in the graph.' }}</p>
           </div>
           <button class="icon-button close-button" type="button" [attr.aria-label]="comparisonOnly() ? 'Close revision comparison' : 'Close history search'" title="Close" (click)="close()">
-            <gc-icon name="x" [size]="17" />
+            <gk-icon name="x" [size]="17" />
           </button>
         </header>
 
-        @if (git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
+        @if (git.backgroundOperationWarnings().length) { <gk-background-operation-warnings /> }
         <div class="dialog-body">
           @if (comparisonOnly()) {
             <ng-container [ngTemplateOutlet]="comparisonForm" />
@@ -43,7 +43,7 @@ export interface HistorySearchOpenOptions {
               <div class="primary-query">
                 <label class="message-field" for="history-message">Message contains</label>
                 <div class="search-control">
-                  <gc-icon name="search" [size]="16" />
+                  <gk-icon name="search" [size]="16" />
                   <input #messageInput id="history-message" name="message" [(ngModel)]="query.message"
                     autocomplete="off" placeholder="Commit subject or description" />
                 </div>
@@ -54,9 +54,9 @@ export interface HistorySearchOpenOptions {
 
               <details class="advanced-filters">
                 <summary>
-                  <span class="summary-label"><gc-icon name="settings" [size]="15" />Advanced filters</span>
+                  <span class="summary-label"><gk-icon name="settings" [size]="15" />Advanced filters</span>
                   @if (activeFilterCount()) { <span class="filter-count">{{ activeFilterCount() }} active</span> }
-                  <gc-icon class="disclosure-icon" name="chevron-down" [size]="15" />
+                  <gk-icon class="disclosure-icon" name="chevron-down" [size]="15" />
                 </summary>
                 <div class="filters">
                   <label>Author name/email contains<input name="author" [(ngModel)]="query.author" autocomplete="off" /></label>
@@ -75,7 +75,7 @@ export interface HistorySearchOpenOptions {
               </details>
 
               <div class="search-guidance">
-                <gc-icon name="history" [size]="15" />
+                <gk-icon name="history" [size]="15" />
                 <span>Search includes hidden branches and pins current refs until you start a new search.</span>
               </div>
 
@@ -93,7 +93,7 @@ export interface HistorySearchOpenOptions {
 
             @if (history.error()) {
               <div class="feedback error-feedback" role="alert">
-                <gc-icon name="warning" [size]="17" />
+                <gk-icon name="warning" [size]="17" />
                 <span>{{ history.error() }}</span>
               </div>
             }
@@ -108,7 +108,7 @@ export interface HistorySearchOpenOptions {
             <div class="results" [attr.aria-busy]="history.busy()" aria-label="History search results">
               @for (entry of history.entries(); track entry.oid) {
                 <button class="result-row" type="button" (click)="selectCommit(entry.oid)" [title]="entry.oid">
-                  <span class="commit-mark" aria-hidden="true"><gc-icon name="git-commit" [size]="16" /></span>
+                  <span class="commit-mark" aria-hidden="true"><gk-icon name="git-commit" [size]="16" /></span>
                   <span class="result-copy">
                     <span class="result-subject">{{ entry.subject }}</span>
                     <span class="result-meta">
@@ -116,20 +116,20 @@ export interface HistorySearchOpenOptions {
                       <time [attr.datetime]="entry.authoredAt">{{ entry.authoredAt | date:'mediumDate' }}</time>
                     </span>
                   </span>
-                  <gc-icon class="result-arrow" name="chevron-right" [size]="16" />
+                  <gk-icon class="result-arrow" name="chevron-right" [size]="16" />
                 </button>
               }
             </div>
 
             @if (pagingStarted() || history.cursor() || history.error()) {
               <button #pageButton class="load-more" type="button" [attr.aria-disabled]="canContinue() ? null : 'true'" (click)="continueSearch()">
-                <gc-icon name="history" [size]="15" />
+                <gk-icon name="history" [size]="15" />
                 {{ history.complete() ? 'All matching history loaded' : history.error() ? 'Retry history page' : 'Continue searching older history' }}
               </button>
             }
             @if (history.complete() && !history.entries().length) {
               <div class="empty-state">
-                <span class="empty-icon" aria-hidden="true"><gc-icon name="search" [size]="22" /></span>
+                <span class="empty-icon" aria-hidden="true"><gk-icon name="search" [size]="22" /></span>
                 <div><strong>No matching commits in the selected history.</strong><p>Try fewer filters, a broader revision range, or a shorter message.</p></div>
               </div>
             }
@@ -137,9 +137,9 @@ export interface HistorySearchOpenOptions {
 
           <details class="comparison-section">
             <summary>
-              <span class="summary-label"><gc-icon name="merge" [size]="15" />Compare two revisions</span>
+              <span class="summary-label"><gk-icon name="merge" [size]="15" />Compare two revisions</span>
               <span class="summary-hint">Open a focused file comparison</span>
-              <gc-icon class="disclosure-icon" name="chevron-down" [size]="15" />
+              <gk-icon class="disclosure-icon" name="chevron-down" [size]="15" />
             </summary>
             <ng-container [ngTemplateOutlet]="comparisonForm" />
           </details>
@@ -182,7 +182,7 @@ export interface HistorySearchOpenOptions {
                   <p>Direct compares both trees. Merge base shows target changes since their common ancestor and requires one distinct merge base.</p>
                 </div>
                 @if (comparisonError()) {
-                  <div class="feedback error-feedback" role="alert"><gc-icon name="warning" [size]="17" /><span>{{ comparisonError() }}</span></div>
+                  <div class="feedback error-feedback" role="alert"><gk-icon name="warning" [size]="17" /><span>{{ comparisonError() }}</span></div>
                 }
                 <div class="comparison-actions">
                   <button class="primary-action" type="submit" [disabled]="comparing() || !base.trim() || !target.trim()">
@@ -225,7 +225,7 @@ export interface HistorySearchOpenOptions {
     .primary-query { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
     .message-field { grid-column: 1 / -1; color: var(--muted); font-size: 12px; font-weight: 650; letter-spacing: .02em; }
     .search-control { position: relative; min-width: 0; }
-    .search-control > gc-icon { position: absolute; left: 10px; top: 50%; color: var(--muted); transform: translateY(-50%); pointer-events: none; }
+    .search-control > gk-icon { position: absolute; left: 10px; top: 50%; color: var(--muted); transform: translateY(-50%); pointer-events: none; }
     .search-control input { width: 100%; padding-left: 34px; }
     input, select, button { font: inherit; color: inherit; }
     input, select { box-sizing: border-box; min-width: 0; min-height: 34px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; background: var(--surface); }
@@ -243,7 +243,7 @@ export interface HistorySearchOpenOptions {
     summary::-webkit-details-marker { display: none; }
     summary:hover { background: var(--hover); }
     .summary-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; font-weight: 650; }
-    .summary-label gc-icon { color: var(--muted); }
+    .summary-label gk-icon { color: var(--muted); }
     .disclosure-icon { color: var(--muted); transition: transform 120ms ease; }
     details[open] > summary .disclosure-icon { transform: rotate(180deg); }
     .filter-count, .incomplete-badge { border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 999px; padding: 2px 7px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: 10px; font-weight: 650; white-space: nowrap; }
@@ -256,7 +256,7 @@ export interface HistorySearchOpenOptions {
     .quiet-action { min-height: 28px; border-radius: 5px; padding: 4px 8px; color: var(--accent); font-size: 12px; font-weight: 650; white-space: nowrap; }
     .quiet-action:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); }
     .search-guidance { display: flex; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 12px; line-height: 1.45; }
-    .search-guidance gc-icon { flex: 0 0 auto; margin-top: 1px; }
+    .search-guidance gk-icon { flex: 0 0 auto; margin-top: 1px; }
     .search-progress, .search-status { margin: 0; min-height: 28px; border-radius: 6px; background: var(--surface); color: var(--muted); font-size: 12px; }
     .search-progress { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 9px; }
     .search-progress .quiet-action { margin-left: auto; }
@@ -265,7 +265,7 @@ export interface HistorySearchOpenOptions {
     @keyframes history-spin { to { transform: rotate(360deg); } }
     .feedback { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px; border-radius: 7px; padding: 9px 10px; font-size: 12px; line-height: 1.45; }
     .error-feedback { border: 1px solid color-mix(in srgb, var(--danger, #d85b60) 52%, var(--border)); color: var(--text); background: color-mix(in srgb, var(--danger, #d85b60) 10%, transparent); }
-    .error-feedback gc-icon { color: var(--danger, #d85b60); margin-top: 1px; }
+    .error-feedback gk-icon { color: var(--danger, #d85b60); margin-top: 1px; }
     .results-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 2px; }
     .results-heading > div { display: flex; align-items: baseline; gap: 8px; }
     h3 { margin: 0; font-size: 12px; font-weight: 700; }

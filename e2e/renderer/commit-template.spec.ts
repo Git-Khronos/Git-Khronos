@@ -4,7 +4,7 @@ async function setup(page: Page, template: string | null, unavailable = false): 
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(({ template, unavailable }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.repositories.update((items: any[]) => items.map(item => ({ ...item,
@@ -72,7 +72,7 @@ test('template reload requires confirmation, preserves literal headings and leav
 test('unreadable template remains visible and refresh repair preserves the entered draft until confirmed reload', async ({ page }) => {
   await setup(page, null, true);
   await page.getByLabel('Commit summary', { exact: true }).fill('Keep my draft');
-  const banner = page.locator('gc-commit-template-banner');
+  const banner = page.locator('gk-commit-template-banner');
   await expect(banner.getByRole('alert')).toContainText('Could not open');
   await expect(banner.getByRole('alert')).toContainText('No message or Git configuration was changed');
   await banner.getByRole('button', { name: 'Refresh template status', exact: true }).click();
@@ -96,7 +96,7 @@ test('template confirmation does not carry into another repository and reload is
   await setup(page, 'Original template\n');
   await page.getByRole('button', { name: 'Reload template', exact: true }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(),
       id: 'other-template', path: '/other-template', name: 'other-template', commitTemplate: 'Other template\n' }]);
   });
@@ -121,7 +121,7 @@ test('pending template repair disables retry and never steals focus from a draft
   const summary = page.getByLabel('Commit summary', { exact: true });
   await summary.fill('Edited while awaiting template status');
   await page.evaluate(() => { (window as any).__commitTemplate.finishRefresh(); });
-  await expect(page.locator('gc-commit-template-banner').getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('gk-commit-template-banner').getByRole('alert')).toHaveCount(0);
   await expect(summary).toBeFocused();
   await expect(summary).toHaveValue('Edited while awaiting template status');
 });
@@ -130,8 +130,8 @@ test('empty configured template is disclosed and clearing the draft still requir
   await setup(page, '');
   await page.setViewportSize({ width: 820, height: 720 });
   await page.getByLabel('Commit summary', { exact: true }).fill('Keep until confirmed');
-  await expect(page.locator('gc-commit-template-banner')).toContainText('empty after removing guidance');
-  expect(await page.locator('gc-commit-template-banner').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(page.locator('gk-commit-template-banner')).toContainText('empty after removing guidance');
+  expect(await page.locator('gk-commit-template-banner').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.getByRole('button', { name: 'Reload template', exact: true }).click();
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('Keep until confirmed');
   await page.getByRole('button', { name: 'Replace draft', exact: true }).click();

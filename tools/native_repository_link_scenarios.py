@@ -45,8 +45,8 @@ def repository_links(driver, fixtures, original_repository, report):
             raise AssertionError('Invalid owned repository link unexpectedly succeeded')
 
     def button(text):
-        driver.wait('return [...document.querySelectorAll("gc-repository-link-dialog button")].some(button => button.textContent.trim() === ' + json.dumps(text) + ' && !button.disabled)')
-        driver.click_text('gc-repository-link-dialog button', text)
+        driver.wait('return [...document.querySelectorAll("gk-repository-link-dialog button")].some(button => button.textContent.trim() === ' + json.dumps(text) + ' && !button.disabled)')
+        driver.click_text('gk-repository-link-dialog button', text)
 
     try:
         for target in [dict(kind='repository'), dict(kind='commit', oid=parent),
@@ -93,12 +93,12 @@ def repository_links(driver, fixtures, original_repository, report):
         driver.script("const input=document.querySelector('[aria-label=\"Search commands\"]');input.value='Open repository link';input.dispatchEvent(new Event('input',{bubbles:true}));")
         driver.wait("return [...document.querySelectorAll('[role=option]')].some(button => button.textContent.includes('Open repository link'))")
         driver.click_visible('[role=option][title^="Open repository link"]')
-        driver.wait("return !!document.querySelector('gc-repository-link-dialog textarea[aria-label=\"Repository link\"]')")
-        driver.script("const input=document.querySelector('gc-repository-link-dialog textarea');input.value=arguments[0];input.dispatchEvent(new Event('input',{bubbles:true}));", branch_uri)
+        driver.wait("return !!document.querySelector('gk-repository-link-dialog textarea[aria-label=\"Repository link\"]')")
+        driver.script("const input=document.querySelector('gk-repository-link-dialog textarea');input.value=arguments[0];input.dispatchEvent(new Event('input',{bubbles:true}));", branch_uri)
         button('Find local copies')
-        driver.wait("return !!document.querySelector('gc-repository-link-dialog article')")
+        driver.wait("return !!document.querySelector('gk-repository-link-dialog article')")
         button('Open this local copy')
-        driver.wait("return !document.querySelector('gc-repository-link-dialog')")
+        driver.wait("return !document.querySelector('gk-repository-link-dialog')")
         driver.wait("return document.querySelector('.auto-fetch-status')?.textContent.includes('Auto-fetch paused')")
         assert driver.script("return document.querySelector('.commit-row.selected')?.getAttribute('data-commit-oid')") == parent
         driver.screenshot(Path(report['artifactsDirectory']) / 'repository-link-native-local-target.png')

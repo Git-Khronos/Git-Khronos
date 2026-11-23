@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const base = git.repository();
@@ -64,8 +64,8 @@ async function setup(page: Page): Promise<void> {
   });
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
-  await expect(page.locator('gc-mail-patch-panel')).toBeVisible();
-  await page.locator('gc-mail-patch-panel summary').click();
+  await expect(page.locator('gk-mail-patch-panel')).toBeVisible();
+  await page.locator('gk-mail-patch-panel summary').click();
 }
 
 const calls = (page: Page, command: string) =>
@@ -73,7 +73,7 @@ const calls = (page: Page, command: string) =>
 
 test('export reviews consecutive HEAD commits oldest first, then saves the exact reviewed series', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-mail-patch-panel');
+  const panel = page.locator('gk-mail-patch-panel');
   const count = panel.getByLabel('Number of commits ending at HEAD');
   await count.fill('2');
   await count.press('Enter');
@@ -98,7 +98,7 @@ test('export reviews consecutive HEAD commits oldest first, then saves the exact
 
 test('out-of-range counts clamp to available history and cancelled save writes nothing', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-mail-patch-panel');
+  const panel = page.locator('gk-mail-patch-panel');
   const count = panel.getByLabel('Number of commits ending at HEAD');
   await count.fill('9999');
   await count.blur();
@@ -119,7 +119,7 @@ test('out-of-range counts clamp to available history and cancelled save writes n
 
 test('import review lists authors and empty patches before applying with recovery', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-mail-patch-panel');
+  const panel = page.locator('gk-mail-patch-panel');
   await panel.getByRole('button', { name: 'Choose series to apply…' }).click();
   const review = panel.getByRole('region', { name: 'Mail-patch import review' });
   await expect(review).toBeFocused();
@@ -136,7 +136,7 @@ test('import review lists authors and empty patches before applying with recover
 
 test('a paused application exposes Continue, Skip and Abort and clears after control', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-mail-patch-panel');
+  const panel = page.locator('gk-mail-patch-panel');
   await page.evaluate(() => { (window as any).__mail.stop = true; });
   await panel.getByRole('button', { name: 'Choose series to apply…' }).click();
   await panel.getByRole('button', { name: 'Apply patches' }).click();
@@ -160,10 +160,10 @@ test('an existing paused application found after reload offers Abort without pri
     const fixture = (window as any).__mail;
     fixture.controlMessage = 'You seem to have moved HEAD since the last am failure.\nNot rewinding to ORIG_HEAD';
     fixture.setActive(true);
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return app.git.refreshRepositoryInBackground(fixture.repository.id);
   });
-  const panel = page.locator('gc-mail-patch-panel');
+  const panel = page.locator('gk-mail-patch-panel');
   const stop = panel.getByRole('region', { name: 'Mail-patch application paused' });
   await expect(stop).toBeVisible();
   await stop.getByRole('button', { name: 'Abort' }).click();
@@ -175,7 +175,7 @@ test('an existing paused application found after reload offers Abort without pri
 
 test('refused review focuses the error and applies nothing', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-mail-patch-panel');
+  const panel = page.locator('gk-mail-patch-panel');
   await page.evaluate(() => { (window as any).__mail.refused = true; });
   await panel.getByRole('button', { name: 'Choose series to apply…' }).click();
   await expect(panel.getByRole('alert')).toContainText('Commit or stash tracked changes');
@@ -190,7 +190,7 @@ test('refused review focuses the error and applies nothing', async ({ page }) =>
 test('cancel returns focus to the chooser and help opens without applying', async ({ page }) => {
   await page.setViewportSize({ width: 560, height: 720 });
   await setup(page);
-  const panel = page.locator('gc-mail-patch-panel');
+  const panel = page.locator('gk-mail-patch-panel');
   await panel.getByRole('button', { name: 'Choose series to apply…' }).click();
   await panel.getByRole('region', { name: 'Mail-patch import review' }).getByRole('button', { name: 'Cancel' }).click();
   await expect(panel.getByRole('button', { name: 'Choose series to apply…' })).toBeFocused();

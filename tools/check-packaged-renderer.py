@@ -110,7 +110,7 @@ def main():
     def inspect_interactions():
         view.evaluate_javascript("""JSON.stringify({
           selected: !!document.querySelector('.commit-row.selected'),
-          preferences: !!document.querySelector('gc-preferences-dialog [role="dialog"]'),
+          preferences: !!document.querySelector('gk-preferences-dialog [role="dialog"]'),
           blockedStyles: [...document.querySelectorAll('style')].filter(s => !s.sheet).length,
           missingNonces: [...document.querySelectorAll('style')].filter(s => !s.nonce).length
         })""", -1, None, None, None, interactions_done, None)

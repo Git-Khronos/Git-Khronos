@@ -11,7 +11,7 @@ interface MediaOperation {
 }
 
 @Component({
-  selector: 'gc-file-media',
+  selector: 'gk-file-media',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section aria-label="Selected file content" [attr.aria-busy]="busy()">

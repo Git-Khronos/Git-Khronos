@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const original = git.repository();
@@ -148,7 +148,7 @@ test('split-only refresh changes at equal file counts invalidate Continue and ex
   await openSplit(page);
   await page.getByRole('alertdialog').getByRole('button', { name: 'Begin split', exact: true }).click();
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const fixture = (window as any).__split;
     fixture.snapshot = { ...fixture.snapshot, status: { ...fixture.snapshot.status,
       staged: 0, unstaged: 0, untracked: 0, entryCount: 0, entries: [],
@@ -158,14 +158,14 @@ test('split-only refresh changes at equal file counts invalidate Continue and ex
   const banner = page.getByRole('status', { name: 'Git rebase in progress' });
   await expect(banner.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const fixture = (window as any).__split;
     fixture.refreshOnly = { ...fixture.snapshot.status, rebaseSplit: { preparing: false, partCount: 2, treeMatches: false } };
     await git.refreshStatusInBackground(git.activeRepositoryId(), true);
   });
   await expect(banner.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const fixture = (window as any).__split;
     fixture.refreshOnly = { ...fixture.snapshot.status, rebaseSplit: { preparing: true, partCount: 0, treeMatches: false } };
     await git.refreshStatusInBackground(git.activeRepositoryId(), true);
@@ -197,7 +197,7 @@ test('compact split help restores the opener and cancellation preserves paused H
   expect(box!.y + box!.height).toBeLessThanOrEqual(700);
   await cancel.click();
   const state = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { head: app.git.repository().headOid, draft: app.commitMessage(), fixture: (window as any).__split };
   });
   expect(state.head).toBe(state.fixture.paused.headOid);
@@ -211,7 +211,7 @@ test('in-flight split completion cannot alter another repository draft or create
   await page.getByRole('alertdialog').getByRole('button', { name: 'Begin split', exact: true }).click();
   await expect.poll(() => page.evaluate(() => !!(window as any).__split.finish)).toBe(true);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = (window as any).__split.paused;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'split-other', path: '/owned/other',
       status: { ...source.status, rebaseInProgress: false, rebaseEditStopped: false, rebaseSplit: null } }]);
@@ -220,7 +220,7 @@ test('in-flight split completion cannot alter another repository draft or create
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await page.getByLabel('Commit summary', { exact: true }).fill('Other repository draft');
   await page.evaluate(() => { (window as any).__split.finish(); });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('Other repository draft');
   await expect(page.getByRole('status', { name: 'Git rebase in progress' })).toHaveCount(0);
   const fixture = await page.evaluate(() => (window as any).__split);

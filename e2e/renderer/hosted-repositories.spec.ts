@@ -27,7 +27,7 @@ async function reviewed(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/'); await expect(page.locator('.branch-item').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root')); const git = app.git;
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app')); const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.chooseDirectory = async () => '/owned/clones';
     app.commitMessage.set('Owned retained commit draft');
@@ -200,7 +200,7 @@ test('a confirmed clone arriving after cancellation remains a truthful completed
   await dialog.getByRole('button', { name: 'Cancel hosted request', exact: true }).click();
   await page.evaluate(() => { const f = (window as any).__hostedCatalogue; f.hold = ''; f.release(); });
   await expect(dialog).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().path)).toBe('/owned/clones/owned');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().path)).toBe('/owned/clones/owned');
   expect(await page.evaluate(() => (window as any).__hostedCatalogue.calls.filter((c: any) => c.command === 'execute_hosted_clone'))).toHaveLength(1);
 });
 
@@ -219,7 +219,7 @@ test('closing a reviewed hosted clone does not activate its late successful chec
   await expect(dialog.getByRole('button', { name: 'Open owned at /owned/clones/owned', exact: true })).toBeVisible();
   await expect(page.locator('.status-repository-path')).toHaveText(original);
   expect(await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const f = (window as any).__hostedCatalogue;
     return {
       saved: git.activeWorkspace().repositoryPaths.filter((path: string) => path === f.snapshot.path).length,
@@ -230,7 +230,7 @@ test('closing a reviewed hosted clone does not activate its late successful chec
 
 for (const theme of ['khronos', 'midnight']) test(`${theme} hosted catalogue stays keyboard-contained and readable in a compact window`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
-  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
+  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gk-app')).setAppTheme(theme), theme);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   const dialog = await reviewed(page);
   const discard = dialog.getByRole('button', { name: 'Discard clone preview', exact: true });

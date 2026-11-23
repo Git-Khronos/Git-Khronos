@@ -57,7 +57,7 @@ const PREFERENCE_SEARCH_ENTRIES: readonly PreferenceSearchEntry[] = [
 ];
 
 @Component({
-  selector: 'gc-preferences-dialog',
+  selector: 'gk-preferences-dialog',
   imports: [FormsModule, ConfiguredToolsPanelComponent, IconComponent, IntegrityPanelComponent, PatchExchangePanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './preferences-dialog.component.html',

@@ -22,7 +22,7 @@ export interface CommitEditFormView {
 }
 
 @Component({
-  selector: 'gc-commit-edit-form',
+  selector: 'gk-commit-edit-form',
   imports: [IconComponent, TextValueDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './commit-edit-form.component.html',

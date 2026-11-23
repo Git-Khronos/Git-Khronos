@@ -22,7 +22,7 @@ async function pendingTerminalInput(page: Page): Promise<void> {
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
     const state = window as any;
-    const app = state.ng.getComponent(document.querySelector('gc-root'));
+    const app = state.ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.set({ appVersion: 'renderer test', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0' });
     let sequence = 0;
     let callback = 100;
@@ -31,7 +31,7 @@ async function pendingTerminalInput(page: Page): Promise<void> {
     state.terminalCloseRequests = [];
     state.terminalResizes = [];
     state.inputTerminal = (id: string, data: string) => {
-      const panel = state.ng.getComponent(document.querySelector('gc-terminal-panel'));
+      const panel = state.ng.getComponent(document.querySelector('gk-terminal-panel'));
       panel.tabs().find((tab: any) => tab.id === id).terminal.input(data, true);
     };
     state.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined };
@@ -62,7 +62,7 @@ async function pendingTerminalInput(page: Page): Promise<void> {
     };
   });
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
-  await expect(page.locator('gc-terminal-panel').getByRole('tab', { name: 'bash 1', exact: true })).toBeVisible();
+  await expect(page.locator('gk-terminal-panel').getByRole('tab', { name: 'bash 1', exact: true })).toBeVisible();
 }
 
 async function useNoncedDesktopStyles(page: Page): Promise<void> {
@@ -105,7 +105,7 @@ async function useNoncedDesktopStyles(page: Page): Promise<void> {
 test('renders terminal fonts and ANSI colors under a nonced style policy', async ({ page }) => {
   await useNoncedDesktopStyles(page);
   await pendingTerminalInput(page);
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await panel.evaluate((element) => new Promise<void>((resolve) => {
     const component: unknown = (window as TerminalTestWindow).ng.getComponent(element);
     const terminal = (component as TerminalPanelHarness).tabs()[0].terminal;
@@ -156,7 +156,7 @@ test('renders terminal fonts and ANSI colors under a nonced style policy', async
     originalRows)).toBe(true);
 
   await page.evaluate(() => {
-    const root = document.querySelector('gc-root');
+    const root = document.querySelector('gk-app');
     if (!root) throw new Error('Application root not found');
     const component: unknown = (window as TerminalTestWindow).ng.getComponent(root);
     const app = component as {
@@ -212,7 +212,7 @@ test('renders terminal fonts and ANSI colors under a nonced style policy', async
 async function failNextTerminalStartup(page: Page, stage: 'loadAddon' | 'open', disposeThrows = false): Promise<void> {
   await page.evaluate(({ stage, disposeThrows }) => {
     const state = window as any;
-    const panel = state.ng.getComponent(document.querySelector('gc-terminal-panel'));
+    const panel = state.ng.getComponent(document.querySelector('gk-terminal-panel'));
     const prototype = Object.getPrototypeOf(panel.tabs()[0].terminal);
     const original = prototype[stage];
     state.failedTerminalDisposeCalls = 0;
@@ -233,7 +233,7 @@ async function failNextTerminalStartup(page: Page, stage: 'loadAddon' | 'open', 
 test('cleans up a detached terminal after a nonced startup failure', async ({ page }) => {
   await useNoncedDesktopStyles(page);
   await pendingTerminalInput(page);
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await failNextTerminalStartup(page, 'open');
   await panel.getByRole('button', { name: 'New terminal tab' }).click();
   await expect(panel.getByRole('status')).toContainText('Terminal open failed');
@@ -251,7 +251,7 @@ test('cleans up a detached terminal after a nonced startup failure', async ({ pa
 for (const stage of ['loadAddon', 'open'] as const) {
   test(`cleans up a native session after terminal ${stage} fails and permits an explicit retry`, async ({ page }) => {
     await pendingTerminalInput(page);
-    const panel = page.locator('gc-terminal-panel');
+    const panel = page.locator('gk-terminal-panel');
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     await failNextTerminalStartup(page, stage);
@@ -270,7 +270,7 @@ for (const stage of ['loadAddon', 'open'] as const) {
 
 test('retains failed startup cleanup for retry even when renderer disposal also throws', async ({ page }) => {
   await pendingTerminalInput(page);
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await failNextTerminalStartup(page, 'loadAddon', true);
   await page.evaluate(() => { (window as any).holdTerminalClose = true; });
   await panel.getByRole('button', { name: 'New terminal tab' }).click();
@@ -292,7 +292,7 @@ test('retains failed startup cleanup for retry even when renderer disposal also 
 
 test('closing the repository also retries native cleanup for a failed terminal startup', async ({ page }) => {
   await pendingTerminalInput(page);
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await failNextTerminalStartup(page, 'loadAddon');
   await page.evaluate(() => { (window as any).holdTerminalClose = true; });
   await panel.getByRole('button', { name: 'New terminal tab' }).click();
@@ -311,8 +311,8 @@ test('serializes input per terminal without blocking another terminal tab', asyn
     (window as any).inputTerminal('input-1', 'second');
   });
   await expect.poll(() => page.evaluate(() => (window as any).terminalWrites)).toEqual([{ id: 'input-1', data: 'first π' }]);
-  await page.locator('gc-terminal-panel').getByRole('button', { name: 'New terminal tab' }).click();
-  await expect(page.locator('gc-terminal-panel').getByRole('tab', { name: 'bash 2', exact: true })).toBeVisible();
+  await page.locator('gk-terminal-panel').getByRole('button', { name: 'New terminal tab' }).click();
+  await expect(page.locator('gk-terminal-panel').getByRole('tab', { name: 'bash 2', exact: true })).toBeVisible();
   await page.evaluate(() => (window as any).inputTerminal('input-2', 'other tab'));
   await expect.poll(() => page.evaluate(() => (window as any).terminalWrites)).toEqual([
     { id: 'input-1', data: 'first π' }, { id: 'input-2', data: 'other tab' },
@@ -325,7 +325,7 @@ test('serializes input per terminal without blocking another terminal tab', asyn
 
 test('drops queued input and ignores late write errors for a closed terminal tab', async ({ page }) => {
   await pendingTerminalInput(page);
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await panel.getByRole('button', { name: 'New terminal tab' }).click();
   await expect(panel.getByRole('tab', { name: 'bash 2', exact: true })).toBeVisible();
   await page.evaluate(() => {
@@ -357,7 +357,7 @@ test('does not send the queued suffix after a write failure but allows explicit 
     (window as any).terminalWriteReplies[0].reject(new Error('Terminal write failed'));
     await new Promise(resolve => setTimeout(resolve, 0));
   });
-  await expect(page.locator('gc-terminal-panel')).toContainText('Terminal write failed');
+  await expect(page.locator('gk-terminal-panel')).toContainText('Terminal write failed');
   expect(await page.evaluate(() => (window as any).terminalWrites.length)).toBe(1);
   await page.evaluate(() => (window as any).inputTerminal('input-1', 'explicit new input'));
   await expect.poll(() => page.evaluate(() => (window as any).terminalWrites)).toEqual([
@@ -367,7 +367,7 @@ test('does not send the queued suffix after a write failure but allows explicit 
 
 test('retains the terminal screen after a close failure and retries the intended tab', async ({ page }) => {
   await pendingTerminalInput(page);
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await panel.locator('[data-terminal-id="input-1"] .xterm-screen').evaluate(element => element.setAttribute('data-retained-screen', 'true'));
   await panel.getByRole('button', { name: 'New terminal tab' }).click();
   await expect(panel.getByRole('tab', { name: 'bash 2', exact: true })).toBeVisible();
@@ -389,7 +389,7 @@ test('retains the terminal screen after a close failure and retries the intended
 
 test('a refused close discards pre-close queued input without replaying it', async ({ page }) => {
   await pendingTerminalInput(page);
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await page.evaluate(() => {
     (window as any).inputTerminal('input-1', 'pending');
     (window as any).inputTerminal('input-1', 'unsafe pre-close suffix');
@@ -416,7 +416,7 @@ test('retains startup output and the exited state when a shell exits before its 
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
     const state = window as any;
-    const app = state.ng.getComponent(document.querySelector('gc-root'));
+    const app = state.ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.set({ appVersion: 'renderer test', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0' });
     let nextId = 0;
     const callbacks = new Map<number, (event: unknown) => void>();
@@ -449,7 +449,7 @@ test('retains startup output and the exited state when a shell exits before its 
     state.sendTerminalEvent('terminal-exit', { sessionId: 'early-exit' });
     state.finishTerminalStartup({ id: 'early-exit', label: 'bash', cwd: '/fixture' });
   });
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await expect(panel.locator('.terminal-tab')).toHaveClass(/ended/);
   await expect.poll(() => panel.evaluate(element => {
     const buffer = (window as any).ng.getComponent(element).tabs()[0].terminal.buffer.active;
@@ -463,7 +463,7 @@ test('preserves the native terminal screen when minimizing and restoring the pan
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
     const state = window as any;
-    const app = state.ng.getComponent(document.querySelector('gc-root'));
+    const app = state.ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.set({ appVersion: 'renderer test', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0' });
     let nextId = 0;
     state.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined };
@@ -478,7 +478,7 @@ test('preserves the native terminal screen when minimizing and restoring the pan
     };
   });
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   const screen = panel.locator('.xterm-screen');
   await expect(screen).toBeVisible();
   await screen.evaluate(element => element.setAttribute('data-screen-retained', 'true'));
@@ -494,7 +494,7 @@ test('preserves new terminal tabs and closed tabs when close responses arrive ou
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
     const state = window as any;
-    const app = state.ng.getComponent(document.querySelector('gc-root'));
+    const app = state.ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.set({ appVersion: 'renderer test', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0' });
     let nextSession = 0;
     let nextCallback = 100;
@@ -523,7 +523,7 @@ test('preserves new terminal tabs and closed tabs when close responses arrive ou
     };
   });
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   const add = panel.getByRole('button', { name: 'New terminal tab' });
   await expect(panel.getByRole('tab', { name: 'bash 1', exact: true })).toBeVisible();
   await add.click();
@@ -551,7 +551,7 @@ for (const delayedListener of [1, 2]) {
     await expect(page.locator('.commit-row').first()).toBeVisible();
     await page.evaluate((delayed) => {
       const state = window as any;
-      const app = state.ng.getComponent(document.querySelector('gc-root'));
+      const app = state.ng.getComponent(document.querySelector('gk-app'));
       app.git.systemInfo.set({ appVersion: 'renderer test', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0' });
       let listener = 0;
       state.terminalOpenCalls = 0;
@@ -576,7 +576,7 @@ for (const delayedListener of [1, 2]) {
     await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
     await expect.poll(() => page.evaluate(() => typeof (window as any).finishTerminalListener)).toBe('function');
     await page.getByRole('button', { name: 'Close git-khronos', exact: true }).click({ force: true });
-    await expect(page.locator('gc-terminal-panel')).toHaveCount(0);
+    await expect(page.locator('gk-terminal-panel')).toHaveCount(0);
     await page.evaluate(id => (window as any).finishTerminalListener(id), delayedListener);
     await expect.poll(() => page.evaluate(() => (window as any).unregisteredTerminalListeners)).toContain(delayedListener);
     expect(await page.evaluate(() => (window as any).terminalOpenCalls)).toBe(0);
@@ -588,7 +588,7 @@ test('closes a late native terminal session when its repository panel was destro
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
     const state = window as any;
-    const app = state.ng.getComponent(document.querySelector('gc-root'));
+    const app = state.ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.set({ appVersion: 'renderer test', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0' });
     let nextCallback = 100;
     state.closedTerminalSessions = [];
@@ -607,14 +607,14 @@ test('closes a late native terminal session when its repository panel was destro
   await page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)').click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).finishOpeningTerminal)).toBe('function');
   await page.getByRole('button', { name: 'Close git-khronos', exact: true }).click({ force: true });
-  await expect(page.locator('gc-terminal-panel')).toHaveCount(0);
+  await expect(page.locator('gk-terminal-panel')).toHaveCount(0);
   await page.evaluate(() => (window as any).finishOpeningTerminal({ id: 'late-session', label: 'bash', cwd: '/fixture' }));
   await expect.poll(() => page.evaluate(() => (window as any).closedTerminalSessions)).toContain('late-session');
 });
 
 test('opens regular terminal tabs without a built-in agent launcher', async ({ page }) => {
   await pendingTerminalInput(page);
-  const panel = page.locator('gc-terminal-panel');
+  const panel = page.locator('gk-terminal-panel');
   await expect(panel.getByRole('button', { name: 'New agent session', exact: true })).toHaveCount(0);
   await expect(panel.getByRole('button', { name: 'Choose terminal profile', exact: true })).toHaveCount(0);
   await panel.getByRole('button', { name: 'New terminal tab', exact: true }).click();

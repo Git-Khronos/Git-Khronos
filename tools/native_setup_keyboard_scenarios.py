@@ -66,7 +66,7 @@ def setup_keyboard_isolation(driver, fixtures, report):
         ''', 'args': []})
         driver.wait(ready)
         modal_open = driver.script('return !!document.querySelector(arguments[0])', modal)
-        palette_open = driver.script('return !!document.querySelector("gc-command-palette")')
+        palette_open = driver.script('return !!document.querySelector("gk-command-palette")')
         actual_draft = driver.script('return document.querySelector(\'[aria-label="Commit summary"]\').value')
         after = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
         observed[kind] = {'checkout': after, 'commitAttempted': marker.exists(),
@@ -143,10 +143,10 @@ def setup_keyboard_isolation(driver, fixtures, report):
     driver.wait(ready)
     rename_before = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
     _chord(driver, 'p')
-    driver.wait("return !!document.querySelector('gc-command-palette input')")
-    driver.script('''const field = document.querySelector('gc-command-palette input');
+    driver.wait("return !!document.querySelector('gk-command-palette input')")
+    driver.script('''const field = document.querySelector('gk-command-palette input');
       field.value = 'Rename owned-palette-rename'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
-    driver.click_visible('gc-command-palette [role=option] strong', 'Rename owned-palette-rename')
+    driver.click_visible('gk-command-palette [role=option] strong', 'Rename owned-palette-rename')
     modal = 'form[aria-label="Rename branch owned-palette-rename"]'
     driver.wait('return !!document.querySelector(' + json.dumps(modal) + ')')
     assert str(repository) in driver.script('return document.querySelector(arguments[0]).textContent', modal)
@@ -180,7 +180,7 @@ def setup_keyboard_isolation(driver, fixtures, report):
             ''', 'args': []})
             observation = driver.script('''return {
               modalOpen: !!document.querySelector(arguments[0]),
-              paletteOpen: !!document.querySelector('gc-command-palette'),
+              paletteOpen: !!document.querySelector('gk-command-palette'),
               activeName: document.activeElement?.name || null,
               events: window.__ownedRenameKeyEvents.splice(0).map(({ event, ...item }) =>
                 ({ ...item, defaultPrevented: event.defaultPrevented })),

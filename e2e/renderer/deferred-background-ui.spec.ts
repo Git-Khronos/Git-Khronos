@@ -39,7 +39,7 @@ for (const mode of ['hold', 'fail'] as const) {
 
     if (mode === 'hold') {
       await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const repository = app.git.repository();
         const template = repository.commits[1];
         const oid = (index: number) => index.toString(16).padStart(40, '0');
@@ -78,7 +78,7 @@ for (const mode of ['hold', 'fail'] as const) {
       await page.locator('.wip-nav').click();
       await expect(page.locator('.wip-nav')).toHaveClass(/selected/);
       await page.evaluate(() => {
-        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
         const repository = git.repository();
         git.repositories.update((repositories: any[]) => repositories.map((candidate) =>
           candidate.id === repository.id ? { ...candidate, commits: [], historyTruncated: false } : candidate));
@@ -128,7 +128,7 @@ test('preserves independent warnings and keyboard focus if warning controls cann
   const chunk = await interceptChunk(page,
     source => source.includes('background-operation-warning') && source.includes('Dismiss background operation warning'), 'fail');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.reportBackgroundOperationWarning('warning-one', 'The first read may still be running.');
     git.reportBackgroundOperationWarning('warning-two', 'The second read may still be running.');
   });

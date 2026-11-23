@@ -1,7 +1,7 @@
 import { Directive, ElementRef, inject, input, output } from '@angular/core';
 
 @Directive({
-  selector: 'input[gcTextValue], textarea[gcTextValue]',
+  selector: 'input[gkTextValue], textarea[gkTextValue]',
   host: {
     '[value]': 'textValue()',
     '(input)': 'handleInput()',
@@ -10,8 +10,8 @@ import { Directive, ElementRef, inject, input, output } from '@angular/core';
   },
 })
 export class TextValueDirective {
-  readonly textValue = input.required<string>({ alias: 'gcTextValue' });
-  readonly textValueChange = output<string>({ alias: 'gcTextValueChange' });
+  readonly textValue = input.required<string>({ alias: 'gkTextValue' });
+  readonly textValueChange = output<string>({ alias: 'gkTextValueChange' });
   private readonly element = inject<ElementRef<HTMLInputElement | HTMLTextAreaElement>>(ElementRef);
   private composing = false;
 

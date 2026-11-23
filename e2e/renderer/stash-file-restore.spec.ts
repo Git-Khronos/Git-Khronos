@@ -5,7 +5,7 @@ async function prepare(page: Page) {
   await page.locator('.commit-row.stash-row').first().click();
   await expect(page.locator('.commit-panel .commit-file-list')).toBeVisible();
   await page.evaluate(() => {
-    const root = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const root = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = root.git;
     const repository = git.repository();
     const stash = root.selectedStash();

@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const source = git.repository();
@@ -57,7 +57,7 @@ async function setup(page: Page): Promise<void> {
   });
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await expect(panel).toBeVisible();
   await panel.locator(':scope > details > summary').click();
 }
@@ -65,7 +65,7 @@ async function setup(page: Page): Promise<void> {
 for (const target of ['worktree', 'index', 'both']) {
   test(`patch ${target} requires a complete review before exact immutable IPC without changing drafts or refs`, async ({ page }) => {
     await setup(page);
-    const panel = page.locator('gc-patch-exchange-panel');
+    const panel = page.locator('gk-patch-exchange-panel');
     await panel.getByLabel('Apply to', { exact: true }).selectOption(target);
     await panel.getByRole('button', { name: 'Choose and check patch…', exact: true }).click();
     const review = panel.getByRole('region', { name: 'Patch import review', exact: true });
@@ -90,7 +90,7 @@ for (const target of ['worktree', 'index', 'both']) {
 
 test('staged literal export excludes untracked files and passes the complete selected path without string splitting', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await panel.getByLabel('Diff source', { exact: true }).selectOption({ label: 'Staged: index compared with HEAD' });
   await panel.getByLabel('All tracked changes in this scope', { exact: true }).uncheck();
   const selected = panel.getByLabel('Patch export file selection').getByRole('checkbox');
@@ -107,7 +107,7 @@ test('staged literal export excludes untracked files and passes the complete sel
 
 test('export blocks empty, conflicted, or incomplete tracked scopes before choosing a destination', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   const save = panel.getByRole('button', { name: 'Save diff patch…', exact: true });
   for (const [reason, flags] of [
     ['There are no tracked changes', { conflicted: 0, entriesTruncated: false }],
@@ -115,7 +115,7 @@ test('export blocks empty, conflicted, or incomplete tracked scopes before choos
     ['current file list is truncated', { conflicted: 0, entriesTruncated: true }],
   ] as const) {
     await page.evaluate(flags => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const source = git.repository();
       git.repositories.update((repos: any[]) => repos.map(repo => repo.id === source.id
         ? { ...source, status: { ...source.status, ...flags, entries: source.status.entries.filter((entry: any) => entry.path === 'untracked') } } : repo));
@@ -129,9 +129,9 @@ test('export blocks empty, conflicted, or incomplete tracked scopes before choos
 
 test('a selected patch path that changes while picking the destination is not silently dropped or exported', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = git.repository();
     const entries = [...source.status.entries, { path: 'also-tracked.txt', indexStatus: ' ', worktreeStatus: 'M', conflicted: false }];
     git.repositories.update((repos: any[]) => repos.map(repo => repo.id === source.id
@@ -146,7 +146,7 @@ test('a selected patch path that changes while picking the destination is not si
   await save.click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__patch.finishSave)).toBe('function');
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = git.repository();
     git.repositories.update((repos: any[]) => repos.map(repo => repo.id === source.id
       ? { ...source, status: { ...source.status, entries: source.status.entries.filter((entry: any) => entry.path !== 'tracked.txt') } } : repo));
@@ -169,7 +169,7 @@ test('a selected patch path that changes while picking the destination is not si
 
 test('native file chooser cancellations perform no Git calls and target changes invalidate a previously checked review', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await page.evaluate(() => { (window as any).__patch.selectedFile = null; (window as any).__patch.destination = null; });
   await panel.getByRole('button', { name: 'Choose and check patch…', exact: true }).click();
   await expect(panel.getByRole('status')).toContainText('selection cancelled');
@@ -186,12 +186,12 @@ test('native file chooser cancellations perform no Git calls and target changes 
 
 test('returning to the same checkout does not authorize a destination from its former visit', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await page.evaluate(() => { (window as any).__patch.deferSave = true; });
   await panel.getByRole('button', { name: 'Save diff patch…', exact: true }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__patch.finishSave)).toBe('function');
   const visits = await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = git.repository();
     const before = git.activeRepositoryReadScope();
     git.repositories.update((items: any[]) => [...items, { ...source, id: 'patch-export-other', path: '/owned/patch-export-other' }]);
@@ -203,13 +203,13 @@ test('returning to the same checkout does not authorize a destination from its f
   });
   expect(visits.active).toBe(visits.original);
   expect(visits.before).not.toBe(visits.after);
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   expect(await page.evaluate(() => (window as any).__patch.calls.filter((call: any) => call.command === 'export_diff_patch'))).toEqual([]);
 });
 
 test('dismissing Preferences while a native save is cancelled records cancellation instead of a Git error', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await page.evaluate(() => {
     const fixture = (window as any).__patch;
     fixture.deferSave = true;
@@ -227,7 +227,7 @@ test('dismissing Preferences while a native save is cancelled records cancellati
 
 test('preflight and stale-apply failures are focused, explicit and require a fresh check rather than replaying twice', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await page.evaluate(() => { (window as any).__patch.refused = true; });
   await panel.getByRole('button', { name: 'Choose and check patch…', exact: true }).click();
   await expect(panel.getByRole('alert')).toContainText('completely clean');
@@ -244,25 +244,25 @@ test('preflight and stale-apply failures are focused, explicit and require a fre
 
 test('late checked patch never returns after switching away and back to the original repository', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await page.evaluate(() => { (window as any).__patch.deferred = true; });
   await panel.getByRole('button', { name: 'Choose and check patch…', exact: true }).click();
   await expect.poll(() => page.evaluate(() => !!(window as any).__patch.finish)).toBe(true);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const source = (window as any).__patch.repository;
     git.repositories.update((items: any[]) => [...items, { ...source, id: 'patch-other', path: '/owned/patch-other' }]);
     git.activeRepositoryId.set('patch-other');
   });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('patch-other');
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId())).toBe('patch-other');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.activeRepositoryId.set((window as any).__patch.repository.id);
   });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId()))
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId()))
     .toBe(await page.evaluate(() => (window as any).__patch.repository.id));
   await page.evaluate(() => { (window as any).__patch.finish(); });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(panel.getByRole('region', { name: 'Patch import review' })).toHaveCount(0);
 });
 
@@ -270,7 +270,7 @@ test('compact reduced-motion review remains bounded and help/cancel retain keybo
   await setup(page);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.setViewportSize({ width: 550, height: 700 });
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await panel.getByRole('button', { name: 'Choose and check patch…', exact: true }).click();
   const help = panel.getByRole('button', { name: 'Learn about diff patches and apply…', exact: true });
   await help.click();
@@ -292,11 +292,11 @@ test('compact reduced-motion review remains bounded and help/cancel retain keybo
 
 test('loaded patch review is discarded when the active repository changes without importing elsewhere', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-patch-exchange-panel');
+  const panel = page.locator('gk-patch-exchange-panel');
   await panel.getByRole('button', { name: 'Choose and check patch…', exact: true }).click();
   await expect(panel.getByRole('region', { name: 'Patch import review' })).toBeVisible();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const source = (window as any).__patch.repository;
     git.repositories.update((items: any[]) => [...items, { ...source, id: 'loaded-other', path: '/owned/loaded-other' }]);
     git.activeRepositoryId.set('loaded-other');
@@ -329,7 +329,7 @@ for (const action of ['cancel', 'failure'] as const) {
     expect(patchFetched).toBe(false);
     await page.evaluate(() => {
       (window as any).__patchCommands = [];
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
         (window as any).__patchCommands.push(command);
         const repo = git.repositories().find((item: any) => item.id === args?.repoId);
@@ -349,7 +349,7 @@ for (const action of ['cancel', 'failure'] as const) {
     await page.getByRole('button', { name: 'Close preferences', exact: true }).click();
     if (release) (release as () => void)();
     await expect(preferences).toHaveCount(0);
-    await expect(page.locator('gc-patch-exchange-panel')).toHaveCount(0);
+    await expect(page.locator('gk-patch-exchange-panel')).toHaveCount(0);
     expect((await page.evaluate(() => (window as any).__patchCommands))
       .some((command: string) => ['review_diff_patch', 'export_diff_patch', 'import_diff_patch'].includes(command))).toBe(false);
   });

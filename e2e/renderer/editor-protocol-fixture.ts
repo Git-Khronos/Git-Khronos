@@ -6,7 +6,7 @@ export async function prepareEditor(page: Page, mode = 'ready', openPreview = tr
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(({ mode, openPreview }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git, repo = git.repository();
     const state: any = { app, git, calls: [], mode, serial: 0, disk: 'before\n', index: 'before\n', repoId: repo.id };
     state.snapshot = (path = 'notes.md') => ({ editorId: `editor-${state.serial}`, revision: `revision-${state.serial}`,

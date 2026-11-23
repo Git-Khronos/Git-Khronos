@@ -6,7 +6,7 @@ for (const outcome of ['success', 'error', 'cancelled']) {
       await page.goto('/');
       await expect(page.locator('.commit-row').first()).toBeVisible();
       const result = await page.evaluate(async ({ outcome, navigation }) => {
-        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
         const repository = git.repository();
         const other = { ...repository, id: 'other-snapshot', path: '/fixture/other-snapshot' };
         git.repositories.set([repository, other]);
@@ -47,7 +47,7 @@ for (const outcome of ['error', 'cancelled']) {
       await page.goto('/');
       await expect(page.locator('.commit-row').first()).toBeVisible();
       const head = await page.evaluate(async ({ outcome, change }) => {
-        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
         const repository = git.repository();
         const newer = { ...repository, headOid: 'newer-head' };
         const stale = { ...repository, headOid: 'recovery-head' };

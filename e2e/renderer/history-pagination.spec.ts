@@ -5,7 +5,7 @@ for (const outcome of ['page', 'error']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async outcome => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = { ...git.repository(), historyTruncated: true };
       const fresh = { ...repository, historyTruncated: true,
         commits: [{ ...repository.commits[0], oid: 'reopened-history', subject: 'New session history' }] };
@@ -48,7 +48,7 @@ for (const outcome of ['page', 'error']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async outcome => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const closed = { ...git.repository(), historyTruncated: true };
       const other = { ...closed, id: 'other-repository', path: '/fixture/other',
         commits: [{ ...closed.commits[0], oid: 'other-first' }] };
@@ -91,7 +91,7 @@ for (const outcome of ['page', 'error']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async outcome => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const closed = { ...git.repository(), historyTruncated: true };
       const other = { ...closed, id: 'other-repository', path: '/fixture/other',
         commits: [{ ...closed.commits[0], oid: 'other-first' }] };
@@ -149,7 +149,7 @@ test('background snapshots wait for every outstanding history request', async ({
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const closed = { ...git.repository(), historyTruncated: true };
     const other = { ...closed, id: 'other-repository', path: '/fixture/other',
       commits: [{ ...closed.commits[0], oid: 'other-first' }] };
@@ -195,7 +195,7 @@ test('history paging still updates an open repository after switching tabs', asy
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = { ...git.repository(), historyTruncated: true };
     const other = { ...repository, id: 'other-repository', path: '/fixture/other' };
     git.repositories.set([repository, other]);
@@ -217,7 +217,7 @@ test('watcher refresh clears a shallow badge without a change to the commit iden
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
   const oid = await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const repo = git.repository();
     const commit = repo.commits[0];

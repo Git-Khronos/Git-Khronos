@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
 @Component({
-  selector: 'gc-hosted-pager',
+  selector: 'gk-hosted-pager',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<nav [attr.aria-label]="label() + ' pages'">
     <button type="button" [disabled]="disabled() || page() <= 1" (click)="pageChange.emit(page() - 1)">Previous {{ label() }} page</button>

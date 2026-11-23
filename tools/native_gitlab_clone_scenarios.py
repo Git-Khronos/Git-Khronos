@@ -192,7 +192,7 @@ def gitlab_reviewed_clones(driver, fixtures, original_repository, report):
         open_ui(driver, original_repository)
         driver.click('[aria-label="New repository tab"]')
         driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
+        driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
         button("Browse GitLab projects")
         driver.wait("return !!document.querySelector('#gitlab-account') && !document.querySelector('#gitlab-account').matches(':disabled') && [...document.querySelector('#gitlab-account').options].some(option => option.value === " + json.dumps(connection["connectionId"]) + ")")
         driver.script("""const select=document.querySelector('#gitlab-account');
@@ -202,20 +202,20 @@ def gitlab_reviewed_clones(driver, fixtures, original_repository, report):
         driver.wait("return !!document.querySelector('#gitlab-clone-parent')")
         fill("#gitlab-clone-parent", str(fixtures.root))
         fill("#gitlab-clone-folder", "gitlab-native-ui")
-        controls = driver.script("""return [...document.querySelectorAll('gc-gitlab-clone label.check')].map(label=>{
+        controls = driver.script("""return [...document.querySelectorAll('gk-gitlab-clone label.check')].map(label=>{
           const bounds=label.getBoundingClientRect(), control=label.querySelector('input').getBoundingClientRect();
           return {width:control.width,height:control.height,inset:control.left-bounds.left};});""")
         assert len(controls) == 2
         assert all(14 <= item["width"] <= 20 and 14 <= item["height"] <= 20 and 0 <= item["inset"] < 4 for item in controls), controls
         report["gitlabCloneCheckboxBounds"] = controls
-        button("Review GitLab clone", "gc-gitlab-clone button")
-        driver.wait("return !!document.querySelector('gc-gitlab-clone [aria-label=\"Review GitLab clone\"]')")
+        button("Review GitLab clone", "gk-gitlab-clone button")
+        driver.wait("return !!document.querySelector('gk-gitlab-clone [aria-label=\"Review GitLab clone\"]')")
         assert not (fixtures.root / "gitlab-native-ui").exists()
-        review_text = driver.script("return document.querySelector('gc-gitlab-clone [aria-label=\"Review GitLab clone\"]').textContent")
+        review_text = driver.script("return document.querySelector('gk-gitlab-clone [aria-label=\"Review GitLab clone\"]').textContent")
         assert origin in review_text and https in review_text and token not in review_text
         driver.screenshot(Path(report["artifactsDirectory"]) / "gitlab-clone-native-review.png")
-        button("Clone reviewed GitLab project", "gc-gitlab-clone button")
-        driver.wait("return !document.querySelector('gc-repository-dialog')", 60)
+        button("Clone reviewed GitLab project", "gk-gitlab-clone button")
+        driver.wait("return !document.querySelector('gk-repository-dialog')", 60)
         checkout = fixtures.root / "gitlab-native-ui"
         assert fixtures.git(checkout, "rev-parse", "HEAD") == head
         assert fixtures.git(checkout, "rev-parse", "--is-shallow-repository") == "false"
@@ -278,7 +278,7 @@ def gitlab_reviewed_clones(driver, fixtures, original_repository, report):
         preview = prepare(connection, "gitlab-native-after-restart")
         before = len(requests())
         driver.restart_application()
-        driver.wait("return !!document.querySelector('gc-root')")
+        driver.wait("return !!document.querySelector('gk-root')")
         refuses("execute_gitlab_clone", "gitlabClonePreview", request=execution(preview))
         assert not (fixtures.root / "gitlab-native-after-restart").exists()
         assert driver.invoke("gitlab_connections") == []

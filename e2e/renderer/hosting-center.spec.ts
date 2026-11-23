@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.repositories.update((items: any[]) => items.map(repo => ({ ...repo, remotes: [{ name: 'origin', fetchUrl: 'git@github.com:team/repo.git', pushUrl: 'git@github.com:fork/repo.git' }] })));
@@ -85,7 +85,7 @@ test('cancellation and closing reject late successful hosted responses', async (
   await dialog.getByRole('button', { name: 'Load from GitHub', exact: true }).click();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await page.evaluate(() => (window as any).__hosting.finish());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   dialog = await open(page);
   await expect(dialog).not.toContainText('records loaded');
 });
@@ -95,7 +95,7 @@ test('a changed fetch destination immediately hides earlier hosted state', async
   await dialog.getByRole('button', { name: 'Load from GitHub', exact: true }).click();
   await expect(dialog).toContainText('records loaded');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map(repo => ({ ...repo, remotes: [{ ...repo.remotes[0], fetchUrl: 'https://github.com/other/project.git' }] })));
   });
   await expect(dialog).not.toContainText('records loaded');

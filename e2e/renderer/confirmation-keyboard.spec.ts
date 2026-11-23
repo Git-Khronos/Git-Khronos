@@ -6,7 +6,7 @@ type Review = typeof reviews[number];
 
 async function openReview(page: Page, review: Review, gap = false) {
   await page.evaluate(({ review, gap }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repository = app.git.repository();
     const oid = repository.commits[0].oid;
     (window as any).__confirmationIntents = [];
@@ -87,7 +87,7 @@ for (const review of reviews) {
     const modal = await openReview(page, review);
     await modal.getByRole('button', { name: 'Cancel', exact: true }).focus();
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const target = document.activeElement!;
       const signal = (window as any).__confirmationSignal;
       app[signal].set(null);

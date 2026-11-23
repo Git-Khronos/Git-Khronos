@@ -1,7 +1,7 @@
 use super::{
     AppError, ensure_success, file_statistics, git_cancellation, is_explicit_bare_repository,
-    numstat_entries, porcelain_status_conflicted, porcelain_status_records, run_git_with_stdout_limit,
-    without_lazy_fetch,
+    numstat_entries, porcelain_status_conflicted, porcelain_status_records,
+    run_git_with_stdout_limit, without_lazy_fetch,
 };
 use serde::Serialize;
 use std::{
@@ -89,7 +89,10 @@ fn read_summary_status(path: &Path) -> Result<Option<RecapStatus>, AppError> {
     // A staged-only path must not consume the unstaged budget. Keep bytes,
     // not a display string: unrelated non-UTF-8 names can look identical.
     for (record, _) in porcelain_status_records(&output.stdout) {
-        if record.len() < 4 || record.starts_with(b"## ") || porcelain_status_conflicted(&record[..2]) {
+        if record.len() < 4
+            || record.starts_with(b"## ")
+            || porcelain_status_conflicted(&record[..2])
+        {
             continue;
         }
         let untracked = record.starts_with(b"??");
@@ -109,17 +112,19 @@ fn read_summary_status(path: &Path) -> Result<Option<RecapStatus>, AppError> {
 }
 
 fn inspect_recap<T>(action: impl FnOnce() -> Result<T, AppError>) -> Result<T, AppError> {
-    without_lazy_fetch(|| git_cancellation::inspect_within(RECAP_GIT_BUDGET, action)).map_err(|error| {
-        if error.kind == "gitInspectionTimeout" {
-            AppError::new(
-                "workingTreeSummaryTimedOut",
-                "Git took too long to count working-tree lines.",
-                Some("Refresh the repository to retry."),
-            )
-        } else {
-            error
-        }
-    })
+    without_lazy_fetch(|| git_cancellation::inspect_within(RECAP_GIT_BUDGET, action)).map_err(
+        |error| {
+            if error.kind == "gitInspectionTimeout" {
+                AppError::new(
+                    "workingTreeSummaryTimedOut",
+                    "Git took too long to count working-tree lines.",
+                    Some("Refresh the repository to retry."),
+                )
+            } else {
+                error
+            }
+        },
+    )
 }
 
 fn skipped_renames(stderr: &[u8]) -> bool {
@@ -128,10 +133,16 @@ fn skipped_renames(stderr: &[u8]) -> bool {
 }
 
 fn complete_records(output: &[u8]) -> &[u8] {
-    output.iter().rposition(|byte| *byte == 0).map_or(&[], |end| &output[..=end])
+    output
+        .iter()
+        .rposition(|byte| *byte == 0)
+        .map_or(&[], |end| &output[..=end])
 }
 
-fn read_staged_summary(path: &Path, has_staged: bool) -> Result<WorkingTreeChangeSummary, AppError> {
+fn read_staged_summary(
+    path: &Path,
+    has_staged: bool,
+) -> Result<WorkingTreeChangeSummary, AppError> {
     let mut summary = WorkingTreeChangeSummary::default();
     if !has_staged {
         return Ok(summary);
@@ -142,8 +153,17 @@ fn read_staged_summary(path: &Path, has_staged: bool) -> Result<WorkingTreeChang
     let (output, truncated) = run_git_with_stdout_limit(
         path,
         &[
-            "diff", "--cached", "--numstat", "-z", "--find-renames", &rename_limit,
-            "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--diff-filter=ACDMRT", "--",
+            "diff",
+            "--cached",
+            "--numstat",
+            "-z",
+            "--find-renames",
+            &rename_limit,
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=none",
+            "--diff-filter=ACDMRT",
+            "--",
         ],
         MAX_STATS_BYTES,
     )?;
@@ -181,8 +201,15 @@ fn unstaged_numstat(path: &Path) -> Result<(Vec<u8>, bool), AppError> {
     let (output, truncated) = run_git_with_stdout_limit(
         path,
         &[
-            "diff", "--numstat", "-z", "--find-renames", &rename_limit,
-            "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--",
+            "diff",
+            "--numstat",
+            "-z",
+            "--find-renames",
+            &rename_limit,
+            "--no-ext-diff",
+            "--no-textconv",
+            "--ignore-submodules=none",
+            "--",
         ],
         MAX_STATS_BYTES,
     )?;
@@ -192,7 +219,10 @@ fn unstaged_numstat(path: &Path) -> Result<(Vec<u8>, bool), AppError> {
     Ok((output.stdout, truncated || skipped_renames(&output.stderr)))
 }
 
-fn read_unstaged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTreeChangeSummary, AppError> {
+fn read_unstaged_summary(
+    path: &Path,
+    status: &RecapStatus,
+) -> Result<WorkingTreeChangeSummary, AppError> {
     let entries = &status.unstaged_paths;
     let mut summary = WorkingTreeChangeSummary {
         partial: status.unstaged_partial,
@@ -229,7 +259,10 @@ fn read_unstaged_summary(path: &Path, status: &RecapStatus) -> Result<WorkingTre
     }
     count_untracked(
         path,
-        entries.iter().filter(|entry| entry.untracked).map(|entry| entry.name.as_slice()),
+        entries
+            .iter()
+            .filter(|entry| entry.untracked)
+            .map(|entry| entry.name.as_slice()),
         &mut summary,
     )?;
     Ok(summary)
@@ -252,12 +285,22 @@ fn read_unstaged_without_status(path: &Path) -> Result<WorkingTreeChangeSummary,
     }
     ensure_success("read unmerged paths for the unstaged line count", &conflict)?;
     let mut blocked = HashSet::new();
-    for row in conflict.stdout.split(|byte| *byte == 0).filter(|row| !row.is_empty()) {
-        let separator = row.iter().position(|byte| *byte == b'\t').ok_or_else(incomplete_conflicts)?;
+    for row in conflict
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|row| !row.is_empty())
+    {
+        let separator = row
+            .iter()
+            .position(|byte| *byte == b'\t')
+            .ok_or_else(incomplete_conflicts)?;
         blocked.insert(&row[separator + 1..]);
     }
     let (tracked, partial) = unstaged_numstat(path)?;
-    let mut summary = WorkingTreeChangeSummary { partial, ..Default::default() };
+    let mut summary = WorkingTreeChangeSummary {
+        partial,
+        ..Default::default()
+    };
     let mut remaining = MAX_FILES;
     for (name, additions, deletions) in numstat_entries(complete_records(&tracked)) {
         if blocked.contains(name) {
@@ -277,12 +320,16 @@ fn read_unstaged_without_status(path: &Path) -> Result<WorkingTreeChangeSummary,
         }
     }
     let (output, truncated) = run_git_with_stdout_limit(
-        path, &["ls-files", "--others", "--exclude-standard", "-z"], MAX_STATUS_BYTES,
+        path,
+        &["ls-files", "--others", "--exclude-standard", "-z"],
+        MAX_STATUS_BYTES,
     )?;
     if !truncated {
         ensure_success("read untracked paths for the unstaged line count", &output)?;
     }
-    let mut rows = complete_records(&output.stdout).split(|byte| *byte == 0).filter(|row| !row.is_empty());
+    let mut rows = complete_records(&output.stdout)
+        .split(|byte| *byte == 0)
+        .filter(|row| !row.is_empty());
     count_untracked(path, rows.by_ref().take(remaining), &mut summary)?;
     summary.partial |= truncated || rows.next().is_some();
     Ok(summary)

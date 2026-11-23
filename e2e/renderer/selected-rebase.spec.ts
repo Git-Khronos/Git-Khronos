@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const original = git.repository();
@@ -54,7 +54,7 @@ test.beforeEach(async ({ page }) => {
 
 async function requestSelection(page: Page, count = 2): Promise<void> {
   const subject = await page.evaluate(count => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const commits = (window as any).__selectedRebase.commits.slice(0, count);
     app.selectedCommits.set(commits.map((commit: any) => commit.oid));
     return commits[0].subject;
@@ -144,7 +144,7 @@ test('whole-history all-drop cannot start and Reset plus compact help and Escape
   await expect(dialog).toHaveCount(0);
   const result = await page.evaluate(() => ({
     calls: (window as any).__selectedRebase.calls,
-    draft: (window as any).ng.getComponent(document.querySelector('gc-root')).commitMessage(),
+    draft: (window as any).ng.getComponent(document.querySelector('gk-app')).commitMessage(),
   }));
   expect(result.calls.some((call: any) => call.command === 'execute_interactive_rebase')).toBe(false);
   expect(result.draft).toBe('Retained unrelated draft');
@@ -170,7 +170,7 @@ test('loaded whole-history review is invalidated on repository switch without ex
   const dialog = page.getByRole('dialog', { name: 'Interactive rebase', exact: true });
   await expect(dialog).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = (window as any).__selectedRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'root-other', path: '/owned/other' }]);
     app.git.activateRepository('root-other');
@@ -182,7 +182,7 @@ test('loaded whole-history review is invalidated on repository switch without ex
 
 test('a clean root Edit stop offers amendment and Continue without a parent-based split action', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__selectedRebase;
     const root = { ...fixture.commits[0], parents: [] };
     const stopped = { ...fixture.original, headOid: root.oid,
@@ -214,7 +214,7 @@ test('explicit onto choice retains full suffix and drafts and executes the captu
   await expect(dialog).toContainText('1 selected commit(s), plus 2 later commit(s)');
   await expect(dialog.getByLabel(`New message for ${first}`)).toHaveValue('Moved reviewed message');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.repositories.update((items: any[]) => items.map(item => ({ ...item,
       branches: item.branches.map((branch: any) => branch.name === 'reviewed-destination'
         ? { ...branch, oid: 'e'.repeat(40) } : branch) })));
@@ -257,7 +257,7 @@ test('repository switching invalidates an onto destination and cannot execute ca
   const dialog = page.getByRole('dialog', { name: 'Interactive rebase', exact: true });
   await dialog.getByLabel('Replay destination', { exact: true }).selectOption('d'.repeat(40));
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = (window as any).__selectedRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'onto-other', path: '/owned/other' }]);
     app.git.activateRepository('onto-other');
@@ -290,7 +290,7 @@ test('range preview discloses later descendants and recorded versus unknown publ
   await expect(dialog).toHaveCount(0);
   const result = await page.evaluate(() => ({
     fixture: (window as any).__selectedRebase,
-    draft: (window as any).ng.getComponent(document.querySelector('gc-root')).commitMessage(),
+    draft: (window as any).ng.getComponent(document.querySelector('gk-app')).commitMessage(),
   }));
   expect(result.fixture.calls.find((call: any) => call.command === 'execute_interactive_rebase').args)
     .toEqual({ repoId: fixture.original.id, source: fixture.original.status.branch, target: fixture.original.status.branch,
@@ -363,21 +363,21 @@ test('repository switch cancels selected review and delayed preparation cannot r
   await requestSelection(page);
   await expect.poll(() => page.evaluate(() => !!(window as any).__selectedRebase.finish)).toBe(true);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const source = (window as any).__selectedRebase.original;
     git.repositories.update((items: any[]) => [...items, { ...source, id: 'selected-other', path: '/owned/other' }]);
     git.activateRepository('selected-other');
   });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('selected-other');
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId())).toBe('selected-other');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.activateRepository((window as any).__selectedRebase.original.id);
   });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId()))
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId()))
     .toBe(await page.evaluate(() => (window as any).__selectedRebase.original.id));
   await page.evaluate(() => { (window as any).__selectedRebase.finish(); });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
   const fixture = await page.evaluate(() => (window as any).__selectedRebase);
   expect(fixture.calls.some((call: any) => call.command === 'execute_interactive_rebase')).toBe(false);
@@ -388,7 +388,7 @@ test('loaded selected review closes on repository switch without executing again
   const dialog = page.getByRole('dialog', { name: 'Interactive rebase', exact: true });
   await expect(dialog).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const source = (window as any).__selectedRebase.original;
     app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'selected-other', path: '/owned/other' }]);
     app.git.activateRepository('selected-other');

@@ -33,7 +33,7 @@ async function loaded(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/'); await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     app.commitMessage.set('Owned retained GitLab commit draft');
     const repositories = structuredClone(app.git.repositories());
@@ -232,7 +232,7 @@ test('project metadata stays inert and browsing preserves manual clone and commi
   await expect(catalogue(page)).toBeVisible();
   await dialog(page).getByRole('button', { name: 'Return to repository URL', exact: true }).click();
   await expect(dialog(page).getByRole('textbox', { name: 'Repository URL', exact: true })).toHaveValue('https://owned.example.test/team/manual.git');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).commitMessage())).toBe('Owned retained GitLab commit draft');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).commitMessage())).toBe('Owned retained GitLab commit draft');
 });
 
 test('an unavailable connection inventory is distinct from a successful empty inventory and supports explicit retry', async ({ page }) => {
@@ -263,7 +263,7 @@ test('an oversized multibyte search explains its disabled action without sending
 
 for (const theme of ['khronos', 'midnight']) test(`${theme} GitLab browsing contains keyboard focus and fits a compact window`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 560 });
-  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
+  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gk-app')).setAppTheme(theme), theme);
   const panel = await loaded(page);
   await panel.getByRole('button', { name: 'Next GitLab page', exact: true }).focus();
   await page.keyboard.press('Tab');
@@ -329,7 +329,7 @@ test('a failed GitLab panel chunk preserves drafts and offers the working manual
   await error.getByRole('button', { name: 'Return to repository URL', exact: true }).click();
   await expect(dialog(page).getByLabel('Repository URL', { exact: true })).toHaveValue('https://owned.example/retained.git');
   await expect(dialog(page).getByLabel('Repository URL', { exact: true })).toBeFocused();
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).commitMessage())).toBe('Owned retained GitLab commit draft');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).commitMessage())).toBe('Owned retained GitLab commit draft');
   expect(await calls(page, 'gitlab_connections')).toHaveLength(0);
   expect(await calls(page, 'connect_gitlab_account')).toHaveLength(0);
   expect(await calls(page, 'clone_repository')).toHaveLength(0);
@@ -338,7 +338,7 @@ test('a failed GitLab panel chunk preserves drafts and offers the working manual
 
 test('disconnecting a GitLab account stays available during an unrelated Git operation', async ({ page }) => {
   const panel = await connect(page);
-  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.operations.start(-1, null, null));
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.operations.start(-1, null, null));
   try {
     await expect(panel.getByRole('button', { name: 'Connect to GitLab', exact: true })).toBeDisabled();
     await expect(panel.getByRole('button', { name: 'Load GitLab projects', exact: true })).toBeDisabled();
@@ -346,11 +346,11 @@ test('disconnecting a GitLab account stays available during an unrelated Git ope
     await panel.getByRole('button', { name: 'Disconnect owned-reader', exact: true }).click();
     await expect(panel.getByRole('combobox', { name: 'Connected account', exact: true })).toHaveValue('');
     expect((await calls(page, 'disconnect_gitlab_account')).map((call: any) => call.args.connectionId)).toEqual([FIRST]);
-    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(true);
+    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(true);
     expect(await calls(page, 'load_gitlab_projects')).toHaveLength(0);
     expect(await calls(page, 'cancel_git_operation')).toHaveLength(0);
   } finally {
-    await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.operations.complete(-1));
+    await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.operations.complete(-1));
   }
 });
 

@@ -21,7 +21,7 @@ export interface WorktreeRemovalReview {
 }
 
 @Component({
-  selector: 'gc-repository-confirmations',
+  selector: 'gk-repository-confirmations',
   imports: [IconComponent],
   templateUrl: './repository-confirmations.component.html',
   styleUrl: './repository-confirmations.component.scss',

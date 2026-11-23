@@ -33,7 +33,7 @@ test('styles the shell-owned workspace menu inside the compact welcome launcher'
   await page.setViewportSize({ width: 360, height: 640 });
   await page.goto('/?welcome-preview');
 
-  const welcome = page.locator('gc-welcome-launcher');
+  const welcome = page.locator('gk-welcome-launcher');
   const workspace = welcome.getByRole('button', { name: /^Workspace: / });
   await expect(welcome.locator('.hero-actions')).toHaveCSS('display', 'grid');
   await expect(welcome.getByRole('button', { name: 'Switch application theme' })).toHaveCSS('width', '31px');

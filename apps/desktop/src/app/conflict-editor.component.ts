@@ -13,7 +13,7 @@ export type ConflictEditorAction =
   | { kind: 'dismissWarning'; id: string; event: MouseEvent };
 
 @Component({
-  selector: 'gc-conflict-editor',
+  selector: 'gk-conflict-editor',
   imports: [BackgroundOperationWarningsComponent, IconComponent, TextValueDirective],
   templateUrl: './conflict-editor.component.html',
   styleUrl: './conflict-editor.component.scss',

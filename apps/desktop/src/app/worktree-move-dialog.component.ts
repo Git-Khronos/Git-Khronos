@@ -13,7 +13,7 @@ export interface WorktreeMoveRequest {
 }
 
 @Component({
-  selector: 'gc-worktree-move-dialog',
+  selector: 'gk-worktree-move-dialog',
   imports: [FormsModule, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -50,7 +50,7 @@ export interface WorktreeMoveRequest {
             <p role="alert" tabindex="-1">The active repository changed. Close this dialog and review the intended repository.</p>
           }
           @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
-          <gc-git-help topic="worktree" label="Learn about worktree move and repair…" />
+          <gk-git-help topic="worktree" label="Learn about worktree move and repair…" />
           <footer><button type="button" data-move-cancel [disabled]="git.busy()" (click)="close(target)">Cancel</button>
             <button type="submit" [disabled]="!canConfirm(target)">{{ target.repair ? (git.busy() ? 'Repairing…' : 'Repair registration') : (git.busy() ? 'Moving…' : 'Move worktree') }}</button></footer>
         </form>

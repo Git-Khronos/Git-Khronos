@@ -22,7 +22,7 @@ function sameSnapshot(first: Request, next: Request): boolean {
 }
 
 @Component({
-  selector: 'gc-working-tree-summary',
+  selector: 'gk-working-tree-summary',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let current = state();
@@ -79,8 +79,8 @@ export class WorkingTreeSummaryComponent {
 }
 
 @Directive({
-  selector: '[gcWorkingTreeSummaries]',
-  exportAs: 'gcWorkingTreeSummaries',
+  selector: '[gkWorkingTreeSummaries]',
+  exportAs: 'gkWorkingTreeSummaries',
 })
 export class WorkingTreeSummariesDirective {
   readonly repositoryId = input.required<string>();

@@ -4,7 +4,7 @@ small { color: #8e8d9d; font-size: 12px; font-weight: 800; letter-spacing: .08em
 strong { overflow: hidden; color: #deddea; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 button { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 4px; padding: 6px 7px; border-radius: 3px; background: transparent; color: #bab9c9; font-size: 12px; text-align: left; }
 button:hover:not(:disabled) { background: #3a3952; color: white; }
-button gc-icon { color: var(--accent); }
-button.danger gc-icon { color: #ec8298; }
+button gk-icon { color: var(--accent); }
+button.danger gk-icon { color: #ec8298; }
 :host > i { height: 1px; margin: 4px 2px; background: #3d3c51; }
 :host > p { margin: 4px 7px 3px; color: #8f8d9f; font-size: 12px; line-height: 1.35; }

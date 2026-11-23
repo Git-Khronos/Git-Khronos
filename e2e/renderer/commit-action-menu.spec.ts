@@ -42,7 +42,7 @@ test('groups commit actions and restores the row action trigger after keyboard d
 test('keeps multi-commit actions legible and disables commands that require one commit', async ({ page }) => {
   await page.setViewportSize({ width: 820, height: 720 });
   const subject = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const commits = app.visibleGraphRows().map((row: any) => row.commit)
       .filter((commit: any) => commit && !app.stashForOid(commit.oid)).slice(0, 3);
     app.selectedCommits.set(commits.map((commit: any) => commit.oid));
@@ -71,7 +71,7 @@ test('keeps multi-commit actions legible and disables commands that require one 
 
 async function checkoutFixture(page: Page) {
   return page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const snapshot = git.repository();
     const target = snapshot.commits.find((commit: any) => commit.subject === 'Polish repository activity drawer');
     const calls: { command: string; args: unknown }[] = [];
@@ -113,7 +113,7 @@ test('cancel and a same-tip branch change cannot trigger a detached checkout', a
   const { menu } = await openCommitMenu(page);
   await menu.getByRole('menuitem', { name: 'Checkout this commit', exact: true }).click();
   await page.evaluate(fixture => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map(repo => repo.id === fixture.id
       ? { ...repo, status: { ...repo.status, branch: 'switched-at-same-tip' } } : repo));
   }, fixture);

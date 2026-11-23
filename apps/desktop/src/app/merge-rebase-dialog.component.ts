@@ -11,7 +11,7 @@ export interface MergeRebaseDialogState {
 }
 
 @Component({
-  selector: 'gc-merge-rebase-dialog',
+  selector: 'gk-merge-rebase-dialog',
   imports: [GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -43,7 +43,7 @@ export interface MergeRebaseDialogState {
         </ol>
         @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p>
           <p>If Git is now paused, close this review and use the operation controls rather than restarting replay.</p> }
-        <gc-git-help topic="merge-rebase" label="Learn about preserving merge topology…" />
+        <gk-git-help topic="merge-rebase" label="Learn about preserving merge topology…" />
         <footer><button data-merge-rebase-cancel type="button" [disabled]="git.busy()" (click)="close()">Cancel</button>
           <button type="button" [disabled]="git.busy() || failed() || state().checkoutScope !== git.activeRepositoryReadScope()" (click)="start()">Start merge-preserving rebase</button></footer>
       </section>

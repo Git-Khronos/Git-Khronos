@@ -6,6 +6,20 @@ import uuid
 from native_repository_navigation import open_repository_dialog
 
 
+_NAVIGATION_BUTTONS = frozenset({
+    'Browse GitLab projects', 'Return from forks to GitLab projects',
+    'Return from outcomes to GitLab projects', 'Open saved fork outcomes',
+    'Inspect saved fork outcomes',
+})
+
+
+def click_fork_button(driver, selector, text):
+    """Use bounded stale-refusal recovery only for non-mutating navigation."""
+    if text in _NAVIGATION_BUTTONS:
+        return driver.click_navigation(selector, text, scroll=True)
+    return driver.click_scrolled_text(selector, text)
+
+
 def gitlab_reviewed_forks(driver, fixtures, repository, report):
     gate, origin = fixtures.gitlab_gate, fixtures.gitlab_origin
     token = 'owned-api-fixture-token'
@@ -32,15 +46,10 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         assert len(matches) == 1, matches
         return matches[0]
 
-    def button(text, scope='gc-gitlab-projects'):
+    def button(text, scope='gk-gitlab-projects'):
         selector = scope + ' button'
         driver.wait('return [...document.querySelectorAll(' + json.dumps(selector) + ')].some(e => e.getClientRects().length && !e.matches(":disabled") && e.textContent.trim() === ' + json.dumps(text) + ')')
-        if text in {'Browse GitLab projects', 'Return from forks to GitLab projects',
-                    'Return from outcomes to GitLab projects', 'Open saved fork outcomes',
-                    'Inspect saved fork outcomes'}:
-            driver.click_navigation(selector, text, scroll=True)
-        else:
-            driver.click_scrolled_text(selector, text)
+        click_fork_button(driver, selector, text)
 
     def fill(selector, value, event='input'):
         driver.wait('return !!document.querySelector(' + json.dumps(selector) + ') && !document.querySelector(' + json.dumps(selector) + ').matches(":disabled")')
@@ -49,8 +58,8 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
     def catalogue():
         open_repository_dialog(driver)
         driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_navigation('gc-repository-dialog [role=tab]', 'Clone')
-        button('Browse GitLab projects', 'gc-repository-dialog')
+        driver.click_navigation('gk-repository-dialog [role=tab]', 'Clone')
+        button('Browse GitLab projects', 'gk-repository-dialog')
         driver.wait("return !!document.querySelector('#gitlab-origin') && !document.querySelector('#gitlab-origin').matches(':disabled')")
 
     def connect(write):
@@ -70,16 +79,16 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
     def browse():
         button('Load GitLab projects')
         button('Browse forks of ' + source_path)
-        driver.wait("return !!document.querySelector('gc-gitlab-forks')")
+        driver.wait("return !!document.querySelector('gk-gitlab-forks')")
 
     def review(target):
         button('Review a new GitLab fork')
-        button('Load destination namespaces', 'gc-gitlab-fork-create')
+        button('Load destination namespaces', 'gk-gitlab-fork-create')
         fill('#fork-namespace', str(namespace['id']), 'change')
         fill('#fork-project-path', target)
         before_post = len(posts())
-        button('Prepare fork review', 'gc-gitlab-fork-create')
-        driver.wait("return !!document.querySelector('gc-gitlab-fork-create [aria-label=\"Prepared fork request\"]')")
+        button('Prepare fork review', 'gk-gitlab-fork-create')
+        driver.wait("return !!document.querySelector('gk-gitlab-fork-create [aria-label=\"Prepared fork request\"]')")
         assert len(posts()) == before_post, 'Preparing dispatched a provider write'
 
     def capture(label, selector, text=None):
@@ -91,17 +100,17 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         driver.request('POST', driver.path('window/rect'), {'width': 1440, 'height': 900})
 
     def saved(target):
-        button('Inspect saved fork outcomes', 'gc-gitlab-fork-create')
-        driver.wait("return !!document.querySelector('gc-gitlab-fork-records ul')?.textContent.includes(" + json.dumps('owned-reader/' + target) + ")")
+        button('Inspect saved fork outcomes', 'gk-gitlab-fork-create')
+        driver.wait("return !!document.querySelector('gk-gitlab-fork-records ul')?.textContent.includes(" + json.dumps('owned-reader/' + target) + ")")
         return row(target)
 
     def return_projects():
-        button('Return from outcomes to GitLab projects', 'gc-gitlab-fork-records')
+        button('Return from outcomes to GitLab projects', 'gk-gitlab-fork-records')
 
     def submit():
         count = len(posts())
-        button('Submit reviewed fork request', 'gc-gitlab-fork-create')
-        driver.wait("return !!document.querySelector('gc-gitlab-fork-create [aria-label=\"Fork submission outcome\"]')")
+        button('Submit reviewed fork request', 'gk-gitlab-fork-create')
+        driver.wait("return !!document.querySelector('gk-gitlab-fork-create [aria-label=\"Fork submission outcome\"]')")
         assert len(posts()) == count + 1, posts()
         observation = posts()[-1]
         assert observation['path'] == '/api/v4/projects/101/fork'
@@ -130,7 +139,7 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         catalogue()
         read = connect(False)
         browse()
-        assert driver.script("return [...document.querySelectorAll('gc-gitlab-forks button')].find(e=>e.textContent.trim()==='Review a new GitLab fork').matches(':disabled')")
+        assert driver.script("return [...document.querySelectorAll('gk-gitlab-forks button')].find(e=>e.textContent.trim()==='Review a new GitLab fork').matches(':disabled')")
         assert not posts()
         report['scenarios'].append('native-gitlab-fork-read-connection-cannot-enter-creation-or-send-post')
         button('Return from forks to GitLab projects')
@@ -140,7 +149,7 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         assert connection['connectionId'] != read['connectionId']
         browse()
         review('reviewed-project')
-        capture('gitlab-fork-native-review', 'gc-gitlab-fork-create [aria-label="Prepared fork request"]')
+        capture('gitlab-fork-native-review', 'gk-gitlab-fork-create [aria-label="Prepared fork request"]')
         posted = submit()
         entry = saved('reviewed-project')
         assert posted['nativeJournalBeforePost'][0]['id'] == entry['id']
@@ -155,16 +164,16 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         resources.update({'/api/v4/projects/owned-reader%2Freviewed-project': project, '/api/v4/projects/202': project})
         (gate / 'fork-resources.json').write_text(json.dumps(resources))
         count = len(posts())
-        button('Inspect saved outcome owned-reader/reviewed-project', 'gc-gitlab-fork-records')
-        driver.wait("return document.querySelector('gc-gitlab-fork-records [aria-label=\"Latest fork outcome inspection\"]')?.textContent.includes('Project metadata verified')")
+        button('Inspect saved outcome owned-reader/reviewed-project', 'gk-gitlab-fork-records')
+        driver.wait("return document.querySelector('gk-gitlab-fork-records [aria-label=\"Latest fork outcome inspection\"]')?.textContent.includes('Project metadata verified')")
         assert row('reviewed-project')['record']['projectId'] == '202' and len(posts()) == count
-        capture('gitlab-fork-native-recovery', 'gc-gitlab-fork-records li', 'owned-reader/reviewed-project')
+        capture('gitlab-fork-native-recovery', 'gk-gitlab-fork-records li', 'owned-reader/reviewed-project')
         report['scenarios'].append('native-gitlab-fork-fresh-real-https-reconciliation-binds-id-with-no-extra-post-or-git-handoff')
 
         (gate / 'read-status.json').write_text(json.dumps({'/api/v4/projects/202': 404}))
         begin = len(requests())
-        button('Inspect saved outcome owned-reader/reviewed-project', 'gc-gitlab-fork-records')
-        driver.wait("return document.querySelector('gc-gitlab-fork-records [aria-label=\"Latest fork outcome inspection\"]')?.textContent.includes('Import or inspection pending')")
+        button('Inspect saved outcome owned-reader/reviewed-project', 'gk-gitlab-fork-records')
+        driver.wait("return document.querySelector('gk-gitlab-fork-records [aria-label=\"Latest fork outcome inspection\"]')?.textContent.includes('Import or inspection pending')")
         current = row('reviewed-project')['record']
         assert current['projectId'] == '202' and current['phase'] == 'acceptedPending'
         assert all(item['path'] != '/api/v4/projects/owned-reader%2Freviewed-project' for item in requests()[begin:])
@@ -179,14 +188,14 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         assert posted['nativeJournalBeforePost'][0]['id'] == entry['id']
         assert entry['record']['phase'] == 'awaitingConfirmation'
         count = len(posts())
-        capture('gitlab-fork-native-uncertain', 'gc-gitlab-fork-records li', 'owned-reader/lost-reply-project')
+        capture('gitlab-fork-native-uncertain', 'gk-gitlab-fork-records li', 'owned-reader/lost-reply-project')
         driver.restart_application()
-        driver.wait("return !!document.querySelector('gc-root')")
+        driver.wait("return !!document.querySelector('gk-root')")
         assert driver.invoke('gitlab_connections') == [] and len(posts()) == count
         assert row('lost-reply-project')['record']['phase'] == 'awaitingConfirmation'
         catalogue()
         button('Open saved fork outcomes')
-        driver.wait("return !!document.querySelector('gc-gitlab-fork-records ul')?.textContent.includes('lost-reply-project')")
+        driver.wait("return !!document.querySelector('gk-gitlab-fork-records ul')?.textContent.includes('lost-reply-project')")
         assert len(posts()) == count
         report['scenarios'].append('native-gitlab-fork-lost-reply-private-outcome-survives-real-process-restart-without-credential-or-post-replay')
 
@@ -194,8 +203,8 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         (gate / 'fork-mode').unlink()
         read = connect(False)
         button('Open saved fork outcomes')
-        button('Inspect saved outcome owned-reader/reviewed-project', 'gc-gitlab-fork-records')
-        driver.wait("return document.querySelector('gc-gitlab-fork-records [aria-label=\"Latest fork outcome inspection\"]')?.textContent.includes('Project metadata verified')")
+        button('Inspect saved outcome owned-reader/reviewed-project', 'gk-gitlab-fork-records')
+        driver.wait("return document.querySelector('gk-gitlab-fork-records [aria-label=\"Latest fork outcome inspection\"]')?.textContent.includes('Project metadata verified')")
         assert len(posts()) == count
         rows = local()['entries']
         lost = next(item for item in rows if item['id'] == entry['id'])

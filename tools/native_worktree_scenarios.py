@@ -96,7 +96,7 @@ def occupied_branch_navigation(driver, fixtures, report):
         }
 
     before = footprints()
-    review = 'gc-checkout-worktree-dialog [role=dialog]'
+    review = 'gk-checkout-worktree-dialog [role=dialog]'
     branch_button = '.branch-item[aria-label="Local branch ' + branch + '"]'
 
     def open_review(from_graph=False):
@@ -105,13 +105,16 @@ def occupied_branch_navigation(driver, fixtures, report):
             element = driver.wait(f"""const button = document.querySelector({json.dumps(graph_branch)});
               // The first complete file scan inserts a WIP row above history.
               // Take the mouse target only after that row has actually painted.
-              const wip = document.querySelector('gc-worktree-graph-row .wip-row:not(.linked-worktree)');
+              const wip = document.querySelector('gk-worktree-graph-row .wip-row:not(.linked-worktree)');
               if (document.querySelector('.wip-nav small')?.textContent.trim() !== '2 changed files'
                 || !wip?.getClientRects().length) return null;
               if (!button || !button.getClientRects().length) return null;
               const r = button.getBoundingClientRect();
               return button.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))
                 ? button : null;""")
+            hint = driver.script("return document.querySelector(arguments[0])?.title", graph_branch)
+            assert "review the existing checkout" in hint, (
+                "An occupied branch tooltip promised a checkout instead of explaining owner navigation", hint)
             # Deliver a real double click on the graph reference, not a
             # synthesized DOM event and not two separate commands to retry.
             driver.request('POST', driver.path('actions'), {'actions': [{
@@ -134,7 +137,7 @@ def occupied_branch_navigation(driver, fixtures, report):
         driver.wait('return document.querySelector(".status-repository-path")?.textContent === ' + json.dumps(str(path)))
 
     open_review()
-    driver.click_visible('gc-checkout-worktree-dialog button', 'Cancel')
+    driver.click_visible('gk-checkout-worktree-dialog button', 'Cancel')
     driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
     at(source)
     after_cancel = footprints()
@@ -143,7 +146,7 @@ def occupied_branch_navigation(driver, fixtures, report):
 
     open_review(from_graph=True)
     driver.screenshot(Path(report['artifactsDirectory']) / 'occupied-checkout-review.png')
-    driver.click_visible('gc-checkout-worktree-dialog button', 'Open existing checkout')
+    driver.click_visible('gk-checkout-worktree-dialog button', 'Open existing checkout')
     driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
     at(owner)
     owner_branch = '[aria-label="View current branch ' + branch + ' tip"]'
@@ -160,10 +163,10 @@ def occupied_branch_navigation(driver, fixtures, report):
     open_review()
     fixtures.git(owner, 'checkout', '-b', 'owned/reassigned-topic')
     changed = footprints()
-    driver.click_visible('gc-checkout-worktree-dialog button', 'Open existing checkout')
-    driver.wait('return document.querySelector("gc-checkout-worktree-dialog [role=alert]")?.textContent.includes("Branch ownership changed")')
+    driver.click_visible('gk-checkout-worktree-dialog button', 'Open existing checkout')
+    driver.wait('return document.querySelector("gk-checkout-worktree-dialog [role=alert]")?.textContent.includes("Branch ownership changed")')
     at(source)
-    assert driver.script('return [...document.querySelectorAll("gc-checkout-worktree-dialog button")].find(button => button.textContent.trim() === "Open existing checkout").disabled')
+    assert driver.script('return [...document.querySelectorAll("gk-checkout-worktree-dialog button")].find(button => button.textContent.trim() === "Open existing checkout").disabled')
     after_refusal = footprints()
     assert after_refusal == changed, 'A stale owner review fell back to a Git mutation'
     driver.screenshot(Path(report['artifactsDirectory']) / 'occupied-checkout-owner-changed.png')
@@ -213,7 +216,7 @@ def reserved_branch_guidance(driver, fixtures, report):
       return toast?.getClientRects().length ? toast.textContent.trim() : null;""")
     assert branch in message and str(owner) in message, message
     driver.wait('return document.querySelector(".status-repository-path")?.textContent === ' + json.dumps(str(source)))
-    assert not driver.script('return !!document.querySelector("gc-checkout-worktree-dialog [role=dialog]")')
+    assert not driver.script('return !!document.querySelector("gk-checkout-worktree-dialog [role=dialog]")')
     after = footprints()
     assert after == before, 'Refused checkout changed the source or the pending rebase'
     report['reservedBranchGuidance'] = {'before': before, 'after': after, 'message': message}

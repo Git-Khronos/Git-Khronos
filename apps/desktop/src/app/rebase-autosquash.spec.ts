@@ -27,14 +27,36 @@ describe('explicit autosquash preview', () => {
     expect(result.error).toBeNull();
     expect(result.steps?.map(step => step.oid)).toEqual([input[0].oid, input[2].oid, input[3].oid, input[1].oid, input[4].oid]);
   });
+  it('maps amend! to message-replacing fixup and retains its full message', () => {
+    const input = rows('Target', 'Independent', 'amend! Target');
+    input[2].message = 'amend! Target\n\nReplacement subject\n\nReplacement body';
+    const result = previewAutosquash(input);
+    expect(result.error).toBeNull();
+    expect(result.steps?.map(step => step.oid)).toEqual([input[0].oid, input[2].oid, input[1].oid]);
+    expect(result.steps?.map(step => step.action)).toEqual(['pick', 'fixup-reword', 'pick']);
+    expect(result.steps?.[1].message).toBe(input[2].message);
+  });
+  it('matches a unique subject prefix while exact subjects take precedence over broader prefixes', () => {
+    const prefix = rows('Add parser with tests', 'Independent', 'fixup! Add parser');
+    const result = previewAutosquash(prefix);
+    expect(result.error).toBeNull();
+    expect(result.steps?.map(step => step.oid)).toEqual([prefix[0].oid, prefix[2].oid, prefix[1].oid]);
+
+    const exactWins = rows('Add parser implementation', 'Add parser', 'fixup! Add parser');
+    const exactResult = previewAutosquash(exactWins);
+    expect(exactResult.error).toBeNull();
+    expect(exactResult.steps?.map(step => step.oid)).toEqual([exactWins[0].oid, exactWins[1].oid, exactWins[2].oid]);
+    expect(exactResult.steps?.map(step => step.action)).toEqual(['pick', 'pick', 'fixup']);
+  });
   it('refuses ambiguous subjects, ambiguous ID prefixes, unmatched and forward-only targets atomically', () => {
     const ambiguousIds = rows('First', 'Second', 'fixup! abcd');
     ambiguousIds[0].oid = `abcd${'1'.repeat(36)}`;
     ambiguousIds[1].oid = `abcd${'2'.repeat(36)}`;
     for (const input of [
       rows('Same', 'Same', 'fixup! Same'),
+      rows('Target alpha', 'Target beta', 'fixup! Target'),
       ambiguousIds, rows('Target', 'fixup! Unknown'),
-      rows('fixup! Later', 'Later'), rows('Target', 'fixup! Targ'),
+      rows('fixup! Later', 'Later'),
       rows('Target', 'fixup! Target', 'squash! Unknown'),
     ]) {
       const original = structuredClone(input);
@@ -43,10 +65,10 @@ describe('explicit autosquash preview', () => {
       expect(input).toEqual(original);
     }
   });
-  it('refuses manual actions, unsupported amend markers, empty targets and no markers without losing drafts', () => {
+  it('refuses manual actions, malformed markers, empty targets and no markers without losing drafts', () => {
     const manual = rows('Target', 'fixup! Target');
     manual[0] = { ...manual[0], action: 'reword', message: 'My edited draft' };
-    for (const input of [manual, rows('Target', 'amend! Target'), rows('Target', 'fixup!'), rows('Target'), []]) {
+    for (const input of [manual, rows('Target', 'amend!'), rows('Target', 'fixup!'), rows('Target'), []]) {
       const original = structuredClone(input);
       expect(previewAutosquash(input).steps).toBeNull();
       expect(previewAutosquash(input).error).toBeTruthy();

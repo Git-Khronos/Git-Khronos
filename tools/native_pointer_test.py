@@ -35,6 +35,18 @@ class OwnedPointerTests(unittest.TestCase):
             call.move(200, 300), call.require_owned_window(200, 300, 789),
             call.button(True), call.button(False), call.close()])
 
+    def test_accepts_owned_explicit_xvfb_display_fallback(self):
+        server = SimpleNamespace(args=['Xvfb', ':93', '-noreset'], pid=123,
+                                 poll=MagicMock(return_value=None))
+        pointer = MagicMock()
+        pointer.require_owned_window.return_value = 456
+        with patch('native_pointer.os.getpgid', return_value=123), \
+                patch('native_pointer._X11Pointer', return_value=pointer) as factory:
+            with owned_right_press((':93', server), self.owner, 200, 300):
+                pass
+        factory.assert_called_once_with(':93')
+        self.assertEqual(pointer.button.call_args_list, [call(True), call(False)])
+
     def test_releases_after_wait_failure_or_uncertain_press(self):
         for fail_press in (False, True):
             with self.subTest(fail_press=fail_press):
@@ -57,6 +69,7 @@ class OwnedPointerTests(unittest.TestCase):
             (':42', SimpleNamespace(args=['Xorg', '-displayfd'], pid=123, poll=MagicMock(return_value=None))),
             (':42', SimpleNamespace(args=['Xvfb', '-displayfd'], pid=1, poll=MagicMock(return_value=None))),
             (':42', SimpleNamespace(args=['Xvfb', '-displayfd'], pid=123, poll=MagicMock(return_value=1))),
+            (':42', SimpleNamespace(args=['Xvfb', ':93'], pid=123, poll=MagicMock(return_value=None))),
         ]
         with patch('native_pointer.os.getpgid', return_value=123), \
                 patch('native_pointer._X11Pointer') as factory:

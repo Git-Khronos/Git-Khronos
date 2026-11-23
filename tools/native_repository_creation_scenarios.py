@@ -14,7 +14,7 @@ def repository_creation_scope(driver, fixtures, report):
 
     original = fixtures.repository('original-checkout', commits=2)
     source = fixtures.repository('owned-remote-source', commits=3)
-    driver.wait('return !!document.querySelector("gc-root")')
+    driver.wait('return !!document.querySelector("gk-root")')
     repo_id = open_ui(driver, original)
     before = [checkout_footprint(fixtures, repository) for repository in (original, source)]
     parent = fixtures.root / 'home' / 'clone destination'
@@ -33,7 +33,7 @@ def repository_creation_scope(driver, fixtures, report):
                     + json.dumps(str(path)))
 
     def fill(name, value):
-        driver.script("""const input = document.querySelector('gc-repository-dialog input[name=' + arguments[0] + ']');
+        driver.script("""const input = document.querySelector('gk-repository-dialog input[name=' + arguments[0] + ']');
           if (!input || input.readOnly || input.matches(':disabled')) throw Error('Owned clone field unavailable');
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, arguments[1]);
           input.dispatchEvent(new Event('input', {bubbles: true}));""", name, value)
@@ -50,15 +50,15 @@ def repository_creation_scope(driver, fixtures, report):
     try:
         open_repository_dialog(driver)
         driver.wait('return !!document.querySelector("#repository-tab-clone")?.getClientRects().length')
-        driver.click_navigation('gc-repository-dialog [role=tab]', 'Clone')
-        form = 'gc-repository-dialog form[aria-labelledby="repository-tab-clone"]'
-        driver.wait('return !!document.querySelector("gc-repository-dialog input[name=cloneRemote]")')
+        driver.click_navigation('gk-repository-dialog [role=tab]', 'Clone')
+        form = 'gk-repository-dialog form[aria-labelledby="repository-tab-clone"]'
+        driver.wait('return !!document.querySelector("gk-repository-dialog input[name=cloneRemote]")')
         fill('cloneRemote', remote)
         fill('cloneFolder', destination.name)
         driver.click_scrolled_text(form + ' .path-picker button', 'Browse', wait_for_ready=True)
         picker = respond_to_owned_picker(driver.owned_display, driver.owned_session_application_pid,
                                         'Choose where to clone the repository', fixtures.root, parent)
-        driver.wait('return document.querySelector("gc-repository-dialog input[name=cloneParent]")?.value === '
+        driver.wait('return document.querySelector("gk-repository-dialog input[name=cloneParent]")?.value === '
                     + json.dumps(str(parent)))
         assert not destination.exists()
 
@@ -73,12 +73,12 @@ def repository_creation_scope(driver, fixtures, report):
             assert marker.exists(), 'Owned HTTPS transfer never reached the pack hold'
             transfer = json.loads(marker.read_text())
             assert 0 <= transfer['packMagicOffset'] < transfer['sentPrefixBytes'] - 4 < transfer['responseBytes']
-            driver.click_visible('gc-repository-dialog [aria-label="Close repository management"]')
-            driver.wait('return !document.querySelector("gc-repository-dialog")')
+            driver.click_visible('gk-repository-dialog [aria-label="Close repository management"]')
+            driver.wait('return !document.querySelector("gk-repository-dialog")')
             wait_active(original)
             assert not (destination / 'fixture.txt').exists(), 'Clone finished before the dialog was retired'
             open_repository_dialog(driver)
-            driver.wait('return !!document.querySelector("gc-repository-dialog .repository-manager-body")')
+            driver.wait('return !!document.querySelector("gk-repository-dialog .repository-manager-body")')
             assert not (destination / 'fixture.txt').exists(), 'Transfer escaped the hold before the new manager was ready'
         finally:
             hold.unlink(missing_ok=True)
@@ -106,11 +106,11 @@ def repository_creation_scope(driver, fixtures, report):
         label = f'Open {destination.name} at {destination}'
         # Use the normal Recent row in the replacement manager. This opens the
         # existing path, not a second execution of the clone.
-        driver.wait('return [...document.querySelectorAll("gc-repository-dialog .manager-recents button")]'
+        driver.wait('return [...document.querySelectorAll("gk-repository-dialog .manager-recents button")]'
                     '.some(button => button.getAttribute("aria-label") === ' + json.dumps(label) + ')')
-        driver.click_visible('gc-repository-dialog .manager-recents button[aria-label=' + json.dumps(label) + ']')
+        driver.click_visible('gk-repository-dialog .manager-recents button[aria-label=' + json.dumps(label) + ']')
         wait_active(destination)
-        driver.wait('return !document.querySelector("gc-repository-dialog") '
+        driver.wait('return !document.querySelector("gk-repository-dialog") '
                     '&& document.querySelectorAll(".repo-tab-main[role=tab]").length === 2')
         assert git_requests() == clone_requests, 'Opening a completed repository started another Git transport'
         assert [checkout_footprint(fixtures, repository) for repository in (original, source)] == before

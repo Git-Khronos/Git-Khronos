@@ -152,6 +152,7 @@ const states = [
   '/?unpublished-branch',
   '/?submodules',
   '/?signing-preview',
+  '/?skip-hooks-preview',
   '/?merge-preview',
   '/?lfs-preview',
   '/?interactive-rebase',
@@ -185,10 +186,10 @@ for (const theme of ['khronos', 'midnight'] as const) {
     const dialog = page.getByRole('dialog', { name: 'Preferences' });
     await dialog.getByRole('tab', { name: /^Git/ }).click();
     const panels = [
-      page.locator('gc-integrity-panel'),
-      page.locator('gc-patch-exchange-panel'),
-      page.locator('gc-mail-patch-panel'),
-      page.locator('gc-bundle-exchange-panel'),
+      page.locator('gk-integrity-panel'),
+      page.locator('gk-patch-exchange-panel'),
+      page.locator('gk-mail-patch-panel'),
+      page.locator('gk-bundle-exchange-panel'),
     ];
     for (const panel of panels) {
       const summary = panel.locator(':scope > details > summary');
@@ -199,7 +200,7 @@ for (const theme of ['khronos', 'midnight'] as const) {
     await panels[0].getByRole('button', { name: 'Review maintenance', exact: true }).click();
     for (const [width, zoom] of [[1100, 100], [700, 150]]) {
       await page.setViewportSize({ width, height: 800 });
-      await page.evaluate(value => (window as any).ng.getComponent(document.querySelector('gc-root')).setZoom(value), zoom);
+      await page.evaluate(value => (window as any).ng.getComponent(document.querySelector('gk-app')).setZoom(value), zoom);
       expect(await dialog.locator('#preference-reference').evaluate(card => {
         const grid = card.parentElement!;
         return card.getBoundingClientRect().width / (grid.clientWidth - 20);

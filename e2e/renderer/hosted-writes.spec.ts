@@ -26,7 +26,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.repositories.update((items: any[]) => items.map(repo => ({ ...repo, remotes: [
       { name: 'origin', fetchUrl: 'https://github.com/team/repo.git', pushUrl: 'https://github.com/team/repo.git' },
@@ -198,7 +198,7 @@ test('closing while a write completes preserves its definite confirmation in act
   await form.getByRole('button', { name: 'Create draft pull request', exact: true }).click();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await page.evaluate(() => (window as any).__writes.finishSubmit());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activityLogs().some((entry: any) => entry.status === 'success' && entry.description.includes('GitHub submission confirmed')))).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activityLogs().some((entry: any) => entry.status === 'success' && entry.description.includes('GitHub submission confirmed')))).toBe(true);
   expect(await page.evaluate(() => (window as any).__writes.applied)).toBe(1);
 });
 
@@ -219,7 +219,7 @@ test('preparation reports a ready preview in activity history without submitting
   await expect(form.locator('[data-write-preview]')).toBeFocused();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return git.activityLogs().some((entry: any) => entry.status === 'success' && entry.description === 'GitHub submission preview ready. Review before submitting.');
   })).toBe(true);
   expect(await page.evaluate(() => (window as any).__writes.applied)).toBe(0);

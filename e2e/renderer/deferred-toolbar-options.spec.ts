@@ -1,13 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
+import { lazyChunkForExport, requestIsChunk } from './lazy-chunk-routing';
 
 async function holdToolbarOptions(page: Page, fail = false) {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   let requests = 0;
+  let optionsChunk: string | null = null;
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
     const body = await response.text();
-    if (body.includes('ToolbarOptionsComponent')) {
+    optionsChunk = lazyChunkForExport(body, 'ToolbarOptionsComponent') ?? optionsChunk;
+    if (requestIsChunk(route.request().url(), optionsChunk)) {
       requests++;
       await gate;
       if (fail) { await route.abort(); return; }
@@ -89,7 +92,7 @@ test('a toolbar menu still loading belongs to the original checkout visit', asyn
     await opener.press('Enter');
     await expect(menu(page, pull).getByRole('status')).toBeVisible();
     await page.evaluate(() => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const previous = git.repository();
       const next = { ...previous, id: 'second-toolbar-checkout', path: '/owned/second-toolbar-checkout', name: 'Second checkout' };
       git.repositories.update((items: any[]) => [...items, next]);
@@ -108,8 +111,9 @@ test('a clean checkout keeps focus on the opener after a disabled Stash options 
   const held = await holdToolbarOptions(page);
   try {
     await page.goto('/');
+    await expect(page.locator('.commit-row').first()).toBeVisible();
     await page.evaluate(() => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repository = git.repository();
       git.repositories.update((items: any[]) => items.map(item => item.id === repository.id
         ? { ...repository, status: { ...repository.status, entryCount: 0 } } : item));

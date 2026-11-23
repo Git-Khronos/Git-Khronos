@@ -50,7 +50,7 @@ def stash_selection_scope(driver, fixtures, report):
     driver.click_visible('[aria-label="Stash options"]')
     driver.click_visible('#stash-options-menu button[role=menuitem]',
                          'Stash with options…Choose which changes and files to save')
-    modal = 'gc-stash-options-dialog [role=dialog]'
+    modal = 'gk-stash-options-dialog [role=dialog]'
     driver.click_scrolled_text(modal + ' summary', 'Choose specific files', wait_for_ready=True)
     driver.click_scrolled_text(modal + ' label.check', 'Save only selected files', wait_for_ready=True)
     driver.click_scrolled_text(modal + ' button', 'Select all eligible files', wait_for_ready=True)
@@ -169,7 +169,7 @@ def stash_review_workflows(driver, fixtures, report):
     hook = repository / '.git/hooks/pre-commit'
     hook.write_text('#!/bin/sh\nprintf attempted > "$(git rev-parse --git-path stash-review-commit-attempted)"\nexit 1\n')
     hook.chmod(0o700)
-    modal = 'gc-stash-options-dialog [role=dialog]'
+    modal = 'gk-stash-options-dialog [role=dialog]'
     draft = 'Stash reviews must not commit this draft'
     evidence = []
 
@@ -232,7 +232,7 @@ def stash_review_workflows(driver, fixtures, report):
       requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
     ''', 'args': []})
     assert driver.script('return !!document.querySelector(arguments[0])', modal)
-    assert not driver.script('return !!document.querySelector("gc-command-palette")')
+    assert not driver.script('return !!document.querySelector("gk-command-palette")')
     assert checkout_footprint(fixtures, repository, ('fixture.txt', 'untracked-note.txt')) == before
     confirm('Create stash')
     stash = fixtures.git(repository, 'rev-parse', 'refs/stash')

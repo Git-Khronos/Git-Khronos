@@ -28,7 +28,7 @@ async function inspect(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/'); await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(connectionId => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root')), git = app.git;
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app')), git = app.git;
     git.systemInfo.update((value: any) => ({ ...value, appVersion: 'owned fork renderer fixture' }));
     app.commitMessage.set('Retained fork navigation draft');
     const account = { origin: 'https://gitlab.example.test:8443', id: '9007199254740993', login: 'owned-reader' };
@@ -168,7 +168,7 @@ test('a changed account view retires the old clone review without retargeting it
   await clone.getByRole('button', { name: 'Review GitLab clone', exact: true }).click();
   await expect(clone.getByRole('region', { name: 'Review GitLab clone', exact: true })).toBeVisible();
   await page.evaluate(() => {
-    const browser = (window as any).ng.getComponent(document.querySelector('gc-gitlab-projects'));
+    const browser = (window as any).ng.getComponent(document.querySelector('gk-gitlab-projects'));
     browser.forkTarget.update((value: any) => ({ ...value, connection: { ...value.connection, account: { ...value.connection.account, login: 'changed-reader' } } }));
   });
   await expect(clone).toHaveCount(0);

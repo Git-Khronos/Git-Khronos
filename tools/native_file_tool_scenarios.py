@@ -56,7 +56,7 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         driver.wait('return !!document.querySelector(' + json.dumps(selector) + ') && !document.querySelector(' + json.dumps(selector) + ').disabled')
         driver.script("const e=document.querySelector(arguments[0]);e.value=arguments[1];e.dispatchEvent(new Event(arguments[2],{bubbles:true}));", selector, value, event)
 
-    def button(text, scope='gc-file-tools-dialog'):
+    def button(text, scope='gk-file-tools-dialog'):
         driver.wait('return [...document.querySelectorAll(' + json.dumps(scope + ' button') + ')].some(e=>e.textContent.trim()===' + json.dumps(text) + ' && !e.disabled)')
         driver.click_scrolled_text(scope + ' button', text)
 
@@ -64,24 +64,24 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         driver.click('[aria-label="Preferences"]')
         driver.wait("return !!document.querySelector('#preferences-tab-terminal')")
         driver.click('#preferences-tab-terminal')
-        button('New program profile', 'gc-configured-tools-panel')
+        button('New program profile', 'gk-configured-tools-panel')
         fill('[name=toolName]', 'Owned file ' + role)
         fill('[name=toolRole]', role, 'change')
         fill('[name=toolExecutable]', sys.executable)
         for number, argument in enumerate(['-I', str(recorder), role, str(records), literal, *arguments]):
-            button('Add argument', 'gc-configured-tools-panel')
+            button('Add argument', 'gk-configured-tools-panel')
             fill('[aria-label=' + json.dumps('Program argument ' + str(number + 1)) + ']', argument)
         driver.click('[name=toolDefault]')
-        button('Save program profile', 'gc-configured-tools-panel')
-        driver.wait("return [...document.querySelectorAll('gc-configured-tools-panel [role=status]')].some(e=>e.textContent.includes('Profile saved.'))")
+        button('Save program profile', 'gk-configured-tools-panel')
+        driver.wait("return [...document.querySelectorAll('gk-configured-tools-panel [role=status]')].some(e=>e.textContent.includes('Profile saved.'))")
         driver.click('[aria-label="Close preferences"]')
 
     def preview():
         driver.click('.wip-nav')
         selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
         driver.context_click(selector)
-        driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
-        driver.wait("return !!document.querySelector('gc-file-content-dialog')")
+        driver.click_scrolled_text('gk-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
+        driver.wait("return !!document.querySelector('gk-file-content-dialog')")
 
     def capture_review(label, selector):
         driver.wait('return !!document.querySelector(' + json.dumps(selector) + ')')
@@ -93,23 +93,23 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
 
     def launch(count):
         button('Review external program launch')
-        driver.wait("return !!document.querySelector('gc-file-tools-dialog [aria-label=\"Review external program launch\"]')")
-        assert driver.script("return [...document.querySelectorAll('gc-file-tools-dialog .arguments li')].map(e=>e.textContent.trim())")[4] == json.dumps(literal, ensure_ascii=False)
+        driver.wait("return !!document.querySelector('gk-file-tools-dialog [aria-label=\"Review external program launch\"]')")
+        assert driver.script("return [...document.querySelectorAll('gk-file-tools-dialog .arguments li')].map(e=>e.textContent.trim())")[4] == json.dumps(literal, ensure_ascii=False)
         assert not records.exists() if count == 1 else len(rows(count - 1)) == count - 1
-        capture_review('file-tool-review-' + str(count), 'gc-file-tools-dialog [aria-label="Review external program launch"]')
+        capture_review('file-tool-review-' + str(count), 'gk-file-tools-dialog [aria-label="Review external program launch"]')
         button('Start reviewed program')
-        driver.wait("return [...document.querySelectorAll('gc-file-tools-dialog .sessions button')].some(e=>e.textContent.includes('Owned command exited'))")
+        driver.wait("return [...document.querySelectorAll('gk-file-tools-dialog .sessions button')].some(e=>e.textContent.includes('Owned command exited'))")
         current = driver.invoke('list_file_tool_sessions')
         sessions.update(item['id'] for item in current)
         return rows(count)[-1]
 
     def cleanup():
         button('Review tool-session cleanup')
-        driver.wait("return !!document.querySelector('gc-file-tools-dialog [aria-label=\"Review private tool-file cleanup\"]')")
-        checkbox = 'gc-file-tools-dialog [aria-label="Review private tool-file cleanup"] input[type=checkbox]'
+        driver.wait("return !!document.querySelector('gk-file-tools-dialog [aria-label=\"Review private tool-file cleanup\"]')")
+        checkbox = 'gk-file-tools-dialog [aria-label="Review private tool-file cleanup"] input[type=checkbox]'
         driver.click(checkbox)
         button('Remove reviewed private copies and retire session')
-        driver.wait("return [...document.querySelectorAll('gc-file-tools-dialog [role=status]')].some(e=>e.textContent.includes('Tool session retired.'))")
+        driver.wait("return [...document.querySelectorAll('gk-file-tools-dialog [role=status]')].some(e=>e.textContent.includes('Tool session retired.'))")
         sessions.clear()
         driver.click('[aria-label="Close external file tools"]')
 
@@ -130,7 +130,7 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         driver.reload(); driver.wait("return !!document.querySelector('.commit-row')")
         preview()
         before_index = (repository / '.git/index').read_bytes()
-        button('Compare with external program', 'gc-file-content-dialog')
+        button('Compare with external program', 'gk-file-content-dialog')
         row = launch(1); assert_environment(row)
         assert row['bytes'] == [b'current\n'.hex(), b'working\n'.hex()], row
         assert target.read_bytes() == b'working\n' and (repository / '.git/index').read_bytes() == before_index
@@ -138,12 +138,12 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         cleanup()
         report['scenarios'].append('native-ui-file-diff-exact-index-working-private-bytes-literal-argv-sanitized-context')
 
-        button('Review external editor for working file', 'gc-file-content-dialog')
+        button('Review external editor for working file', 'gk-file-content-dialog')
         row = launch(2); assert_environment(row)
         assert row['paths'] == [str(target)] and row['bytes'] == [b'working\n'.hex()], row
         assert target.read_bytes() == b'owned editor saved\n' and (repository / '.git/index').read_bytes() == before_index
         cleanup()
-        button('Close', 'gc-file-content-dialog')
+        button('Close', 'gk-file-content-dialog')
         report['scenarios'].append('native-ui-file-editor-saved-working-file-changes-without-index-change')
 
         target.write_bytes(b'current\n')
@@ -161,18 +161,18 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         assert row['bytes'][:3] == [b'base\n'.hex(), b'current\n'.hex(), b'incoming\n'.hex()], row
         assert target.read_bytes() == conflict_bytes and (repository / '.git/index').read_bytes() == before_index
         button('Inspect current merge output')
-        driver.wait("return !!document.querySelector('gc-file-tools-dialog [aria-label=\"Review merge output\"]')")
-        assert driver.script("return document.querySelector('gc-file-tools-dialog [aria-label=\"Review merge output\"]').textContent").find('Binary output') >= 0
-        capture_review('file-tool-binary-result', 'gc-file-tools-dialog [aria-label="Review merge output"]')
-        driver.click('gc-file-tools-dialog [aria-label="Review merge output"] input[type=checkbox]')
+        driver.wait("return !!document.querySelector('gk-file-tools-dialog [aria-label=\"Review merge output\"]')")
+        assert driver.script("return document.querySelector('gk-file-tools-dialog [aria-label=\"Review merge output\"]').textContent").find('Binary output') >= 0
+        capture_review('file-tool-binary-result', 'gk-file-tools-dialog [aria-label="Review merge output"]')
+        driver.click('gk-file-tools-dialog [aria-label="Review merge output"] input[type=checkbox]')
         button('Save reviewed merge output')
-        driver.wait("return [...document.querySelectorAll('gc-file-tools-dialog [role=status]')].some(e=>e.textContent.includes('Reviewed output saved.'))")
+        driver.wait("return [...document.querySelectorAll('gk-file-tools-dialog [role=status]')].some(e=>e.textContent.includes('Reviewed output saved.'))")
         assert target.read_bytes() == merged and (repository / '.git/index').read_bytes() == before_index
         report['scenarios'].append('native-ui-file-merge-stage-roles-binary-output-review-save-without-staging')
         button('Review saved result for staging')
-        capture_review('file-tool-stage-review', 'gc-file-tools-dialog [aria-label="Review tool-result staging"]')
+        capture_review('file-tool-stage-review', 'gk-file-tools-dialog [aria-label="Review tool-result staging"]')
         button('Stage reviewed saved result')
-        driver.wait("return [...document.querySelectorAll('gc-file-tools-dialog [role=status]')].some(e=>e.textContent.trim()==='Saved result staged.')")
+        driver.wait("return [...document.querySelectorAll('gk-file-tools-dialog [role=status]')].some(e=>e.textContent.trim()==='Saved result staged.')")
         assert not fixtures.git(repository, 'ls-files', '-u')
         assert subprocess.check_output(['git', '-C', str(repository), 'show', ':' + path], env=fixtures.env) == merged
         assert (repository / '.git/config').read_bytes() == config and fixtures.git(repository, 'show-ref') == refs
@@ -185,7 +185,7 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
             try:
                 directory = Path(report['artifactsDirectory'])
                 driver.screenshot(directory / 'file-tools-failure.png')
-                (directory / 'file-tools-failure.json').write_text(json.dumps(driver.script("return {tools:document.querySelector('gc-file-tools-dialog')?.innerText,preferences:document.querySelector('gc-preferences-dialog')?.innerText,body:document.body.innerText.slice(-12000)}"), indent=2))
+                (directory / 'file-tools-failure.json').write_text(json.dumps(driver.script("return {tools:document.querySelector('gk-file-tools-dialog')?.innerText,preferences:document.querySelector('gk-preferences-dialog')?.innerText,body:document.body.innerText.slice(-12000)}"), indent=2))
             except Exception as error:
                 report.setdefault('fileToolCaptureErrors', []).append(str(error))
         # A fixture failure preserves file copies for inspection. Never infer

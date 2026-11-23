@@ -10,7 +10,7 @@ export interface MergePreviewDialogRequest {
 }
 
 @Component({
-  selector: 'gc-merge-preview-dialog',
+  selector: 'gk-merge-preview-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" (click)="close()">

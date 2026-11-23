@@ -54,6 +54,76 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite full --headless" }
     },
+    "native-gitlab-fork-ui": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite gitlab-fork-ui --headless" }
+    },
+    "native-integrity-ui": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite integrity-ui --headless" }
+    },
+    "native-stash-clear": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite stash-clear --headless" }
+    },
+    "native-autosquash-amend": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite autosquash-amend --headless" }
+    },
+    "native-signed-tag": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite signed-tag --headless" }
+    },
+    "native-signed-commit": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite signed-commit --headless" }
+    },
+    "native-empty-commit": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite empty-commit --headless" }
+    },
+    "native-merge-preview": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite merge-preview --headless" }
+    },
+    "native-lfs-lock-actions": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite lfs-lock-actions --headless" }
+    },
+    "native-file-history": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite file-history --headless" }
+    },
+    "native-tag-preview": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite tag-preview --headless" }
+    },
+    "native-conflict-navigation": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite conflict-navigation --headless" }
+    },
+    "native-file-tools": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite file-tools --headless" }
+    },
+    "native-working-tree-recaps": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite working-tree-recaps --headless" }
+    },
     "native-environment": {
       "executor": "nx:run-commands",
       "cache": false,

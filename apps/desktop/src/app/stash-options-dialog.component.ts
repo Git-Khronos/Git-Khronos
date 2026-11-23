@@ -18,7 +18,7 @@ export interface StashDialogRequest {
 }
 
 @Component({
-  selector: 'gc-stash-options-dialog',
+  selector: 'gk-stash-options-dialog',
   imports: [FormsModule, GitHelpComponent, IconComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -27,7 +27,7 @@ export interface StashDialogRequest {
         <section #dialog role="dialog" aria-modal="true" aria-labelledby="stash-options-title"
           aria-describedby="stash-options-description" (click)="$event.stopPropagation()" (keydown)="handleKey($event, target)">
           <header class="dialog-heading">
-            <span class="dialog-icon" aria-hidden="true"><gc-icon name="archive" [size]="18" /></span>
+            <span class="dialog-icon" aria-hidden="true"><gk-icon name="archive" [size]="18" /></span>
             <span class="dialog-heading-copy">
               <small>{{ eyebrow() }}</small>
               <h2 id="stash-options-title">{{ title() }}</h2>
@@ -37,7 +37,7 @@ export interface StashDialogRequest {
           <p class="hint">Checkout: <code>{{ target.repositoryPath }}</code></p>
           @if (target.action === 'save') {
             <div class="repository-context" role="group" aria-label="Stash source">
-              <gc-icon name="branch" [size]="14" aria-hidden="true" />
+              <gk-icon name="branch" [size]="14" aria-hidden="true" />
               <span><strong>{{ git.repository()?.status?.branch || 'Detached HEAD' }}</strong><small>{{ git.repository()?.status?.entryCount || 0 }} changed {{ git.repository()?.status?.entryCount === 1 ? 'file' : 'files' }}</small></span>
               <code>HEAD</code>
             </div>
@@ -102,7 +102,7 @@ export interface StashDialogRequest {
               This does not automatically apply the stash on the destination branch.</p>
           }
           @if (git.error()) { <p class="error" role="alert">{{ git.error() }}</p> }
-          <gc-git-help topic="stash" label="Learn about stash modes and recovery…" />
+          <gk-git-help topic="stash" label="Learn about stash modes and recovery…" />
           <footer>
             <button type="button" data-stash-cancel [disabled]="git.busy()" (click)="close(target)">Cancel</button>
             <button class="primary" type="button" [disabled]="!canConfirm() || git.busy()" (click)="confirm(target)">{{ actionLabel() }}</button>

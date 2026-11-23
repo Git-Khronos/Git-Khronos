@@ -6,7 +6,7 @@ for (const operation of ['discardPath', 'hunk', 'lines']) {
       await page.goto('/');
       await expect(page.locator('.commit-row').first()).toBeVisible();
       await page.evaluate(({ operation, scenario }) => {
-        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
         const repository = git.repository();
         git.repositories.set([repository, { ...repository, id: 'other-working-tree', path: '/fixture/other', name: 'Other' }]);
         git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -46,7 +46,7 @@ for (const operation of ['hunk', 'lines', 'stagePath']) {
       await page.goto('/');
       await expect(page.locator('.commit-row').first()).toBeVisible();
       const result = await page.evaluate(async ({ operation, navigation }) => {
-        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
         const original = git.repository();
         const entries = ['file.txt', 'new-file.txt'].map(path => ({ path, indexStatus: ' ', worktreeStatus: 'M', conflicted: false }));
         const repository = { ...original, status: { ...original.status, entries, entryCount: 2, unstaged: 2 } };

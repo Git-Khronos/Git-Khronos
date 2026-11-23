@@ -5,7 +5,7 @@ import { GitHelpComponent } from './git-help.component';
 import { GitKhronosService } from './git-khronos.service';
 
 @Component({
-  selector: 'gc-integrity-panel',
+  selector: 'gk-integrity-panel',
   imports: [GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -21,6 +21,9 @@ import { GitKhronosService } from './git-khronos.service';
       <button type="button" [disabled]="disabled()" (click)="inspect()">Inspect integrity</button>
     }
     @if (error()) { <p role="alert">{{ error() }}</p> }
+    @if (maintenanceComplete()) {
+      <p role="status">Maintenance complete. Git checked repository integrity, updated commit-graph and reference metadata, and did not run garbage collection or prune objects.</p>
+    }
     @if (result(); as report) {
       <div role="status"><strong>{{ report.truncated ? 'Incomplete report — output limit reached' :
         report.passed ? 'Git completed the check without reported integrity errors' : 'Git reported findings or a check failure' }}</strong>
@@ -32,7 +35,7 @@ import { GitKhronosService } from './git-khronos.service';
       <p>Preserve the repository and working files before investigating damage. Maintenance and pruning
         cannot restore missing data. Recover from a verified backup or known-good source.</p>
     }
-    <gc-git-help topic="maintenance" label="Learn about integrity and maintenance…" [disabled]="busy() || disabled()" />
+    <gk-git-help topic="maintenance" label="Learn about integrity and maintenance…" [disabled]="busy() || disabled()" />
     <details class="form-disclosure" (toggle)="maintenanceConfirmed.set(false)">
       <summary>Non-pruning maintenance</summary>
       <p>Checks integrity first, then builds the commit graph and packs references.
@@ -73,6 +76,7 @@ export class IntegrityPanelComponent {
   readonly cancelling = signal(false);
   readonly error = signal('');
   readonly result = signal<IntegrityReport | null>(null);
+  readonly maintenanceComplete = signal(false);
   readonly maintenanceConfirmed = signal(false);
   readonly maintenancePending = signal(false);
   private operationId: string | null = null;
@@ -82,6 +86,7 @@ export class IntegrityPanelComponent {
       this.repositoryId();
       this.result.set(null);
       this.error.set('');
+      this.maintenanceComplete.set(false);
       this.maintenanceConfirmed.set(false);
     });
   }
@@ -95,6 +100,7 @@ export class IntegrityPanelComponent {
     this.cancelling.set(false);
     this.error.set('');
     this.result.set(null);
+    this.maintenanceComplete.set(false);
     try {
       const outcome = await this.git.run('Inspecting integrity…', async reportActivity => {
         const report = await ipc.inspect_repository_integrity({ repoId: repositoryId, operationId });
@@ -136,9 +142,11 @@ export class IntegrityPanelComponent {
     this.maintenancePending.set(true);
     this.error.set('');
     this.result.set(null);
+    this.maintenanceComplete.set(false);
     try {
       const outcome = await this.git.performRepositoryMaintenance();
       if (this.repositoryId() === repositoryId) {
+        this.maintenanceComplete.set(outcome);
         this.error.set(outcome ? '' : this.git.error() ?? 'Maintenance did not complete. Inspect the repository before retrying.');
       }
     } finally {

@@ -4,7 +4,7 @@ import type { CommitIdentity, CommitPolicy } from '@git-khronos/contracts';
 import { GitHelpComponent } from './git-help.component';
 
 @Component({
-  selector: 'gc-commit-policy-fields',
+  selector: 'gk-commit-policy-fields',
   imports: [FormsModule, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -37,7 +37,7 @@ import { GitHelpComponent } from './git-help.component';
       <label>Committer email<input name="commitCommitterEmail" maxlength="320" [disabled]="disabled()"
         autocomplete="off" spellcheck="false" [ngModel]="identity.email" [ngModelOptions]="{ standalone: true }" (ngModelChange)="update({ committer: { name: identity.name, email: $event } })" /></label>
     }
-    <gc-git-help topic="commit" label="Learn about commit policy…" />
+    <gk-git-help topic="commit" label="Learn about commit policy…" />
     @if (author() || committer()) {
       <p>Enter complete names and explicit emails. These are checked before committing.
         Signed-off-by uses the effective committer, not the author. Disabling an override discards its entered values.</p>

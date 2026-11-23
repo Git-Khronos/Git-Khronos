@@ -3,7 +3,7 @@ import { RepositorySetupDialogComponent, type RepositoryEditorOwner, type Reposi
 import { WorkspaceEditDialogsComponent } from './workspace-edit-dialogs.component';
 import { BranchDropMenuComponent, type BranchDropAdvice, type BranchDropStrategy } from './branch-drop-menu.component';
 import { ConflictEditorComponent, type ConflictEditorAction } from './conflict-editor.component';
-import type { BisectCandidate, ConflictDetails } from '@git-khronos/contracts';
+import type { BisectCandidate, ConflictDetails, CommitFixupTarget } from '@git-khronos/contracts';
 import type { PushDestinationReview } from '@git-khronos/contracts';
 import { ToolbarOptionsComponent, type ToolbarOptionsAction, type ToolbarOptionsKind, type ToolbarOptionsView } from './toolbar-options.component';
 import { MainMenuContentComponent } from './main-menu-content.component';
@@ -56,6 +56,7 @@ import { TextValueDirective } from './text-value.directive';
 import { type UnlistenFn } from '@tauri-apps/api/event';
 import { events, type BranchComparison } from '@git-khronos/contracts';
 import { StashDeleteDialogComponent, type StashDeleteRequest } from './stash-delete-dialog.component';
+import { StashClearDialogComponent, type StashClearRequest } from './stash-clear-dialog.component';
 import type {
   Branch,
   CommitFile,
@@ -394,6 +395,13 @@ interface ContextMenuState {
   integration?: ContextBranchIntegration;
 }
 
+interface PreparedCommitFixup {
+  readonly repositoryId: string;
+  readonly repositoryPath: string;
+  readonly target: CommitFixupTarget;
+  readonly subject: string;
+}
+
 interface ContextBranchIntegration {
   readonly scope: string;
   readonly review: ReviewedBranchPair;
@@ -717,8 +725,8 @@ function stableAuthorColor(identity: string): string {
 
 
 @Component({
-  selector: 'gc-root',
-  imports: [ToolbarOptionsComponent, GraphSettingsContentComponent, DialogFallbackFocusDirective, WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, RevisionInspectorComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent,
+  selector: 'gk-app',
+  imports: [ToolbarOptionsComponent, GraphSettingsContentComponent, DialogFallbackFocusDirective, WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, RevisionInspectorComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, StashClearDialogComponent,
     GraphActionMenuComponent, SidebarItemActionsComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
@@ -993,6 +1001,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private branchCreatorReturnFocus: HTMLElement | null = null;
   private branchCreatorPreviousLocalHeight: number | null = null;
   protected readonly amendPrevious = signal(false);
+  protected readonly commitFixup = signal<PreparedCommitFixup | null>(null);
   protected readonly skipGitHooks = signal(false);
   protected readonly commitPolicy = signal<CommitPolicy>({ signOff: false, allowEmpty: false, author: null, committer: null });
   protected readonly commitPolicyOpen = signal(false);
@@ -1003,17 +1012,18 @@ export class AppComponent implements OnInit, OnDestroy {
     repositoryId: this.git.activeRepositoryId(),
   }));
   private readonly commitSubmission = computed(() => {
+    const fixup = this.commitFixup();
     const trailers = this.coAuthors()
       .map((author) => `Co-authored-by: ${author.name} <${author.email}>`)
       .join('\n');
     return {
       message: [this.commitMessage().trim(), this.commitDescription().trim(), trailers].filter(Boolean).join('\n\n'),
-      pushAfter: this.pushAfterCommit(),
+      pushAfter: fixup ? false : this.pushAfterCommit(),
       options: {
-        amend: this.amendPrevious(),
+        amend: fixup ? false : this.amendPrevious(),
         skipHooks: this.skipGitHooks(),
         sign: this.signCommit(),
-        ...this.commitPolicy(),
+        ...(fixup ? { signOff: false, allowEmpty: false, author: null, committer: null, fixupTarget: fixup.target } : this.commitPolicy()),
       },
     };
   });
@@ -1497,6 +1507,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   protected readonly signNewTag = signal(false);
   protected readonly pendingStashDelete = signal<StashDeleteRequest | null>(null);
+  protected readonly pendingStashClear = signal<StashClearRequest | null>(null);
   protected readonly stashRenameTarget = signal<StashEntry | null>(null);
   private stashRenameRepositoryId: string | null = null;
   protected readonly stashRenameMessage = signal('');
@@ -3577,6 +3588,7 @@ export class AppComponent implements OnInit, OnDestroy {
     git: this.git,
     canCreateContextWorktree: this.canCreateContextWorktree.bind(this),
     canEditContextCommitMessage: this.canEditContextCommitMessage.bind(this),
+    prepareContextCommitFixup: this.prepareContextCommitFixup.bind(this),
     canStartBisectAt: this.canStartBisectAt.bind(this),
     checkoutContextTarget: this.checkoutContextTarget.bind(this),
     closeContextBranchCreator: this.closeContextBranchCreator.bind(this),
@@ -3643,6 +3655,7 @@ export class AppComponent implements OnInit, OnDestroy {
     handleGraphRowResizerClick: this.handleGraphRowResizerClick.bind(this),
     branchDropTarget: this.branchDropTarget.bind(this),
     branchForDecoration: this.branchForDecoration.bind(this),
+    localBranchCheckoutHint: this.localBranchCheckoutHint.bind(this),
     branchForReferenceGroup: this.branchForReferenceGroup.bind(this),
     checkoutPrimaryReference: this.checkoutPrimaryReference.bind(this),
     checkoutReferenceGroup: this.checkoutReferenceGroup.bind(this),
@@ -4095,7 +4108,7 @@ export class AppComponent implements OnInit, OnDestroy {
     return !!state?.steps.length
       && state.checkoutScope === this.git.activeRepositoryReadScope()
       && (!state.root || !!first)
-      && first?.action !== 'squash' && first?.action !== 'fixup'
+      && first?.action !== 'squash' && first?.action !== 'fixup' && first?.action !== 'fixup-reword'
       && state.steps.every((step) => step.action !== 'reword' || !!step.message.trim());
   });
 
@@ -4127,6 +4140,9 @@ export class AppComponent implements OnInit, OnDestroy {
     // Repository-change effects clear old dialogs. Apply preview fixtures only
     // after that initial render so they cannot erase a newly opened fixture view.
     await new Promise<void>(resolve => afterNextRender(() => resolve(), { injector: this.injector }));
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('skip-hooks-preview')) {
+      this.skipGitHooks.set(true);
+    }
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('unpublished-branch')) {
       this.git.repositories.update((repositories) => repositories.map((repository) => {
         if (repository.id !== this.git.activeRepositoryId()) return repository;
@@ -4563,7 +4579,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (event.key === 'Escape') { event.preventDefault(); this.closeApplicationUpdates(updates); }
       else if (event.key === 'Tab') {
         event.preventDefault();
-        (this.applicationUpdatesLoaderClose()?.nativeElement ?? document.querySelector<HTMLElement>('gc-application-updates-dialog button:not(:disabled), gc-application-updates-dialog [role=dialog]'))?.focus();
+        (this.applicationUpdatesLoaderClose()?.nativeElement ?? document.querySelector<HTMLElement>('gk-application-updates-dialog button:not(:disabled), gk-application-updates-dialog [role=dialog]'))?.focus();
       } else if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
       return;
     }
@@ -4587,7 +4603,7 @@ export class AppComponent implements OnInit, OnDestroy {
       } else if (event.key === 'Tab') {
         event.preventDefault();
         (this.checkoutWorktreeLoaderClose()?.nativeElement
-          ?? document.querySelector<HTMLElement>('gc-checkout-worktree-dialog button:not(:disabled), gc-checkout-worktree-dialog [role=dialog]'))?.focus();
+          ?? document.querySelector<HTMLElement>('gk-checkout-worktree-dialog button:not(:disabled), gk-checkout-worktree-dialog [role=dialog]'))?.focus();
       }
       return;
     }
@@ -4610,12 +4626,12 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.repositoryLinkDialog()) {
       if (event.key === 'Escape') {
         event.preventDefault();
-        const close = document.querySelector<HTMLButtonElement>('gc-repository-link-dialog [role=dialog] button[aria-label^="Close"]');
+        const close = document.querySelector<HTMLButtonElement>('gk-repository-link-dialog [role=dialog] button[aria-label^="Close"]');
         if (close) close.click(); else this.closeRepositoryLink();
       }
-      else if (event.key === 'Tab' && !(event.target instanceof Element && event.target.closest('gc-repository-link-dialog'))) {
+      else if (event.key === 'Tab' && !(event.target instanceof Element && event.target.closest('gk-repository-link-dialog'))) {
         event.preventDefault();
-        (document.querySelector<HTMLElement>('gc-repository-link-dialog [role=dialog] button:not(:disabled)') ?? document.querySelector<HTMLElement>('[data-dialog-fallback="repositoryLink"] button'))?.focus();
+        (document.querySelector<HTMLElement>('gk-repository-link-dialog [role=dialog] button:not(:disabled)') ?? document.querySelector<HTMLElement>('[data-dialog-fallback="repositoryLink"] button'))?.focus();
       }
       return;
     }
@@ -4670,7 +4686,7 @@ export class AppComponent implements OnInit, OnDestroy {
         event.preventDefault();
         if (dialog) dialog.close(false);
         else this.closeStashDelete({ request: stashDelete, deleted: false });
-      } else if (event.key === 'Tab' && !(event.target instanceof Element && event.target.closest('gc-stash-delete-dialog'))) {
+      } else if (event.key === 'Tab' && !(event.target instanceof Element && event.target.closest('gk-stash-delete-dialog'))) {
         if (dialog) dialog.handleKey(event);
         else {
           event.preventDefault();
@@ -4937,7 +4953,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     const editing = !!target?.closest('input, textarea, [contenteditable="true"]');
     const inFileWorkspace = !!target?.closest('.diff-workspace, .diff-workspace-loading');
-    const terminalEditing = !!target?.closest('gc-terminal-panel');
+    const terminalEditing = !!target?.closest('gk-terminal-panel');
     const terminalShortcut = (event.altKey && key === 't') || (command && event.key === '`');
     if (event.key === 'F6' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       if (target?.closest('[aria-modal="true"], [role="menu"], [role="dialog"]')) return;
@@ -5183,11 +5199,11 @@ export class AppComponent implements OnInit, OnDestroy {
   private focusWorkspaceRegion(direction: -1 | 1): void {
     if (!this.git.repository()) return;
     const selector = this.diffViewerOpen()
-      ? this.diffInsightMode() === 'history' ? 'gc-file-history .history-list'
-        : this.diffInsightMode() === 'blame' ? 'gc-file-blame .blame-lines' : '.split-diff-body, .focus-diff-view'
+      ? this.diffInsightMode() === 'history' ? 'gk-file-history .history-list'
+        : this.diffInsightMode() === 'blame' ? 'gk-file-blame .blame-lines' : '.split-diff-body, .focus-diff-view'
       : '.history-panel.workspace-focus-region';
     const central = document.querySelector<HTMLElement>(this.diffViewerOpen() ? '.diff-workspace' : selector);
-    const terminal = document.querySelector<HTMLElement>('gc-terminal-panel .terminal-panel:not(.inactive), .terminal-placeholder');
+    const terminal = document.querySelector<HTMLElement>('gk-terminal-panel .terminal-panel:not(.inactive), .terminal-placeholder');
     const regions = [
       { element: document.querySelector<HTMLElement>('.toolbar.workspace-focus-region') },
       { element: document.querySelector<HTMLElement>('#repository-reference-panel:not(.panel-hidden)') },
@@ -6286,7 +6302,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = this.activityLogOpener;
     const focused = document.activeElement;
     const restoreFocus = this.activityLogMayTakeFocus()
-      || !!focused?.closest('gc-activity-log-drawer');
+      || !!focused?.closest('gk-activity-log-drawer');
     this.activityLogOpen.set(false);
     this.activityLogOpener = null;
     queueMicrotask(() => {
@@ -6425,7 +6441,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected openIncomingLinks(returnFocus: HTMLElement | null = null): void {
-    if (this.git.busy() || !this.git.incomingRepositoryLinksReady() || [...document.querySelectorAll<HTMLElement>('[aria-modal="true"], [role="alertdialog"]')].some(element => element.getClientRects().length > 0 && !(element.closest('gc-command-palette') && !this.commandPaletteOpen()))) return;
+    if (this.git.busy() || !this.git.incomingRepositoryLinksReady() || [...document.querySelectorAll<HTMLElement>('[aria-modal="true"], [role="alertdialog"]')].some(element => element.getClientRects().length > 0 && !(element.closest('gk-command-palette') && !this.commandPaletteOpen()))) return;
     const opener = returnFocus ?? this.captureDialogOpener();
     this.closeContextMenu();
     this.repositoryLinkDialog.set({ mode: 'inbox', returnFocus: opener });
@@ -7620,6 +7636,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected commitActionReadiness(repository: RepositorySnapshot): CommitReadiness {
+    const fixup = this.commitFixup();
+    if (fixup && (fixup.repositoryId !== repository.id || fixup.repositoryPath !== repository.path)) {
+      return { ready: false, icon: 'warning', message: 'The fixup target belongs to another checkout. Cancel fixup mode before committing here.' };
+    }
     if (this.git.busy()) {
       return { ready: false, icon: 'warning', message: 'Git is busy. Wait for the current operation to finish.' };
     }
@@ -7638,6 +7658,13 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (split && !repository.status.staged) {
       return { ready: false, icon: 'warning', message: 'Stage selected changes for the next split commit.' };
+    }
+    if (fixup) {
+      if (repository.headOid !== fixup.target.expectedHeadOid || repository.status.branch !== fixup.target.expectedBranch) {
+        return { ready: false, icon: 'warning', message: 'HEAD or branch changed since this fixup target was selected. Cancel and prepare it again.' };
+      }
+      if (!repository.status.staged) return { ready: false, icon: 'warning', message: 'Stage changes to create this fixup commit.' };
+      return { ready: true, icon: 'check', message: `Ready to create a fixup commit for “${fixup.subject}”. Only staged changes will be included; nothing will be pushed.` };
     }
     if (!repository.status.staged && !this.amendPrevious() && !this.commitPolicy().allowEmpty) {
       return { ready: false, icon: 'warning', message: 'Stage at least one changed file to continue.' };
@@ -7678,20 +7705,22 @@ export class AppComponent implements OnInit, OnDestroy {
     const repository = this.git.repository();
     if (!repository || !this.commitActionReadiness(repository).ready) return;
     const submission = this.commitSubmission();
+    const isFixup = this.commitFixup() !== null;
     const tab = this.commitTabLease();
     const savedAtSubmit = this.commitDrafts.get(repository.id);
     const { message, pushAfter, options } = submission;
     const pushTarget = pushAfter && this.branchPushPlan() ? this.commitPushTarget() : null;
-    const committed = await this.git.commit(message, {
+    const committed = await this.git.commit(isFixup ? '' : message, {
       ...options,
       amend: !this.repositoryOperation().rebaseSplit && options.amend,
     });
     if (!committed) return;
+    if (isFixup) this.commitFixup.set(null);
 
     // A successful commit only consumes its own draft, even if the user
     // already saved a new draft by switching to another checkout.
     const saved = this.commitDrafts.get(repository.id);
-    if (saved === savedAtSubmit || saved?.submission === submission) {
+    if (!isFixup && (saved === savedAtSubmit || saved?.submission === submission)) {
       this.commitDrafts.delete(repository.id);
     }
     const current = this.git.repository();
@@ -8451,11 +8480,26 @@ export class AppComponent implements OnInit, OnDestroy {
   protected referenceCheckoutHint(group: ReferenceGroup | null): string {
     if (!group) return '';
     const branch = this.branchForReferenceGroup(group);
-    if (branch) return branch.current ? 'Current branch.' : `Double-click to check out ${branch.name}.`;
+    if (branch) {
+      if (branch.current) return 'Current branch.';
+      const repository = this.git.repository();
+      if (repository && branchCheckoutOwner(repository, branch.name)) {
+        return `Double-click to review the existing checkout of ${branch.name}.`;
+      }
+      return `Double-click to check out ${branch.name}.`;
+    }
     const remotes = group.locations.filter((location) => location.kind === 'remote');
     if (remotes.length > 1) return 'Double-click a remote location to fetch and check out its local branch.';
     if (remotes.length === 1) return `Double-click to fetch and check out the local branch for ${remotes[0].label}.`;
     return '';
+  }
+
+  protected localBranchCheckoutHint(branch: Branch): string {
+    if (branch.current) return 'Current branch';
+    const repository = this.git.repository();
+    return repository && branchCheckoutOwner(repository, branch.name)
+      ? 'Double-click or press Shift+Enter to review the existing checkout'
+      : 'Double-click or press Shift+Enter to check out';
   }
 
   protected referenceStackTooltip(decorations: readonly string[]): string {
@@ -12101,7 +12145,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private rememberTerminalOpener(): void {
     const active = document.activeElement;
-    this.terminalOpener = active instanceof HTMLElement && !active.closest('gc-terminal-panel')
+    this.terminalOpener = active instanceof HTMLElement && !active.closest('gk-terminal-panel')
       ? active
       : null;
   }
@@ -13194,6 +13238,29 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pendingStashDelete.set({ repositoryId, stash: target, returnFocus });
   }
 
+  protected requestStashClear(): void {
+    const request = this.stashContextMenu();
+    const repository = this.git.repository();
+    if (!request || !repository || request.repositoryId !== repository.id || !repository.stashes.length
+      || this.pendingStashClear() || !this.git.requireRecoveryRepository(repository.id)) return;
+    this.actionOverlays.close('stash');
+    this.pendingStashClear.set({ repositoryId: repository.id, entries: repository.stashes.map(stash => ({
+      reference: stash.reference, oid: stash.oid, message: stash.message,
+    })), returnFocus: this.contextMenuReturnFocus });
+  }
+
+  protected closeStashClear(result: { request: StashClearRequest; cleared: boolean }): void {
+    if (this.pendingStashClear() !== result.request) return;
+    this.pendingStashClear.set(null);
+    if (this.git.activeRepositoryId() !== result.request.repositoryId) return;
+    if (result.cleared) this.selectWip();
+    afterNextRender(() => {
+      if (this.pendingStashClear() || this.git.activeRepositoryId() !== result.request.repositoryId) return;
+      if (result.request.returnFocus?.isConnected) result.request.returnFocus.focus();
+      else document.querySelector<HTMLButtonElement>('.stash-item:not([disabled]), .wip-nav:not([disabled])')?.focus();
+    }, { injector: this.injector });
+  }
+
   private stashActionRepositoryId(stash: StashEntry): string | null {
     const menu = this.stashContextMenu();
     return menu?.stash === stash ? menu.repositoryId : this.git.activeRepositoryId();
@@ -14139,6 +14206,28 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!menu) return;
     this.actionOverlays.close('context');
     this.showTagCreator(menu.oid, menu.label);
+  }
+
+  protected prepareContextCommitFixup(): void {
+    const menu = this.contextMenu();
+    const repository = this.git.repository();
+    if (!menu || menu.kind !== 'commit' || menu.oids.length !== 1 || !repository
+      || menu.repositoryId !== repository.id || menu.repositoryPath !== repository.path
+      || !repository.headOid || this.git.busy() || this.repositoryOperation().historyOperation) return;
+    this.commitFixup.set({
+      repositoryId: repository.id,
+      repositoryPath: repository.path,
+      target: { oid: menu.oid, expectedHeadOid: repository.headOid, expectedBranch: repository.status.branch },
+      subject: menu.label,
+    });
+    this.amendPrevious.set(false);
+    this.pushAfterCommit.set(false);
+    this.actionOverlays.close('context');
+    this.selectWip();
+  }
+
+  protected cancelCommitFixup(): void {
+    this.commitFixup.set(null);
   }
 
   protected requestReferenceAction(action: ReferenceActionRequest['action'], menu = this.contextMenu()): void {
@@ -15095,7 +15184,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const element = this.fileActionMenuElement()?.nativeElement;
     if (!element || this.fileActionMenu() !== request) return;
     const active = document.activeElement;
-    const fallbackFocused = element.contains(active) && !element.querySelector('gc-file-action-menu')?.contains(active);
+    const fallbackFocused = element.contains(active) && !element.querySelector('gk-file-action-menu')?.contains(active);
     // The loading button may have just been removed. Don't take focus from
     // a control the user reached elsewhere while the chunk was loading.
     const restoreInside = fallbackFocused || (!!this.fileContextMenuReturnFocus
@@ -15149,7 +15238,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected graphActionMenuReady(): void {
     const menu = this.contextMenu();
     const element = this.actionMenuElement()?.nativeElement;
-    if (!menu || !element?.querySelector('gc-graph-action-menu')) return;
+    if (!menu || !element?.querySelector('gk-graph-action-menu')) return;
     // The first measurement may have sized the loading escape. Refit the actual
     // content and transfer focus only if the user is still inside this menu.
     const focusMenu = element.contains(document.activeElement)
@@ -15181,6 +15270,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'hide-all': this.hideAllStashes(); break;
       case 'show-all': this.showAllStashes(); break;
       case 'delete': this.requestStashDelete(request.stash); break;
+      case 'clear-all': this.requestStashClear(); break;
     }
   }
 

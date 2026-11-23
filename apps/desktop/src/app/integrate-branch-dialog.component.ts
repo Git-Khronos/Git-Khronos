@@ -33,7 +33,7 @@ interface StrategyOption {
 }
 
 @Component({
-  selector: 'gc-integrate-branch-dialog',
+  selector: 'gk-integrate-branch-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IconComponent],
   template: `
@@ -59,7 +59,7 @@ interface StrategyOption {
           <strong class="target-name" title="Branch that changes">{{ target() }}</strong>
           <button type="button" class="swap" [disabled]="!source()" (click)="swap()"
             title="Bring {{ target() }} into {{ source() || 'the other branch' }} instead">
-            <gc-icon name="refresh" [size]="12" />Swap direction
+            <gk-icon name="refresh" [size]="12" />Swap direction
           </button>
         </div>
         }
@@ -110,7 +110,7 @@ interface StrategyOption {
         }
 
         @if (!request().workflowRebase && comparisonError(); as message) { <p class="note warning">Could not compare the branches: {{ message }} You can still choose an option; Git checks again when it runs.</p> }
-        @if (rebaseWarning(); as warning) { <p class="note warning" role="note"><gc-icon name="warning" [size]="13" />{{ warning }}</p> }
+        @if (rebaseWarning(); as warning) { <p class="note warning" role="note"><gk-icon name="warning" [size]="13" />{{ warning }}</p> }
         @if (workingTreeNote(); as note) { <p class="note">{{ note }}</p> }
         @if (canCheckConflicts()) {
           <div class="conflicts">

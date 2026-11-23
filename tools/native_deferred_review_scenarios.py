@@ -7,7 +7,7 @@ from native_worktree_scenarios import checkout_footprint
 def deferred_review_workflows(driver, fixtures, report, *, history_only=False):
     from native_acceptance import open_ui
 
-    fetch_modal = 'gc-fetch-options-dialog [role=dialog]'
+    fetch_modal = 'gk-fetch-options-dialog [role=dialog]'
     evidence = []
 
     def fetch_ready():
@@ -240,7 +240,7 @@ def deferred_review_workflows(driver, fixtures, report, *, history_only=False):
     linked_files = ('fixture.txt', 'untracked-note.txt', 'owned-ignored.txt')
     before_linked = checkout_footprint(fixtures, linked, linked_files)
     open_ui(driver, main)
-    worktree_modal = 'gc-worktree-move-dialog [role=dialog]'
+    worktree_modal = 'gk-worktree-move-dialog [role=dialog]'
 
     def open_worktree(action):
         driver.click_visible('[aria-label="Worktree actions for owned-reviewed-topic"]')

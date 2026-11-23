@@ -1,10 +1,10 @@
 import { AfterViewInit, Directive, ElementRef, OnDestroy, inject, output } from '@angular/core';
 
 /** Keeps virtual windows aligned with resizers, maximized panels and font changes. */
-@Directive({ selector: '[gcViewportSize],[gcViewportWidth]' })
+@Directive({ selector: '[gkViewportSize],[gkViewportWidth]' })
 export class ViewportSizeDirective implements AfterViewInit, OnDestroy {
-  readonly viewportSize = output<number>({ alias: 'gcViewportSize' });
-  readonly viewportWidth = output<number>({ alias: 'gcViewportWidth' });
+  readonly viewportSize = output<number>({ alias: 'gkViewportSize' });
+  readonly viewportWidth = output<number>({ alias: 'gkViewportWidth' });
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private observer?: ResizeObserver;
 

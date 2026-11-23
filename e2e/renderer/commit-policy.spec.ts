@@ -4,7 +4,7 @@ async function setup(page: Page, staged: number): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(staged => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.repositories.update((items: any[]) => items.map(item => ({ ...item,
@@ -60,7 +60,7 @@ test('stage-and-commit refuses to commit previously staged files after staging f
   await summary.fill('Keep draft after sparse refusal');
   await page.evaluate(async () => {
     (window as any).__commitPolicy.stageFailure = true;
-    await (window as any).ng.getComponent(document.querySelector('gc-root')).stageAllAndCommit();
+    await (window as any).ng.getComponent(document.querySelector('gk-app')).stageAllAndCommit();
   });
   await expect(page.locator('.error-toast')).toContainText('outside the sparse selection');
   await expect(summary).toHaveValue('Keep draft after sparse refusal');
@@ -72,7 +72,7 @@ for (const changed of ['target path', 'branch', 'draft', 'policy', 'repository t
     await setup(page, 1);
     await page.getByLabel('Commit summary', { exact: true }).fill('Original intent');
     await page.evaluate(async changed => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const fixture = (window as any).__commitPolicy;
       fixture.holdStage = true;
       const action = app.stageAllAndCommit();
@@ -93,7 +93,7 @@ for (const changed of ['target path', 'branch', 'draft', 'policy', 'repository t
     await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue(
       changed === 'draft' ? 'New message, no consent' : 'Original intent');
     if (changed === 'branch') {
-      expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+      expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().status.branch))
         .toBe('another-branch');
     }
     if (changed === 'draft' || changed === 'policy') {
@@ -106,7 +106,7 @@ test('stage-and-commit leaves unresolved merge entries to the merge tool', async
   await setup(page, 1);
   await page.getByLabel('Commit summary', { exact: true }).fill('Commit after resolution');
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.repositories.update((items: any[]) => items.map(item => ({ ...item, status: { ...item.status, conflicted: 1 } })));
     await app.stageAllAndCommit();
   });
@@ -191,7 +191,7 @@ test('signer and always-run hook failures retain signing and explicit verificati
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('Keep signed draft');
   await page.getByRole('button', { name: 'Dismiss error', exact: true }).click();
   await page.locator('.commit-policy summary').click();
-  await expect(page.locator('gc-commit-policy-fields')).toContainText('Prepare-commit-msg and other applicable hooks still run');
+  await expect(page.locator('gk-commit-policy-fields')).toContainText('Prepare-commit-msg and other applicable hooks still run');
   await skip.check();
   await page.evaluate(() => {
     (window as any).__commitPolicy.diagnostic = {
@@ -221,7 +221,7 @@ test('stored but unverifiable signatures are not presented as unsigned or verifi
   const panel = page.locator('.commit-panel');
   await expect(panel.getByLabel('Verified signature', { exact: true })).toBeVisible();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.commitDetails.update((details: any) => ({ ...details, signature: {
       status: 'unverifiable', signer: null, key: null, fingerprint: null, trust: null,
     } }));
@@ -231,7 +231,7 @@ test('stored but unverifiable signatures are not presented as unsigned or verifi
   await expect(panel.getByLabel('Unsigned', { exact: true })).toHaveCount(0);
   await expect(panel.getByLabel('Verified signature', { exact: true })).toHaveCount(0);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.commitDetails.update((details: any) => ({ ...details, signature: {
       status: 'unsigned', signer: null, key: null, fingerprint: null, trust: null,
     } }));
@@ -276,7 +276,7 @@ test('signature trust and failure states have distinct text labels rather than c
     ['unverifiable', 'Signature could not be verified'],
   ]) {
     await page.evaluate(status => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.commitDetails.update((details: any) => ({ ...details, signature: {
         status, signer: 'Fixture signer', key: 'A'.repeat(40), fingerprint: 'A'.repeat(40), trust: null,
       } }));
@@ -293,7 +293,7 @@ test('signature trust and failure states have distinct text labels rather than c
 test('signer configuration failure clears a previous availability result and retries explicitly', async ({ page }) => {
   await setup(page, 1);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const fixture = { calls: [] as string[], fail: false };
     (window as any).__signerDiagnostic = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
@@ -381,7 +381,7 @@ test('policy is isolated in repository drafts and disabled during an active comm
   await page.getByLabel('Add Signed-off-by trailer', { exact: true }).check();
   await page.getByLabel('Allow commit without staged changes', { exact: true }).check();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other-policy', path: '/other-policy', name: 'other-policy' }]);
   });
   await page.locator('[data-repository-tab-id="other-policy"]').click();
@@ -405,7 +405,7 @@ test('late commit completion never clears another repository draft or pushes its
   await page.getByLabel('Commit summary', { exact: true }).fill('Original commit');
   await page.getByLabel('Push after committing', { exact: true }).check();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other-policy', path: '/other-policy', name: 'other-policy' }]);
     (window as any).__commitPolicy.hold = true;
   });
@@ -429,7 +429,7 @@ for (const change of ['during staging', 'during commit', 'with a changed push UR
     await summary.fill('Originally selected push destination');
     await page.getByLabel('Push after committing', { exact: true }).check();
     await page.evaluate(change => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const fixture = (window as any).__commitPolicy;
       git.repositories.update((items: any[]) => items.map(item => ({ ...item, remotes: [
         ...item.remotes, { name: 'alternate', fetchUrl: '/owned/alternate', pushUrl: '/owned/alternate' },
@@ -470,7 +470,7 @@ for (const route of ['tracked', 'unpublished', 'detached'] as const) {
   test(`commit composer previews the ${route} push follow-up`, async ({ page }) => {
     await setup(page, 1);
     await page.evaluate(route => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       git.repositories.update((items: any[]) => items.map(item => ({
         ...item,
         status: route === 'detached' ? { ...item.status, branch: null } : item.status,
@@ -516,7 +516,7 @@ test('commit and push never adopts a newer HEAD learned during snapshot reconcil
   await page.locator('.commit-form button[type=submit]').click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__commitPolicy.finish)).toBe('function');
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__commitPolicy;
     // Force reconciliation rather than accepting the mutation snapshot into
     // the view. The original commit reply still reports eeee..., not ffff....
@@ -527,7 +527,7 @@ test('commit and push never adopts a newer HEAD learned during snapshot reconcil
   await expect(page.getByRole('alert')).toContainText('Push was not started because the local commit changed');
   await expect(summary).toHaveValue('');
   const observed = await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const { calls } = (window as any).__commitPolicy;
     return { head: git.repository().headOid,
       refreshed: calls.some((call: any) => call.command === 'refresh_repository'),
@@ -545,7 +545,7 @@ for (const navigation of ['stay', 'switch tabs', 'return to the submitted text']
     await summary.fill('Submitted message');
     await description.fill('Submitted body');
     await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other-draft', path: '/other-draft', name: 'other-draft' }]);
       (window as any).__commitPolicy.hold = true;
     });
@@ -562,7 +562,7 @@ for (const navigation of ['stay', 'switch tabs', 'return to the submitted text']
     }
     await page.evaluate(() => { (window as any).__commitPolicy.finish(); });
     await expect.poll(() => page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       return [git.busy(), git.repositories().find((entry: any) => entry.id === 'browser-preview')?.headOid];
     })).toEqual([false, 'e'.repeat(40)]);
     if (navigation === 'switch tabs') {
@@ -589,7 +589,7 @@ test('late commit success does not clear an in-progress co-author entry', async 
   await name.fill('Next collaborator');
   await page.evaluate(() => { (window as any).__commitPolicy.finish(); });
   await expect.poll(() => page.evaluate(() =>
-    (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().headOid)).toBe('e'.repeat(40));
+    (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().headOid)).toBe('e'.repeat(40));
   await expect(name).toHaveValue('Next collaborator');
   await expect(page.getByLabel('Commit summary', { exact: true })).toHaveValue('');
 });
@@ -604,7 +604,7 @@ for (const commitBeforeSwitch of [false, true]) {
     const original = page.locator('[data-repository-tab-id="browser-preview"]');
     const other = page.locator('[data-repository-tab-id="other-coauthor"]');
     await page.evaluate(() => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       git.repositories.update((items: any[]) => [...items, { ...git.repository(),
         id: 'other-coauthor', path: '/other-coauthor', name: 'other-coauthor' }]);
     });
@@ -627,7 +627,7 @@ for (const commitBeforeSwitch of [false, true]) {
     if (commitBeforeSwitch) {
       await page.evaluate(() => (window as any).__commitPolicy.finish());
       await expect.poll(() => page.evaluate(() => {
-        const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
         return git.repositories().find((repo: any) => repo.id === 'browser-preview')?.headOid;
       })).toBe('e'.repeat(40));
     }
@@ -648,7 +648,7 @@ for (const commitBeforeSwitch of [false, true]) {
     await expect(email).toHaveValue('');
     if (!commitBeforeSwitch) {
       const reopened = await page.evaluate(() => {
-        const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
         return git.repositories().find((repo: any) => repo.id === 'browser-preview');
       });
       const backgroundTab = page.locator('.repo-tab').filter({ has: original });
@@ -656,7 +656,7 @@ for (const commitBeforeSwitch of [false, true]) {
       await backgroundTab.getByRole('button', { name: /^Close / }).click();
       await expect(original).toHaveCount(0);
       await page.evaluate(repo => {
-        const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
         git.repositories.update((items: any[]) => [...items, repo]);
       }, reopened);
       await original.click();
@@ -703,7 +703,7 @@ test('identity overrides are explicit complete pairs, transmitted for one commit
   await page.getByLabel('Committer email', { exact: true }).fill('recorder@example.test');
   await page.getByLabel('Add Signed-off-by trailer', { exact: true }).check();
   await page.getByLabel('Commit summary', { exact: true }).fill('Scoped identities');
-  await expect(page.locator('gc-commit-policy-fields')).toContainText('No Git configuration is saved');
+  await expect(page.locator('gk-commit-policy-fields')).toContainText('No Git configuration is saved');
   await page.locator('.commit-form button[type=submit]').click();
   const policy = await page.evaluate(() => (window as any).__commitPolicy.calls.find((call: any) => call.command === 'commit_changes').args.policy);
   expect(policy).toEqual({ signOff: true, allowEmpty: false,
@@ -723,7 +723,7 @@ test('identity values stay in their repository draft and failed commits keep the
   await page.getByLabel('Author email', { exact: true }).fill('draft@example.test');
   await page.getByLabel('Commit summary', { exact: true }).fill('Retain identity');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other-policy', path: '/other-policy', name: 'other-policy' }]);
   });
   await page.locator('[data-repository-tab-id="other-policy"]').click();
@@ -751,12 +751,12 @@ test('identity controls load progressively and contain long values in compact vi
   });
   await setup(page, 1);
   await page.setViewportSize({ width: 820, height: 720 });
-  await expect(page.locator('gc-commit-policy-fields')).toHaveCount(0);
+  await expect(page.locator('gk-commit-policy-fields')).toHaveCount(0);
   await page.locator('.commit-policy summary').click();
   await page.getByLabel('Override commit committer', { exact: true }).check();
   await page.getByLabel('Committer name', { exact: true }).fill('n'.repeat(256));
   await page.getByLabel('Committer email', { exact: true }).fill('committer@example.test');
-  expect(await page.locator('gc-commit-policy-fields').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.locator('gk-commit-policy-fields').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.getByLabel('Commit summary', { exact: true }).fill('Pending identity');
   await page.evaluate(() => { (window as any).__commitPolicy.hold = true; });
   await page.locator('.commit-form button[type=submit]').click();
@@ -820,7 +820,7 @@ test('closing policy while its chunk loads never reopens it, steals focus or cha
   await expect(page.locator('.commit-policy [role=status]')).toBeVisible();
   await page.keyboard.press('Enter');
   release();
-  await expect(page.locator('gc-commit-policy-fields')).toHaveCount(1);
+  await expect(page.locator('gk-commit-policy-fields')).toHaveCount(1);
   await expect(summary).toBeFocused();
   await expect(page.getByLabel('Override commit author', { exact: true })).not.toBeVisible();
   expect(await page.locator('.commit-policy').evaluate(element => (element as HTMLDetailsElement).open)).toBe(false);

@@ -9,7 +9,7 @@ for (const kind of ['head', 'checkout', 'rename-branch', 'discard', 'saved-disca
         await page.goto('/');
         await expect(page.locator('.commit-row').first()).toBeVisible();
         await page.evaluate(({ kind, direction, scenario }) => {
-          const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+          const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
           const repository = git.repository();
           const other = { ...repository, id: 'other-replay', path: '/fixture/other-replay', name: 'Other replay' };
           const entry = { label: 'Test action', undone: direction === 'redo',
@@ -98,7 +98,7 @@ for (const direction of ['undo', 'redo']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async direction => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const entry = { kind: 'head', label: 'Old action', beforeOid: 'old-before', afterOid: 'old-after',
         undone: direction === 'redo' };

@@ -178,8 +178,16 @@ fn authorization_refusal_defers_automatic_replay_but_keeps_explicit_manual_retry
     let mut restarted = UpdateModel::new(model.preferences, true);
     let restarted_origin = restarted.automatic_origin();
     offered(&mut restarted, restarted_origin, "fresh-offer");
-    assert!(restarted.begin_download("fresh-offer", restarted_origin).is_err());
-    assert!(restarted.begin_download("fresh-offer", Origin::Manual).is_ok());
+    assert!(
+        restarted
+            .begin_download("fresh-offer", restarted_origin)
+            .is_err()
+    );
+    assert!(
+        restarted
+            .begin_download("fresh-offer", Origin::Manual)
+            .is_ok()
+    );
 }
 
 #[test]

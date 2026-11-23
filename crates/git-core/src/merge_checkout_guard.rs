@@ -284,9 +284,7 @@ fn obstructing_path(
     unavailable: Unavailable,
 ) -> Result<Option<String>, AppError> {
     for target in paths(target_paths, unavailable)? {
-        if let Some(blocked) =
-            obstructions(&local.entries, &normalize(target, local.ignore_case))
-        {
+        if let Some(blocked) = obstructions(&local.entries, &normalize(target, local.ignore_case)) {
             // A summarized directory can contain unrelated data; do not
             // claim that an exact collision was proved.
             if local.summarized {
@@ -394,12 +392,17 @@ fn stash_tracked_obstruction(
     Ok(None)
 }
 
-pub(super) fn ensure_stash_restore_preserves_local_files(path: &Path, stash: &str) -> Result<(), AppError> {
+pub(super) fn ensure_stash_restore_preserves_local_files(
+    path: &Path,
+    stash: &str,
+) -> Result<(), AppError> {
     let untracked_unavailable = || {
         AppError::new(
             "stashUntrackedPathsUnverified",
             "Could not verify that the stash's untracked files can be restored safely. No changes were applied.",
-            Some("Move or back up untracked local files, including ignored files, before retrying."),
+            Some(
+                "Move or back up untracked local files, including ignored files, before retrying.",
+            ),
         )
     };
     let tracked_unavailable = || {
@@ -417,13 +420,18 @@ pub(super) fn ensure_stash_restore_preserves_local_files(path: &Path, stash: &st
         // merge. Refuse an existing untracked obstruction before that merge,
         // even when the local copy is ignored or HEAD moved since the stash.
         if let Some(tree) = parents.get(2)
-            && let Some(local) = untracked_paths(path, PATH_LIMIT, UntrackedScope::All, untracked_unavailable)?
+            && let Some(local) =
+                untracked_paths(path, PATH_LIMIT, UntrackedScope::All, untracked_unavailable)?
             && let Some(blocked) = restore_obstruction(path, &local, tree, untracked_unavailable)?
         {
             return Err(AppError::new(
                 "stashUntrackedPathObstruction",
-                format!("Local untracked contents at '{blocked}' block the selected stash. No changes were applied."),
-                Some("Move the local file or directory out of the way, then retry. The stash was kept."),
+                format!(
+                    "Local untracked contents at '{blocked}' block the selected stash. No changes were applied."
+                ),
+                Some(
+                    "Move the local file or directory out of the way, then retry. The stash was kept.",
+                ),
             ));
         }
         // Unlike an ordinary untracked file, Git may silently overwrite an
@@ -432,13 +440,22 @@ pub(super) fn ensure_stash_restore_preserves_local_files(path: &Path, stash: &st
         // a divergent merge might produce through directory renames.
         if let Some(ignored) = ignored_paths(path, PATH_LIMIT, tracked_unavailable)?
             && let Some(blocked) = stash_tracked_obstruction(
-                path, &ignored, &parents[0], &parents[1], &stash, tracked_unavailable,
+                path,
+                &ignored,
+                &parents[0],
+                &parents[1],
+                &stash,
+                tracked_unavailable,
             )?
         {
             return Err(AppError::new(
                 "stashTrackedPathObstruction",
-                format!("The stash could overwrite ignored local contents at '{blocked}'. No changes were applied."),
-                Some("Move the ignored file or directory out of the way, then retry. The stash was kept."),
+                format!(
+                    "The stash could overwrite ignored local contents at '{blocked}'. No changes were applied."
+                ),
+                Some(
+                    "Move the ignored file or directory out of the way, then retry. The stash was kept.",
+                ),
             ));
         }
         Ok(())
@@ -471,11 +488,15 @@ pub(super) fn ensure_stash_branch_preserves_ignored_files(
         let blocked = |name: String| {
             AppError::new(
                 "stashBranchLocalPathObstruction",
-                format!("Ignored local contents at '{name}' obstruct restoring the selected stash."),
+                format!(
+                    "Ignored local contents at '{name}' obstruct restoring the selected stash."
+                ),
                 Some("Move the ignored file or directory out of the way, then retry."),
             )
         };
-        if let Some(name) = stash_tracked_obstruction(path, &ignored, base, &parents[1], stash, unavailable)? {
+        if let Some(name) =
+            stash_tracked_obstruction(path, &ignored, base, &parents[1], stash, unavailable)?
+        {
             return Err(blocked(name));
         }
         if let Some(tree) = parents.get(2)
@@ -553,9 +574,9 @@ pub(super) fn ensure_recovery_reset_preserves_ignored_files(
             RecoveryReset::MailPatchAbort => reference_tip(path, "ORIG_HEAD^{commit}")
                 .map(Some)
                 .ok_or_else(unavailable),
-            RecoveryReset::HistoryAbort { native_sequencer: true } => {
-                history_original_tip(path, unavailable)
-            }
+            RecoveryReset::HistoryAbort {
+                native_sequencer: true,
+            } => history_original_tip(path, unavailable),
             _ => Ok(None),
         };
         let original_before = original()?;
@@ -592,11 +613,13 @@ pub(super) fn ensure_recovery_reset_preserves_ignored_files(
 }
 
 pub(super) fn exact_bisect_head(path: &Path) -> Result<Option<String>, AppError> {
-    let unavailable = || AppError::new(
-        "bisectCandidateUnavailable",
-        "Git could not verify the current bisect candidate.",
-        Some("Refresh the repository before classifying a commit."),
-    );
+    let unavailable = || {
+        AppError::new(
+            "bisectCandidateUnavailable",
+            "Git could not verify the current bisect candidate.",
+            Some("Refresh the repository before classifying a commit."),
+        )
+    };
     // Older supported Git only accepts fully qualified refs in show-ref,
     // even when an exact loose BISECT_HEAD exists. Read that bounded state
     // first. Reftable may not have a loose file; use Git's exact lookup there.
@@ -957,11 +980,16 @@ pub(super) fn ensure_bisect_reset_preserves_ignored_files(path: &Path) -> Result
     let Some(ignored) = ignored_paths(path, PATH_LIMIT, unavailable)? else {
         return Ok(());
     };
-    let no_checkout = || exact_bisect_head(path).map(|oid| oid.is_some()).map_err(|_| unavailable());
+    let no_checkout = || {
+        exact_bisect_head(path)
+            .map(|oid| oid.is_some())
+            .map_err(|_| unavailable())
+    };
     let marker = operation_storage::git_entry(path, "BISECT_START")?;
     let directory = marker.parent().ok_or_else(unavailable)?;
-    let read_start = || bounded_state_line(directory, "BISECT_START", 4096, unavailable)?
-        .ok_or_else(unavailable);
+    let read_start = || {
+        bounded_state_line(directory, "BISECT_START", 4096, unavailable)?.ok_or_else(unavailable)
+    };
     let start = read_start()?;
     if no_checkout()? {
         return Ok(());

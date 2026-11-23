@@ -16,7 +16,7 @@
 .recovery-toolbar > button { width: 35px; display: grid; place-items: center; border: 1px solid #45445d; border-radius: 4px; background: #302f45; color: #a4a2b5; }
 .recovery-toolbar > button:hover:not(:disabled) { background: #3d3b55; color: white; }
 .recovery-guidance { display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-bottom: 1px solid #343347; background: #21332f; color: #9eacaa; font-size: 12px; line-height: 1.4; }
-.recovery-guidance > gc-icon { flex: none; color: var(--accent); }
+.recovery-guidance > gk-icon { flex: none; color: var(--accent); }
 .recovery-guidance strong { color: #c5e8df; }
 .recovery-list { min-height: 0; flex: 1; overflow: auto; padding: 7px; }
 .recovery-entry { display: grid; grid-template-columns: 29px minmax(0, 1fr) 78px auto; align-items: center; gap: 9px; min-height: 55px; margin-bottom: 3px; padding: 7px 9px; border: 1px solid transparent; border-radius: 5px; background: #282739; }

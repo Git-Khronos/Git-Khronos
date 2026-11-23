@@ -8,7 +8,7 @@ async function openReview(page: import('@playwright/test').Page, dirty = false) 
   const dialog = page.getByRole('alertdialog', { name: 'Find the commit that introduced a problem' });
   await expect(dialog).toBeVisible();
   const expected = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const pending = app.pendingBisectStart();
@@ -113,7 +113,7 @@ test('start bisect rechecks the switch mode when new edits arrive before repaint
 test('no-checkout bisect preview keeps HEAD and files unchanged through voting and reset', async ({ page }) => {
   await page.goto('/');
   const current = () => page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const { headOid, status } = app.git.repository();
     return { headOid, branch: status.branch, entries: status.entries };
   });
@@ -143,7 +143,7 @@ async function openVote(page: import('@playwright/test').Page, noCheckout = fals
   await page.goto('/?clean-preview');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const expected = await page.evaluate(noCheckout => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const candidate = { oid: noCheckout ? 'd'.repeat(40) : repository.headOid, noCheckout };

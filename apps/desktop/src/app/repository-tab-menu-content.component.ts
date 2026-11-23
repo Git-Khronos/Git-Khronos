@@ -26,7 +26,7 @@ type Action =
 export type RepositoryTabMenuAction = Action & { requestId: number };
 
 @Component({
-  selector: 'gc-repository-tab-menu-content',
+  selector: 'gk-repository-tab-menu-content',
   imports: [IconComponent, TextValueDirective],
   templateUrl: './repository-tab-menu-content.component.html',
   styleUrl: './repository-tab-menu-content.component.scss',

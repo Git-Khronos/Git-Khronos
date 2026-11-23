@@ -2,26 +2,26 @@
 @if (model.kind === 'worktree') {
   @let worktree = model.item;
   <div><small>Worktree</small><strong>{{ worktree.branch || 'Detached HEAD' }}</strong></div>
-  <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="choose('open')"><gc-icon name="folder-git" [size]="12" />Open worktree in a new tab</button>
-  <button type="button" role="menuitem" (click)="choose('copy-path')"><gc-icon name="copy" [size]="12" />Copy worktree path</button>
-  <button type="button" role="menuitem" [disabled]="model.busy || worktree.current || worktree.locked || worktree.prunable || model.open" (click)="choose('move')"><gc-icon name="folder-git" [size]="12" />Move linked worktree…</button>
-  <button type="button" role="menuitem" [disabled]="model.busy || worktree.current || worktree.locked || model.open" (click)="choose('repair')"><gc-icon name="refresh" [size]="12" />Repair after external move…</button>
-  <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('registrations')"><gc-icon name="eye" [size]="12" />Review registrations and prune report…</button>
-  <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="choose('toggle-lock')"><gc-icon [name]="worktree.locked ? 'check' : 'pin'" [size]="12" />{{ worktree.locked ? 'Unlock this worktree' : 'Lock this worktree' }}</button>
+  <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="choose('open')"><gk-icon name="folder-git" [size]="12" />Open worktree in a new tab</button>
+  <button type="button" role="menuitem" (click)="choose('copy-path')"><gk-icon name="copy" [size]="12" />Copy worktree path</button>
+  <button type="button" role="menuitem" [disabled]="model.busy || worktree.current || worktree.locked || worktree.prunable || model.open" (click)="choose('move')"><gk-icon name="folder-git" [size]="12" />Move linked worktree…</button>
+  <button type="button" role="menuitem" [disabled]="model.busy || worktree.current || worktree.locked || model.open" (click)="choose('repair')"><gk-icon name="refresh" [size]="12" />Repair after external move…</button>
+  <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('registrations')"><gk-icon name="eye" [size]="12" />Review registrations and prune report…</button>
+  <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="choose('toggle-lock')"><gk-icon [name]="worktree.locked ? 'check' : 'pin'" [size]="12" />{{ worktree.locked ? 'Unlock this worktree' : 'Lock this worktree' }}</button>
   <i></i>
-  <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || model.open" (click)="choose('remove')"><gc-icon name="trash" [size]="12" />Remove this worktree</button>
-  <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || !worktree.branch || model.open" (click)="choose('remove-and-delete')"><gc-icon name="trash" [size]="12" />Remove worktree and delete branch</button>
+  <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || model.open" (click)="choose('remove')"><gk-icon name="trash" [size]="12" />Remove this worktree</button>
+  <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || !worktree.branch || model.open" (click)="choose('remove-and-delete')"><gk-icon name="trash" [size]="12" />Remove worktree and delete branch</button>
   @if (!worktree.current && model.open) { <p>Close its repository tab before moving or removing it.</p> }
 } @else {
   @let submodule = model.item;
   <div><small>Submodule</small><strong>{{ submodule.path }}</strong></div>
   @if (!submodule.initialized) {
-    <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('initialize')"><gc-icon name="refresh" [size]="12" />Initialize…</button>
+    <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('initialize')"><gk-icon name="refresh" [size]="12" />Initialize…</button>
   } @else {
-    <button type="button" role="menuitem" (click)="choose('open')"><gc-icon name="folder-git" [size]="12" />Open submodule</button>
-    <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('update')"><gc-icon name="refresh" [size]="12" />Update from remote…</button>
+    <button type="button" role="menuitem" (click)="choose('open')"><gk-icon name="folder-git" [size]="12" />Open submodule</button>
+    <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('update')"><gk-icon name="refresh" [size]="12" />Update from remote…</button>
   }
-  <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('registrations')"><gc-icon name="settings" [size]="12" />Manage submodules…</button>
-  <button type="button" role="menuitem" (click)="choose('copy-url')"><gc-icon name="copy" [size]="12" />Copy remote URL</button>
-  <button type="button" role="menuitem" (click)="choose('copy-path')"><gc-icon name="copy" [size]="12" />Copy submodule path</button>
+  <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('registrations')"><gk-icon name="settings" [size]="12" />Manage submodules…</button>
+  <button type="button" role="menuitem" (click)="choose('copy-url')"><gk-icon name="copy" [size]="12" />Copy remote URL</button>
+  <button type="button" role="menuitem" (click)="choose('copy-path')"><gk-icon name="copy" [size]="12" />Copy submodule path</button>
 }

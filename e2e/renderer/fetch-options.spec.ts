@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const fixture = { calls: [] as any[], fail: false, hold: false, resolve: null as any,
@@ -61,7 +61,7 @@ test('Fetch Options stays actionable when remote status changes before the menu 
   await expect(item).toBeVisible();
   // Deliver the click between a background state update and Angular's redraw.
   await item.evaluate((button: HTMLButtonElement) => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.backgroundFetchFailures.set({
       [git.repository().id]: { message: 'Remote status changed', requiresFetchAll: false },
     });
@@ -83,7 +83,7 @@ test('a retired Fetch Options menu cannot open a review in a new visit of the sa
   const item = page.getByRole('menuitem', { name: /Fetch branches with options/ });
   await expect(item).toBeVisible();
   const openedFromRetiredMenu = await item.evaluate((button: HTMLButtonElement) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const oldVisit = app.toolbarOverlays.activeOverlay();
     app.toolbarOverlays.close('fetch');
     app.toolbarOverlays.open({ kind: 'fetch', scope: oldVisit.scope }, oldVisit.returnFocus);
@@ -114,7 +114,7 @@ test('scoped fetch defaults to one remote without pruning and sends cancellable 
 test('fetches one named branch without pruning, changing depth, or clearing a whole-remote failure', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repo = git.repository();
     git.repositories.set([{ ...repo, remotes: repo.remotes.filter((remote: any) => remote.name === 'origin') }]);
     git.backgroundFetchFailures.set({ [repo.id]: { message: 'Previous fetch failed', requiresFetchAll: false } });
@@ -181,7 +181,7 @@ for (const change of ['fetch URL', 'workspace'] as const) {
     await setup(page);
     const { dialog } = await openRemoteBranchFetch(page);
     await dialog.getByRole('button', { name: 'Fetch this branch' }).evaluate((button: HTMLButtonElement, change) => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repo = git.repository();
       if (change === 'workspace') {
         git.activeWorkspaceId.set('other-workspace-same-fetch-checkout');
@@ -223,7 +223,7 @@ for (const scope of ['all remotes', 'one of two', 'only configured remote']) {
   test(`successful Fetch options resumes a paused background fetch only if it covers the repository: ${scope}`, async ({ page }) => {
     await setup(page);
     await page.evaluate(onlyOne => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const source = git.repository();
       if (onlyOne) git.repositories.set([{ ...source, remotes: source.remotes.filter((remote: any) => remote.name === 'origin') }]);
       git.backgroundFetchFailures.set({
@@ -240,7 +240,7 @@ for (const scope of ['all remotes', 'one of two', 'only configured remote']) {
     await expect(dialog).toHaveCount(0);
     if (scope === 'one of two') await expect(background).toHaveText('Fetch failed');
     else await expect(background).not.toHaveText('Fetch failed');
-    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root'))
+    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app'))
       .git.backgroundFetchErrors().other?.message)).toBe('Other tab failure');
   });
 }
@@ -284,7 +284,7 @@ test('repository switch retires the old fetch review without dispatch', async ({
   await setup(page);
   await openOptions(page);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     git.repositories.update((items: any[]) => [...items, { ...repository, id: 'different', name: 'Different' }]);
@@ -330,7 +330,7 @@ test('Fetch All command palette action really fetches all rather than the curren
 test('no-remotes state explains why scoped fetch is unavailable', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const id = git.activeRepositoryId();
     git.repositories.update((repositories: any[]) => repositories.map((repository) =>
       repository.id === id ? { ...repository, remotes: [] } : repository));
@@ -427,7 +427,7 @@ for (const ending of ['partial', 'complete'] as const) {
 test('a native shallow boundary is visible in history and opens depth review without fetching', async ({ page }) => {
   await setup(page);
   const { boundary, graft } = await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repo = git.repository();
     (window as any).__fetchFixture.shallow = { shallow: true, boundaryCommits: 1 };
     const [first, second] = repo.commits.filter((commit: any) =>

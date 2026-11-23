@@ -24,7 +24,7 @@ from native_acceptance import (
     Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, linux_distribution, main, run,
     start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
     verified_installed_file, menu_tab_focus, probe_git_toolchain, seed_commit_draft,
-    wait_webdriver_ready, webdriver_ports,
+    wait_webdriver_ready, webdriver_ports, probe_signed_tag_toolchain, probe_signed_commit_toolchain,
 )
 
 
@@ -118,7 +118,7 @@ class CommitDraftReadinessTests(unittest.TestCase):
 class DialogCaptureReadinessTests(unittest.TestCase):
     def test_capture_scrolls_once_and_polls_read_only_layout_predicates(self):
         driver = MagicMock()
-        selector = 'gc-owned-dialog [aria-label="Owned"]'
+        selector = 'gk-owned-dialog [aria-label="Owned"]'
         text = 'row with "quotes"'
         Driver.wait_for_dialog_capture(driver, selector, text, edge='end', require_action=True)
         self.assertEqual([entry[0] for entry in driver.mock_calls], ['script', 'wait'])
@@ -181,6 +181,58 @@ class GitToolchainPreflightTests(unittest.TestCase):
             self.assertNotIn("GIT_EXEC_PATH", fixtures.env)
             self.assertNotIn("wrong-helpers", probe["execPath"])
             self.assertIn("fixture Git helper is incompatible", probe["diagnostic"])
+
+
+class SignedTagToolchainPreflightTests(unittest.TestCase):
+    def test_preflight_records_required_signing_tools(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            report = {}
+            with patch("native_acceptance.shutil.which", side_effect=lambda name, **_: {
+                "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
+                "gpgsm": "/fixture/bin/gpgsm", "openssl": "/fixture/bin/openssl",
+            }[name]):
+                probe_signed_tag_toolchain(fixtures, report)
+            self.assertEqual(report["signedTagTools"], {
+                "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
+                "gpgsm": "/fixture/bin/gpgsm", "openssl": "/fixture/bin/openssl",
+            })
+
+    def test_preflight_names_missing_tools_before_launch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            report = {}
+            with patch("native_acceptance.shutil.which", side_effect=lambda name, **_: {
+                "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
+                "gpgsm": None, "openssl": "/fixture/bin/openssl",
+            }[name]):
+                with self.assertRaisesRegex(RuntimeError, "gpgsm"):
+                    probe_signed_tag_toolchain(fixtures, report)
+            self.assertEqual(report["signedTagTools"], {
+                "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
+                "gpgsm": None, "openssl": "/fixture/bin/openssl",
+            })
+
+
+class SignedCommitToolchainPreflightTests(unittest.TestCase):
+    def test_preflight_requires_only_the_openpgp_tool_used_by_the_ui_scenario(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            report = {}
+            with patch("native_acceptance.shutil.which", side_effect=lambda name, **_: {
+                "gpg": "/fixture/bin/gpg",
+            }[name]):
+                probe_signed_commit_toolchain(fixtures, report)
+            self.assertEqual(report["signedCommitTools"], {"gpg": "/fixture/bin/gpg"})
+
+    def test_preflight_reports_missing_openpgp_tool_before_launch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            report = {}
+            with patch("native_acceptance.shutil.which", return_value=None):
+                with self.assertRaisesRegex(RuntimeError, "gpg"):
+                    probe_signed_commit_toolchain(fixtures, report)
+            self.assertEqual(report["signedCommitTools"], {"gpg": None})
 
 
 class PackageIdentityTests(unittest.TestCase):
@@ -258,6 +310,25 @@ class PackageIdentityTests(unittest.TestCase):
             report = json.loads(next((root / "evidence").glob("*/report.json")).read_text())
             self.assertFalse(report["passed"])
             self.assertIn(f"('0.0.0', '{version}')", report["failure"])
+            self.assertEqual(report["failurePhase"], "package-preflight")
+
+    def test_full_suite_requires_git_lfs_before_starting_webdriver(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = SimpleNamespace(package=root / "not-built.deb", output=root / "evidence", suite="full",
+                                   describe_runner=False, headless=True,
+                                   inherited_git_environment=False, installed=False)
+            def tool_path(name):
+                return None if name == "git-lfs" else "/fixture/tool"
+
+            with patch("native_acceptance.argparse.ArgumentParser.parse_args", return_value=args), \
+                    patch("native_acceptance.shutil.which", side_effect=tool_path), \
+                    patch("native_acceptance.Driver") as driver, patch("builtins.print"):
+                self.assertEqual(main(), 1)
+            driver.assert_not_called()
+            report = json.loads(next((root / "evidence").glob("*/report.json")).read_text())
+            self.assertFalse(report["passed"])
+            self.assertIn("Missing git-lfs", report["failure"])
             self.assertEqual(report["failurePhase"], "package-preflight")
 
 
@@ -347,7 +418,7 @@ class MainMenuReadinessTests(unittest.TestCase):
         report = {'scenarios': []}
         with self.assertRaisesRegex(TimeoutError, 'loading escape'):
             menu_tab_focus(driver, report)
-        self.assertIn('gc-main-menu-content', driver.wait.call_args.args[0])
+        self.assertIn('gk-main-menu-content', driver.wait.call_args.args[0])
         self.assertIn('Manage Repositories', driver.wait.call_args.args[0])
         self.assertEqual(driver.key.call_count, 3)  # Workspace baseline/dismissal, then main-menu baseline only.
         self.assertNotIn('mainMenuLayout', report)
@@ -382,7 +453,7 @@ class TerminalCspTests(unittest.TestCase):
         self.assertIn(b"CSP_BG", command)
         self.assertEqual(driver.click.call_args_list, [
             call('[title="Open repository terminal (Alt+T or Ctrl+`)"]'),
-            call('gc-terminal-panel [title="Close terminal tab"]'),
+            call('gk-terminal-panel [title="Close terminal tab"]'),
         ])
         driver.screenshot.assert_called_once_with(Path("/native-fixture/terminal-csp.png"))
         self.assertEqual(report["terminalRender"], self.probe)

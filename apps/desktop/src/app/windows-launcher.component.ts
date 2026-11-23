@@ -24,7 +24,7 @@ const IDENTITY: Record<WindowsShortcutIdentity, string> = {
 };
 
 @Component({
-  selector: 'gc-windows-launcher',
+  selector: 'gk-windows-launcher',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" (click)="requestClose()">

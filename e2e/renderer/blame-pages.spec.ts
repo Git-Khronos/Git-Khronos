@@ -4,7 +4,7 @@ async function prepare(page: Page, fail = false) {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(fail => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const state = { app, fail, hold: false, total: 205, longText: null as string | null, calls: [] as any[], pending: [] as any[] };
     const result = (first: number) => ({ lines: Array.from({length: Math.max(0, Math.min(100, state.total - first + 1))}, (_, index) => ({
       lineNumber: first + index, oid: 'a'.repeat(40), authorName: 'Fixture', authorEmail: 'fixture@example.test',

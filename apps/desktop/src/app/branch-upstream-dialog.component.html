@@ -1,7 +1,7 @@
 @let model = view();
 <div class="confirmation-backdrop" (click)="model.close()">
       <form novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Set upstream for {{ model.target.branch }}" (submit)="$event.preventDefault(); model.confirm()" (click)="$event.stopPropagation()" (keydown)="model.key($event)">
-        <div class="confirmation-icon"><gc-icon name="remote" [size]="19" /></div>
+        <div class="confirmation-icon"><gk-icon name="remote" [size]="19" /></div>
         <div class="confirmation-copy">
           <span>Branch tracking</span>
           <h2>{{ model.target.branch }}</h2>

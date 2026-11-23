@@ -39,9 +39,9 @@ def repository_open_scope(driver, fixtures, report):
 
     def select_candidate():
         name = json.dumps(f'Open {candidate.name} at {candidate}')
-        driver.click_visible(f'gc-repository-dialog .manager-recents button[aria-label={name}]')
+        driver.click_visible(f'gk-repository-dialog .manager-recents button[aria-label={name}]')
 
-    driver.wait('return !!document.querySelector("gc-root")')
+    driver.wait('return !!document.querySelector("gk-root")')
     driver.script("""localStorage.clear();
       localStorage.setItem('git-khronos.open-repositories.v1', JSON.stringify([arguments[0]]));
       localStorage.setItem('git-khronos.active-repository.v1', arguments[0]);
@@ -66,10 +66,10 @@ def repository_open_scope(driver, fixtures, report):
         # dispatched while the original Browse form was still live.
         pending_pid = int(started.read_text())
         driver.wait('return !!document.querySelector(".app-shell.is-busy")')
-        driver.click_visible('gc-repository-dialog [aria-label="Close repository management"]')
-        driver.wait('return !document.querySelector("gc-repository-dialog")')
+        driver.click_visible('gk-repository-dialog [aria-label="Close repository management"]')
+        driver.wait('return !document.querySelector("gk-repository-dialog")')
         open_repository_dialog(driver)
-        driver.wait('return !!document.querySelector("gc-repository-dialog .repository-manager-body")')
+        driver.wait('return !!document.querySelector("gk-repository-dialog .repository-manager-body")')
         assert held.exists() and int(started.read_text()) == pending_pid
     finally:
         held.unlink(missing_ok=True)
@@ -79,13 +79,13 @@ def repository_open_scope(driver, fixtures, report):
     assert settled == old_workspace, settled
     wait_path(original)
     assert tab_count() == 1 and draft_value() == draft
-    assert driver.script('return !!document.querySelector("gc-repository-dialog .repository-manager-body")')
+    assert driver.script('return !!document.querySelector("gk-repository-dialog .repository-manager-body")')
     assert [checkout_footprint(fixtures, repo) for repo in paths] == before
     report['scenarios'].append('native-retired-repository-read-preserves-active-tab-draft-and-saved-membership')
 
     select_candidate()
     wait_path(candidate)
-    driver.wait('return !document.querySelector("gc-repository-dialog") && '
+    driver.wait('return !document.querySelector("gk-repository-dialog") && '
                 'document.querySelectorAll(".repo-tab-main[role=tab]").length === 2')
     final_workspace = workspace()
     assert final_workspace == {'saved': [str(original), str(candidate)], 'active': str(candidate),

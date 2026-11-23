@@ -21,7 +21,10 @@ mod file_statistics;
 mod index_rename;
 pub use index_rename::{stage_worktree_rename, unstage_index_rename, working_tree_rename_diff};
 mod working_tree_summary;
-pub use working_tree_summary::{WorkingTreeChangeSummary, WorkingTreeSummaries, working_tree_change_summary, working_tree_summaries};
+pub use working_tree_summary::{
+    WorkingTreeChangeSummary, WorkingTreeSummaries, working_tree_change_summary,
+    working_tree_summaries,
+};
 mod file_tool_model;
 mod ignore_rules;
 mod original_references;
@@ -191,8 +194,8 @@ pub use hosting_writes::{
     HostedMergeMethod, HostedReviewEvent, HostedWritePlan, HostedWriteReceipt, HostedWriteRequest,
     execute_hosted_write, prepare_hosted_write,
 };
-mod merge_checkout_guard;
 mod isolated_git;
+mod merge_checkout_guard;
 mod source_zip;
 pub use source_zip::export_source_zip;
 mod merge_preview;
@@ -1294,7 +1297,9 @@ pub fn clone_repository_with_submodules(
                     && git_absolute_path(&output.stdout)
                         .ok()
                         .and_then(|root| root.canonicalize().ok())
-                        .is_some_and(|root| destination.canonicalize().is_ok_and(|dest| dest == root))
+                        .is_some_and(|root| {
+                            destination.canonicalize().is_ok_and(|dest| dest == root)
+                        })
             });
         if superproject_ready {
             error.kind = "submoduleCloneIncomplete".to_owned();
@@ -1815,7 +1820,14 @@ pub fn search_tracked_files(
         git_cancellation::inspect_within(TRACKED_FILE_SEARCH_BUDGET, || {
             run_git_with_stdout_limit(
                 path,
-                &["ls-files", "-z", "--cached", "--deduplicate", "--", &pathspec],
+                &[
+                    "ls-files",
+                    "-z",
+                    "--cached",
+                    "--deduplicate",
+                    "--",
+                    &pathspec,
+                ],
                 MAX_TRACKED_FILE_SEARCH_BYTES,
             )
         })
@@ -2341,7 +2353,9 @@ fn require_conflict_free_bulk_index(path: &Path) -> Result<(), AppError> {
         return Err(AppError::new(
             "bulkIndexConflicts",
             "Bulk staging and unstaging are unavailable while the index has unresolved conflicts.",
-            Some("Resolve conflicted files individually, or stage and unstage other files one at a time."),
+            Some(
+                "Resolve conflicted files individually, or stage and unstage other files one at a time.",
+            ),
         ));
     }
     Ok(())
@@ -2723,6 +2737,14 @@ pub struct CommitIdentity {
     pub email: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CommitFixupTarget {
+    pub oid: String,
+    pub expected_head_oid: String,
+    pub expected_branch: Option<String>,
+}
+
 fn validate_commit_identity(identity: &CommitIdentity) -> Result<(), AppError> {
     let invalid = identity.name.is_empty()
         || identity.name.trim() != identity.name
@@ -2849,8 +2871,97 @@ pub fn commit_with_policy(
             ("GIT_COMMITTER_EMAIL", committer.email.as_str()),
         ]);
     }
-    let output = run_git_with_environment(path, &args, &environment)?;
-    ensure_success("create the commit", &output)
+    let create_commit = || {
+        let output = run_git_with_environment(path, &args, &environment)?;
+        ensure_success("create the commit", &output)
+    };
+    if amend
+        && !operations.merge
+        && !operations.rebase
+        && !operations.bisect
+        && operations.history.is_none()
+    {
+        operation_recovery::with_preserved_operation(path, "Before amended commit", create_commit)
+    } else {
+        create_commit()
+    }
+}
+
+/// Create a standard `fixup!` commit only against a captured commit that is
+/// still reachable from the exact reviewed checkout, and only with staged work.
+pub fn create_fixup_commit(
+    path: &Path,
+    target: &CommitFixupTarget,
+    skip_hooks: bool,
+    sign: Option<bool>,
+) -> Result<(), AppError> {
+    validate_commit_oid(&target.oid)?;
+    validate_commit_oid(&target.expected_head_oid)?;
+    let operations = repository_operation_state(path)?;
+    if operations.merge
+        || operations.history.is_some()
+        || operations.rebase
+        || operations.rebase_split.is_some()
+        || operations.mail_patch
+        || operations.bisect
+    {
+        return Err(AppError::new(
+            "operationInProgress",
+            "A fixup commit cannot be created during another Git operation.",
+            Some("Finish or abort the active operation, refresh the repository, then try again."),
+        ));
+    }
+    reviewed_commit_head(
+        path,
+        &target.expected_head_oid,
+        target.expected_branch.as_deref(),
+    )?;
+    let ancestor = run_git(
+        path,
+        &[
+            "merge-base",
+            "--is-ancestor",
+            &target.oid,
+            &target.expected_head_oid,
+        ],
+    )?;
+    if !ancestor.status.success() {
+        if ancestor.status.code() == Some(1) {
+            return Err(AppError::new(
+                "commitNotInHistory",
+                "The fixup target is not in the current branch history.",
+                Some(
+                    "Choose a commit reachable from the current branch, then review the staged changes again.",
+                ),
+            ));
+        }
+        ensure_success(
+            "verify the fixup target is in the current history",
+            &ancestor,
+        )?;
+    }
+    let staged = run_git(path, &["diff", "--cached", "--quiet"])?;
+    if staged.status.success() {
+        return Err(AppError::new(
+            "noStagedChanges",
+            "Stage at least one change before creating a fixup commit.",
+            Some("The fixup operation never stages working-tree changes automatically."),
+        ));
+    }
+    if staged.status.code() != Some(1) {
+        ensure_success("inspect staged changes for a fixup commit", &staged)?;
+    }
+    let mut args = vec!["commit", "--fixup", &target.oid, "--no-edit"];
+    if skip_hooks {
+        args.push("--no-verify");
+    }
+    match sign {
+        Some(true) => args.push("--gpg-sign"),
+        Some(false) => args.push("--no-gpg-sign"),
+        None => {}
+    }
+    let output = run_git(path, &args)?;
+    ensure_success("create the fixup commit", &output)
 }
 
 pub fn update_head_message(
@@ -2861,7 +2972,8 @@ pub fn update_head_message(
     skip_hooks: bool,
 ) -> Result<(), AppError> {
     validate_commit_oid(expected_oid)?;
-    if repository_operation_state(path)?.rebase_split.is_some() {
+    let operations = repository_operation_state(path)?;
+    if operations.rebase_split.is_some() {
         return Err(AppError::new(
             "rebaseSplitCommit",
             "Message-only amendment is unavailable during a guided split.",
@@ -2881,7 +2993,24 @@ pub fn update_head_message(
         args.push("--no-verify");
     }
     args.extend(["-m", message]);
-    run_mutation(path, &args, "update the commit message")
+    let update_message = || {
+        reviewed_commit_head(path, expected_oid, expected_branch)?;
+        run_mutation(path, &args, "update the commit message")
+    };
+    if !operations.merge
+        && !operations.rebase
+        && !operations.bisect
+        && operations.history.is_none()
+        && !operations.mail_patch
+    {
+        operation_recovery::with_preserved_operation(
+            path,
+            "Before commit-message amendment",
+            update_message,
+        )
+    } else {
+        update_message()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, specta::Type)]
@@ -2922,7 +3051,9 @@ fn reviewed_commit_head(
         let target = std::str::from_utf8(&symbolic.stdout)
             .map_err(|_| stale_commit_edit())?
             .trim_end_matches(['\r', '\n']);
-        let name = target.strip_prefix("refs/heads/").ok_or_else(stale_commit_edit)?;
+        let name = target
+            .strip_prefix("refs/heads/")
+            .ok_or_else(stale_commit_edit)?;
         if Some(name) != expected_branch {
             return Err(stale_commit_edit());
         }
@@ -3471,7 +3602,9 @@ pub fn remove_worktree(
                 AppError::new(
                     "worktreeRemovedBranchRemovalIncomplete",
                     "The worktree was removed, but its branch deletion did not complete.",
-                    Some("The original branch tip was saved in Recovery History. Refresh and review the current branch before deleting it separately."),
+                    Some(
+                        "The original branch tip was saved in Recovery History. Refresh and review the current branch before deleting it separately.",
+                    ),
                 )
             };
             if reference_tip(path, &reference).as_deref() != Some(tip.as_str()) {
@@ -3517,7 +3650,11 @@ pub fn checkout_commit_reviewed(
         ensure_success("read the current commit", &head)?;
     }
     let actual_head = if head.status.success() {
-        Some(std::str::from_utf8(&head.stdout).map_err(|_| stale())?.trim())
+        Some(
+            std::str::from_utf8(&head.stdout)
+                .map_err(|_| stale())?
+                .trim(),
+        )
     } else {
         None
     };
@@ -3578,7 +3715,9 @@ fn protect_branch_tip(
     let reference = format!("refs/heads/{name}");
     let tip = reference_tip(path, &reference);
     if let Some(expected) = expected_oid
-        && !tip.as_deref().is_some_and(|oid| oid.eq_ignore_ascii_case(expected))
+        && !tip
+            .as_deref()
+            .is_some_and(|oid| oid.eq_ignore_ascii_case(expected))
     {
         return Err(branch_delete_review_changed());
     }
@@ -3764,7 +3903,10 @@ pub fn integrate_branch_with_review(
         ensure_review_receiving_checkout(path, &receiving_ref, &review.receiving_oid)?;
         // Git consumes the actual reviewed object, never a source ref that
         // could resolve differently between the check and process startup.
-        (source_tip, Some((receiving_ref, review.receiving_oid.as_str())))
+        (
+            source_tip,
+            Some((receiving_ref, review.receiving_oid.as_str())),
+        )
     } else {
         (local_branch_ref_and_tip(path, name)?.0, None)
     };
@@ -4246,7 +4388,8 @@ fn interactive_rebase_tips_match(
     tips: &InteractiveRebaseTips,
 ) -> Result<bool, AppError> {
     Ok(interactive_rebase_tip(path, source_ref)? == tips.source_oid
-        && (source_ref == target_ref || interactive_rebase_tip(path, target_ref)? == tips.target_oid))
+        && (source_ref == target_ref
+            || interactive_rebase_tip(path, target_ref)? == tips.target_oid))
 }
 
 fn stale_interactive_rebase_tips() -> AppError {
@@ -4352,7 +4495,14 @@ pub fn execute_reviewed_interactive_rebase(
     tips: &InteractiveRebaseTips,
 ) -> Result<(), AppError> {
     execute_interactive_rebase_impl(
-        path, source, target, steps, selection, root, onto_oid, Some(tips),
+        path,
+        source,
+        target,
+        steps,
+        selection,
+        root,
+        onto_oid,
+        Some(tips),
     )
 }
 
@@ -4438,7 +4588,7 @@ fn execute_interactive_rebase_impl(
         validate_commit_oid(&step.oid)?;
         match step.action.as_str() {
             "drop" => {}
-            "squash" | "fixup" if !retained => {
+            "squash" | "fixup" | "fixup-reword" if !retained => {
                 return Err(AppError::new(
                     "invalidInteractiveRebase",
                     "Squash and Fixup need a preceding retained commit.",
@@ -4448,6 +4598,35 @@ fn execute_interactive_rebase_impl(
                 ));
             }
             "pick" | "edit" | "squash" | "fixup" => retained = true,
+            "fixup-reword" => {
+                let commit = plan
+                    .commits
+                    .iter()
+                    .find(|commit| commit.oid == step.oid)
+                    .ok_or_else(stale_interactive_rebase_tips)?;
+                let replacement = if commit.subject.starts_with("amend! ") {
+                    commit
+                        .message
+                        .split_once('\n')
+                        .map(|(_, body)| body.trim())
+                        .unwrap_or_default()
+                } else {
+                    commit.message.trim()
+                };
+                if replacement.is_empty()
+                    || replacement.len() > MAX_COMMIT_MESSAGE_BYTES
+                    || replacement.contains('\0')
+                {
+                    return Err(AppError::new(
+                        "invalidInteractiveRebase",
+                        "Fixup + message needs a non-empty replacement message within Git's message limit.",
+                        Some(
+                            "Edit the amend! commit message, or choose ordinary Fixup to retain the target message.",
+                        ),
+                    ));
+                }
+                retained = true;
+            }
             "reword" => {
                 let message = step.message.as_deref().unwrap_or_default().trim();
                 if message.is_empty()
@@ -4553,6 +4732,9 @@ fn execute_interactive_rebase_impl(
             "drop" => todo.push_str(&format!("drop {}\n", step.oid)),
             "squash" => todo.push_str(&format!("squash {}\n", step.oid)),
             "fixup" => todo.push_str(&format!("fixup {}\n", step.oid)),
+            // Git maps amend! commits to `fixup -C`, combining their tree
+            // while replacing the target message with the marked commit's.
+            "fixup-reword" => todo.push_str(&format!("fixup -C {}\n", step.oid)),
             "reword" => {
                 let message = step.message.as_deref().unwrap_or_default().trim();
                 let message_path = support_dir.join(format!("message-{index}.txt"));
@@ -5026,7 +5208,9 @@ fn require_unambiguous_pull_upstream(
         return Err(AppError::new(
             "multiplePullUpstreams",
             "More than one upstream branch is configured. Nothing was fetched or integrated.",
-            Some("Open this repository and review the destination in Pull options, or configure a single upstream before retrying the batch."),
+            Some(
+                "Open this repository and review the destination in Pull options, or configure a single upstream before retrying the batch.",
+            ),
         ));
     }
     Ok(())
@@ -5203,7 +5387,9 @@ fn push_to_remote_with_cancellation(
             return Err(AppError::new(
                 "stalePushHead",
                 "The local commit changed before Push could start. Nothing was sent.",
-                Some("Refresh the repository and review the outgoing commits before pushing again."),
+                Some(
+                    "Refresh the repository and review the outgoing commits before pushing again.",
+                ),
             ));
         }
         // Keep the refspec pinned even if another process moves HEAD after checking it.
@@ -6115,6 +6301,74 @@ pub fn drop_stash_checked(
     drop_stash_inner(path, reference, Some(expected_oid))
 }
 
+/// Remove all stash references only after every stash object has a durable
+/// Recovery History reference. The caller supplies the reviewed OID sequence
+/// so a stale confirmation can never clear a changed stash list.
+pub fn clear_stashes_checked(path: &Path, expected_oids: &[String]) -> Result<(), AppError> {
+    const MAX_STASHES_TO_CLEAR: usize = 500;
+    if expected_oids.len() > MAX_STASHES_TO_CLEAR {
+        return Err(AppError::new(
+            "tooManyStashes",
+            "The stash list is too large to clear safely in one operation.",
+            Some("Delete stashes individually or reduce the stash list first."),
+        ));
+    }
+    for oid in expected_oids {
+        validate_commit_oid(oid)?;
+    }
+    let stale = || {
+        AppError::new(
+            "staleStash",
+            "The stash list changed since it was reviewed.",
+            Some("Refresh the repository and review the complete stash list again."),
+        )
+    };
+    let entries = read_stashes(path)?;
+    if entries
+        .iter()
+        .map(|entry| entry.oid.as_str())
+        .ne(expected_oids.iter().map(String::as_str))
+    {
+        return Err(stale());
+    }
+    if entries.is_empty() {
+        return Ok(());
+    }
+
+    // Preserve each exact stash merge commit, including staged, unstaged and
+    // untracked parents, before deleting any reflog entries.
+    for (index, entry) in entries.iter().enumerate() {
+        let base = reference_tip(path, &format!("{}^1", entry.oid)).ok_or_else(stale)?;
+        let label = format!(
+            "Clear stash {}: {}",
+            index + 1,
+            entry.message.chars().take(384).collect::<String>()
+        );
+        operation_recovery::preserve_commits(path, &label, &base, Some(&entry.oid))?;
+    }
+
+    // Re-read after recovery records are installed and immediately before the
+    // destructive command. Captures are deliberately retained if this check
+    // fails; that is safer than attempting to clean them up on stale state.
+    let current = read_stashes(path)?;
+    if current
+        .iter()
+        .map(|entry| entry.oid.as_str())
+        .ne(expected_oids.iter().map(String::as_str))
+    {
+        return Err(stale());
+    }
+    run_mutation(path, &["stash", "clear"], "clear the stash list")?;
+    if !read_stashes(path)?.is_empty() {
+        return Err(AppError::new(
+            "stashClearIncomplete",
+            "Git did not clear the complete stash list.",
+            Some("The original stash objects were preserved in Recovery History."),
+        ));
+    }
+    Ok(())
+}
+
 fn drop_stash_inner(
     path: &Path,
     reference: &str,
@@ -6501,7 +6755,9 @@ pub fn control_history_operation(
         "skip" => ("--skip", Some(RecoveryReset::HistorySkip)),
         "abort" => (
             "--abort",
-            Some(RecoveryReset::HistoryAbort { native_sequencer: true }),
+            Some(RecoveryReset::HistoryAbort {
+                native_sequencer: true,
+            }),
         ),
         _ => {
             return Err(AppError::new(
@@ -6597,7 +6853,10 @@ fn start_bisect_at(
     }
     if !no_checkout
         && merge_checkout_guard::ensure_bisect_start_preserves_ignored_files(
-            path, bad_oid, good_oid, first_parent,
+            path,
+            bad_oid,
+            good_oid,
+            first_parent,
         )?
     {
         ensure_available()?;
@@ -6644,12 +6903,16 @@ pub struct BisectCandidate {
 }
 
 fn read_bisect_terms(path: &Path, directory: &Path) -> Result<Option<BisectTerms>, AppError> {
-    let unavailable = || AppError::new(
-        "bisectTermsUnavailable",
-        "Git's bisect terms could not be verified. No vote was recorded.",
-        Some("Inspect the session with git bisect terms, or reset the search."),
-    );
-    let Some(data) = operation_storage::read_bounded(directory, "BISECT_TERMS", 8 * 1024, unavailable)? else {
+    let unavailable = || {
+        AppError::new(
+            "bisectTermsUnavailable",
+            "Git's bisect terms could not be verified. No vote was recorded.",
+            Some("Inspect the session with git bisect terms, or reset the search."),
+        )
+    };
+    let Some(data) =
+        operation_storage::read_bounded(directory, "BISECT_TERMS", 8 * 1024, unavailable)?
+    else {
         // Git may not create this file until a boundary has been marked.
         return Ok(None);
     };
@@ -6671,18 +6934,33 @@ fn read_bisect_terms(path: &Path, directory: &Path) -> Result<Option<BisectTerms
             || term.chars().any(char::is_control)
             || matches!(
                 term,
-                "start" | "skip" | "next" | "reset" | "replay" | "log" | "run"
-                    | "visualize" | "view" | "terms" | "help"
+                "start"
+                    | "skip"
+                    | "next"
+                    | "reset"
+                    | "replay"
+                    | "log"
+                    | "run"
+                    | "visualize"
+                    | "view"
+                    | "terms"
+                    | "help"
             )
         {
             return Err(unavailable());
         }
         let name = format!("refs/bisect/{term}");
-        if !run_git(path, &["check-ref-format", &name])?.status.success() {
+        if !run_git(path, &["check-ref-format", &name])?
+            .status
+            .success()
+        {
             return Err(unavailable());
         }
     }
-    Ok(Some(BisectTerms { old: old.to_owned(), new: new.to_owned() }))
+    Ok(Some(BisectTerms {
+        old: old.to_owned(),
+        new: new.to_owned(),
+    }))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
@@ -6701,7 +6979,9 @@ pub enum BisectResult {
 
 fn parse_bisect_result_record<'a>(line: &'a [u8], expected_term: &str) -> Option<&'a str> {
     let delimiter = b" commit: [";
-    let split = line.windows(delimiter.len()).position(|part| part == delimiter)?;
+    let split = line
+        .windows(delimiter.len())
+        .position(|part| part == delimiter)?;
     let after = &line[split + delimiter.len()..];
     let end = after.iter().position(|byte| *byte == b']')?;
     let term = std::str::from_utf8(&line[..split]).ok()?;
@@ -6723,16 +7003,20 @@ fn bisect_ref_matches(path: &Path, name: &str, oid: &str) -> Result<bool, AppErr
 }
 
 fn read_bisect_result(path: &Path) -> Result<Option<BisectResult>, AppError> {
-    let unavailable = || AppError::new(
-        "bisectLogUnavailable",
-        "The bisect log could not be read within its supported bounds.",
-        Some("Inspect the result with git bisect log or reset the search."),
-    );
-    let inconsistent = || AppError::new(
-        "bisectResultUnverified",
-        "The final bisect log records do not match the current Git result.",
-        Some("Refresh after other Git operations finish, or reset the search."),
-    );
+    let unavailable = || {
+        AppError::new(
+            "bisectLogUnavailable",
+            "The bisect log could not be read within its supported bounds.",
+            Some("Inspect the result with git bisect log or reset the search."),
+        )
+    };
+    let inconsistent = || {
+        AppError::new(
+            "bisectResultUnverified",
+            "The final bisect log records do not match the current Git result.",
+            Some("Refresh after other Git operations finish, or reset the search."),
+        )
+    };
     let marker = operation_storage::git_entry(path, "BISECT_LOG")?;
     let directory = marker.parent().ok_or_else(unavailable)?;
     let log = operation_storage::read_bounded(directory, "BISECT_LOG", 256 * 1024, unavailable)?
@@ -6760,7 +7044,11 @@ fn read_bisect_result(path: &Path) -> Result<Option<BisectResult>, AppError> {
     let prefix = b"# possible first ";
     let header = b"# only skipped commits left to test";
     let Some(record) = last.strip_prefix(prefix) else {
-        return if last == header { Err(inconsistent()) } else { Ok(None) };
+        return if last == header {
+            Err(inconsistent())
+        } else {
+            Ok(None)
+        };
     };
     let term = active_term()?;
     let last_oid = parse_bisect_result_record(record, &term).ok_or_else(inconsistent)?;
@@ -6785,10 +7073,17 @@ fn read_bisect_result(path: &Path) -> Result<Option<BisectResult>, AppError> {
     // repositories. Each result must still be either skipped or the new tip.
     let refs = run_git(
         path,
-        &["for-each-ref", "--format=%(objectname)%09%(refname)", "refs/bisect/"],
+        &[
+            "for-each-ref",
+            "--format=%(objectname)%09%(refname)",
+            "refs/bisect/",
+        ],
     )?;
     ensure_success("verify possible bisect results", &refs)?;
-    let refs = refs.stdout.split(|byte| *byte == b'\n').collect::<HashSet<_>>();
+    let refs = refs
+        .stdout
+        .split(|byte| *byte == b'\n')
+        .collect::<HashSet<_>>();
     let boundary = format!("refs/bisect/{term}");
     if !possible_oids.iter().all(|oid| {
         refs.contains(format!("{oid}\trefs/bisect/skip-{oid}").as_bytes())
@@ -6816,16 +7111,20 @@ fn add_bisect_progress(path: &Path, status: &mut RepositoryStatus) {
 }
 
 fn read_bisect_candidate(path: &Path) -> Result<BisectCandidate, AppError> {
-    let unavailable = || AppError::new(
-        "bisectCandidateUnavailable",
-        "Git could not verify the current bisect candidate.",
-        Some("Refresh the repository before classifying a commit."),
-    );
+    let unavailable = || {
+        AppError::new(
+            "bisectCandidateUnavailable",
+            "Git could not verify the current bisect candidate.",
+            Some("Refresh the repository before classifying a commit."),
+        )
+    };
     let marker = operation_storage::git_entry(path, "BISECT_FIRST_PARENT")?;
     let directory = marker.parent().ok_or_else(unavailable)?;
     let terms = read_bisect_terms(path, directory)?;
     let first_parent =
-        match operation_storage::read_bounded(directory, "BISECT_FIRST_PARENT", 1, unavailable)?.as_deref() {
+        match operation_storage::read_bounded(directory, "BISECT_FIRST_PARENT", 1, unavailable)?
+            .as_deref()
+        {
             None => false,
             Some(b"\n") => true,
             _ => return Err(unavailable()),
@@ -6837,14 +7136,21 @@ fn read_bisect_candidate(path: &Path) -> Result<BisectCandidate, AppError> {
         validate_commit_oid(&oid).map_err(|_| unavailable())?;
         (oid, false)
     };
-    Ok(BisectCandidate { oid, no_checkout, first_parent, terms })
+    Ok(BisectCandidate {
+        oid,
+        no_checkout,
+        first_parent,
+        terms,
+    })
 }
 
 fn scripted_bisect(path: &Path) -> Result<bool, AppError> {
     let version = run_git(path, &["version"])?;
     Ok(parse_git_version(&version.stdout).is_some_and(|version| {
         let mut parts = version.split('.');
-        let release = parts.next().and_then(|major| major.parse::<u32>().ok())
+        let release = parts
+            .next()
+            .and_then(|major| major.parse::<u32>().ok())
             .zip(parts.next().and_then(|minor| minor.parse::<u32>().ok()));
         release.is_some_and(|release| release < (2, 40))
     }))
@@ -6901,7 +7207,11 @@ pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Re
     verify_review()?;
     if merge_checkout_guard::ensure_bisect_vote_preserves_ignored_files(path, expected, verdict)? {
         if !repository_operation_state(path)?.bisect {
-            return Err(AppError::new("bisectNotInProgress", "No bisect session is in progress.", None));
+            return Err(AppError::new(
+                "bisectNotInProgress",
+                "No bisect session is in progress.",
+                None,
+            ));
         }
         verify_review()?;
     }
@@ -6918,7 +7228,9 @@ pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Re
             return Err(AppError::new(
                 "bisectOptionTermUnsupported",
                 "This Git cannot use the selected option-shaped bisect term. No vote was recorded.",
-                Some("Use newer Git, or reset and restart with terms that do not begin with a hyphen."),
+                Some(
+                    "Use newer Git, or reset and restart with terms that do not begin with a hyphen.",
+                ),
             ));
         }
         run_git(path, &["bisect", "--", term, &expected.oid])?
@@ -6928,7 +7240,10 @@ pub fn mark_bisect(path: &Path, verdict: &str, expected: &BisectCandidate) -> Re
     // Git can record the vote but return 2 because only skipped revisions
     // remain. Accept this outcome only when both pieces of native state agree.
     if output.status.code() == Some(2)
-        && matches!(read_bisect_result(path), Ok(Some(BisectResult::Ambiguous { .. })))
+        && matches!(
+            read_bisect_result(path),
+            Ok(Some(BisectResult::Ambiguous { .. }))
+        )
     {
         let recorded_ref = if verdict == "bad" {
             term.to_owned()
@@ -8180,7 +8495,11 @@ fn read_working_tree_patch(
     staged: bool,
 ) -> Result<(WorkingTreeEntry, Output), AppError> {
     let entry = validate_worktree_path(path, file)?;
-    let status = if staged { &entry.index_status } else { &entry.worktree_status };
+    let status = if staged {
+        &entry.index_status
+    } else {
+        &entry.worktree_status
+    };
     if status == "R" {
         return Err(AppError::new(
             "wholeRenameRequired",
@@ -8354,43 +8673,50 @@ fn select_patch_lines_with_context(
     }
     let mut old_end = false;
     let mut new_end = false;
-    let mut emit = |(text, notice): (&str, Option<&str>), as_context: bool| -> Result<(), AppError> {
-        let prefix = if as_context { b' ' } else { text.as_bytes()[0] };
-        let old = prefix != b'+';
-        let new = prefix != b'-';
-        if (old && old_end) || (new && new_end) {
-            return Err(AppError::new(
-                "partialFinalNewline",
-                "That selection would join lines at the end of the file.",
-                Some("Select the neighbouring final lines together, or use the whole hunk."),
-            ));
-        }
-        if as_context {
-            output.push(' ');
-            output.push_str(&text[1..]);
-        } else {
-            output.push_str(text);
-        }
-        if let Some(notice) = notice {
-            output.push_str(notice);
-            old_end |= old;
-            new_end |= new;
-        }
-        Ok(())
-    };
+    let mut emit =
+        |(text, notice): (&str, Option<&str>), as_context: bool| -> Result<(), AppError> {
+            let prefix = if as_context { b' ' } else { text.as_bytes()[0] };
+            let old = prefix != b'+';
+            let new = prefix != b'-';
+            if (old && old_end) || (new && new_end) {
+                return Err(AppError::new(
+                    "partialFinalNewline",
+                    "That selection would join lines at the end of the file.",
+                    Some("Select the neighbouring final lines together, or use the whole hunk."),
+                ));
+            }
+            if as_context {
+                output.push(' ');
+                output.push_str(&text[1..]);
+            } else {
+                output.push_str(text);
+            }
+            if let Some(notice) = notice {
+                output.push_str(notice);
+                old_end |= old;
+                new_end |= new;
+            }
+            Ok(())
+        };
     let mut index = 0;
     let mut change_index = 0;
     let mut seen = 0;
     while index < body.len() {
         if body[index].0.starts_with('-') {
             let mut deletions = Vec::new();
-            while body.get(index).is_some_and(|(line, _)| line.starts_with('-')) {
+            while body
+                .get(index)
+                .is_some_and(|(line, _)| line.starts_with('-'))
+            {
                 deletions.push((body[index], change_index));
                 change_index += 1;
                 index += 1;
             }
             let mut additions = Vec::new();
-            while body.get(index).is_some_and(|(line, _)| line.starts_with('+')) {
+            while body
+                .get(index)
+                .is_some_and(|(line, _)| line.starts_with('+'))
+            {
                 additions.push((body[index], change_index));
                 change_index += 1;
                 index += 1;
@@ -8405,11 +8731,14 @@ fn select_patch_lines_with_context(
                     seen += usize::from(selected.contains(&deletions[pair].1));
                     seen += usize::from(selected.contains(&additions[pair].1));
                 } else {
-                    emit(if reverse_context {
-                        additions[pair].0
-                    } else {
-                        deletions[pair].0
-                    }, true)?;
+                    emit(
+                        if reverse_context {
+                            additions[pair].0
+                        } else {
+                            deletions[pair].0
+                        },
+                        true,
+                    )?;
                 }
             }
             for (line, line_index) in &deletions[pairs..] {
@@ -8623,15 +8952,18 @@ fn parse_numstat(
 ) -> std::collections::HashMap<String, (Option<usize>, Option<usize>)> {
     numstat_entries(output)
         .map(|(path, additions, deletions)| {
-            (String::from_utf8_lossy(path).into_owned(), (additions, deletions))
+            (
+                String::from_utf8_lossy(path).into_owned(),
+                (additions, deletions),
+            )
         })
         .collect()
 }
 
-fn numstat_entries(
-    output: &[u8],
-) -> impl Iterator<Item = (&[u8], Option<usize>, Option<usize>)> {
-    let mut records = output.split(|byte| *byte == 0).filter(|record| !record.is_empty());
+fn numstat_entries(output: &[u8]) -> impl Iterator<Item = (&[u8], Option<usize>, Option<usize>)> {
+    let mut records = output
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty());
     std::iter::from_fn(move || {
         loop {
             let record = records.next()?;
@@ -8639,7 +8971,9 @@ fn numstat_entries(
             let mut fields = record.splitn(3, |byte| *byte == b'\t');
             let additions = fields.next().and_then(parse_numstat_count);
             let deletions = fields.next().and_then(parse_numstat_count);
-            let Some(inline_path) = fields.next() else { continue };
+            let Some(inline_path) = fields.next() else {
+                continue;
+            };
             let path = if inline_path.is_empty() {
                 // NUL-delimited rename records carry separate old and new paths.
                 records.next()?;
@@ -8918,20 +9252,22 @@ fn read_status_with_limit_mode(
 
 fn porcelain_status_records(stdout: &[u8]) -> impl Iterator<Item = (&[u8], Option<&[u8]>)> {
     let mut records = stdout.split(|byte| *byte == 0);
-    std::iter::from_fn(move || loop {
-        let record = records.next()?;
-        if record.is_empty() {
-            continue;
+    std::iter::from_fn(move || {
+        loop {
+            let record = records.next()?;
+            if record.is_empty() {
+                continue;
+            }
+            let previous = if record.len() >= 3
+                && !record.starts_with(b"## ")
+                && record[..2].iter().any(|code| matches!(code, b'R' | b'C'))
+            {
+                records.next()
+            } else {
+                None
+            };
+            return Some((record, previous));
         }
-        let previous = if record.len() >= 3
-            && !record.starts_with(b"## ")
-            && record[..2].iter().any(|code| matches!(code, b'R' | b'C'))
-        {
-            records.next()
-        } else {
-            None
-        };
-        return Some((record, previous));
     })
 }
 
@@ -8984,7 +9320,9 @@ fn parse_porcelain_status(
                         .and_then(|previous| std::str::from_utf8(previous).ok())
                         .filter(|previous| !previous.is_empty())
                         .map(str::to_owned)
-                } else { None },
+                } else {
+                    None
+                },
                 index_status: x.to_string(),
                 worktree_status: y.to_string(),
                 conflicted,
@@ -9464,7 +9802,9 @@ fn read_lfs_info(path: &Path) -> LfsInfo {
         // Recognize repository intent before probing the optional executable.
         // A stalled helper must not hide a configured repository's LFS section.
         let enabled = lfs_enabled(path);
-        git_cancellation::inspect_within(LFS_SNAPSHOT_BUDGET, || read_bounded_lfs_info(path, enabled))
+        git_cancellation::inspect_within(LFS_SNAPSHOT_BUDGET, || {
+            read_bounded_lfs_info(path, enabled)
+        })
     })
 }
 
@@ -10334,12 +10674,7 @@ fn repository_operation_state(path: &Path) -> Result<RepositoryOperationState, A
         revert_head_present: directory.join("REVERT_HEAD").is_file(),
         rebase: merge_rebase || apply_rebase,
         rebase_edit,
-        rebase_split: rebase_split::inspect(
-            path,
-            directory,
-            merge_rebase,
-            rebase_edit,
-        )?,
+        rebase_split: rebase_split::inspect(path, directory, merge_rebase, rebase_edit)?,
         mail_patch: directory.join("rebase-apply/applying").is_file(),
         bisect: directory.join("BISECT_START").is_file(),
     })
@@ -10895,7 +11230,11 @@ fn run_git_with_stdout_limit_and_cancellation(
         .stderr(Stdio::piped());
     configure_process_tree(&mut command);
     let default = CancellationToken::default();
-    run_cancellable_command_with_stdout_limit(command, cancellation.unwrap_or(&default), Some(limit))
+    run_cancellable_command_with_stdout_limit(
+        command,
+        cancellation.unwrap_or(&default),
+        Some(limit),
+    )
 }
 
 fn run_git_with_input(
@@ -11138,7 +11477,10 @@ mod tests {
         assert_eq!(opened, bare.canonicalize().unwrap());
         assert!(is_explicit_bare_repository(&opened));
         let watch = repository_watch_paths(&opened).unwrap();
-        assert_eq!(watch.non_recursive.as_slice(), std::slice::from_ref(&opened));
+        assert_eq!(
+            watch.non_recursive.as_slice(),
+            std::slice::from_ref(&opened)
+        );
         assert_eq!(watch.recursive, [opened.join("refs")]);
         assert!(resolve_repository(&bare.join("objects")).is_err());
     }
@@ -11275,7 +11617,9 @@ mod tests {
         let bin = fixture.path.join("bin");
         fs::create_dir(&bin).unwrap();
         let helper = bin.join("git-lfs");
-        fs::write(&helper, r#"#!/bin/sh
+        fs::write(
+            &helper,
+            r#"#!/bin/sh
 case "$1" in
   version)
     if [ "$GIT_KHRONOS_OWNED_SLOW_LFS_MODE" = version ]; then
@@ -11291,20 +11635,33 @@ case "$1" in
     ;;
   *) exit 1 ;;
 esac
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
-        let path = std::env::join_paths(std::iter::once(bin).chain(
-            std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-        )).unwrap();
+        let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))
+        .unwrap();
         for mode in ["version", "listing"] {
             let result = Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", "tests::lfs_snapshot_budget_settles_with_a_stalled_version_or_listing", "--nocapture"])
+                .args([
+                    "--exact",
+                    "tests::lfs_snapshot_budget_settles_with_a_stalled_version_or_listing",
+                    "--nocapture",
+                ])
                 .env("PATH", &path)
                 .env(MODE, mode)
                 .env(MARKER, fixture.path.join(mode))
-                .output().unwrap();
-            assert!(result.status.success(), "{}: {}{}", mode,
-                String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}: {}{}",
+                mode,
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
         }
     }
 
@@ -11332,7 +11689,10 @@ esac
         assert_eq!(info.tracked_files, Some(2));
         assert_eq!(info.pointer_files, Some(1));
         assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
-        assert_eq!(fs::read_to_string(repository.path.join("ordinary.bin")).unwrap(), pointer);
+        assert_eq!(
+            fs::read_to_string(repository.path.join("ordinary.bin")).unwrap(),
+            pointer
+        );
     }
 
     #[test]
@@ -12950,7 +13310,11 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         let merge = run_git(&repository.path, &["merge", "--no-edit", "side"]).unwrap();
         assert!(!merge.status.success());
         let before = repository.git_output(&["ls-files", "--unmerged", "--", "search-1.txt"]);
-        assert_eq!(before.lines().count(), 3, "fixture must have three index stages");
+        assert_eq!(
+            before.lines().count(),
+            3,
+            "fixture must have three index stages"
+        );
 
         let two = search_tracked_files(&repository.path, "search-", 2).unwrap();
         assert_eq!(two.paths, ["search-1.txt", "search-2.txt"]);
@@ -13445,6 +13809,65 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             vec!["One", "Renamed Two"]
         );
         assert!(!repository.path.join(".git/git-khronos-rebase").exists());
+    }
+
+    #[test]
+    fn autosquash_amend_marker_replaces_the_target_message_and_keeps_both_trees() {
+        let repository = TestRepository::new();
+        repository.write("root.txt", "root\n");
+        stage_all(&repository.path).expect("stage root");
+        commit(&repository.path, "Root").expect("commit root");
+        create_branch(&repository.path, "feature").expect("create feature");
+
+        repository.write("target.txt", "target\n");
+        stage_all(&repository.path).expect("stage target");
+        commit(&repository.path, "Target title").expect("commit target");
+        repository.write("amend.txt", "amend payload\n");
+        stage_all(&repository.path).expect("stage amend payload");
+        repository.git(&[
+            "commit",
+            "-m",
+            "amend! Target title",
+            "-m",
+            "Replacement subject",
+            "-m",
+            "Replacement body",
+        ]);
+        let plan = prepare_interactive_rebase(&repository.path, "feature", "main")
+            .expect("prepare rebase");
+        assert_eq!(plan.commits.len(), 2);
+        assert_eq!(plan.commits[1].subject, "amend! Target title");
+        let steps = vec![
+            InteractiveRebaseStep {
+                oid: plan.commits[0].oid.clone(),
+                action: "pick".into(),
+                message: None,
+            },
+            InteractiveRebaseStep {
+                oid: plan.commits[1].oid.clone(),
+                action: "fixup-reword".into(),
+                message: None,
+            },
+        ];
+
+        execute_interactive_rebase(&repository.path, "feature", "main", &steps)
+            .expect("execute amend autosquash");
+
+        let message = run_git(&repository.path, &["show", "-s", "--format=%B", "feature"])
+            .expect("read rewritten message");
+        assert!(message.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&message.stdout).trim(),
+            "Replacement subject\n\nReplacement body"
+        );
+        assert_eq!(
+            fs::read_to_string(repository.path.join("target.txt")).unwrap(),
+            "target\n"
+        );
+        assert_eq!(
+            fs::read_to_string(repository.path.join("amend.txt")).unwrap(),
+            "amend payload\n"
+        );
     }
 
     #[test]
@@ -15077,7 +15500,10 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             .output()
             .expect("read actual remote tip");
         assert!(remote_head.status.success());
-        assert_eq!(String::from_utf8_lossy(&remote_head.stdout).trim(), reviewed);
+        assert_eq!(
+            String::from_utf8_lossy(&remote_head.stdout).trim(),
+            reviewed
+        );
 
         let current = repository.git_output(&["rev-parse", "HEAD"]);
         push_to_remote_at_head_cancellable(
@@ -15136,7 +15562,11 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             let path = PathBuf::from(path);
             let expected = std::env::var("KHRONOS_REVIEWED_PUSH_EXPECTED").unwrap();
             push_to_remote_at_head_cancellable(
-                &path, "origin", "reviewed", &expected, &CancellationToken::default(),
+                &path,
+                "origin",
+                "reviewed",
+                &expected,
+                &CancellationToken::default(),
             )
             .unwrap();
             return;
@@ -15171,28 +15601,46 @@ fi
 exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
 "#).unwrap();
         fs::set_permissions(git, fs::Permissions::from_mode(0o700)).unwrap();
-        let real = Command::new("sh").args(["-c", "command -v git"]).output().unwrap();
+        let real = Command::new("sh")
+            .args(["-c", "command -v git"])
+            .output()
+            .unwrap();
         assert!(real.status.success());
-        let search = std::env::join_paths(
-            std::iter::once(bin)
-                .chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())),
-        )
+        let search = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        )))
         .unwrap();
         let child = Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "tests::reviewed_push_keeps_its_source_when_head_moves_after_preflight"])
+            .args([
+                "--exact",
+                "tests::reviewed_push_keeps_its_source_when_head_moves_after_preflight",
+            ])
             .env("PATH", search)
             .env(FIXTURE, &repository.path)
-            .env("KHRONOS_REVIEWED_PUSH_REAL_GIT", String::from_utf8_lossy(&real.stdout).trim())
+            .env(
+                "KHRONOS_REVIEWED_PUSH_REAL_GIT",
+                String::from_utf8_lossy(&real.stdout).trim(),
+            )
             .env("KHRONOS_REVIEWED_PUSH_EXPECTED", expected)
             .env("KHRONOS_REVIEWED_PUSH_LATER", later)
             .output()
             .unwrap();
-        assert!(child.status.success(), "{}", String::from_utf8_lossy(&child.stdout));
+        assert!(
+            child.status.success(),
+            "{}",
+            String::from_utf8_lossy(&child.stdout)
+        );
         let remote_head = repository.git_output(&[
-            "--git-dir", remote.to_str().unwrap(), "rev-parse", "refs/heads/reviewed",
+            "--git-dir",
+            remote.to_str().unwrap(),
+            "rev-parse",
+            "refs/heads/reviewed",
         ]);
-        assert_eq!(repository.git_output(&["rev-parse", "HEAD"]).trim(), later,
-            "the shim must really move HEAD before running push");
+        assert_eq!(
+            repository.git_output(&["rev-parse", "HEAD"]).trim(),
+            later,
+            "the shim must really move HEAD before running push"
+        );
         assert_eq!(remote_head.trim(), expected);
     }
 
@@ -15760,13 +16208,21 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
 
         let comparison = compare_commit_with_working_tree(&repository.path, base.trim()).unwrap();
         assert!(comparison.line_totals_partial);
-        let find = |path: &str| comparison.files.iter().find(|file| file.path == path).unwrap();
+        let find = |path: &str| {
+            comparison
+                .files
+                .iter()
+                .find(|file| file.path == path)
+                .unwrap()
+        };
         assert_eq!(find("a-large.txt").additions, None);
         assert_eq!(find("z-small.txt").additions, Some(2));
         assert_eq!(find("z-small.txt").deletions, Some(0));
         assert_eq!(repository.git_output(&["rev-parse", "HEAD"]), base);
         assert_eq!(
-            fs::metadata(repository.path.join("a-large.txt")).unwrap().len(),
+            fs::metadata(repository.path.join("a-large.txt"))
+                .unwrap()
+                .len(),
             17 * 1024 * 1024,
         );
     }
@@ -18375,7 +18831,11 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         };
         let unstaged = patch(false);
         assert_eq!(unstaged.matches("\\ No newline at end of file").count(), 2);
-        let index_bytes = || run_git(&repository.path, &["show", ":eof.txt"]).unwrap().stdout;
+        let index_bytes = || {
+            run_git(&repository.path, &["show", ":eof.txt"])
+                .unwrap()
+                .stdout
+        };
 
         apply_working_tree_lines_with_preview(
             &repository.path,
@@ -18461,7 +18921,11 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         repository.write("heading.txt", changed);
         let preview = working_tree_file_diff(&repository.path, "heading.txt", false).unwrap();
         assert!(preview.patch.contains("--- old heading\n+++ new heading\n"));
-        assert!(preview.patch.contains("+new tail\n\\ No newline at end of file"));
+        assert!(
+            preview
+                .patch
+                .contains("+new tail\n\\ No newline at end of file")
+        );
 
         apply_working_tree_lines_with_preview(
             &repository.path,
@@ -18475,7 +18939,10 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         .expect("stage only the reviewed tail change");
         let staged = run_git(&repository.path, &["show", ":heading.txt"]).unwrap();
         assert!(staged.status.success());
-        assert_eq!(staged.stdout, b"-- old heading\nkeep one\nkeep two\nnew tail");
+        assert_eq!(
+            staged.stdout,
+            b"-- old heading\nkeep one\nkeep two\nnew tail"
+        );
         assert_eq!(
             fs::read(repository.path.join("heading.txt")).unwrap(),
             changed.as_bytes()
@@ -18608,6 +19075,207 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         assert_eq!(amended.commits.len(), 1);
         assert_eq!(amended.commits[0].subject, "Amended message");
         assert_ne!(amended.head_oid.as_deref(), Some(original_oid.as_str()));
+
+        let recovery = operation_recoveries(&repository.path)
+            .expect("list amendment recovery")
+            .into_iter()
+            .find(|record| record.label == "Before amended commit")
+            .expect("protect the previous commit and staged changes");
+        assert_eq!(recovery.head_oid, original_oid);
+        assert!(recovery.snapshot_oid.is_some());
+        restore_operation_branch(&repository.path, &recovery.id, "amend-recovery")
+            .expect("restore the original commit and staged changes");
+        assert_eq!(
+            snapshot(&repository.path)
+                .expect("snapshot recovered branch")
+                .head_oid
+                .as_deref(),
+            Some(original_oid.as_str())
+        );
+        assert_eq!(
+            read_status(&repository.path)
+                .expect("read restored changes")
+                .staged,
+            1
+        );
+        assert_eq!(
+            fs::read_to_string(repository.path.join("README.md")).expect("read restored file"),
+            "amended\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refused_amendment_retires_recovery_when_git_keeps_the_original_state() {
+        let repository = TestRepository::new();
+        repository.write("README.md", "before\n");
+        stage_all(&repository.path).expect("stage initial file");
+        commit(&repository.path, "Initial message").expect("create initial commit");
+        let original_head = snapshot(&repository.path)
+            .expect("snapshot original")
+            .head_oid
+            .expect("read original HEAD");
+        repository.write("README.md", "staged amendment\n");
+        stage_all(&repository.path).expect("stage amendment");
+
+        let hooks = repository.path.join("amend-hooks");
+        fs::create_dir(&hooks).expect("create isolated hooks directory");
+        let hook = hooks.join("pre-commit");
+        fs::write(&hook, "#!/bin/sh\necho refusal >&2\nexit 1\n").expect("write refusing hook");
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&hook, fs::Permissions::from_mode(0o700))
+            .expect("make refusing hook executable");
+        repository.git(&["config", "core.hooksPath", hooks.to_str().unwrap()]);
+
+        let error = commit_with_options(&repository.path, "Refused amendment", true, false, None)
+            .expect_err("hook should refuse amendment");
+        assert_eq!(error.kind, "gitFailure");
+        assert_eq!(
+            snapshot(&repository.path)
+                .expect("snapshot retained HEAD")
+                .head_oid
+                .as_deref(),
+            Some(original_head.as_str())
+        );
+        assert_eq!(
+            read_status(&repository.path)
+                .expect("read retained staged state")
+                .staged,
+            1
+        );
+        assert!(
+            operation_recoveries(&repository.path)
+                .expect("list recoveries")
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verification_hook_refuses_commit_until_user_explicitly_skips_hooks() {
+        let repository = TestRepository::new();
+        repository.write("hooked.txt", "staged work\n");
+        stage_all(&repository.path).expect("stage hook fixture");
+
+        let hooks = repository.path.join("custom-hooks");
+        fs::create_dir(&hooks).expect("create isolated hook directory");
+        let marker = repository.path.join("hook-invocations");
+        let hook = hooks.join("pre-commit");
+        fs::write(
+            &hook,
+            format!(
+                "#!/bin/sh\nprintf 'invoked\\n' >> '{}'\nprintf 'required verification failed\\n' >&2\nexit 1\n",
+                marker.display()
+            ),
+        )
+        .expect("write refusing verification hook");
+        let mut permissions = fs::metadata(&hook)
+            .expect("read hook permissions")
+            .permissions();
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(0o700);
+        fs::set_permissions(&hook, permissions).expect("make verification hook executable");
+        repository.git(&["config", "core.hooksPath", hooks.to_str().unwrap()]);
+
+        let refused = commit_with_options(&repository.path, "Verified commit", false, false, None)
+            .expect_err("Git verification hook must refuse the initial commit");
+        assert_eq!(refused.kind, "gitFailure");
+        assert!(
+            snapshot(&repository.path)
+                .expect("inspect refused commit")
+                .head_oid
+                .is_none()
+        );
+        assert_eq!(snapshot(&repository.path).unwrap().status.staged, 1);
+        assert_eq!(fs::read_to_string(&marker).unwrap(), "invoked\n");
+
+        commit_with_options(
+            &repository.path,
+            "Explicitly bypassed commit",
+            false,
+            true,
+            None,
+        )
+        .expect("explicit skip-hooks choice should bypass Git verification hooks");
+        assert_eq!(fs::read_to_string(&marker).unwrap(), "invoked\n");
+        let committed = snapshot(&repository.path).expect("inspect explicit commit");
+        assert_eq!(committed.commits[0].subject, "Explicitly bypassed commit");
+        assert_eq!(committed.status.staged, 0);
+    }
+
+    #[test]
+    fn creates_a_fixup_commit_only_for_the_reviewed_ancestor_and_staged_changes() {
+        let repository = TestRepository::new();
+        repository.write("target.txt", "target\n");
+        stage_all(&repository.path).expect("stage target");
+        commit(&repository.path, "Target commit").expect("create target");
+        let before = snapshot(&repository.path).expect("snapshot target");
+        let target_oid = before.head_oid.clone().expect("target oid");
+        repository.write("fixup.txt", "correction\n");
+        stage_all(&repository.path).expect("stage correction");
+
+        create_fixup_commit(
+            &repository.path,
+            &CommitFixupTarget {
+                oid: target_oid.clone(),
+                expected_head_oid: target_oid.clone(),
+                expected_branch: before.status.branch.clone(),
+            },
+            false,
+            Some(false),
+        )
+        .expect("create fixup");
+
+        let after = snapshot(&repository.path).expect("snapshot fixup");
+        assert_ne!(after.head_oid.as_deref(), Some(target_oid.as_str()));
+        assert_eq!(after.commits[0].subject, "fixup! Target commit");
+        assert_eq!(after.commits[0].parents, vec![target_oid.clone()]);
+        assert_eq!(
+            fs::read_to_string(repository.path.join("fixup.txt")).unwrap(),
+            "correction\n"
+        );
+        assert_eq!(after.status.staged, 0);
+    }
+
+    #[test]
+    fn fixup_refuses_stale_checkout_or_missing_staged_changes_without_mutation() {
+        let repository = TestRepository::new();
+        repository.write("target.txt", "target\n");
+        stage_all(&repository.path).expect("stage target");
+        commit(&repository.path, "Target commit").expect("create target");
+        let before = snapshot(&repository.path).expect("snapshot target");
+        let target_oid = before.head_oid.clone().expect("target oid");
+        let request = CommitFixupTarget {
+            oid: target_oid.clone(),
+            expected_head_oid: target_oid.clone(),
+            expected_branch: before.status.branch.clone(),
+        };
+        let no_changes = create_fixup_commit(&repository.path, &request, false, Some(false))
+            .expect_err("unstaged-only fixup must refuse");
+        assert_eq!(no_changes.kind, "noStagedChanges");
+
+        repository.git(&["commit", "--allow-empty", "-m", "Advance checkout"]);
+        let head_after_advance = snapshot(&repository.path)
+            .expect("read advanced head")
+            .head_oid;
+        repository.write("staged.txt", "staged\n");
+        stage_all(&repository.path).expect("stage later work");
+        let stale = create_fixup_commit(&repository.path, &request, false, Some(false))
+            .expect_err("changed HEAD must refuse before committing");
+        assert_eq!(stale.kind, "staleCommit");
+        assert_eq!(
+            snapshot(&repository.path)
+                .expect("confirm preserved state")
+                .head_oid,
+            head_after_advance
+        );
+        assert_eq!(
+            snapshot(&repository.path)
+                .expect("confirm staged state")
+                .status
+                .staged,
+            1
+        );
     }
 
     #[test]
@@ -19002,8 +19670,14 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
     fn completed_bisect_reports_the_native_result_instead_of_accepting_another_vote() {
         for (opts, term) in [
             (&[][..], "bad"),
-            (&["--no-checkout", "--term-old=fast", "--term-new=slow"][..], "slow"),
-            (&["--no-checkout", "--term-old=fast", "--term-new='slow'"][..], "'slow'"),
+            (
+                &["--no-checkout", "--term-old=fast", "--term-new=slow"][..],
+                "slow",
+            ),
+            (
+                &["--no-checkout", "--term-old=fast", "--term-new='slow'"][..],
+                "'slow'",
+            ),
         ] {
             let repo = TestRepository::new();
             let path = &repo.path;
@@ -19022,23 +19696,55 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             let status = read_head_status(path).unwrap();
             assert!(status.bisect_in_progress);
             assert!(status.bisect_candidate.is_none());
-            assert_eq!(status.bisect_result, Some(BisectResult::Found { oid: bad.clone(), term: term.into() }));
+            assert_eq!(
+                status.bisect_result,
+                Some(BisectResult::Found {
+                    oid: bad.clone(),
+                    term: term.into()
+                })
+            );
             let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
-            let vote = BisectCandidate { oid: bad, no_checkout: !opts.is_empty(), first_parent: false, terms: None };
-            assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectResultAlreadyFound");
+            let vote = BisectCandidate {
+                oid: bad,
+                no_checkout: !opts.is_empty(),
+                first_parent: false,
+                terms: None,
+            };
+            assert_eq!(
+                mark_bisect(path, "good", &vote).unwrap_err().kind,
+                "bisectResultAlreadyFound"
+            );
             assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
 
             repo.git(&["update-ref", "refs/bisect/foreign", vote.oid.as_str()]);
             let foreign = format!("# first foreign commit: [{}] Wrong result term\n", vote.oid);
-            fs::write(path.join(".git/BISECT_LOG"), [log.as_slice(), foreign.as_bytes()].concat()).unwrap();
-            assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectResultUnverified");
+            fs::write(
+                path.join(".git/BISECT_LOG"),
+                [log.as_slice(), foreign.as_bytes()].concat(),
+            )
+            .unwrap();
+            assert_eq!(
+                mark_bisect(path, "good", &vote).unwrap_err().kind,
+                "bisectResultUnverified"
+            );
             repo.git(&["update-ref", "-d", "refs/bisect/foreign"]);
 
             let forged = format!("# first {term} commit: [{good}] Mismatched log record\n");
-            fs::write(path.join(".git/BISECT_LOG"), [log.as_slice(), forged.as_bytes()].concat()).unwrap();
+            fs::write(
+                path.join(".git/BISECT_LOG"),
+                [log.as_slice(), forged.as_bytes()].concat(),
+            )
+            .unwrap();
             let unverified = read_status(path).unwrap();
-            assert!(unverified.bisect_in_progress && unverified.bisect_result.is_none() && unverified.bisect_candidate.is_none());
-            assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectResultUnverified");
+            assert!(
+                unverified.bisect_in_progress
+                    && unverified.bisect_result.is_none()
+                    && unverified.bisect_candidate.is_none()
+            );
+            assert_eq!(
+                mark_bisect(path, "good", &vote).unwrap_err().kind,
+                "bisectResultUnverified"
+            );
             #[cfg(unix)]
             {
                 let entry = path.join(".git/BISECT_LOG");
@@ -19046,7 +19752,10 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
                 fs::remove_file(&entry).unwrap();
                 fs::write(&elsewhere, &log).unwrap();
                 std::os::unix::fs::symlink(&elsewhere, &entry).unwrap();
-                assert_eq!(mark_bisect(path, "good", &vote).unwrap_err().kind, "bisectLogUnavailable");
+                assert_eq!(
+                    mark_bisect(path, "good", &vote).unwrap_err().kind,
+                    "bisectLogUnavailable"
+                );
                 fs::remove_file(entry).unwrap();
             }
             fs::write(path.join(".git/BISECT_LOG"), log).unwrap();
@@ -19060,7 +19769,10 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         for (options, term) in [
             (&[][..], "bad"),
             (&["--no-checkout"][..], "bad"),
-            (&["--no-checkout", "--term-old=fast", "--term-new=slow"][..], "slow"),
+            (
+                &["--no-checkout", "--term-old=fast", "--term-new=slow"][..],
+                "slow",
+            ),
         ] {
             let repo = TestRepository::new();
             let path = &repo.path;
@@ -19080,35 +19792,64 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             for _ in 0..3 {
                 let candidate = read_head_status(path).unwrap().bisect_candidate.unwrap();
                 assert_eq!(candidate.no_checkout, !options.is_empty());
-                mark_bisect(path, "skip", &candidate).expect("record skip even when Git ends bisect");
-                assert!(bisect_ref_matches(path, &format!("skip-{}", candidate.oid), &candidate.oid).unwrap());
+                mark_bisect(path, "skip", &candidate)
+                    .expect("record skip even when Git ends bisect");
+                assert!(
+                    bisect_ref_matches(path, &format!("skip-{}", candidate.oid), &candidate.oid)
+                        .unwrap()
+                );
                 assert!(skipped.insert(candidate.oid.clone()));
                 last = Some(candidate);
             }
 
             let status = read_head_status(path).unwrap();
             assert!(status.bisect_in_progress && status.bisect_candidate.is_none());
-            let Some(BisectResult::Ambiguous { possible_oids, term: observed }) = status.bisect_result else {
+            let Some(BisectResult::Ambiguous {
+                possible_oids,
+                term: observed,
+            }) = status.bisect_result
+            else {
                 panic!("expected several possible commits");
             };
             assert_eq!(observed, term);
-            assert_eq!(possible_oids.iter().collect::<HashSet<_>>(), commits[1..].iter().collect());
-            assert_eq!(read_status(path).unwrap().bisect_result,
-                Some(BisectResult::Ambiguous { possible_oids, term: term.into() }));
+            assert_eq!(
+                possible_oids.iter().collect::<HashSet<_>>(),
+                commits[1..].iter().collect()
+            );
+            assert_eq!(
+                read_status(path).unwrap().bisect_result,
+                Some(BisectResult::Ambiguous {
+                    possible_oids,
+                    term: term.into()
+                })
+            );
 
             let log_path = path.join(".git/BISECT_LOG");
             let log = fs::read(&log_path).unwrap();
             let last = last.unwrap();
-            assert_eq!(mark_bisect(path, "skip", &last).unwrap_err().kind, "bisectResultAmbiguous");
+            assert_eq!(
+                mark_bisect(path, "skip", &last).unwrap_err().kind,
+                "bisectResultAmbiguous"
+            );
             assert_eq!(fs::read(&log_path).unwrap(), log);
 
             // A complete-looking result that names an unrelated commit is not
             // accepted; no candidate should be invented from HEAD either.
-            let forged = format!("# possible first {term} commit: [{}] Unrelated\n", commits[0]);
+            let forged = format!(
+                "# possible first {term} commit: [{}] Unrelated\n",
+                commits[0]
+            );
             fs::write(&log_path, [log.as_slice(), forged.as_bytes()].concat()).unwrap();
             let unverified = read_status(path).unwrap();
-            assert!(unverified.bisect_in_progress && unverified.bisect_result.is_none() && unverified.bisect_candidate.is_none());
-            assert_eq!(mark_bisect(path, "skip", &last).unwrap_err().kind, "bisectResultUnverified");
+            assert!(
+                unverified.bisect_in_progress
+                    && unverified.bisect_result.is_none()
+                    && unverified.bisect_candidate.is_none()
+            );
+            assert_eq!(
+                mark_bisect(path, "skip", &last).unwrap_err().kind,
+                "bisectResultUnverified"
+            );
 
             fs::write(&log_path, log).unwrap();
             reset_bisect(path).unwrap();
@@ -19129,17 +19870,34 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             commit(path, &format!("Point {point}")).unwrap();
             commits.push(reference_tip(path, "HEAD").unwrap());
         }
-        repo.git(&["bisect", "start", "--no-checkout", "--term-old=fast", "--term-new=slow", &commits[3], &commits[0]]);
+        repo.git(&[
+            "bisect",
+            "start",
+            "--no-checkout",
+            "--term-old=fast",
+            "--term-new=slow",
+            &commits[3],
+            &commits[0],
+        ]);
         repo.git(&["bisect", "skip", &commits[2]]);
         let candidate = read_head_status(path).unwrap().bisect_candidate.unwrap();
         assert_eq!(candidate.oid, commits[1]);
         mark_bisect(path, "good", &candidate).expect("accept the recorded good vote");
-        assert!(bisect_ref_matches(path, &format!("fast-{}", candidate.oid), &candidate.oid).unwrap());
-        let Some(BisectResult::Ambiguous { possible_oids, term }) = read_head_status(path).unwrap().bisect_result else {
+        assert!(
+            bisect_ref_matches(path, &format!("fast-{}", candidate.oid), &candidate.oid).unwrap()
+        );
+        let Some(BisectResult::Ambiguous {
+            possible_oids,
+            term,
+        }) = read_head_status(path).unwrap().bisect_result
+        else {
             panic!("expected the skipped commit and the bad boundary");
         };
         assert_eq!(term, "slow");
-        assert_eq!(possible_oids.iter().collect::<HashSet<_>>(), commits[2..].iter().collect());
+        assert_eq!(
+            possible_oids.iter().collect::<HashSet<_>>(),
+            commits[2..].iter().collect()
+        );
     }
 
     #[test]
@@ -19155,13 +19913,27 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
                 commits.push(reference_tip(path, "HEAD").unwrap());
             }
             let opts = [format!("--term-old={old}"), format!("--term-new={new}")];
-            repo.git(&["bisect", "start", "--no-checkout", &opts[0], &opts[1], &commits[6], &commits[0]]);
-            let terms = Some(BisectTerms { old: old.into(), new: new.into() });
+            repo.git(&[
+                "bisect",
+                "start",
+                "--no-checkout",
+                &opts[0],
+                &opts[1],
+                &commits[6],
+                &commits[0],
+            ]);
+            let terms = Some(BisectTerms {
+                old: old.into(),
+                new: new.into(),
+            });
             let first = read_head_status(path).unwrap().bisect_candidate.unwrap();
             assert_eq!(first.terms, terms);
             if old.starts_with('-') && scripted_bisect(path).unwrap() {
                 let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
-                assert_eq!(mark_bisect(path, "good", &first).unwrap_err().kind, "bisectOptionTermUnsupported");
+                assert_eq!(
+                    mark_bisect(path, "good", &first).unwrap_err().kind,
+                    "bisectOptionTermUnsupported"
+                );
                 assert_eq!(read_status(path).unwrap().bisect_candidate, Some(first));
                 assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
                 assert_eq!(reference_tip(path, "HEAD").unwrap(), commits[6]);
@@ -19188,18 +19960,41 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             repo.git(&["commit", "--allow-empty", "-m", &format!("Point {step}")]);
         }
         let bad = reference_tip(path, "HEAD").unwrap();
-        repo.git(&["bisect", "start", "--no-checkout", "--term-old=fast", "--term-new=slow", &bad, &good]);
+        repo.git(&[
+            "bisect",
+            "start",
+            "--no-checkout",
+            "--term-old=fast",
+            "--term-new=slow",
+            &bad,
+            &good,
+        ]);
         let first = read_head_status(path).unwrap().bisect_candidate.unwrap();
 
         reset_bisect(path).unwrap();
         // Reuse both words, but reverse their meanings in Git's new session.
-        repo.git(&["bisect", "start", "--no-checkout", "--term-old=slow", "--term-new=fast", &bad, &good]);
+        repo.git(&[
+            "bisect",
+            "start",
+            "--no-checkout",
+            "--term-old=slow",
+            "--term-new=fast",
+            &bad,
+            &good,
+        ]);
         let current = read_head_status(path).unwrap().bisect_candidate.unwrap();
         assert_eq!(first.oid, current.oid);
         let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
-        let refs = || run_git(path, &["for-each-ref", "refs/bisect/"]).unwrap().stdout;
+        let refs = || {
+            run_git(path, &["for-each-ref", "refs/bisect/"])
+                .unwrap()
+                .stdout
+        };
         let reviewed_refs = refs();
-        assert_eq!(mark_bisect(path, "good", &first).unwrap_err().kind, "staleBisectCandidate");
+        assert_eq!(
+            mark_bisect(path, "good", &first).unwrap_err().kind,
+            "staleBisectCandidate"
+        );
         assert_eq!(refs(), reviewed_refs);
 
         // A damaged terms file must not dispatch a built-in bisect command.
@@ -19207,7 +20002,10 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             fs::write(path.join(".git/BISECT_TERMS"), terms).unwrap();
             let damaged = read_head_status(path).unwrap();
             assert!(damaged.bisect_in_progress && damaged.bisect_candidate.is_none());
-            assert_eq!(mark_bisect(path, "good", &current).unwrap_err().kind, "bisectTermsUnavailable");
+            assert_eq!(
+                mark_bisect(path, "good", &current).unwrap_err().kind,
+                "bisectTermsUnavailable"
+            );
             assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
             assert_eq!(refs(), reviewed_refs);
         }
@@ -19236,23 +20034,38 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             let first = read_status(path).unwrap().bisect_candidate.unwrap();
             assert_eq!(first.no_checkout, no_checkout);
             let expected_ref = if no_checkout { "BISECT_HEAD" } else { "HEAD" };
-            assert_eq!(reference_tip(path, expected_ref).as_deref(), Some(first.oid.as_str()));
+            assert_eq!(
+                reference_tip(path, expected_ref).as_deref(),
+                Some(first.oid.as_str())
+            );
             repo.git(&["bisect", "good", &first.oid]);
             let next = read_status(path).unwrap().bisect_candidate.unwrap();
             assert_ne!(next.oid, first.oid);
             let before_head = reference_tip(path, "HEAD");
             let index = fs::read(path.join(".git/index")).unwrap();
             let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
-            assert_eq!(mark_bisect(path, "bad", &first).unwrap_err().kind, "staleBisectCandidate");
+            assert_eq!(
+                mark_bisect(path, "bad", &first).unwrap_err().kind,
+                "staleBisectCandidate"
+            );
             assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
             assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
             assert_eq!(reference_tip(path, "HEAD"), before_head);
-            assert_eq!(read_status(path).unwrap().bisect_candidate, Some(next.clone()));
+            assert_eq!(
+                read_status(path).unwrap().bisect_candidate,
+                Some(next.clone())
+            );
 
             mark_bisect(path, "good", &next).unwrap();
-            assert_eq!(reference_tip(path, &format!("refs/bisect/good-{}", next.oid)).as_deref(), Some(next.oid.as_str()));
+            assert_eq!(
+                reference_tip(path, &format!("refs/bisect/good-{}", next.oid)).as_deref(),
+                Some(next.oid.as_str())
+            );
             if no_checkout {
-                assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(original.as_str()));
+                assert_eq!(
+                    reference_tip(path, "HEAD").as_deref(),
+                    Some(original.as_str())
+                );
                 assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
             }
             reset_bisect(path).unwrap();
@@ -19277,7 +20090,8 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             bad_oid: reference_tip(path, "HEAD").unwrap(),
             good_oid,
             branch: Some("main".into()),
-            no_checkout: false, first_parent: false,
+            no_checkout: false,
+            first_parent: false,
         };
         repo.git(&["switch", "-c", "same-tip"]);
         for moved_head in [false, true] {
@@ -19292,13 +20106,21 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             assert_eq!(reference_tip(path, "HEAD"), actual);
             assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
             assert!(!path.join(".git/BISECT_START").exists());
-            assert!(run_git(path, &["for-each-ref", "refs/bisect"]).unwrap().stdout.is_empty());
+            assert!(
+                run_git(path, &["for-each-ref", "refs/bisect"])
+                    .unwrap()
+                    .stdout
+                    .is_empty()
+            );
         }
         review.bad_oid = reference_tip(path, "HEAD").unwrap();
         start_reviewed_bisect(path, &review).unwrap();
         assert!(repository_operation_state(path).unwrap().bisect);
         reset_bisect(path).unwrap();
-        assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(review.bad_oid.as_str()));
+        assert_eq!(
+            reference_tip(path, "HEAD").as_deref(),
+            Some(review.bad_oid.as_str())
+        );
         assert_eq!(read_status(path).unwrap().branch.as_deref(), Some("main"));
     }
 
@@ -19331,12 +20153,16 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             bad_oid: bad.clone(),
             good_oid: good,
             branch: Some("main".into()),
-            no_checkout: false, first_parent: false,
+            no_checkout: false,
+            first_parent: false,
         };
         let index = fs::read(path.join(".git/index")).unwrap();
         let assert_checkout_unchanged = || {
             assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(bad.as_str()));
-            assert_eq!(read_head_status(path).unwrap().branch.as_deref(), Some("main"));
+            assert_eq!(
+                read_head_status(path).unwrap().branch.as_deref(),
+                Some("main")
+            );
             assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
             for (file, expected) in [
                 ("staged.txt", "different working bytes\n"),
@@ -19347,20 +20173,31 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
                 assert_eq!(fs::read_to_string(path.join(file)).unwrap(), expected);
             }
         };
-        assert_eq!(start_reviewed_bisect(path, &review).unwrap_err().kind, "workingTreeNotClean");
+        assert_eq!(
+            start_reviewed_bisect(path, &review).unwrap_err().kind,
+            "workingTreeNotClean"
+        );
         assert!(!path.join(".git/BISECT_START").exists());
         assert_checkout_unchanged();
 
         review.no_checkout = true;
         review.branch = Some("same-tip".into());
-        assert_eq!(start_reviewed_bisect(path, &review).unwrap_err().kind, "staleBisectStart");
+        assert_eq!(
+            start_reviewed_bisect(path, &review).unwrap_err().kind,
+            "staleBisectStart"
+        );
         assert!(!path.join(".git/BISECT_START").exists());
         review.branch = Some("main".into());
         start_reviewed_bisect(path, &review).unwrap();
         let candidate = read_head_status(path).unwrap().bisect_candidate.unwrap();
         assert!(candidate.no_checkout && candidate.oid != bad);
         let historical_file = format!("{}:candidate-settings.local", candidate.oid);
-        assert!(run_git(path, &["cat-file", "-e", &historical_file]).unwrap().status.success());
+        assert!(
+            run_git(path, &["cat-file", "-e", &historical_file])
+                .unwrap()
+                .status
+                .success()
+        );
         assert_checkout_unchanged();
         mark_bisect(path, "good", &candidate).unwrap();
         assert_checkout_unchanged();
@@ -19397,31 +20234,59 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         repo.write(".git/info/exclude", "*.local\n");
         repo.write(ignored, "only ignored copy\n");
         repo.write("before-good.local", "outside the searched history\n");
-        repo.write("work/unrelated.local", "ignored sibling of a tracked file\n");
+        repo.write(
+            "work/unrelated.local",
+            "ignored sibling of a tracked file\n",
+        );
         let index = fs::read(path.join(".git/index")).unwrap();
         let assert_preserved = || {
             assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(bad.as_str()));
             assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
-            assert_eq!(fs::read_to_string(path.join(ignored)).unwrap(), "only ignored copy\n");
+            assert_eq!(
+                fs::read_to_string(path.join(ignored)).unwrap(),
+                "only ignored copy\n"
+            );
         };
 
         let error = start_bisect(path, bad, good).unwrap_err();
         assert_eq!(error.kind, "bisectStartLocalPathObstruction");
         assert!(error.message.contains(ignored));
         assert!(!path.join(".git/BISECT_START").exists());
-        assert!(run_git(path, &["for-each-ref", "refs/bisect/"]).unwrap().stdout.is_empty());
+        assert!(
+            run_git(path, &["for-each-ref", "refs/bisect/"])
+                .unwrap()
+                .stdout
+                .is_empty()
+        );
         assert_preserved();
 
-        start_reviewed_bisect(path, &BisectStartReview {
-            bad_oid: bad.clone(), good_oid: good.clone(), branch: Some("main".into()), no_checkout: true, first_parent: false,
-        }).unwrap();
-        assert!(read_head_status(path).unwrap().bisect_candidate.unwrap().no_checkout);
+        start_reviewed_bisect(
+            path,
+            &BisectStartReview {
+                bad_oid: bad.clone(),
+                good_oid: good.clone(),
+                branch: Some("main".into()),
+                no_checkout: true,
+                first_parent: false,
+            },
+        )
+        .unwrap();
+        assert!(
+            read_head_status(path)
+                .unwrap()
+                .bisect_candidate
+                .unwrap()
+                .no_checkout
+        );
         assert_preserved();
         reset_bisect(path).unwrap();
         fs::rename(path.join(ignored), path.join("saved.local")).unwrap();
         start_bisect(path, bad, good).unwrap();
         assert_ne!(reference_tip(path, "HEAD").as_deref(), Some(bad.as_str()));
-        assert_eq!(fs::read_to_string(path.join("saved.local")).unwrap(), "only ignored copy\n");
+        assert_eq!(
+            fs::read_to_string(path.join("saved.local")).unwrap(),
+            "only ignored copy\n"
+        );
         reset_bisect(path).unwrap();
     }
 
@@ -19442,15 +20307,27 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         repo.write(".git/info/exclude", "/local-settings\n");
         repo.write("local-settings", "only ignored copy\n");
 
-        assert_eq!(start_bisect(path, &bad, &good).unwrap_err().kind, "bisectStartLocalPathObstruction");
+        assert_eq!(
+            start_bisect(path, &bad, &good).unwrap_err().kind,
+            "bisectStartLocalPathObstruction"
+        );
         let first_parent = BisectStartReview {
-            bad_oid: bad.clone(), good_oid: good, branch: Some("main".into()),
-            no_checkout: false, first_parent: true,
+            bad_oid: bad.clone(),
+            good_oid: good,
+            branch: Some("main".into()),
+            no_checkout: false,
+            first_parent: true,
         };
-        assert_eq!(start_reviewed_bisect(path, &first_parent).unwrap_err().kind, "bisectStartLocalPathObstruction");
+        assert_eq!(
+            start_reviewed_bisect(path, &first_parent).unwrap_err().kind,
+            "bisectStartLocalPathObstruction"
+        );
         assert!(!path.join(".git/BISECT_START").exists());
         assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(bad.as_str()));
-        assert_eq!(fs::read_to_string(path.join("local-settings")).unwrap(), "only ignored copy\n");
+        assert_eq!(
+            fs::read_to_string(path.join("local-settings")).unwrap(),
+            "only ignored copy\n"
+        );
     }
 
     #[test]
@@ -19471,15 +20348,29 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             commit(path, &format!("Point {point}")).unwrap();
             commits.push(reference_tip(path, "HEAD").unwrap());
         }
-        repo.git(&["bisect", "start", "--term-old=fast", "--term-new=slow", &commits[6], &commits[0]]);
+        repo.git(&[
+            "bisect",
+            "start",
+            "--term-old=fast",
+            "--term-new=slow",
+            &commits[6],
+            &commits[0],
+        ]);
         let candidate = read_head_status(path).unwrap().bisect_candidate.unwrap();
         assert!(!candidate.no_checkout && candidate.oid == commits[3]);
         repo.write(".git/info/exclude", "/settings\n/saved.local\n");
-        repo.write("settings", "ignored file in place of a candidate directory\n");
+        repo.write(
+            "settings",
+            "ignored file in place of a candidate directory\n",
+        );
 
         let log = fs::read(path.join(".git/BISECT_LOG")).unwrap();
         let index = fs::read(path.join(".git/index")).unwrap();
-        let refs = || run_git(path, &["for-each-ref", "refs/bisect/"]).unwrap().stdout;
+        let refs = || {
+            run_git(path, &["for-each-ref", "refs/bisect/"])
+                .unwrap()
+                .stdout
+        };
         let before = refs();
         let error = mark_bisect(path, "good", &candidate).unwrap_err();
         assert_eq!(error.kind, "bisectVoteLocalPathObstruction");
@@ -19487,18 +20378,30 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         assert_eq!(refs(), before);
         assert_eq!(fs::read(path.join(".git/BISECT_LOG")).unwrap(), log);
         assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
-        assert_eq!(reference_tip(path, "HEAD").as_deref(), Some(candidate.oid.as_str()));
-        assert_eq!(fs::read_to_string(path.join("settings")).unwrap(), "ignored file in place of a candidate directory\n");
+        assert_eq!(
+            reference_tip(path, "HEAD").as_deref(),
+            Some(candidate.oid.as_str())
+        );
+        assert_eq!(
+            fs::read_to_string(path.join("settings")).unwrap(),
+            "ignored file in place of a candidate directory\n"
+        );
 
         fs::rename(path.join("settings"), path.join("saved.local")).unwrap();
         mark_bisect(path, "good", &candidate).unwrap();
-        assert!(bisect_ref_matches(path, &format!("fast-{}", candidate.oid), &candidate.oid).unwrap());
-        assert_ne!(reference_tip(path, "HEAD").as_deref(), Some(candidate.oid.as_str()));
+        assert!(
+            bisect_ref_matches(path, &format!("fast-{}", candidate.oid), &candidate.oid).unwrap()
+        );
+        assert_ne!(
+            reference_tip(path, "HEAD").as_deref(),
+            Some(candidate.oid.as_str())
+        );
         reset_bisect(path).unwrap();
     }
 
     #[test]
-    fn bisect_over_the_tree_scan_limit_allows_unrelated_ignored_paths_but_checks_every_merge_parent() {
+    fn bisect_over_the_tree_scan_limit_allows_unrelated_ignored_paths_but_checks_every_merge_parent()
+     {
         let repo = TestRepository::new();
         let path = &repo.path;
         let mut history = String::new();
@@ -19517,17 +20420,31 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             &["fast-import", "--quiet"],
             history.as_bytes(),
             "create bounded bisect fixture",
-        ).unwrap();
+        )
+        .unwrap();
         let good = reference_tip(path, "HEAD~1029").unwrap();
         let obstacle = "settings[1].local";
         // Only a merge's non-first parent contains this path, as a Git link.
         // This detects history simplification or submodule diff settings
         // incorrectly turning an unsafe scan into an empty success.
         repo.git(&["switch", "-c", "old-side", &good]);
-        repo.git(&["update-index", "--add", "--cacheinfo", &format!("160000,{good},{obstacle}")]);
+        repo.git(&[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("160000,{good},{obstacle}"),
+        ]);
         commit(path, "Record a Git link on the side").unwrap();
         repo.git(&["switch", "main"]);
-        repo.git(&["merge", "--no-ff", "-s", "ours", "-m", "Keep the first-parent tree", "old-side"]);
+        repo.git(&[
+            "merge",
+            "--no-ff",
+            "-s",
+            "ours",
+            "-m",
+            "Keep the first-parent tree",
+            "old-side",
+        ]);
         repo.git(&["config", "diff.ignoreSubmodules", "all"]);
         let bad = reference_tip(path, "HEAD").unwrap();
         repo.write(".git/info/exclude", "*.local\n");
@@ -19538,7 +20455,10 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         assert!(!candidate.no_checkout);
         mark_bisect(path, "skip", &candidate).unwrap();
         reset_bisect(path).unwrap();
-        assert_eq!(fs::read_to_string(path.join("build[unused].local")).unwrap(), "unrelated ignored contents\n");
+        assert_eq!(
+            fs::read_to_string(path.join("build[unused].local")).unwrap(),
+            "unrelated ignored contents\n"
+        );
 
         repo.write(obstacle, "only ignored copy\n");
         let error = start_bisect(path, &bad, &good).unwrap_err();
@@ -19546,23 +20466,50 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         assert!(!path.join(".git/BISECT_START").exists());
 
         // The same side-only path is irrelevant to an explicit mainline walk.
-        start_reviewed_bisect(path, &BisectStartReview {
-            bad_oid: bad.clone(), good_oid: good.clone(), branch: Some("main".into()),
-            no_checkout: false, first_parent: true,
-        }).unwrap();
+        start_reviewed_bisect(
+            path,
+            &BisectStartReview {
+                bad_oid: bad.clone(),
+                good_oid: good.clone(),
+                branch: Some("main".into()),
+                no_checkout: false,
+                first_parent: true,
+            },
+        )
+        .unwrap();
         let first_parent = read_head_status(path).unwrap().bisect_candidate.unwrap();
         assert!(first_parent.first_parent && !first_parent.no_checkout);
         mark_bisect(path, "skip", &first_parent).unwrap();
         reset_bisect(path).unwrap();
-        assert_eq!(fs::read_to_string(path.join(obstacle)).unwrap(), "only ignored copy\n");
+        assert_eq!(
+            fs::read_to_string(path.join(obstacle)).unwrap(),
+            "only ignored copy\n"
+        );
 
-        start_reviewed_bisect(path, &BisectStartReview {
-            bad_oid: bad.clone(), good_oid: good, branch: Some("main".into()), no_checkout: true, first_parent: false,
-        }).unwrap();
-        assert!(read_head_status(path).unwrap().bisect_candidate.unwrap().no_checkout);
+        start_reviewed_bisect(
+            path,
+            &BisectStartReview {
+                bad_oid: bad.clone(),
+                good_oid: good,
+                branch: Some("main".into()),
+                no_checkout: true,
+                first_parent: false,
+            },
+        )
+        .unwrap();
+        assert!(
+            read_head_status(path)
+                .unwrap()
+                .bisect_candidate
+                .unwrap()
+                .no_checkout
+        );
         reset_bisect(path).unwrap();
         assert_eq!(reference_tip(path, "HEAD").unwrap(), bad);
-        assert_eq!(fs::read_to_string(path.join(obstacle)).unwrap(), "only ignored copy\n");
+        assert_eq!(
+            fs::read_to_string(path.join(obstacle)).unwrap(),
+            "only ignored copy\n"
+        );
     }
 
     #[test]
@@ -19575,12 +20522,23 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         repo.git(&["commit", "--allow-empty", "-m", "Main before integration"]);
         repo.git(&["switch", "topic"]);
         for point in 1..=5 {
-            repo.write("settings.local", &format!("Tracked on the side only: {point}\n"));
+            repo.write(
+                "settings.local",
+                &format!("Tracked on the side only: {point}\n"),
+            );
             stage_all(path).unwrap();
             commit(path, "Side-branch commit").unwrap();
         }
         repo.git(&["switch", "main"]);
-        repo.git(&["merge", "--no-ff", "-s", "ours", "-m", "Integrate the branch", "topic"]);
+        repo.git(&[
+            "merge",
+            "--no-ff",
+            "-s",
+            "ours",
+            "-m",
+            "Integrate the branch",
+            "topic",
+        ]);
         let integration = reference_tip(path, "HEAD").unwrap();
         for _ in 0..3 {
             repo.git(&["commit", "--allow-empty", "-m", "Main after integration"]);
@@ -19589,16 +20547,26 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         repo.write(".git/info/exclude", "/settings.local\n");
         repo.write("settings.local", "only ignored copy\n");
 
-        assert_eq!(start_bisect(path, &bad, &good).unwrap_err().kind, "bisectStartLocalPathObstruction");
+        assert_eq!(
+            start_bisect(path, &bad, &good).unwrap_err().kind,
+            "bisectStartLocalPathObstruction"
+        );
         assert!(!path.join(".git/BISECT_START").exists());
         let primary_line = run_git(path, &["rev-list", "--first-parent", &bad]).unwrap();
         assert!(primary_line.status.success());
         let primary_line = String::from_utf8(primary_line.stdout).unwrap();
         for no_checkout in [false, true] {
-            start_reviewed_bisect(path, &BisectStartReview {
-                bad_oid: bad.clone(), good_oid: good.clone(), branch: Some("main".into()),
-                no_checkout, first_parent: true,
-            }).unwrap();
+            start_reviewed_bisect(
+                path,
+                &BisectStartReview {
+                    bad_oid: bad.clone(),
+                    good_oid: good.clone(),
+                    branch: Some("main".into()),
+                    no_checkout,
+                    first_parent: true,
+                },
+            )
+            .unwrap();
             let status = read_head_status(path).unwrap();
             let marker = path.join(".git/BISECT_FIRST_PARENT");
             let log = path.join(".git/BISECT_LOG");
@@ -19606,11 +20574,17 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             let mut old_review = status.bisect_candidate.unwrap();
             assert!(old_review.first_parent && old_review.no_checkout == no_checkout);
             old_review.first_parent = false;
-            assert_eq!(mark_bisect(path, "good", &old_review).unwrap_err().kind, "staleBisectCandidate");
+            assert_eq!(
+                mark_bisect(path, "good", &old_review).unwrap_err().kind,
+                "staleBisectCandidate"
+            );
             assert_eq!(fs::read(&log).unwrap(), original_log);
             fs::write(&marker, b"invalid\n").unwrap();
             assert!(read_head_status(path).unwrap().bisect_candidate.is_none());
-            assert_eq!(mark_bisect(path, "good", &old_review).unwrap_err().kind, "bisectCandidateUnavailable");
+            assert_eq!(
+                mark_bisect(path, "good", &old_review).unwrap_err().kind,
+                "bisectCandidateUnavailable"
+            );
             assert_eq!(fs::read(&log).unwrap(), original_log);
             fs::write(&marker, b"\n").unwrap();
 
@@ -19624,16 +20598,32 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
                 let candidate = status.bisect_candidate.unwrap();
                 assert!(candidate.first_parent && candidate.no_checkout == no_checkout);
                 assert!(primary_line.lines().any(|oid| oid == candidate.oid));
-                let has_merge = run_git(path, &["merge-base", "--is-ancestor", &integration, &candidate.oid])
-                    .unwrap().status.success();
+                let has_merge = run_git(
+                    path,
+                    &["merge-base", "--is-ancestor", &integration, &candidate.oid],
+                )
+                .unwrap()
+                .status
+                .success();
                 mark_bisect(path, if has_merge { "bad" } else { "good" }, &candidate).unwrap();
             }
-            assert_eq!(result, Some(BisectResult::Found { oid: integration.clone(), term: "bad".into() }));
-            if no_checkout { assert_eq!(reference_tip(path, "HEAD").unwrap(), bad); }
+            assert_eq!(
+                result,
+                Some(BisectResult::Found {
+                    oid: integration.clone(),
+                    term: "bad".into()
+                })
+            );
+            if no_checkout {
+                assert_eq!(reference_tip(path, "HEAD").unwrap(), bad);
+            }
             reset_bisect(path).unwrap();
             assert!(!marker.exists());
             assert_eq!(reference_tip(path, "HEAD").unwrap(), bad);
-            assert_eq!(fs::read_to_string(path.join("settings.local")).unwrap(), "only ignored copy\n");
+            assert_eq!(
+                fs::read_to_string(path.join("settings.local")).unwrap(),
+                "only ignored copy\n"
+            );
         }
     }
 
@@ -19648,7 +20638,9 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         repo.write(".git/info/exclude", "/settings.local\n");
         repo.write("settings.local", "only ignored copy\n");
         let preflight = || {
-            merge_checkout_guard::ensure_bisect_start_preserves_ignored_files(path, &bad, &good, false)
+            merge_checkout_guard::ensure_bisect_start_preserves_ignored_files(
+                path, &bad, &good, false,
+            )
         };
         let expired = git_cancellation::inspect(Duration::ZERO, preflight).unwrap_err();
         assert_eq!(expired.kind, "bisectStartIgnoredPathsUnverified");
@@ -19704,7 +20696,10 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             let refs = run_git(path, &["show-ref"]).unwrap().stdout;
 
             fs::write(&marker, "not a checkout target\n").unwrap();
-            assert_eq!(reset_bisect(path).unwrap_err().kind, "bisectResetIgnoredPathsUnverified");
+            assert_eq!(
+                reset_bisect(path).unwrap_err().kind,
+                "bisectResetIgnoredPathsUnverified"
+            );
             assert_eq!(reference_tip(path, "HEAD").unwrap(), candidate);
             assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
             fs::write(&marker, &state).unwrap();
@@ -19715,15 +20710,27 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             assert_eq!(run_git(path, &["show-ref"]).unwrap().stdout, refs);
             assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
             assert_eq!(fs::read(marker).unwrap(), state);
-            assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"Local test configuration\n");
+            assert_eq!(
+                fs::read(path.join("settings.local")).unwrap(),
+                b"Local test configuration\n"
+            );
 
             fs::rename(path.join("settings.local"), path.join("saved-settings")).unwrap();
             reset_bisect(path).unwrap();
             assert!(!repository_operation_state(path).unwrap().bisect);
             assert_eq!(reference_tip(path, "HEAD").unwrap(), original);
-            assert_eq!(read_status(path).unwrap().branch.as_deref(), (!detached).then_some("main"));
-            assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"Tracked at original HEAD\n");
-            assert_eq!(fs::read(path.join("saved-settings")).unwrap(), b"Local test configuration\n");
+            assert_eq!(
+                read_status(path).unwrap().branch.as_deref(),
+                (!detached).then_some("main")
+            );
+            assert_eq!(
+                fs::read(path.join("settings.local")).unwrap(),
+                b"Tracked at original HEAD\n"
+            );
+            assert_eq!(
+                fs::read(path.join("saved-settings")).unwrap(),
+                b"Local test configuration\n"
+            );
         }
     }
 
@@ -19748,7 +20755,10 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         assert!(!repository_operation_state(path).unwrap().bisect);
         assert_eq!(reference_tip(path, "HEAD").unwrap(), original);
         assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
-        assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"Local test configuration\n");
+        assert_eq!(
+            fs::read(path.join("settings.local")).unwrap(),
+            b"Local test configuration\n"
+        );
     }
 
     #[test]
@@ -19795,6 +20805,19 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
                 .kind,
             "staleCommit"
         );
+        let recovery = operation_recoveries(&repository.path)
+            .expect("list message-amendment recovery")
+            .into_iter()
+            .find(|record| record.label == "Before commit-message amendment")
+            .expect("preserve the previous HEAD and staged changes");
+        assert_eq!(recovery.head_oid, original);
+        assert!(recovery.snapshot_oid.is_some());
+        assert_eq!(
+            read_status(&repository.path)
+                .expect("read staged state")
+                .staged,
+            1
+        );
     }
 
     #[test]
@@ -19813,7 +20836,16 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             name: "Grace".into(),
             email: "grace@example.test".into(),
         };
-        edit_commit(&repository.path, &head, Some("main"), &head, "Head", &author, false).unwrap();
+        edit_commit(
+            &repository.path,
+            &head,
+            Some("main"),
+            &head,
+            "Head",
+            &author,
+            false,
+        )
+        .unwrap();
         assert_eq!(
             repository
                 .git_output(&["log", "-1", "--format=%an <%ae>|%B"])
@@ -19830,7 +20862,10 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
     fn reviewed_commit_edits_reject_a_different_checkout_at_the_same_oid() {
         let repository = TestRepository::new();
         repository.git(&["commit", "--allow-empty", "-m", "Root"]);
-        let head = repository.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+        let head = repository
+            .git_output(&["rev-parse", "HEAD"])
+            .trim()
+            .to_owned();
         repository.git(&["switch", "-c", "other"]);
         let author = CommitAuthorInput {
             name: "Ada".into(),
@@ -19838,12 +20873,22 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
         };
         assert_eq!(
             update_head_message(&repository.path, &head, Some("main"), "Refuse", false)
-                .unwrap_err().kind,
+                .unwrap_err()
+                .kind,
             "staleCommit"
         );
         assert_eq!(
-            edit_commit(&repository.path, &head, None, &head, "Refuse", &author, false)
-                .unwrap_err().kind,
+            edit_commit(
+                &repository.path,
+                &head,
+                None,
+                &head,
+                "Refuse",
+                &author,
+                false
+            )
+            .unwrap_err()
+            .kind,
             "staleCommit"
         );
         assert_eq!(
@@ -19867,10 +20912,16 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
             repository.write("file", "root\n");
             repository.git(&["add", "file"]);
             repository.git(&["commit", "-m", "Root"]);
-            let target = repository.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+            let target = repository
+                .git_output(&["rev-parse", "HEAD"])
+                .trim()
+                .to_owned();
             repository.write("file", "next\n");
             repository.git(&["commit", "-am", "Next"]);
-            let head = repository.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
+            let head = repository
+                .git_output(&["rev-parse", "HEAD"])
+                .trim()
+                .to_owned();
             repository.git(&["branch", "other"]);
             repository.write("file", "staged\n");
             repository.git(&["add", "file"]);
@@ -19881,22 +20932,40 @@ exec "$KHRONOS_REVIEWED_PUSH_REAL_GIT" "$@"
                 email: "ada@example.test".into(),
             };
             let error = edit_commit(
-                &repository.path, &head, Some("main"), &target, "Refuse", &author, false,
-            ).expect_err("a different symbolic HEAD must not receive the reviewed rewrite");
+                &repository.path,
+                &head,
+                Some("main"),
+                &target,
+                "Refuse",
+                &author,
+                false,
+            )
+            .expect_err("a different symbolic HEAD must not receive the reviewed rewrite");
             assert_eq!(error.kind, "staleCommit");
-            assert!(Path::new(&marker).exists(), "checkout fixture must run during commit-tree");
-            assert_eq!(repository.git_output(&["symbolic-ref", "HEAD"]).trim(), "refs/heads/other");
+            assert!(
+                Path::new(&marker).exists(),
+                "checkout fixture must run during commit-tree"
+            );
+            assert_eq!(
+                repository.git_output(&["symbolic-ref", "HEAD"]).trim(),
+                "refs/heads/other"
+            );
             for branch in ["main", "other", "HEAD"] {
                 assert_eq!(repository.git_output(&["rev-parse", branch]).trim(), head);
             }
             assert_eq!(fs::read(repository.path.join(".git/index")).unwrap(), index);
-            assert_eq!(fs::read(repository.path.join("file")).unwrap(), b"working\n");
+            assert_eq!(
+                fs::read(repository.path.join("file")).unwrap(),
+                b"working\n"
+            );
             return;
         }
 
         let fixture = TestRepository::new();
         let helper = fixture.path.join("git");
-        fs::write(&helper, r#"#!/bin/sh
+        fs::write(
+            &helper,
+            r#"#!/bin/sh
 if [ "$3" = commit-tree ] && [ ! -f "$GIT_KHRONOS_REWRITE_CHECKOUT_MARKER" ]; then
     "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@" || exit
     "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" -C "$2" symbolic-ref HEAD refs/heads/other || exit
@@ -19904,7 +20973,9 @@ if [ "$3" = commit-tree ] && [ ! -f "$GIT_KHRONOS_REWRITE_CHECKOUT_MARKER" ]; th
     exit
 fi
 exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         fs::set_permissions(&helper, fs::Permissions::from_mode(0o700)).unwrap();
         let original_path = std::env::var_os("PATH").unwrap_or_default();
         let real_git = std::env::split_paths(&original_path)
@@ -19913,15 +20984,22 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             .expect("Git must be available on PATH");
         let path = std::env::join_paths(
             std::iter::once(fixture.path.clone()).chain(std::env::split_paths(&original_path)),
-        ).unwrap();
+        )
+        .unwrap();
         let result = Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "tests::reviewed_ancestor_edit_does_not_retarget_after_building_commits", "--nocapture"])
+            .args([
+                "--exact",
+                "tests::reviewed_ancestor_edit_does_not_retarget_after_building_commits",
+                "--nocapture",
+            ])
             .env("PATH", path)
             .env(MARKER, fixture.path.join("checkout-switched"))
             .env(REAL, real_git)
-            .output().unwrap();
+            .output()
+            .unwrap();
         assert!(
-            result.status.success(), "{}\n{}",
+            result.status.success(),
+            "{}\n{}",
             String::from_utf8_lossy(&result.stdout),
             String::from_utf8_lossy(&result.stderr),
         );
@@ -20023,9 +21101,17 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             "main"
         );
         assert_eq!(
-            edit_commit(&repository.path, &head, Some("main"), &target, "Stale", &author, false)
-                .unwrap_err()
-                .kind,
+            edit_commit(
+                &repository.path,
+                &head,
+                Some("main"),
+                &target,
+                "Stale",
+                &author,
+                false
+            )
+            .unwrap_err()
+            .kind,
             "staleCommit"
         );
     }
@@ -20068,9 +21154,17 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             (valid.clone(), " \n", "invalidCommitMessage"),
         ] {
             assert_eq!(
-                edit_commit(&repository.path, &head, None, &target, message, &author, false)
-                    .unwrap_err()
-                    .kind,
+                edit_commit(
+                    &repository.path,
+                    &head,
+                    None,
+                    &target,
+                    message,
+                    &author,
+                    false
+                )
+                .unwrap_err()
+                .kind,
                 kind
             );
         }
@@ -20079,9 +21173,17 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             .trim()
             .to_owned();
         assert_eq!(
-            edit_commit(&repository.path, &head, None, &unrelated, "x", &valid, false)
-                .unwrap_err()
-                .kind,
+            edit_commit(
+                &repository.path,
+                &head,
+                None,
+                &unrelated,
+                "x",
+                &valid,
+                false
+            )
+            .unwrap_err()
+            .kind,
             "commitNotInHistory"
         );
         assert_eq!(repository.git_output(&["rev-parse", "HEAD"]).trim(), head);
@@ -20147,7 +21249,8 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
         );
         assert_eq!(
             checkout_commit_reviewed(&repo.path, &first, Some(&first), Some("same-tip"))
-                .unwrap_err().kind,
+                .unwrap_err()
+                .kind,
             "staleCheckout"
         );
         assert_eq!(repo.git_output(&["show-ref"]), refs);
@@ -20157,7 +21260,10 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
         );
 
         checkout_commit_reviewed(&repo.path, &first, Some(&second), Some("same-tip")).unwrap();
-        assert!(repo.git_output(&["symbolic-ref", "--quiet", "HEAD"]).is_empty());
+        assert!(
+            repo.git_output(&["symbolic-ref", "--quiet", "HEAD"])
+                .is_empty()
+        );
         assert_eq!(repo.git_output(&["rev-parse", "HEAD"]).trim(), first);
         assert_eq!(repo.git_output(&["show-ref"]), refs);
     }
@@ -20174,9 +21280,7 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
         commit(&repo.path, "Second").unwrap();
         let second = repo.git_output(&["rev-parse", "HEAD"]).trim().to_owned();
         repo.write("history.txt", "keep my edits\n");
-        assert!(
-            checkout_commit_reviewed(&repo.path, &first, Some(&second), Some("main")).is_err()
-        );
+        assert!(checkout_commit_reviewed(&repo.path, &first, Some(&second), Some("main")).is_err());
         assert_eq!(repo.git_output(&["rev-parse", "HEAD"]).trim(), second);
         assert_eq!(
             std::fs::read_to_string(repo.path.join("history.txt")).unwrap(),
@@ -20518,7 +21622,9 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
         let actions = [
             apply_stash_checked,
             pop_stash_checked,
-            |path: &Path, reference: &str, oid: &str| apply_stash_with_index(path, reference, oid, true),
+            |path: &Path, reference: &str, oid: &str| {
+                apply_stash_with_index(path, reference, oid, true)
+            },
         ];
         for (mode, action) in actions.into_iter().enumerate() {
             for diverged in [false, true] {
@@ -20538,27 +21644,47 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
                     repository.git(&["commit", "-am", "Later receiver commit"]);
                 }
                 let head = reference_tip(path, "HEAD");
-                fs::write(path.join(".git/info/exclude"), "/settings.local\n/moved-settings\n").unwrap();
+                fs::write(
+                    path.join(".git/info/exclude"),
+                    "/settings.local\n/moved-settings\n",
+                )
+                .unwrap();
                 repository.write("settings.local", "only local bytes\n");
                 let index = fs::read(path.join(".git/index")).unwrap();
                 let error = action(path, "stash@{0}", &saved).unwrap_err();
                 assert_eq!(error.kind, "stashTrackedPathObstruction", "{error:?}");
                 assert!(error.message.contains("settings.local"), "{error:?}");
                 assert_eq!(fs::read(path.join(".git/index")).unwrap(), index);
-                assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"only local bytes\n");
+                assert_eq!(
+                    fs::read(path.join("settings.local")).unwrap(),
+                    b"only local bytes\n"
+                );
                 assert_eq!(reference_tip(path, "HEAD"), head);
-                assert_eq!(reference_tip(path, "refs/stash").as_deref(), Some(saved.as_str()));
+                assert_eq!(
+                    reference_tip(path, "refs/stash").as_deref(),
+                    Some(saved.as_str())
+                );
 
                 fs::rename(path.join("settings.local"), path.join("moved-settings")).unwrap();
                 action(path, "stash@{0}", &saved).unwrap();
-                assert_eq!(fs::read(path.join("settings.local")).unwrap(), b"saved working bytes\n");
-                assert_eq!(fs::read(path.join("moved-settings")).unwrap(), b"only local bytes\n");
+                assert_eq!(
+                    fs::read(path.join("settings.local")).unwrap(),
+                    b"saved working bytes\n"
+                );
+                assert_eq!(
+                    fs::read(path.join("moved-settings")).unwrap(),
+                    b"only local bytes\n"
+                );
                 assert_eq!(reference_tip(path, "HEAD"), head);
                 assert_eq!(reference_tip(path, "refs/stash").is_none(), mode == 1);
                 let staged = run_git(path, &["show", ":settings.local"]).unwrap();
                 assert_eq!(
                     staged.stdout,
-                    if mode == 2 { b"saved staged bytes\n".as_slice() } else { b"saved working bytes\n" }
+                    if mode == 2 {
+                        b"saved staged bytes\n".as_slice()
+                    } else {
+                        b"saved working bytes\n"
+                    }
                 );
             }
         }
@@ -20747,6 +21873,63 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             64
         );
         assert!(parse_stash_records(b"").unwrap().is_empty());
+    }
+
+    #[test]
+    fn clear_stashes_requires_exact_review_and_preserves_every_stash_object() {
+        let repository = TestRepository::new();
+        repository.write("tracked.txt", "base\n");
+        repository.git(&["add", "tracked.txt"]);
+        repository.git(&["commit", "-m", "Root"]);
+
+        repository.write("tracked.txt", "older staged\n");
+        repository.git(&["add", "tracked.txt"]);
+        repository.write("tracked.txt", "older unstaged\n");
+        repository.write("older-untracked.txt", "untracked payload\n");
+        repository.git(&[
+            "stash",
+            "push",
+            "--include-untracked",
+            "-m",
+            "Older complete stash",
+        ]);
+        let older = reference_tip(&repository.path, "refs/stash").unwrap();
+        repository.write("tracked.txt", "newer stash\n");
+        stash_with_message(&repository.path, Some("Newer stash")).unwrap();
+        let newer = reference_tip(&repository.path, "refs/stash").unwrap();
+        let expected = vec![newer.clone(), older.clone()];
+
+        let stale =
+            clear_stashes_checked(&repository.path, std::slice::from_ref(&older)).unwrap_err();
+        assert_eq!(stale.kind, "staleStash");
+        assert_eq!(
+            reference_tip(&repository.path, "refs/stash").as_deref(),
+            Some(newer.as_str())
+        );
+        assert!(
+            operation_recovery::operation_recoveries(&repository.path)
+                .unwrap()
+                .is_empty()
+        );
+
+        clear_stashes_checked(&repository.path, &expected).unwrap();
+        assert!(read_stashes(&repository.path).unwrap().is_empty());
+        let recoveries = operation_recovery::operation_recoveries(&repository.path).unwrap();
+        let recovered_oids = recoveries
+            .iter()
+            .filter_map(|recovery| recovery.snapshot_oid.as_deref())
+            .collect::<Vec<_>>();
+        assert!(recovered_oids.contains(&newer.as_str()));
+        assert!(recovered_oids.contains(&older.as_str()));
+        for oid in [&newer, &older] {
+            assert!(
+                run_git(
+                    &repository.path,
+                    &["cat-file", "-e", &format!("{oid}^{{commit}}")]
+                )
+                .is_ok()
+            );
+        }
     }
 
     #[test]
@@ -21705,7 +22888,9 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             .expect("an unrelated dirty sibling must not block the selected update");
         assert_eq!(
             run_git(&checkout, &["rev-parse", "HEAD"]).unwrap().stdout,
-            run_git(&dependency.path, &["rev-parse", "HEAD"]).unwrap().stdout
+            run_git(&dependency.path, &["rev-parse", "HEAD"])
+                .unwrap()
+                .stdout
         );
         assert_eq!(
             run_git(&sibling, &["rev-parse", "HEAD"]).unwrap().stdout,

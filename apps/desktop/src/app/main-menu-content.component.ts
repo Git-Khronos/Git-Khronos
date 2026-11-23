@@ -5,7 +5,7 @@ import { WindowsLauncherService } from './windows-launcher.service';
 
 /** Optional presentation; root retains actions, dismissal and keyboard ownership. */
 @Component({
-  selector: 'gc-main-menu-content',
+  selector: 'gk-main-menu-content',
   imports: [IconComponent],
   templateUrl: './main-menu-content.component.html',
   styleUrl: './main-menu-content.component.scss',

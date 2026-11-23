@@ -13,7 +13,7 @@ export interface CheckoutWorktreeRequest {
 }
 
 @Component({
-  selector: 'gc-checkout-worktree-dialog',
+  selector: 'gk-checkout-worktree-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" (click)="close()">

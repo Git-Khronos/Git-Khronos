@@ -1,11 +1,11 @@
 :host(.fetch-menu) .toolbar-menu-context { grid-template-columns: 22px minmax(0, 1fr); }
-:host(.fetch-menu) .toolbar-menu-context > gc-icon { grid-row: 1 / span 2; }
+:host(.fetch-menu) .toolbar-menu-context > gk-icon { grid-row: 1 / span 2; }
 :host(.fetch-menu) .toolbar-menu-context > b { grid-column: 2; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pull-strategy-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px; align-items: stretch; border-radius: 3px; }
 .pull-strategy-row:hover { background: var(--overlay-hover); }
 .pull-strategy-row > button:not(:focus) { background: transparent; }
 .pull-strategy-row > button:first-child { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 5px; min-width: 0; padding: 7px 4px 7px 8px; color: var(--overlay-text); text-align: left; }
-.pull-strategy-row > button:first-child > gc-icon { color: var(--accent); }
+.pull-strategy-row > button:first-child > gk-icon { color: var(--accent); }
 .pull-strategy-row > button:first-child > span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .pull-strategy-row > button:first-child strong { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .default-strategy-badge { flex: 0 0 auto; padding: 1px 5px; border: 1px solid color-mix(in srgb, #e2b45f 48%, var(--overlay-control-border)); border-radius: 999px; color: #e7bd6d; font-size: 9px; font-style: normal; font-weight: 800; line-height: 13px; letter-spacing: .045em; text-transform: uppercase; }

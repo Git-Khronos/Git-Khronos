@@ -5,7 +5,7 @@ for (const scenario of ['tab-switch', 'unrelated-error', 'dismissed-failure', 'c
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async scenario => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const other = { ...repository, id: 'other-fetch', path: '/fixture/other-fetch', name: 'Other fetch' };
       git.repositories.set([repository, other]);
@@ -67,7 +67,7 @@ for (const scope of ['same tab', 'reopened tab']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const actual = await page.evaluate(async reopen => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repository = git.repository();
       git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
       let started!: () => void;
@@ -107,7 +107,7 @@ for (const kind of ['fetchUpdatesLocalBranch', 'fetchAllPolicyUnavailable']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async kind => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const source = git.repository();
       if (!source.remotes.length) throw new Error('Fixture must have a remote');
       const repository = { ...source, remotes: [source.remotes[0]] };

@@ -9,7 +9,7 @@ import { TextValueDirective } from './text-value.directive';
 
 /** On-demand presentation; checkout and review state remain in the app shell. */
 @Component({
-  selector: 'gc-revision-inspector',
+  selector: 'gk-revision-inspector',
   imports: [DatePipe, NgTemplateOutlet, CommitEditFormComponent, CommitReferenceStripComponent,
     CommitSignatureComponent, IconComponent, TextValueDirective],
   templateUrl: './revision-inspector.component.html',

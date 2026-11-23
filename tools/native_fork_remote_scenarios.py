@@ -52,7 +52,7 @@ def hosted_fork_remote_attachment(driver, fixtures, original_repository, report)
         else:
             raise AssertionError("Owned attachment precondition unexpectedly succeeded")
 
-    def button(text, selector="gc-hosted-forks button"):
+    def button(text, selector="gk-hosted-forks button"):
         driver.wait(f"return [...document.querySelectorAll({json.dumps(selector)})].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
         driver.click_text(selector, text)
 
@@ -156,23 +156,23 @@ def hosted_fork_remote_attachment(driver, fixtures, original_repository, report)
         open_ui(driver, repository)
         driver.click('[aria-label="New repository tab"]')
         driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
-        button('Browse repositories on GitHub', 'gc-repository-dialog button')
-        button('Load repositories', 'gc-hosted-repository-browser button')
-        button('Select owned-fixture/native-repo', 'gc-hosted-repository-browser button')
-        button('Manage forks and saved requests', 'gc-hosted-repository-browser button')
+        driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
+        button('Browse repositories on GitHub', 'gk-repository-dialog button')
+        button('Load repositories', 'gk-hosted-repository-browser button')
+        button('Select owned-fixture/native-repo', 'gk-hosted-repository-browser button')
+        button('Manage forks and saved requests', 'gk-hosted-repository-browser button')
         button('Find existing forks')
         button('Inspect owned-author/owned-fork')
         button('Attach fork to local repository')
         driver.wait("return document.querySelector('#fork-source-remote')?.value === 'origin'")
         saved = local_config.read_bytes()
-        button('Review local remote', 'gc-hosted-fork-remote button')
-        driver.wait("return !!document.querySelector('gc-hosted-fork-remote [aria-label=\"Review local fork remote\"]')")
+        button('Review local remote', 'gk-hosted-fork-remote button')
+        driver.wait("return !!document.querySelector('gk-hosted-fork-remote [aria-label=\"Review local fork remote\"]')")
         assert local_config.read_bytes() == saved
-        assert driver.script("return document.querySelector('gc-hosted-fork-remote [aria-label=\"Review local fork remote\"]').textContent").find(str(repository)) >= 0
+        assert driver.script("return document.querySelector('gk-hosted-fork-remote [aria-label=\"Review local fork remote\"]').textContent").find(str(repository)) >= 0
         driver.screenshot(Path(report['artifactsDirectory']) / 'local-fork-remote-native-review.png')
-        button('Add reviewed remote', 'gc-hosted-fork-remote button')
-        driver.wait("return document.querySelector('gc-hosted-fork-remote [aria-label=\"Confirmed local remote\"]')?.textContent.includes('fork was added')")
+        button('Add reviewed remote', 'gk-hosted-fork-remote button')
+        driver.wait("return document.querySelector('gk-hosted-fork-remote [aria-label=\"Confirmed local remote\"]')?.textContent.includes('fork was added')")
         assert fixtures.git(repository, "remote", "get-url", "fork") == "https://github.com/owned-author/owned-fork.git"
         assert local_config.read_bytes().startswith(saved)
         unchanged()

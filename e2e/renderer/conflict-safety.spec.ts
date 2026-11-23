@@ -5,7 +5,7 @@ test('conflicts block bulk index actions without blocking staging a different fi
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const status = { ...git.repository().status, staged: 1, unstaged: 1, untracked: 0, conflicted: 1, entryCount: 3,
       mergeInProgress: true, entries: [
         { path: 'conflict.txt', indexStatus: 'U', worktreeStatus: 'U', conflicted: true },
@@ -42,7 +42,7 @@ async function openConflict(page: Page, options: { stale?: boolean; rebase?: boo
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate((options) => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const status = {
       ...repository.status, staged: 0, unstaged: 0, untracked: 0, conflicted: 1, entryCount: 1,
@@ -186,7 +186,7 @@ test('does not resolve an old conflict in a newly active repository', async ({ p
   await openConflict(page);
   const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const other = { ...git.repository(), id: 'other-repository', path: '/test/other' };
     git.repositories.update((repositories: any[]) => [...repositories, other]);
     git.activeRepositoryId.set(other.id);
@@ -215,6 +215,6 @@ test('keeps pending reload visible and never reopens a dismissed conflict', asyn
   await dialog.getByRole('button', { name: 'Close conflict editor' }).click();
   await expect(dialog).toHaveCount(0);
   await page.evaluate(() => (window as any).__conflictTest.release());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(dialog).toHaveCount(0);
 });

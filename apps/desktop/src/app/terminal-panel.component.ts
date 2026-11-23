@@ -58,44 +58,44 @@ interface TerminalTab extends TerminalInfo {
 }
 
 @Component({
-  selector: 'gc-terminal-panel',
+  selector: 'gk-terminal-panel',
   imports: [IconComponent, TerminalBaseStylesComponent],
   template: `
-    <gc-terminal-base-styles />
+    <gk-terminal-base-styles />
     <section [attr.id]="panelId()" class="terminal-panel" [class.inactive]="!visible()" [class.minimized]="minimized()" [class.profiles-open]="profileLauncherOpen() && terminalProfiles().length > 0 && !minimized()" [style.height.px]="minimized() ? 32 : height()" tabindex="-1" [attr.aria-label]="'Repository terminals for ' + repositoryLabel()">
       @if (!minimized()) { <div class="terminal-resizer" role="separator" tabindex="0" aria-label="Resize terminal" [attr.aria-controls]="panelId()" aria-orientation="horizontal" [attr.aria-valuemin]="terminalMinimumHeight" [attr.aria-valuemax]="maximumHeight()" [attr.aria-valuenow]="height()" [attr.aria-valuetext]="height() + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (pointerdown)="beginResize($event)" (keydown)="handleResizeKeydown($event)" (dblclick)="resetHeight($event)"></div> }
       <header (pointerdown)="beginHeaderResize($event)">
         <div class="terminal-session-strip">
           <div class="terminal-tabs-shell">
             @if (tabStripOverflow()) {
-              <button class="terminal-tab-scroll" type="button" aria-label="Show previous terminal tabs" title="Show previous terminal tabs" [disabled]="!canScrollTabsBack()" (click)="scrollTabs(-1)"><gc-icon name="chevron-left" [size]="11" /></button>
+              <button class="terminal-tab-scroll" type="button" aria-label="Show previous terminal tabs" title="Show previous terminal tabs" [disabled]="!canScrollTabsBack()" (click)="scrollTabs(-1)"><gk-icon name="chevron-left" [size]="11" /></button>
             }
             <div #terminalTabs class="terminal-tabs" role="tablist" aria-label="Terminal tabs" (scroll)="updateTabOverflow()">
               @if (!tabs().length) {
-                <span class="terminal-empty-tab" aria-hidden="true"><gc-icon name="terminal" [size]="12" /><span>{{ opening() ? 'Starting…' : 'Terminal' }}</span></span>
+                <span class="terminal-empty-tab" aria-hidden="true"><gk-icon name="terminal" [size]="12" /><span>{{ opening() ? 'Starting…' : 'Terminal' }}</span></span>
               }
               @for (tab of tabs(); track tab.id) {
                 <div class="terminal-tab" [class.active]="activeId() === tab.id" [class.ended]="tab.ended">
                   <button class="terminal-tab-main" type="button" role="tab" [attr.id]="tabId(tab.id)" [attr.data-terminal-tab-id]="tab.id" [attr.tabindex]="activeId() === tab.id ? 0 : -1" [attr.aria-selected]="activeId() === tab.id" [attr.aria-controls]="tabPanelId(tab.id)" title="{{ tab.title }} · {{ tab.cwd }}" (click)="activate(tab.id)" (keydown)="handleTabKeydown($event, tab.id)">
-                    <gc-icon name="terminal" [size]="12" /><span>{{ tab.title }}</span>@if (tab.ended) { <i>exited</i> }
+                    <gk-icon name="terminal" [size]="12" /><span>{{ tab.title }}</span>@if (tab.ended) { <i>exited</i> }
                   </button>
-                  <button class="terminal-tab-close" type="button" [attr.tabindex]="activeId() === tab.id ? 0 : -1" [attr.aria-keyshortcuts]="activeId() === tab.id ? 'Control+Shift+W' : null" aria-label="Close {{ tab.title }}" title="Close terminal tab" (click)="$event.stopPropagation(); closeTab(tab.id, true)"><gc-icon name="x" [size]="10" /></button>
+                  <button class="terminal-tab-close" type="button" [attr.tabindex]="activeId() === tab.id ? 0 : -1" [attr.aria-keyshortcuts]="activeId() === tab.id ? 'Control+Shift+W' : null" aria-label="Close {{ tab.title }}" title="Close terminal tab" (click)="$event.stopPropagation(); closeTab(tab.id, true)"><gk-icon name="x" [size]="10" /></button>
                 </div>
               }
             </div>
             @if (tabStripOverflow()) {
-              <button class="terminal-tab-scroll" type="button" aria-label="Show next terminal tabs" title="Show next terminal tabs" [disabled]="!canScrollTabsForward()" (click)="scrollTabs(1)"><gc-icon name="chevron-right" [size]="11" /></button>
+              <button class="terminal-tab-scroll" type="button" aria-label="Show next terminal tabs" title="Show next terminal tabs" [disabled]="!canScrollTabsForward()" (click)="scrollTabs(1)"><gk-icon name="chevron-right" [size]="11" /></button>
             }
           </div>
-          <button class="new-terminal" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab" aria-keyshortcuts="Control+Shift+T" [disabled]="opening() || !!failedStartup() || !nativeAvailable()" (click)="openTab()"><gc-icon name="plus" [size]="12" /></button>
+          <button class="new-terminal" type="button" title="New terminal tab (Ctrl+Shift+T)" aria-label="New terminal tab" aria-keyshortcuts="Control+Shift+T" [disabled]="opening() || !!failedStartup() || !nativeAvailable()" (click)="openTab()"><gk-icon name="plus" [size]="12" /></button>
         </div>
         @if (terminalProfiles().length) {
           <button #profileLauncherButton class="terminal-profiles-button" type="button" aria-label="Choose terminal profile" title="Open a configured terminal profile" [attr.aria-expanded]="profileLauncherOpen() && !minimized()" [attr.aria-controls]="profileLauncherOpen() && !minimized() ? panelId() + '-profiles' : null" [disabled]="!nativeAvailable()" (click)="toggleProfileLauncher()">Profiles</button>
         }
-        <span class="terminal-context"><gc-icon name="repo" [size]="11" />{{ repositoryLabel() }}</span>
-        <button class="external-terminal-button" type="button" aria-label="Open in system terminal" title="Open {{ repositoryLabel() }} in the system terminal" [disabled]="!nativeAvailable() || openingExternal()" [attr.aria-busy]="openingExternal()" (click)="openExternalTerminal()"><gc-icon name="external-terminal" [size]="12" /></button>
-        <button type="button" [attr.aria-label]="minimized() ? 'Restore terminal' : 'Minimize terminal'" [attr.aria-expanded]="!minimized()" [attr.aria-controls]="terminalBodyId()" title="{{ minimized() ? 'Restore terminal' : 'Minimize terminal' }}" (click)="toggleMinimized()"><gc-icon [name]="minimized() ? 'chevron-up' : 'chevron-down'" [size]="12" /></button>
-        <button type="button" title="Hide terminal panel" aria-label="Hide terminal panel" (click)="dismissed.emit()"><gc-icon name="x" [size]="12" /></button>
+        <span class="terminal-context"><gk-icon name="repo" [size]="11" />{{ repositoryLabel() }}</span>
+        <button class="external-terminal-button" type="button" aria-label="Open in system terminal" title="Open {{ repositoryLabel() }} in the system terminal" [disabled]="!nativeAvailable() || openingExternal()" [attr.aria-busy]="openingExternal()" (click)="openExternalTerminal()"><gk-icon name="external-terminal" [size]="12" /></button>
+        <button type="button" [attr.aria-label]="minimized() ? 'Restore terminal' : 'Minimize terminal'" [attr.aria-expanded]="!minimized()" [attr.aria-controls]="terminalBodyId()" title="{{ minimized() ? 'Restore terminal' : 'Minimize terminal' }}" (click)="toggleMinimized()"><gk-icon [name]="minimized() ? 'chevron-up' : 'chevron-down'" [size]="12" /></button>
+        <button type="button" title="Hide terminal panel" aria-label="Hide terminal panel" (click)="dismissed.emit()"><gk-icon name="x" [size]="12" /></button>
       </header>
       @if (profileLauncherOpen() && terminalProfiles().length && !minimized()) {
         <div [id]="panelId() + '-profiles'" class="terminal-profile-launcher" aria-label="Open terminal profile" (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); closeProfileLauncher()">

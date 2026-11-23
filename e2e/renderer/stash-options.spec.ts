@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15000 });
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     (window as any).__stashCalls = [];
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -56,7 +56,7 @@ for (const branch of [false, true]) {
   test(`the palette reviews ${branch ? 'a new branch from' : 'a staged-state apply for'} a specific stash before dispatch`, async ({ page }) => {
     const selectedOid = 'b'.repeat(40);
     await page.evaluate(({ selectedOid, branch }) => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repo = git.repository();
       git.repositories.set([{ ...repo, stashes: [
         { reference: 'stash@{0}', oid: 'a'.repeat(40), message: 'Latest work' },
@@ -89,15 +89,15 @@ for (const branch of [false, true]) {
 
 test('a captured palette stash review does not follow a shifted reference or checkout', async ({ page }) => {
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.repositories.set([{ ...git.repository(), stashes: [{ reference: 'stash@{0}', oid: 'a'.repeat(40), message: 'Earlier work' }] }]);
   });
   await page.getByRole('button', { name: 'Command palette', exact: true }).click();
   await page.getByRole('combobox', { name: 'Search commands', exact: true }).fill('review applying stash@{0}');
   await expect(page.getByRole('option', { name: /^Review applying stash@\{0\}/ })).toBeEnabled();
   const result = await page.evaluate(async () => {
-    const root = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    const palette = (window as any).ng.getComponent(document.querySelector('gc-command-palette'));
+    const root = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    const palette = (window as any).ng.getComponent(document.querySelector('gk-command-palette'));
     const git = root.git;
     const repo = git.repository();
     const apply = palette.commandActions().find((action: any) => action.stashReview?.action === 'apply');
@@ -129,7 +129,7 @@ test('selected stash options disclose staged state and send only chosen paths', 
   await dialog.getByLabel('Save only selected files').check();
   await expect(dialog.getByRole('button', { name: 'Create stash' })).toBeDisabled();
   await dialog.getByRole('checkbox', { name: `Stash ${path}`, exact: true }).check();
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).stashDialog().returnFocus
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).stashDialog().returnFocus
     === document.querySelector('[aria-label="Working directory options"]'))).toBe(true);
   await dialog.getByRole('button', { name: 'Create stash' }).click();
   await expect(dialog).toHaveCount(0);
@@ -157,7 +157,7 @@ test('staged-only mode excludes untracked files and keeps escape inside the work
 
 test('stash selections follow the mode and do not send hidden or ineligible paths', async ({ page }) => {
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repo = git.repository();
     const entries = [
       { path: 'staged.rs', indexStatus: 'M', worktreeStatus: ' ', conflicted: false },
@@ -212,7 +212,7 @@ test('apply options restore the index using the selected immutable stash', async
   await dialog.getByRole('button', { name: 'Apply and keep stash' }).click();
   const result = await page.evaluate(() => ({
     call: (window as any).__stashCalls.find((call: any) => call.command === 'apply_stash_options'),
-    stash: (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().stashes[0],
+    stash: (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().stashes[0],
   }));
   expect(result.call).toEqual({ command: 'apply_stash_options', args: {
     repoId: expect.any(String), reference: result.stash.reference, expectedOid: result.stash.oid, restoreIndex: true,
@@ -227,7 +227,7 @@ test('stash branch recovery requires a clean working directory', async ({ page }
   await expect(dialog.getByRole('button', { name: 'Create branch and restore' })).toBeDisabled();
   await expect(dialog).toContainText('Requires a clean working directory');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((repos: any[]) => repos.map(repo => ({
       ...repo, status: { ...repo.status, entryCount: 0, entries: [], staged: 0, unstaged: 0, untracked: 0 },
     })));

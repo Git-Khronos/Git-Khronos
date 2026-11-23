@@ -7,7 +7,7 @@ async function loadManyReferences(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate((count) => {
-    const root = document.querySelector('gc-root');
+    const root = document.querySelector('gk-app');
     if (!root) throw new Error('Application root not found');
     const app = (window as Window & {
       ng: { getComponent(element: Element): { git: { repository(): any; repositories: { update(updater: (items: any[]) => any[]): void } } } };
@@ -128,7 +128,7 @@ test('expands the rendered reference window when the list grows without scrollin
 test('keeps remote group boundaries inside the virtual row height', async ({ page }) => {
   await loadManyReferences(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map(item => ({
       ...item,
       branches: item.branches.filter((branch: { remote: boolean }) => !branch.remote),

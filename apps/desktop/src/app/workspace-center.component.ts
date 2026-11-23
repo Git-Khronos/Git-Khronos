@@ -22,14 +22,14 @@ interface FileDeletionReview { file: RepositoryFiles['files'][number]; repositor
 interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'pull' | 'open' | 'close' | 'remove' | 'locate'; status: 'pending' | 'running' | 'success' | 'review needed' | 'error' | 'cancelled'; detail: string | null }
 
 @Component({
-  selector: 'gc-workspace-center',
+  selector: 'gk-workspace-center',
   imports: [BackgroundOperationWarningsComponent, DatePipe, HostingPanelComponent, WorkspaceCloneComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" [inert]="suspended()" (click)="close()"><section #dialog role="dialog" aria-modal="true" aria-label="Workspace center" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
       <div [inert]="reviewPending()">
       <header><div><h2 id="workspace-center-title">Workspace center</h2><p>{{ git.activeWorkspace().name }}</p></div><button type="button" (click)="close()">Close</button></header>
-      @if (!suspended() && git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
+      @if (!suspended() && git.backgroundOperationWarnings().length) { <gk-background-operation-warnings /> }
       <nav aria-label="Workspace center sections"><button type="button" [disabled]="!!locatingPath()" [attr.aria-pressed]="panel() === 'overview'" (click)="panel.set('overview')">Repository overview</button><button type="button" [disabled]="!!locatingPath()" [attr.aria-pressed]="panel() === 'files'" (click)="panel.set('files')">Repository files</button><button type="button" [disabled]="!!locatingPath()" [attr.aria-pressed]="panel() === 'identities'" (click)="panel.set('identities')">Identity profiles</button><button type="button" [disabled]="!!locatingPath()" [attr.aria-pressed]="panel() === 'hosting'" (click)="panel.set('hosting')">Reviews and checks</button></nav>
       @if (panel() === 'overview') {
         <p>Local repository state. Ahead and behind counts use tracking references already fetched.</p>
@@ -43,7 +43,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           <button type="button" aria-describedby="workspace-pull-strategy" [disabled]="git.busy() || openingRepositories() || bulkRunning() || git.browserPreview() || !selectedRepositoryIds().length" (click)="runBulk('pull')">Pull selected ({{ selectedRepositoryIds().length }})</button>
           <button type="button" [disabled]="overviewBusy() || !selectedOpenTabs().length" (click)="reviewTabClose($event)">Close selected ({{ selectedOpenTabs().length }})…</button></div>
         @for (visit of [request()]; track visit) {
-          <gc-workspace-clone [owner]="cloneOwner" [disabled]="overviewBusy()" />
+          <gk-workspace-clone [owner]="cloneOwner" [disabled]="overviewBusy()" />
         }
         <p id="workspace-pull-strategy">Pull uses each repository’s configured upstream. Default strategy: {{ pullStrategyLabel() }}.</p>
         <p role="status">{{ rows().length }} of {{ git.repositories().length }} open repositories shown{{ refreshing() ? ' · reading local repositories' : '' }}</p>
@@ -154,7 +154,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
           <div class="tools"><button type="button" [disabled]="filePage() === 0 || filesLoading()" (click)="previousFilePage()">Previous</button><span>Page {{ filePage() + 1 }}</span><button type="button" [disabled]="!files()?.nextCursor || filesLoading()" (click)="nextFilePage()">Next</button></div>
         }
       } @else if (panel() === 'hosting') {
-        <gc-hosting-panel />
+        <gk-hosting-panel />
       } @else {
         <p>Save reusable commit names and email addresses on this device. Profiles contain no authentication credentials. Applying a profile writes local Git identity settings only for the displayed repository.</p>
         @if (error()) { <p role="alert">{{ error() }}</p> }
@@ -217,7 +217,7 @@ interface WorkspaceActionResult { id: string; path: string; action: 'fetch' | 'p
     button { cursor: pointer; } button:disabled, button[aria-disabled=true] { opacity: .5; cursor: default; } button[aria-pressed=true] { border-color: var(--accent); }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } [role=alert] { color: var(--danger); }
     .profile-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; } .profile-layout > * { min-width: 0; } .tools { justify-content: start; }
-    gc-background-operation-warnings { position: sticky; top: 0; z-index: 1; background: var(--inspector-list); }
+    gk-background-operation-warnings { position: sticky; top: 0; z-index: 1; background: var(--inspector-list); }
     .repositories article > header { align-items: start; } .repositories article > header > label { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; } .repositories article > header > div { min-width: 0; flex: 1; }
     .saved-repositories { margin-block-start: 20px; } .saved-repositories li + li { margin-block-start: 12px; }
     .saved-repositories code { white-space: break-spaces; } .saved-repositories .tools { margin-block-start: 4px; }

@@ -1,9 +1,9 @@
 <div class="rebase-backdrop" (click)="closed.emit()">
   <section #dialog class="interactive-rebase" role="dialog" aria-modal="true" aria-label="Interactive rebase" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
     <header>
-      <span class="rebase-mark"><gc-icon name="edit" [size]="18" /></span>
+      <span class="rebase-mark"><gk-icon name="edit" [size]="18" /></span>
       <div><small>INTERACTIVE REBASE</small><h2>{{ state().source }} @if (state().root) { <i>from root</i> } @else if (!state().selectionOids) { <i>onto</i> {{ state().target }} }</h2><p>Fixup keeps the preceding message; Squash combines messages. Both need a retained predecessor. Edit pauses for amendments, then Continue. Original tip is saved for recovery.</p></div>
-      <button data-rebase-close type="button" aria-label="Close interactive rebase" title="Close interactive rebase" (click)="closed.emit()"><gc-icon name="x" [size]="14" /></button>
+      <button data-rebase-close type="button" aria-label="Close interactive rebase" title="Close interactive rebase" (click)="closed.emit()"><gk-icon name="x" [size]="14" /></button>
     </header>
     <div class="rebase-scope">
       @if (!state().root && !state().selectionOids) {
@@ -38,11 +38,11 @@
         }
       }
       <p>Recorded remote reachability is based only on local remote-tracking references. Unknown does not mean unpublished. Coordinate before rewriting shared history.</p>
-      <gc-git-help topic="rebase" label="Learn about interactive rebase…" />
+      <gk-git-help topic="rebase" label="Learn about interactive rebase…" />
     </div>
     <div class="autosquash-review">
       <button type="button" (click)="autosquash()">Preview autosquash</button>
-      <span>Match fixup!/squash! to an earlier unique subject or commit ID. Manual actions are never replaced.</span>
+      <span>Match fixup!/squash!/amend! to an earlier unique subject or commit ID. Manual actions are never replaced.</span>
       @if (autosquashError()) { <p role="alert">{{ autosquashError() }}</p> }
       @if (autosquashNotice()) { <p role="status">{{ autosquashNotice() }}</p> }
     </div>
@@ -66,15 +66,17 @@
             <option value="pick">Pick</option><option value="reword">Reword</option>
             <option value="edit">Edit</option>
             <option value="squash" [disabled]="!canCombine(index)">Squash</option>
-            <option value="fixup" [disabled]="!canCombine(index)">Fixup</option><option value="drop">Drop</option>
+            <option value="fixup" [disabled]="!canCombine(index)">Fixup</option>
+            <option value="fixup-reword" [disabled]="!canCombine(index)">Fixup + message</option><option value="drop">Drop</option>
           </select>
           <span class="avatar" [style.--author-color]="colorFor()(step.authorName, step.authorEmail)">{{ initials(step.authorName) }}</span>
           <span class="rebase-commit-copy"><strong [title]="step.subject">{{ step.subject }}</strong><small [title]="step.oid">{{ step.oid.slice(0, 8) }} · {{ step.authorName }}</small><small>{{ state().remoteReachableOids?.includes(step.oid) ? 'Recorded remote-reachable' : 'Publication unknown' }} @if (state().selectionOids) { · {{ state().selectionOids?.includes(step.oid) ? 'Selected' : 'Later descendant' }} }</small></span>
+          @if (step.action === 'fixup-reword') { <small class="rebase-message-preview" [title]="step.message">Replaces target message: {{ replacementMessagePreview(step) }}</small> }
           <div class="rebase-move-controls">
             <button type="button" aria-label="Move {{ step.subject }} up" title="Move up (Alt+Up)"
-              [disabled]="index === 0" (click)="$event.stopPropagation(); moveStep(step.oid, -1)"><gc-icon name="chevron-up" [size]="12" /></button>
+              [disabled]="index === 0" (click)="$event.stopPropagation(); moveStep(step.oid, -1)"><gk-icon name="chevron-up" [size]="12" /></button>
             <button type="button" aria-label="Move {{ step.subject }} down" title="Move down (Alt+Down)"
-              [disabled]="index === state().steps.length - 1" (click)="$event.stopPropagation(); moveStep(step.oid, 1)"><gc-icon name="chevron-down" [size]="12" /></button>
+              [disabled]="index === state().steps.length - 1" (click)="$event.stopPropagation(); moveStep(step.oid, 1)"><gk-icon name="chevron-down" [size]="12" /></button>
           </div>
           @if (step.action === 'reword') {
             <textarea rows="2" aria-label="New message for {{ step.subject }}" [ngModel]="step.message"

@@ -37,7 +37,7 @@ async function openCloneForm(page: Page, worktrees = false) {
 
 async function deferNativeCreation(page: Page, command: 'clone_repository' | 'initialize_repository', path: string) {
   await page.evaluate(({ command, path }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const bridge = (window as any).__TAURI_INTERNALS__;
     const invoke = bridge.invoke;
     const snapshot = { ...app.git.repository(), id: 'owned-created-repository', name: path.split('/').at(-1), path };
@@ -60,7 +60,7 @@ async function finishNativeCreation(page: Page) {
 
 async function creationState(page: Page, path: string) {
   return page.evaluate(path => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return {
       recent: git.recentPaths().includes(path),
       saved: git.activeWorkspace().repositoryPaths.filter((item: string) => item === path).length,
@@ -83,7 +83,7 @@ for (const changeTab of [false, true]) {
       page.locator('.repo-tab-main[aria-selected="true"]');
     const tabId = await tab.getAttribute('data-repository-tab-id');
     const expectedPath = await page.evaluate(id => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       return git.repositories().find((repository: any) => repository.id === id)?.path;
     }, tabId);
     expect(expectedPath).toBeTruthy();
@@ -160,7 +160,7 @@ test('a retired clone failure is recorded without taking over a replacement dial
   await expect(dialog).toBeVisible();
   expect(await creationState(page, path)).toEqual({ recent: false, saved: 0, opened: false, requests: 1 });
   expect(await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const outcome = git.activityLogs().find((activity: any) => activity.description === 'Cloning vendor-app');
     return { error: git.error(), status: outcome?.status, detail: outcome?.detail };
   })).toEqual({ error: null, status: 'error', detail: 'Owned native clone failure' });

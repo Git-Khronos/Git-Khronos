@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     (window as any).__scopeCalls = [];
     (window as any).__scopeSource = { id: git.repository().id, path: git.repository().path };
@@ -81,7 +81,7 @@ for (const force of [false, true]) {
     await expect(modal).toBeVisible();
     if (force) await modal.getByRole('checkbox', { name: /Force delete/ }).check();
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const selected = app.git.repository();
       app.git.repositories.update((items: any[]) => items.map(item => item.id !== selected.id ? item : {
         ...item, branches: item.branches.map((branch: any) =>
@@ -138,7 +138,7 @@ for (const review of reviews) {
 test('sparse selection and sparse-index setting are captured when review opens', async ({ page }) => {
   const modal = await open(page, 'sparse-set');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.sparseCheckoutPaths.set('unreviewed');
     app.sparseCheckoutIndex.set(false);
   });
@@ -165,7 +165,7 @@ test('closing a busy branch review does not replay or reopen its late unmerged r
   await expect(modal.locator('input[type=checkbox]')).toBeDisabled();
   await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.evaluate(() => (window as any).__rejectScope());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.locator('[role=alertdialog]')).toHaveCount(0);
   expect(await calls(page)).toHaveLength(1);
 });
@@ -182,12 +182,12 @@ for (const newerError of [null, 'An unrelated action reported a later error.']) 
     await page.evaluate(() => (window as any).__rejectScope());
     await expect.poll(() => page.evaluate(() => typeof (window as any).__resolveBranchRefresh)).toBe('function');
     await page.evaluate(newerError => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.error.set(newerError);
       (window as any).__resolveBranchRefresh();
     }, newerError);
     await expect(modal.getByRole('button', { name: 'Delete anyway', exact: true })).toBeVisible();
-    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.error()))
+    expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.error()))
       .toBe(newerError);
     expect(await calls(page)).toHaveLength(1);
   });
@@ -204,9 +204,9 @@ test('late sparse completion preserves a newer repository review and its draft',
   });
   await expect(page.locator('[role=alertdialog]')).toContainText('/owned/review-B');
   await page.evaluate(() => (window as any).__resolveScope());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.locator('[role=alertdialog]')).toContainText('/owned/review-B');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).sparseCheckoutPaths())).toBe('replacement-only');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).sparseCheckoutPaths())).toBe('replacement-only');
   expect(await calls(page)).toHaveLength(1);
 });
 
@@ -214,7 +214,7 @@ for (const review of ['branch', 'worktree'] as const) {
   test(`${review} outgoing force checkbox cannot change a replacement review`, async ({ page }) => {
     await open(page, review);
     if (review === 'worktree') await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const dirty = { ...app.git.repository().worktrees.find((tree: any) => tree.path === '/owned/reviewed'), changes: 2 };
       app.requestWorktreeRemoval(dirty, false);
     });
@@ -226,7 +226,7 @@ for (const review of ['branch', 'worktree'] as const) {
       input.dispatchEvent(new Event('change', { bubbles: true }));
     }, review);
     const forced = await page.evaluate(review => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       return review === 'branch' ? app.forceBranchDelete() : app.forceWorktreeRemoval();
     }, review);
     expect(forced).toBe(false);
@@ -237,7 +237,7 @@ for (const review of ['branch', 'worktree'] as const) {
 test('worktree force choice is captured before closing resets the review', async ({ page }) => {
   await open(page, 'worktree');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const dirty = { ...app.git.repository().worktrees.find((tree: any) => tree.path === '/owned/reviewed'), changes: 2 };
     app.requestWorktreeRemoval(dirty, false);
   });

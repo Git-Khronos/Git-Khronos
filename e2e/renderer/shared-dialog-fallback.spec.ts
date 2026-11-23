@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const flows = [
   {
-    component: 'WorkspaceCenterComponent', host: 'gc-workspace-center',
+    component: 'WorkspaceCenterComponent', host: 'gk-workspace-center',
     loading: 'Loading workspace center', unavailable: 'Workspace center unavailable', ready: 'Workspace center',
     async open(page: Page) {
       const opener = page.getByRole('button', { name: 'Workspace: Default', exact: true });
@@ -12,7 +12,7 @@ const flows = [
     },
   },
   {
-    component: 'IntegrateBranchDialogComponent', host: 'gc-integrate-branch-dialog',
+    component: 'IntegrateBranchDialogComponent', host: 'gk-integrate-branch-dialog',
     loading: 'Loading merge and rebase options', unavailable: 'Merge and rebase options unavailable', ready: 'Bring changes into main',
     async open(page: Page) {
       const opener = page.getByRole('button', { name: 'Local branch release', exact: true });
@@ -51,7 +51,7 @@ for (const flow of flows) {
         expect(requests).toBe(0);
         await page.evaluate(() => {
           const host = window as any;
-          const app = host.ng.getComponent(document.querySelector('gc-root'));
+          const app = host.ng.getComponent(document.querySelector('gk-app'));
           const actions: string[] = host.__fallbackActions = [];
           app.git.stageAll = async () => { actions.push('stage'); };
           app.git.commit = async () => { actions.push('commit'); };

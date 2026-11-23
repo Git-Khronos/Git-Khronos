@@ -130,7 +130,7 @@ test('prioritizes complete repository context names before secondary toolbar lab
 
 test('cancels eligible Git work, refreshes state, and distinguishes failures', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const snapshot = git.repository();
     const testState = {
@@ -374,8 +374,8 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
   await managerFilter.press('Escape');
   await expect(managerFilter).toHaveValue('');
   const managerFavorite = manager.locator('.manager-favorites .manager-repository-row').first();
-  await expect(managerFavorite.locator('.manager-repository-main > gc-icon')).toHaveAttribute('name', 'folder-git');
-  await expect(managerFavorite.locator('.manager-favorite-toggle > gc-icon')).toHaveAttribute('name', 'star');
+  await expect(managerFavorite.locator('.manager-repository-main > gk-icon')).toHaveAttribute('name', 'folder-git');
+  await expect(managerFavorite.locator('.manager-favorite-toggle > gk-icon')).toHaveAttribute('name', 'star');
   const managerClose = manager.getByRole('button', { name: 'Close repository management' });
   const managerLastEnabled = manager.locator('button:not(:disabled)').last();
   await managerClose.focus();
@@ -412,7 +412,7 @@ test('jumps between shortcut categories in compact windows', async ({ page }) =>
   const groups = dialog.locator('.shortcut-groups');
   const tabsAndView = dialog.locator('#shortcut-section-tabs-view');
   const close = dialog.getByRole('button', { name: 'Close keyboard shortcuts' });
-  await expect(dialog.locator('header > span gc-icon svg rect')).toHaveAttribute('width', '18');
+  await expect(dialog.locator('header > span gk-icon svg rect')).toHaveAttribute('width', '18');
   await expect(dialog.getByRole('navigation', { name: 'Shortcut sections' })).toBeVisible();
   const search = dialog.getByRole('searchbox', { name: 'Search keyboard shortcuts' });
   await expect(search).toBeFocused();
@@ -601,14 +601,14 @@ test('presents the sample repository as a complete Git workspace', async ({ page
     await expect(control).toHaveCSS('opacity', '1');
     await expect(control).toHaveCSS('color', 'rgb(255, 255, 255)');
   }
-  await expect(page.locator('.grouped-reference-location.remote gc-icon')).toHaveCount(4);
+  await expect(page.locator('.grouped-reference-location.remote gk-icon')).toHaveCount(4);
   const sharedTip = page.locator('[data-commit-oid="83e6d15fb82672899688b93f59251dfc669888a3"] .commit-ref-stack');
   const sharedTipRefs = sharedTip.locator('.grouped-reference-location.remote');
   const sharedTipTrigger = sharedTip.locator('.reference-stack-trigger');
   await expect(sharedTipTrigger.locator('.reference-stack-label')).toHaveText('main');
   await expect(sharedTipTrigger).not.toContainText('origin/main');
   await expect(sharedTipTrigger).not.toContainText('upstream/main');
-  await expect(sharedTipTrigger.locator('.reference-stack-locations gc-icon')).toHaveCount(2);
+  await expect(sharedTipTrigger.locator('.reference-stack-locations gk-icon')).toHaveCount(2);
   await expect(sharedTipTrigger.locator('.reference-stack-chevron')).toBeVisible();
   await expect(sharedTipTrigger.locator(':scope > b')).toHaveCount(0);
   await expect(sharedTipTrigger).toHaveAttribute(
@@ -629,7 +629,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(alignedTrigger.locator('.reference-stack-label')).toHaveText('release');
   await expect(alignedTrigger).not.toContainText('origin/release');
   await expect(alignedTrigger).not.toContainText('upstream/release');
-  await expect(alignedTrigger.locator('.reference-stack-locations gc-icon')).toHaveCount(3);
+  await expect(alignedTrigger.locator('.reference-stack-locations gk-icon')).toHaveCount(3);
   await alignedTrigger.hover();
   await expect(alignedLocalAndRemotes.locator('.grouped-reference-row')).toHaveCount(1);
   await expect(alignedLocalAndRemotes.locator('.grouped-reference-label')).toHaveText('release');
@@ -779,7 +779,7 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(page.getByLabel('Push after committing').locator('..')).toHaveCSS('font-size', '13px');
 
   const workingDirectoryOptions = page.getByRole('button', { name: 'Working directory options' });
-  await expect(workingDirectoryOptions.locator('gc-icon svg')).toBeVisible();
+  await expect(workingDirectoryOptions.locator('gk-icon svg')).toBeVisible();
   await expect(workingDirectoryOptions).toHaveAttribute('aria-haspopup', 'menu');
   await expect(workingDirectoryOptions).toHaveAttribute('aria-expanded', 'false');
   await workingDirectoryOptions.click();
@@ -814,7 +814,7 @@ test('does not present a fully disabled split action as interactive on hover', a
   await expect(split).not.toHaveCSS('background-color', idleBackground);
 
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.operations.start(-1, null, null);
   });
   await expect(pull).toBeDisabled();
@@ -916,7 +916,7 @@ test('keeps working-tree file controls compact and easy to target', async ({ pag
     rows.every((row) => row.getBoundingClientRect().height === 31),
   )).toBe(true);
 
-  await expect(page.locator('#unstaged-files-list .stage-box gc-icon').first()).toBeVisible();
+  await expect(page.locator('#unstaged-files-list .stage-box gk-icon').first()).toBeVisible();
   await expect(page.locator('.stage-box.checked')).toHaveCount(0);
   const modifiedStatus = page.locator('#unstaged-files-list .file-row', { hasText: 'app.component.html' }).locator('.file-status');
   await expect(modifiedStatus).toHaveAttribute('title', 'Modified, not staged yet');
@@ -1128,7 +1128,7 @@ test('keeps manual co-author entry labeled and usable in the commit composer', a
 test('moves files between change lists before Git responds and offers per-file discard', async ({ page }) => {
   const path = 'apps/desktop/src/app/app.component.html';
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const state = { calls: [] as string[], pending: [] as Array<(value: unknown) => void>, git };
     (window as any).__instantStageTest = state;
@@ -1293,7 +1293,7 @@ test('navigates primary toolbar split menus with the keyboard', async ({ page })
   await expect(fetch).toBeVisible();
   await expect(fetch).toHaveAttribute('title', 'Fetch all remotes');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const snapshot = git.repository();
     (window as any).__toolbarFetchCalls = [];
     (window as any).__TAURI_INTERNALS__ = {
@@ -1438,7 +1438,7 @@ for (const { kind, width } of referenceHoverCases) {
       await stack.evaluate((element, { kind, label }) => {
         // Retain the real row's Angular-scoped attributes and icon styles.
         const button = element.querySelector('button')!;
-        const icon = button.querySelector('gc-icon')!.cloneNode(true);
+        const icon = button.querySelector('gk-icon')!.cloneNode(true);
         button.className = `ref-pill ${kind} with-icon interactive-${kind}-ref`;
         const text = document.createElement('span');
         text.textContent = label;
@@ -1581,10 +1581,10 @@ test('starts each worktree lane at its own WIP node', async ({ page }) => {
   const linkedLabel = rows.nth(1).locator('.wip-worktree-label');
   await expect(currentLabel).toContainText('main');
   await expect(currentLabel).toHaveAttribute('title', 'Current worktree · Branch main');
-  await expect(currentLabel.locator('gc-icon')).toHaveCount(1);
+  await expect(currentLabel.locator('gk-icon')).toHaveCount(1);
   await expect(linkedLabel).toContainText('feature/partial-staging');
   await expect(linkedLabel).toHaveAttribute('title', 'Linked worktree git-khronos-partial-staging · Branch feature/partial-staging');
-  await expect(linkedLabel.locator('gc-icon')).toHaveCount(1);
+  await expect(linkedLabel.locator('gk-icon')).toHaveCount(1);
   await expect(currentLabel).not.toHaveCSS('background-color', await linkedLabel.evaluate((element) => getComputedStyle(element).backgroundColor));
 
   const firstOffset = Number(await rows.nth(0).locator('.wip-node').getAttribute('data-lane-offset'));
@@ -1875,8 +1875,8 @@ test('preserves readable commit messages with both panels on medium desktops', a
   expect(await row.locator('.commit-description').evaluate((element) => element.clientWidth)).toBeGreaterThan(48);
   await expect(page.locator('.commit-panel .commit-body')).toHaveCSS('font-size', '13px');
   await expect(page.locator('.commit-panel .author-card > span:last-child')).toHaveCSS('font-size', '13px');
-  await expect(page.locator('.commit-panel gc-commit-signature strong')).toHaveCSS('font-size', '13px');
-  const signatureDetail = page.locator('.commit-panel gc-commit-signature small');
+  await expect(page.locator('.commit-panel gk-commit-signature strong')).toHaveCSS('font-size', '13px');
+  const signatureDetail = page.locator('.commit-panel gk-commit-signature small');
   await expect(signatureDetail).toHaveCSS('white-space', 'normal');
   expect(await signatureDetail.evaluate((element) => ({
     horizontal: element.scrollWidth <= element.clientWidth + 1,
@@ -2792,7 +2792,7 @@ test('keeps the active branch name readable beside multiple remote locations', a
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(mainBranch.locator('.branch-tracking')).toBeVisible();
-  await expect(mainBranch.locator('.current-check gc-icon')).toBeVisible();
+  await expect(mainBranch.locator('.current-check gk-icon')).toBeVisible();
 });
 
 test('collapses individual remote locations and persists their disclosure state', async ({ page }) => {
@@ -2935,7 +2935,7 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
     item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   });
   await expect.poll(() => page.evaluate(() =>
-    (window as any).ng.getComponent(document.querySelector('gc-root')).pendingWorktreeAction())).toBeNull();
+    (window as any).ng.getComponent(document.querySelector('gk-app')).pendingWorktreeAction())).toBeNull();
   await expect(worktreeActions).toBeFocused();
   await worktreeActions.click();
   await menu.getByRole('menuitem', { name: 'Remove this worktree', exact: true }).click();
@@ -2976,7 +2976,7 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
 
 test('confirms forced worktree removal only after acknowledging changes', async ({ page }) => {
   const expectedPath = await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     (window as any).__worktreeRemovalCalls = [];
     git.removeWorktree = async (...args: unknown[]) => { (window as any).__worktreeRemovalCalls.push(args); };
     return git.repository().worktrees.find((item: any) => item.branch === 'feature/partial-staging').path;
@@ -3235,7 +3235,7 @@ test('exposes tag and stash actions through direct controls', async ({ page }) =
     item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   });
   await expect.poll(() => page.evaluate(() =>
-    (window as any).ng.getComponent(document.querySelector('gc-root')).pendingStashDelete())).toBeNull();
+    (window as any).ng.getComponent(document.querySelector('gk-app')).pendingStashDelete())).toBeNull();
   await expect(stashActions).toBeFocused();
   await stashActions.press('Enter');
   await expect(stashMenu.getByRole('menuitem', { name: 'Apply Stash' })).toBeFocused();
@@ -3310,6 +3310,28 @@ test('shows effective signing configuration and applies its commit default', asy
   await preferences.getByRole('button', { name: 'Close preferences' }).click();
   await page.getByLabel('Sign this commit').uncheck();
   await expect(page.getByLabel('Sign this commit')).not.toBeChecked();
+});
+
+test('announces the exact hook bypass warning and supports keyboard toggling', async ({ page }) => {
+  await page.goto('/?skip-hooks-preview');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  const skipHooks = page.getByRole('checkbox', { name: 'Skip verification hooks' });
+  const warning = page.locator('.commit-hook-warning');
+  await expect(skipHooks).toBeChecked();
+  await expect(warning).toBeVisible();
+  await expect(warning).toHaveAttribute('role', 'status');
+  await expect(warning).toHaveAttribute('aria-live', 'polite');
+  await expect(warning).toContainText('pre-commit and commit-msg hooks only');
+  await expect(warning).toContainText('Other hooks may still run');
+  await expect(warning).toContainText('side effects are not rolled back');
+
+  await skipHooks.focus();
+  await page.keyboard.press('Space');
+  await expect(skipHooks).not.toBeChecked();
+  await expect(warning).toHaveCount(0);
+  await page.keyboard.press('Space');
+  await expect(skipHooks).toBeChecked();
+  await expect(warning).toBeVisible();
 });
 
 test('reports a missing configured commit signer before commit time', async ({ page }) => {
@@ -3537,7 +3559,7 @@ test('navigates and persists application themes as a standard radio group', asyn
   const selectedCommit = page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]');
   const selectedAuthorNode = selectedCommit.locator('.author-node');
   const commitMessageCard = page.locator('.commit-panel .commit-overview');
-  const commitSignature = page.locator('gc-commit-signature .commit-signature');
+  const commitSignature = page.locator('gk-commit-signature .commit-signature');
   await expect(chrome).toHaveCSS('background-color', 'rgb(24, 24, 36)');
   await expect(activeRepositoryTab).toHaveCSS('background-color', 'rgb(36, 36, 55)');
   await expect(toolbar).toHaveCSS('background-color', 'rgb(36, 36, 55)');
@@ -3942,7 +3964,7 @@ test('keeps the window title aligned with the active repository state', async ({
   await expect(page).toHaveTitle('git-khronos-partial-staging — feature/partial-staging • 4 changes — Git Khronos');
 
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
       ...item,
@@ -3953,7 +3975,7 @@ test('keeps the window title aligned with the active repository state', async ({
   await expect(page).toHaveTitle(/git-khronos-partial-staging — Detached [0-9a-f]{8} — Git Khronos/);
 
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
       ...item,
@@ -3964,7 +3986,7 @@ test('keeps the window title aligned with the active repository state', async ({
   await expect(page).toHaveTitle('git-khronos-partial-staging — No commits — Git Khronos');
 
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.set([]);
     git.activeRepositoryId.set(null);
   });
@@ -4097,7 +4119,7 @@ test('keeps the workspace switcher inside narrow application windows', async ({ 
 test('reveals the active repository tab when the tab strip overflows', async ({ page }) => {
   await page.setViewportSize({ width: 820, height: 720 });
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const base = git.repositories()[0];
     const repositories = Array.from({ length: 9 }, (_, index) => {
       const suffix = String(index + 1).padStart(2, '0');
@@ -4279,7 +4301,7 @@ for (const action of ['force push', 'worktree removal', 'branch publish'] as con
         await expect(page.locator('.commit-row').first()).toBeVisible();
       }
       await page.evaluate(() => {
-        const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+        const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
         const calls: string[] = [];
         (window as any).__confirmationActionCalls = calls;
         for (const name of ['forcePushWithLease', 'removeWorktree', 'publishBranch']) {
@@ -4484,8 +4506,8 @@ test('keeps repository form fields padded and actions reachable at narrow sizes 
     await page.keyboard.press('Escape');
 
     await page.evaluate(() => {
-      (window as any).ng.getComponent(document.querySelector('gc-root')).openEditRemoteDialog(
-        (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().remotes[0]);
+      (window as any).ng.getComponent(document.querySelector('gk-app')).openEditRemoteDialog(
+        (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().remotes[0]);
     });
     dialog = page.getByRole('dialog', { name: 'Edit Remote' });
     await dialog.getByText('Advanced: separate push destination', { exact: true }).click();
@@ -5273,7 +5295,7 @@ test('keeps terminal session controls reachable in compact windows', async ({ pa
 
 test('keeps the active terminal tab visible when the window narrows', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     let terminal = 0;
     app.git.systemInfo.set({
       appVersion: 'renderer test',
@@ -5314,7 +5336,7 @@ test('keeps the active terminal tab visible when the window narrows', async ({ p
   await expect(panel.getByRole('tab', { name: 'bash 1' })).toBeVisible();
   await expect(panel.locator('.terminal-empty-tab')).toHaveCount(0);
   await page.evaluate(async () => {
-    const terminalPanel = (window as any).ng.getComponent(document.querySelector('gc-terminal-panel'));
+    const terminalPanel = (window as any).ng.getComponent(document.querySelector('gk-terminal-panel'));
     const firstTerminal = terminalPanel.tabs()[0].terminal;
     await new Promise<void>((resolve) => firstTerminal.write('\u001b]0;API logs\u0007', resolve));
   });
@@ -5628,7 +5650,7 @@ test('shows shortcuts for the active desktop platform', async ({ page }) => {
   await expect(page.getByTitle('New repository tab (Ctrl+T)')).toHaveAttribute('aria-keyshortcuts', 'Control+T Meta+T');
   const commandPaletteTrigger = page.getByTitle('Command palette (Ctrl+P)');
   await expect(commandPaletteTrigger).toHaveAttribute('aria-keyshortcuts', 'Control+P Meta+P');
-  await expect(commandPaletteTrigger.locator('gc-icon svg circle')).toHaveAttribute('r', '7');
+  await expect(commandPaletteTrigger.locator('gk-icon svg circle')).toHaveAttribute('r', '7');
   await expect(page.getByTitle('Hide Left Panel (Ctrl+J)')).toHaveAttribute('aria-keyshortcuts', 'Control+J Meta+J');
   await expect(page.getByTitle('Open repository terminal (Alt+T or Ctrl+`)')).toHaveAttribute('aria-keyshortcuts', 'Alt+T Control+` Meta+`');
   await expect(page.getByTitle('Hide Commit Panel (Ctrl+K)')).toHaveAttribute('aria-keyshortcuts', 'Control+K Meta+K');
@@ -5876,8 +5898,8 @@ test('exposes familiar repository and application actions from the main menu', a
   await expect(menu.locator('header small')).toHaveCSS('font-size', '12px');
   await expect(menu.getByRole('menuitem', { name: /Manage Repositories/ })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: /Manage Repositories/ }).locator('strong')).toHaveCSS('font-size', '13px');
-  await expect(menu.getByRole('menuitem', { name: /Command Palette/ }).locator('gc-icon svg circle')).toHaveAttribute('r', '7');
-  await expect(menu.getByRole('menuitem', { name: /Keyboard Shortcuts/ }).locator('gc-icon svg rect')).toHaveAttribute('width', '18');
+  await expect(menu.getByRole('menuitem', { name: /Command Palette/ }).locator('gk-icon svg circle')).toHaveAttribute('r', '7');
+  await expect(menu.getByRole('menuitem', { name: /Keyboard Shortcuts/ }).locator('gk-icon svg rect')).toHaveAttribute('width', '18');
   await expect(menu.getByRole('menuitem', { name: /Manage Repositories/ }).locator('small')).toHaveCSS('font-size', '12px');
   await expect(menu.getByRole('menuitem', { name: /Open Repository/ })).toBeVisible();
   await expect(menu.getByRole('menuitem', { name: /Clone Repository/ })).toBeVisible();
@@ -6444,7 +6466,7 @@ test('switches a minimized author column from names to avatars', async ({ page }
 
   await expect(resizer).toHaveAttribute('aria-valuenow', '70');
   await expect(heading).toHaveClass(/compact/);
-  await expect(heading.locator(':scope > gc-icon')).toBeVisible();
+  await expect(heading.locator(':scope > gk-icon')).toBeVisible();
   await expect(page.locator('.commit-row[data-commit-oid] .row-author .compact-author-avatar').first()).toBeVisible();
   await expect(page.locator('.commit-row[data-commit-oid]:not(.stash-row) .row-author').first()).toHaveAttribute('title', /<.+>/);
 
@@ -6650,7 +6672,7 @@ test('never narrows Date / Time below its visible dates and times', async ({ pag
 
 test('offers an explicit force delete when Git protects an unmerged branch', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const snapshot = git.repository();
     const state = { calls: [] as Array<{ command: string; args: Record<string, unknown> }>,
@@ -6932,7 +6954,7 @@ test('jumps from tags and stashes to their graph entries', async ({ page }) => {
     await stashPanel.locator('.selected-stash-actions').evaluate((element) => element.clientWidth),
   );
   const stashActions = stashPanel.getByRole('button', { name: 'Stash actions' });
-  await expect(stashActions.locator('gc-icon svg')).toBeVisible();
+  await expect(stashActions.locator('gk-icon svg')).toBeVisible();
   await expect(stashActions).toHaveAttribute('aria-expanded', 'false');
   await stashActions.click();
   stashActionMenu = page.getByRole('menu', { name: 'Stash actions' });
@@ -6988,7 +7010,7 @@ test('exposes consistent remote branch actions wherever a reference appears', as
   await expect(detailTrigger.locator('.reference-stack-label')).toHaveText('main');
   await expect(detailTrigger).not.toContainText('origin/main');
   await expect(detailTrigger).not.toContainText('upstream/main');
-  await expect(detailTrigger.locator('.reference-stack-locations gc-icon')).toHaveCount(2);
+  await expect(detailTrigger.locator('.reference-stack-locations gk-icon')).toHaveCount(2);
   await detailTrigger.focus();
   await page.keyboard.press('Shift+F10');
   await expect(detailStack.getByRole('menuitem', { name: 'Remote branch origin/main' })).toBeFocused();
@@ -7242,7 +7264,7 @@ test('selects and persists the remote used for pull and push', async ({ page }) 
   const persistedUpstream = picker.getByRole('menuitemradio', { name: /upstream/ });
   await expect(persistedUpstream).toHaveAttribute('aria-checked', 'true');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.repositories.update((repositories: any[]) => repositories.map((repository) => ({
       ...repository,
       remotes: repository.remotes.map((remote: any) => remote.name === 'upstream'
@@ -7261,7 +7283,7 @@ test('selects and persists the remote used for pull and push', async ({ page }) 
 
 test('keeps remote setup reachable when the repository has no remotes', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.repositories.update((repositories: any[]) => repositories.map((repository) => ({
       ...repository,
       remotes: [],
@@ -7431,7 +7453,7 @@ test('finds repositories, references, and changed files from the command palette
   await page.keyboard.press('Control+P');
   const search = page.getByRole('combobox', { name: 'Search commands' });
   const palette = page.locator('.command-palette');
-  await expect(palette.locator('.palette-search gc-icon svg circle')).toHaveAttribute('r', '7');
+  await expect(palette.locator('.palette-search gk-icon svg circle')).toHaveAttribute('r', '7');
   await expect(search).toHaveAttribute('placeholder', 'Search commands, repos, refs, and files');
   await expect(palette.locator('.palette-group-heading').first()).toHaveText('Quick Actions');
   await expect(palette.getByRole('option').filter({ hasText: 'Fetch All' })).toHaveCount(1);
@@ -7619,7 +7641,7 @@ test('makes branch synchronization state explicit and actionable in the status b
 for (const metadata of ['a stale branch row', 'no branch rows'] as const) {
   test(`uses native checkout status with ${metadata}`, async ({ page }) => {
     const head = await page.evaluate(metadata => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const git = app.git;
       const repository = git.repository();
       const headOid = repository.commits[1].oid;
@@ -7643,7 +7665,7 @@ for (const metadata of ['a stale branch row', 'no branch rows'] as const) {
 
 test('distinguishes detached HEAD from a repository without commits in the status bar', async ({ page }) => {
   const head = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
@@ -7661,7 +7683,7 @@ test('distinguishes detached HEAD from a repository without commits in the statu
   await expect(page.locator('.commit-row.selected')).toHaveAttribute('data-commit-oid', head);
 
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     git.repositories.update((items: any[]) => items.map((item) => item.id === repository.id ? {
@@ -7753,7 +7775,7 @@ test('exposes commit actions without requiring a right click', async ({ page }) 
   await expect(row).toHaveClass(/branch-highlighted/);
   expect(await page.locator('.commit-row.branch-highlighted').count()).toBeGreaterThan(1);
   await expect(actions).toHaveCSS('opacity', '1');
-  await expect(actions.locator('gc-icon svg')).toBeVisible();
+  await expect(actions.locator('gk-icon svg')).toBeVisible();
   await expect(actions).toHaveAttribute('aria-haspopup', 'menu');
   await expect(actions).toHaveAttribute('aria-expanded', 'false');
   await actions.click();
@@ -7829,7 +7851,7 @@ test('keeps uncounted comparison files selectable and marks the totals partial',
   const panel = page.locator('.commit-panel');
   await expect(panel.getByRole('img', { name: '55 additions and 15 deletions' })).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.commitComparison.update((comparison: any) => ({
       ...comparison,
       lineTotalsPartial: true,
@@ -7854,7 +7876,7 @@ test('keeps revision file list labels and tree controls scoped to the active sou
   await row.click();
   await expect(file).toBeVisible();
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.commitDetails.update((details: any) => ({ ...details, filesTruncated: true,
       files: details.files.map((item: any) => item.path === 'docs/interface-notes.md'
         ? { ...item, additions: null, deletions: null } : item),
@@ -7868,7 +7890,7 @@ test('keeps revision file list labels and tree controls scoped to the active sou
   await page.getByRole('menuitem', { name: 'Compare with working directory' }).click();
   await expect(panel.locator('.comparison-files')).toBeVisible();
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.commitComparison.update((comparison: any) => ({ ...comparison, lineTotalsPartial: true,
       files: comparison.files.map((item: any) => item.path === 'docs/interface-notes.md'
         ? { ...item, additions: null, deletions: null } : item),
@@ -8235,7 +8257,7 @@ test('shows activity outcomes as text with readable theme-paired surfaces', asyn
     await page.reload();
     await expect(page.locator('.commit-row').first()).toBeVisible();
     await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const timestamp = new Date('2026-10-13T12:34:56.789Z').toISOString();
       git.activityLogs.set([
         { id: 1, timestamp, description: 'Fetching updates', durationMs: null, status: 'running', repositoryId: null, detail: null, operationId: 'op-1', cancelable: true },
@@ -8326,7 +8348,7 @@ test('labels truncated commit line totals and explains binary exclusions', async
   const panel = page.locator('.commit-panel');
   await expect(panel.getByText('Changed Files (3)')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.commitDetails.update((details: any) => ({
       ...details,
       filesTruncated: true,
@@ -8820,11 +8842,11 @@ test('shows the reported native version rather than a stale fallback', async ({ 
   const environment = page.locator('.status-version');
   await expect(environment).toHaveText('Preview');
   await page.evaluate(() => {
-    (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set(null);
+    (window as any).ng.getComponent(document.querySelector('gk-app')).git.systemInfo.set(null);
   });
   await expect(environment).toHaveText('Starting…');
   await page.evaluate(() => {
-    (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
+    (window as any).ng.getComponent(document.querySelector('gk-app')).git.systemInfo.set({
       appVersion: '2.3.4', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0',
     });
   });
@@ -8872,7 +8894,7 @@ test.describe('automatic zoom scale', () => {
       window.dispatchEvent(new Event('resize'));
     });
     const report = (wsl: boolean) => page.evaluate((flag) => {
-      (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
+      (window as any).ng.getComponent(document.querySelector('gk-app')).git.systemInfo.set({
         appVersion: 'chrome fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0',
         windowsSubsystemForLinux: flag,
       });
@@ -8903,7 +8925,7 @@ test.describe('automatic zoom scale', () => {
       };
     });
     const report = (wsl: boolean) => page.evaluate((flag) => {
-      (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
+      (window as any).ng.getComponent(document.querySelector('gk-app')).git.systemInfo.set({
         appVersion: 'chrome fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0',
         windowsSubsystemForLinux: flag,
       });
@@ -8912,7 +8934,7 @@ test.describe('automatic zoom scale', () => {
       .filter((call: { command: string }) => call.command === 'set_window_chrome_colors')
       .map((call: { args: { background: string; page: string } }) => `${call.args.background.trim()}|${call.args.page.trim()}`));
     const setTheme = (theme: string) => page.evaluate((value) => {
-      (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(value);
+      (window as any).ng.getComponent(document.querySelector('gk-app')).setAppTheme(value);
     }, theme);
 
     await report(false);
@@ -9169,7 +9191,7 @@ test('keeps the commit inspector usable in a compact desktop window', async ({ p
   expect(compactCommitButton!.y + compactCommitButton!.height).toBeLessThanOrEqual(720 - 26);
   await expect(inspector.locator('.commit-form .primary')).toBeDisabled();
   await expect(inspector.locator('.commit-form .primary')).toHaveCSS('opacity', '1');
-  await expect(inspector.locator('.commit-form .primary gc-icon')).toBeVisible();
+  await expect(inspector.locator('.commit-form .primary gk-icon')).toBeVisible();
 
   await page.setViewportSize({ width: 1024, height: 700 });
   const [shortCommitButton, shortStatusBar] = await Promise.all([
@@ -9243,7 +9265,7 @@ test('guides an unpublished branch through remote selection', async ({ page }) =
   const publish = page.getByRole('button', { name: 'Publish feature/partial-staging to origin' });
   await expect(publish).toContainText('Publish');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     (window as any).__publishCalls = [];
     git.publishBranch = async (...args: unknown[]) => { (window as any).__publishCalls.push(args); };
   });

@@ -5,7 +5,7 @@ import { ApplicationUpdatesService } from './application-updates.service';
 export interface ApplicationUpdatesRequest { readonly id: number; readonly returnFocus: HTMLElement | null }
 
 @Component({
-  selector: 'gc-application-updates-dialog',
+  selector: 'gk-application-updates-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let target = request();

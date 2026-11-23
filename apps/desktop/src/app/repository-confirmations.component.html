@@ -1,13 +1,13 @@
 <div class="confirmation-backdrop" (click)="close()">
   @if (remote(); as candidate) {
     <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-remote-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-      <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
+      <div class="confirmation-icon danger"><gk-icon name="trash" [size]="19" /></div>
       <div class="confirmation-copy"><span>Remove remote</span><h2 id="remove-remote-title">{{ candidate.name }}</h2>@if (remoteRepositoryPath(); as path) { <p class="repository-editor-source">Checkout: <code>{{ path }}</code></p> }<p>This removes the remote configuration and its remote-tracking branches. The remote repository itself is not deleted.</p></div>
       <footer><button type="button" (click)="remoteClosed.emit()">Cancel</button><button class="confirm-action danger" type="button" [disabled]="git.busy()" (click)="remoteConfirmed.emit()">Remove Remote</button></footer>
     </section>
   } @else if (sparseAction(); as action) {
     <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="sparse-checkout-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-      <div class="confirmation-icon"><gc-icon name="folder-git" [size]="19" /></div>
+      <div class="confirmation-icon"><gk-icon name="folder-git" [size]="19" /></div>
       <div class="confirmation-copy">
         <span>{{ action === 'disable' ? 'Disable sparse checkout' : 'Update sparse checkout' }}</span>
         <h2 id="sparse-checkout-title">{{ action === 'disable' ? 'Restore the complete working tree?' : 'Apply this directory selection?' }}</h2>
@@ -18,7 +18,7 @@
     </section>
   } @else if (worktree(); as action) {
     <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-worktree-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-      <div class="confirmation-icon danger"><gc-icon name="trash" [size]="19" /></div>
+      <div class="confirmation-icon danger"><gk-icon name="trash" [size]="19" /></div>
       <div class="confirmation-copy">
         <span>{{ action.deleteBranch ? 'Remove worktree and delete branch' : 'Remove worktree' }}</span>
         <h2 id="remove-worktree-title">{{ action.branch || git.pathLabel(action.path) }}</h2>
@@ -32,7 +32,7 @@
     </section>
   } @else if (forcePush(); as review) {
     <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="force-push-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-      <div class="confirmation-icon danger"><gc-icon name="warning" [size]="19" /></div>
+      <div class="confirmation-icon danger"><gk-icon name="warning" [size]="19" /></div>
       <div class="confirmation-copy">
         <span>Rewrite upstream history</span>
         <h2 id="force-push-title">Force push {{ review.branchName }}</h2>
@@ -52,7 +52,7 @@
     </section>
   } @else if (publishBranch(); as branch) {
     <form #dialog novalidate class="confirmation-dialog upstream-dialog" role="dialog" aria-modal="true" aria-label="Publish {{ branch }}" (submit)="$event.preventDefault(); publishConfirmed.emit()" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
-      <div class="confirmation-icon"><gc-icon name="push" [size]="19" /></div>
+      <div class="confirmation-icon"><gk-icon name="push" [size]="19" /></div>
       <div class="confirmation-copy">
         <span>Publish branch</span>
         <h2>{{ branch }}</h2>
@@ -63,7 +63,7 @@
             @for (remote of git.repository()?.remotes ?? []; track remote.name) { <option [value]="remote.name" [selected]="publishRemote() === remote.name">{{ remote.name }}</option> }
           </select></label>
         } @else {
-          <div class="publish-empty"><span>No remotes are configured. Add a Git remote before publishing this branch.</span><button type="button" [disabled]="git.busy()" (click)="publishAddRemote.emit()"><gc-icon name="plus" [size]="11" />Add Remote</button></div>
+          <div class="publish-empty"><span>No remotes are configured. Add a Git remote before publishing this branch.</span><button type="button" [disabled]="git.busy()" (click)="publishAddRemote.emit()"><gk-icon name="plus" [size]="11" />Add Remote</button></div>
         }
       </div>
       <footer><span></span><button type="button" (click)="publishClosed.emit()">Cancel</button><button class="confirm-action" type="submit" [disabled]="!publishRemote() || git.busy()">Publish Branch</button></footer>

@@ -25,7 +25,11 @@ const LIFETIME: Duration = Duration::from_secs(15 * 60);
 pub struct EditorState(Mutex<HashMap<String, Arc<Editor>>>);
 impl EditorState {
     pub(crate) fn has_open_contexts(&self) -> bool {
-        self.0.lock().map_or(true, |editors| editors.values().any(|editor| !editor.closed.load(Ordering::Acquire)))
+        self.0.lock().map_or(true, |editors| {
+            editors
+                .values()
+                .any(|editor| !editor.closed.load(Ordering::Acquire))
+        })
     }
 }
 

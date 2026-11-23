@@ -7,7 +7,7 @@ type Filters = Omit<HostedRepositoryQuery, 'page' | 'expectedAccountId'>;
 const DEFAULT_FILTERS: Filters = { visibility: 'all', affiliation: 'accessible', sort: 'fullName', direction: 'ascending' };
 
 @Component({
-  selector: 'gc-hosted-repository-browser',
+  selector: 'gk-hosted-repository-browser',
   imports: [HostedForksComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -36,7 +36,7 @@ const DEFAULT_FILTERS: Filters = { visibility: 'all', affiliation: 'accessible',
         <nav aria-label="Repository catalogue pages"><button type="button" [disabled]="unavailable() || page.query.page <= 1" (click)="loadPage(page.query.page - 1)">Previous page</button><button type="button" [disabled]="unavailable() || !page.nextPage" (click)="loadPage(page.nextPage!)">Next page</button></nav>
         <p>{{ page.mayHaveMore ? 'More repositories may be available on the next page.' : 'No further page was indicated by this result.' }} A page is not a snapshot of the entire account.</p>
       }
-      @for (generation of forkViews(); track generation) { <gc-hosted-forks [source]="selection()" [disabled]="parentUnavailable()" (busyChange)="forkBusy.set($event)" (cloneRequested)="useFork($event)" (attachmentOpened)="invalidate()" /> }
+      @for (generation of forkViews(); track generation) { <gk-hosted-forks [source]="selection()" [disabled]="parentUnavailable()" (busyChange)="forkBusy.set($event)" (cloneRequested)="useFork($event)" (attachmentOpened)="invalidate()" /> }
       @if (selection(); as selected) {
         <section class="selection" aria-label="Selected hosted repository"><h3>{{ selected.repository.fullName }}</h3>
           <p>Catalogue account: {{ selected.account.login }} · {{ visibility(selected.repository) }}</p>

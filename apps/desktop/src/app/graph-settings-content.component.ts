@@ -26,7 +26,7 @@ export interface GraphSettingsContentView {
 }
 
 @Component({
-  selector: 'gc-graph-settings-content',
+  selector: 'gk-graph-settings-content',
   imports: [IconComponent],
   templateUrl: './graph-settings-content.component.html',
   styleUrl: './graph-settings-content.component.scss',

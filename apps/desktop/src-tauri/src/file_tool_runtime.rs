@@ -21,7 +21,11 @@ pub struct FileToolState {
 }
 impl FileToolState {
     pub(crate) fn has_open_contexts(&self) -> bool {
-        self.sessions.lock().map_or(true, |sessions| sessions.values().any(|session| !session.closed.load(Ordering::Acquire)))
+        self.sessions.lock().map_or(true, |sessions| {
+            sessions
+                .values()
+                .any(|session| !session.closed.load(Ordering::Acquire))
+        })
     }
 }
 struct Session {

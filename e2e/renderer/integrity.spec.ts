@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const fixture = { calls: [] as any[], fail: false, hold: false, finish: null as any, reject: null as any,
@@ -35,12 +35,12 @@ async function setup(page: Page): Promise<void> {
   });
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
-  await expect(page.locator('gc-integrity-panel')).toBeVisible();
+  await expect(page.locator('gk-integrity-panel')).toBeVisible();
 }
 
 test('inspection is explicit, distinguishes complete findings and truncated results, and never runs maintenance', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-integrity-panel');
+  const panel = page.locator('gk-integrity-panel');
   expect(await page.evaluate(() => (window as any).__integrity.calls.some((call: any) => call.command === 'inspect_repository_integrity'))).toBe(false);
   await panel.getByRole('button', { name: 'Inspect integrity', exact: true }).click();
   await expect(panel).toContainText('without reported integrity errors');
@@ -61,12 +61,12 @@ test('inspection is explicit, distinguishes complete findings and truncated resu
 
 test('pending inspection shares busy state, cancellation and explicit retry without claiming success', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-integrity-panel');
+  const panel = page.locator('gk-integrity-panel');
   await page.evaluate(() => { (window as any).__integrity.hold = true; });
   await panel.getByRole('button', { name: 'Inspect integrity', exact: true }).click();
   await expect(panel.getByRole('status')).toContainText('Inspecting');
   await expect(panel.getByRole('button', { name: 'Learn about integrity and maintenance…' })).toBeDisabled();
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(true);
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(true);
   await panel.getByRole('button', { name: 'Cancel inspection', exact: true }).click();
   await expect(panel).not.toContainText('without reported integrity errors');
   await expect(panel.getByRole('button', { name: 'Inspect integrity', exact: true })).toBeEnabled();
@@ -82,11 +82,11 @@ test('pending inspection shares busy state, cancellation and explicit retry with
 
 test('inspection report never appears in another repository and contextual help restores the opener', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-integrity-panel');
+  const panel = page.locator('gk-integrity-panel');
   await page.evaluate(() => { (window as any).__integrity.hold = true; });
   await panel.getByRole('button', { name: 'Inspect integrity', exact: true }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other-integrity', path: '/other-integrity', name: 'other-integrity' }]);
     git.activeRepositoryId.set('other-integrity');
   });
@@ -120,7 +120,7 @@ test('integrity import failure is explicit and preferences remain usable without
 test('long integrity diagnostics fit compact preferences and cannot obscure keyboard-focused controls', async ({ page }) => {
   await setup(page);
   await page.setViewportSize({ width: 820, height: 720 });
-  const panel = page.locator('gc-integrity-panel');
+  const panel = page.locator('gk-integrity-panel');
   await page.evaluate(() => { (window as any).__integrity.report = {
     passed: false, exitCode: 2, stdout: 'missing blob ' + 'a'.repeat(2000),
     stderr: 'inspect the object store', truncated: false,
@@ -141,7 +141,7 @@ test('long integrity diagnostics fit compact preferences and cannot obscure keyb
 
 test('non-pruning maintenance requires review, retains refusal feedback and succeeds only on explicit retry', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-integrity-panel');
+  const panel = page.locator('gk-integrity-panel');
   await panel.locator('summary').click();
   await expect(panel).toContainText('No garbage collection, object pruning');
   await panel.getByRole('button', { name: 'Review maintenance', exact: true }).click();
@@ -163,11 +163,11 @@ test('non-pruning maintenance requires review, retains refusal feedback and succ
 
 test('maintenance prevents duplicate operations and invalidates review and late feedback across repositories', async ({ page }) => {
   await setup(page);
-  const panel = page.locator('gc-integrity-panel');
+  const panel = page.locator('gk-integrity-panel');
   await panel.locator('summary').click();
   await panel.getByRole('button', { name: 'Review maintenance', exact: true }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other-maintenance', path: '/other-maintenance', name: 'other-maintenance' }]);
     git.activeRepositoryId.set('other-maintenance');
   });
@@ -181,7 +181,7 @@ test('maintenance prevents duplicate operations and invalidates review and late 
   await expect(panel.getByRole('button', { name: 'Learn about integrity and maintenance…' })).toBeDisabled();
   await expect(panel.getByRole('button', { name: 'Cancel inspection', exact: true })).toHaveCount(0);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.activeRepositoryId.set(git.repositories()[0].id);
     (window as any).__integrity.reject({ kind: 'gitFailure', message: 'Old repository maintenance failed.', hint: 'Inspect partial effects.' });
   });

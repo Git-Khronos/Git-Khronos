@@ -1,17 +1,19 @@
 use git_khronos_git_core::{
-    AppError, BranchIntegrationReview, CancellationToken, CommitAuthorInput, CommitComparison, CommitDetails,
-    CommitFileDiff, CommitHistoryCursor, CommitHistoryPage, ConflictDetails, FetchOptions,
-    FileBlameLine, FileHistoryEntry, InteractiveRebasePlan, InteractiveRebaseStep,
-    MINIMUM_GIT_VERSION, PullCheckout, ReflogPage, RepositoryData, RepositoryStatus, SigningDiagnostic,
-    TagDetails, TrackedFileSearch, WorkingTreeFileDiff, abort_merge as git_abort_merge,
-    abort_rebase as git_abort_rebase, add_remote as git_add_remote,
+    AppError, BranchIntegrationReview, CancellationToken, CommitAuthorInput, CommitComparison,
+    CommitDetails, CommitFileDiff, CommitHistoryCursor, CommitHistoryPage, ConflictDetails,
+    FetchOptions, FileBlameLine, FileHistoryEntry, InteractiveRebasePlan, InteractiveRebaseStep,
+    MINIMUM_GIT_VERSION, PullCheckout, ReflogPage, RepositoryData, RepositoryStatus,
+    SigningDiagnostic, TagDetails, TrackedFileSearch, WorkingTreeFileDiff,
+    abort_merge as git_abort_merge, abort_rebase as git_abort_rebase, add_remote as git_add_remote,
     add_submodule as git_add_submodule, apply_stash_checked as git_apply_stash,
     apply_working_tree_hunk_with_preview as git_apply_working_tree_hunk,
     apply_working_tree_lines_with_preview as git_apply_working_tree_lines,
     begin_rebase_split as git_begin_rebase_split, checkout_branch as git_checkout_branch,
     checkout_branch_for_integration as git_checkout_branch_for_integration,
-    checkout_commit_reviewed as git_checkout_commit_reviewed, checkout_remote_branch as git_checkout_remote_branch,
+    checkout_commit_reviewed as git_checkout_commit_reviewed,
+    checkout_remote_branch as git_checkout_remote_branch,
     cherry_pick_commits_with_options as git_cherry_pick_commits,
+    clear_stashes_checked as git_clear_stashes_checked,
     clone_repository_with_submodules as git_clone_repository, commit_details as git_commit_details,
     commit_file_diff as git_commit_file_diff, compare_commit_file as git_compare_commit_file,
     compare_commit_file_with_working_tree as git_compare_commit_file_with_working_tree,
@@ -36,8 +38,8 @@ use git_khronos_git_core::{
     initialize_all_submodules_cancellable as git_initialize_all_submodules_cancellable,
     initialize_lfs as git_initialize_lfs, initialize_repository as git_initialize_repository,
     initialize_submodule as git_initialize_submodule,
-    integrate_branch_with_review as git_integrate_branch,
-    mark_bisect as git_mark_bisect, move_head_if_current as git_move_head,
+    integrate_branch_with_review as git_integrate_branch, mark_bisect as git_mark_bisect,
+    move_head_if_current as git_move_head,
     perform_repository_maintenance as git_perform_repository_maintenance,
     pop_stash_checked as git_pop_stash_entry,
     prepare_interactive_rebase_with_options as git_prepare_interactive_rebase,
@@ -102,6 +104,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
+mod application_update_model;
+mod application_updates;
 mod authentication;
 mod branch_workflow_commands;
 mod display_environment;
@@ -127,8 +131,6 @@ mod repository_file_commands;
 mod repository_link_commands;
 mod repository_watcher;
 mod terminal_profile_commands;
-mod application_update_model;
-mod application_updates;
 mod windows_launcher;
 mod working_file_commands;
 
@@ -679,7 +681,10 @@ async fn search_tracked_files(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-async fn inspect_previous_local_branch(repo_id: String, app: AppHandle) -> Result<Option<String>, AppError> {
+async fn inspect_previous_local_branch(
+    repo_id: String,
+    app: AppHandle,
+) -> Result<Option<String>, AppError> {
     with_repository_background_read(repo_id, app, git_khronos_git_core::previous_local_branch).await
 }
 
@@ -1092,6 +1097,7 @@ fn execute_ignore_with_refresh<T>(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+#[allow(clippy::too_many_arguments)]
 async fn commit_changes(
     repo_id: String,
     message: String,
@@ -1099,17 +1105,30 @@ async fn commit_changes(
     skip_hooks: bool,
     sign: bool,
     policy: Option<git_khronos_git_core::CommitPolicy>,
+    fixup_target: Option<git_khronos_git_core::CommitFixupTarget>,
     app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh_background(repo_id, app, move |path| {
-        git_khronos_git_core::commit_with_policy(
-            path,
-            &message,
-            amend,
-            skip_hooks,
-            Some(sign),
-            &policy.unwrap_or_default(),
-        )
+        if let Some(target) = fixup_target {
+            let policy = policy.unwrap_or_default();
+            if amend || policy.sign_off || policy.allow_empty || policy.author.is_some() || policy.committer.is_some() {
+                return Err(AppError {
+                    kind: "invalidFixupPolicy".to_owned(),
+                    message: "Fixup commits use Git's generated fixup message and cannot amend or override commit identity.".to_owned(),
+                    hint: Some("Return to ordinary commit mode before changing commit identity, sign-off or empty-commit policy.".to_owned()),
+                });
+            }
+            git_khronos_git_core::create_fixup_commit(path, &target, skip_hooks, Some(sign))
+        } else {
+            git_khronos_git_core::commit_with_policy(
+                path,
+                &message,
+                amend,
+                skip_hooks,
+                Some(sign),
+                &policy.unwrap_or_default(),
+            )
+        }
     })
     .await
 }
@@ -2523,21 +2542,23 @@ async fn push_repository(
         repo_id,
         operation_id,
         app,
-        move |path, cancellation| {
-            match (remote.as_deref(), branch.as_deref(), expected_head_oid.as_deref()) {
-                (Some(remote), Some(branch), Some(oid)) => {
-                    git_push_to_remote_at_head_cancellable(path, remote, branch, oid, cancellation)
-                }
-                (Some(remote), Some(branch), None) => {
-                    git_push_to_remote_cancellable(path, remote, branch, cancellation)
-                }
-                (None, None, None) => git_push_cancellable(path, cancellation),
-                _ => Err(AppError {
-                    kind: "invalidRemoteTarget".into(),
-                    message: "Push needs both a remote and a branch.".into(),
-                    hint: Some("Select a remote and try again.".into()),
-                }),
+        move |path, cancellation| match (
+            remote.as_deref(),
+            branch.as_deref(),
+            expected_head_oid.as_deref(),
+        ) {
+            (Some(remote), Some(branch), Some(oid)) => {
+                git_push_to_remote_at_head_cancellable(path, remote, branch, oid, cancellation)
             }
+            (Some(remote), Some(branch), None) => {
+                git_push_to_remote_cancellable(path, remote, branch, cancellation)
+            }
+            (None, None, None) => git_push_cancellable(path, cancellation),
+            _ => Err(AppError {
+                kind: "invalidRemoteTarget".into(),
+                message: "Push needs both a remote and a branch.".into(),
+                hint: Some("Select a remote and try again.".into()),
+            }),
         },
     )
     .await
@@ -2718,6 +2739,18 @@ fn drop_stash(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
+fn clear_stashes(
+    repo_id: String,
+    expected_oids: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh(&repo_id, &state, |path| {
+        git_clear_stashes_checked(path, &expected_oids)
+    })
+}
+
+#[tauri::command(rename_all = "camelCase")]
+#[specta::specta]
 fn rename_stash(
     repo_id: String,
     reference: String,
@@ -2817,9 +2850,7 @@ fn start_bisect(
     review: git_khronos_git_core::BisectStartReview,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
-        git_start_bisect(path, &review)
-    })
+    mutate_and_refresh(&repo_id, &state, |path| git_start_bisect(path, &review))
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2830,7 +2861,9 @@ fn mark_bisect(
     candidate: git_khronos_git_core::BisectCandidate,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_mark_bisect(path, &verdict, &candidate))
+    mutate_and_refresh(&repo_id, &state, |path| {
+        git_mark_bisect(path, &verdict, &candidate)
+    })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -3006,7 +3039,8 @@ async fn working_tree_change_summary(
     repo_id: String,
     app: AppHandle,
 ) -> Result<git_khronos_git_core::WorkingTreeSummaries, AppError> {
-    with_repository_background_read(repo_id, app, git_khronos_git_core::working_tree_summaries).await
+    with_repository_background_read(repo_id, app, git_khronos_git_core::working_tree_summaries)
+        .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -3019,7 +3053,9 @@ async fn inspect_working_tree_file(
     app: AppHandle,
 ) -> Result<WorkingTreeFileDiff, AppError> {
     with_repository_background(repo_id, app, move |repository| match previous_path {
-        Some(source) => git_khronos_git_core::working_tree_rename_diff(repository, &source, &path, staged),
+        Some(source) => {
+            git_khronos_git_core::working_tree_rename_diff(repository, &source, &path, staged)
+        }
         None => git_working_tree_file_diff(repository, &path, staged),
     })
     .await
@@ -4256,8 +4292,11 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_updater::Builder::new()
-            .pubkey(option_env!("GIT_KHRONOS_UPDATER_PUBLIC_KEY").unwrap_or("")).build());
+        .plugin(
+            tauri_plugin_updater::Builder::new()
+                .pubkey(option_env!("GIT_KHRONOS_UPDATER_PUBLIC_KEY").unwrap_or(""))
+                .build(),
+        );
     // Under WSL the saved theme is applied at document start, so the first
     // paint uses the saved theme instead of the default one.
     #[cfg(target_os = "linux")]
@@ -4544,6 +4583,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
             apply_stash,
             pop_stash_entry,
             drop_stash,
+            clear_stashes,
             rename_stash,
             create_tag,
             cherry_pick_commits,

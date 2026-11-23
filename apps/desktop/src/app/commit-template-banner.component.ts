@@ -3,7 +3,7 @@ import type { AppError } from '@git-khronos/contracts';
 import { GitHelpComponent } from './git-help.component';
 
 @Component({
-  selector: 'gc-commit-template-banner',
+  selector: 'gk-commit-template-banner',
   imports: [GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(keydown.escape)': 'cancel($event)' },
@@ -31,7 +31,7 @@ import { GitHelpComponent } from './git-help.component';
         }
       </div>
     }
-    <gc-git-help topic="commit" label="Learn about commit templates…" [disabled]="disabled()" />
+    <gk-git-help topic="commit" label="Learn about commit templates…" [disabled]="disabled()" />
   `,
   styles: [`
     :host { display: block; padding: 8px; border: 1px solid var(--inspector-control-border); color: var(--text); background: var(--inspector-control); font-size: 12px; }

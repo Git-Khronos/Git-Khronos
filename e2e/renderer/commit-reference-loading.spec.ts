@@ -10,7 +10,7 @@ for (const scenario of ['ready', 'abandoned', 'failed'] as const) {
     await page.route('**/chunk-*.js', async route => {
       const response = await route.fetch();
       const body = await response.text();
-      if (!body.includes('gc-commit-reference-strip') || !body.includes('References on selected commit')) {
+      if (!body.includes('gk-commit-reference-strip') || !body.includes('References on selected commit')) {
         await route.fulfill({ response, body });
         return;
       }
@@ -29,7 +29,7 @@ for (const scenario of ['ready', 'abandoned', 'failed'] as const) {
       const inspector = page.locator('#repository-commit-panel');
       await expect(inspector.getByText('Loading commit references…', { exact: true })).toBeVisible();
       await expect(inspector.getByRole('heading', { name: 'Polish repository activity drawer', exact: true })).toBeVisible();
-      const strip = page.locator('gc-commit-reference-strip');
+      const strip = page.locator('gk-commit-reference-strip');
       await expect(strip).toHaveCount(0);
       if (scenario === 'abandoned') await page.locator('.wip-nav').click();
       release();

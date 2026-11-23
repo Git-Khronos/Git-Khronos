@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const state: any = { app, git, repository, calls: [] };
@@ -44,7 +44,7 @@ test.beforeEach(async ({ page }) => {
 
 async function open(page: Page, action: string) {
   await page.evaluate(action => (window as any).__stashScope.open(action), action);
-  const dialog = page.locator('gc-stash-options-dialog [role=dialog]');
+  const dialog = page.locator('gk-stash-options-dialog [role=dialog]');
   await expect(dialog).toBeVisible();
   if (action === 'branch') await dialog.getByLabel('New branch name').fill('owned-restored-branch');
   await expect(dialog.locator('footer .primary')).toBeEnabled();
@@ -56,11 +56,11 @@ for (const action of actions) {
     test(`${action} stash review rejects a pre-effect ${change} change`, async ({ page }) => {
       await open(page, action);
       await page.evaluate(change => {
-        const confirm = document.querySelector<HTMLButtonElement>('gc-stash-options-dialog footer .primary')!;
+        const confirm = document.querySelector<HTMLButtonElement>('gk-stash-options-dialog footer .primary')!;
         (window as any).__stashScope.change(change); confirm.click();
       }, change);
       expect(await page.evaluate(commands => (window as any).__stashScope.calls.filter((call: any) => commands.includes(call.command)), commands)).toEqual([]);
-      await expect(page.locator('gc-stash-options-dialog [role=dialog]')).toHaveCount(0);
+      await expect(page.locator('gk-stash-options-dialog [role=dialog]')).toHaveCount(0);
     });
   }
 
@@ -79,11 +79,11 @@ for (const action of ['confirm', 'cancel']) {
     await open(page, 'save');
     await page.evaluate(action => {
       const control = document.querySelector<HTMLButtonElement>(action === 'confirm'
-        ? 'gc-stash-options-dialog footer .primary' : '[data-stash-cancel]')!;
+        ? 'gk-stash-options-dialog footer .primary' : '[data-stash-cancel]')!;
       (window as any).__stashScope.open('save'); control.click();
     }, action);
     expect(await page.evaluate(commands => (window as any).__stashScope.calls.filter((call: any) => commands.includes(call.command)), commands)).toEqual([]);
-    await expect(page.locator('gc-stash-options-dialog [role=dialog]')).toBeVisible();
+    await expect(page.locator('gk-stash-options-dialog [role=dialog]')).toBeVisible();
   });
 }
 
@@ -96,7 +96,7 @@ test('stash review contains shortcuts and keeps all options frozen during native
   await message.press('Control+Enter');
   await message.press('Control+Shift+Enter');
   await expect(dialog).toBeVisible();
-  await expect(page.locator('gc-command-palette')).toHaveCount(0);
+  await expect(page.locator('gk-command-palette')).toHaveCount(0);
   expect(await page.evaluate(commands => (window as any).__stashScope.calls.filter((call: any) => commands.includes(call.command)), commands)).toEqual([]);
   await dialog.locator('footer .primary').click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__stashScope.finish)).toBe('function');
@@ -105,7 +105,7 @@ test('stash review contains shortcuts and keeps all options frozen during native
   await expect(dialog.getByLabel('Include untracked files')).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled();
   await page.evaluate(() => {
-    const c = (window as any).ng.getComponent(document.querySelector('gc-stash-options-dialog'));
+    const c = (window as any).ng.getComponent(document.querySelector('gk-stash-options-dialog'));
     c.changeMessage('Not captured', c.request()); c.changeMode('staged-only');
   });
   await expect(message).toHaveValue('Captured stash message');

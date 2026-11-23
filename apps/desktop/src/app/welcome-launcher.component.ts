@@ -19,7 +19,7 @@ import { IconComponent } from './icon.component';
 import type { RepositoryDialogMode } from './repository-dialog.component';
 
 @Component({
-  selector: 'gc-welcome-launcher',
+  selector: 'gk-welcome-launcher',
   imports: [NgTemplateOutlet, IconComponent],
   templateUrl: './welcome-launcher.component.html',
   styleUrl: './welcome-launcher.component.scss',

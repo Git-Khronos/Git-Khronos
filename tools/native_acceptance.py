@@ -161,6 +161,29 @@ def probe_git_toolchain(fixtures, report):
     probe["passed"] = True
 
 
+def probe_signing_toolchain(fixtures, report, required, report_key):
+    """Fail early with actionable diagnostics when real signing tools are absent."""
+    available = {
+        name: shutil.which(name, path=fixtures.env.get("PATH", os.defpath))
+        for name in required
+    }
+    missing = [name for name, path in available.items() if path is None]
+    report[report_key] = available
+    if missing:
+        raise RuntimeError(
+            "signing acceptance requires these executables in PATH: " + ", ".join(missing)
+        )
+
+
+def probe_signed_tag_toolchain(fixtures, report):
+    probe_signing_toolchain(fixtures, report, ("gpg", "ssh-keygen", "gpgsm", "openssl"),
+                            "signedTagTools")
+
+
+def probe_signed_commit_toolchain(fixtures, report):
+    probe_signing_toolchain(fixtures, report, ("gpg",), "signedCommitTools")
+
+
 def webdriver_ports():
     # Reserve both until assigned so the proxy and WebKit cannot be given the
     # same ephemeral port by two sequential bind/close calls.
@@ -846,7 +869,7 @@ def checkpoint_lifecycle(driver, fixtures, repository, repo_id, checkpoint, repo
     expected[names["moved"]] = oids["replacement"]
     driver.wait("return !!document.querySelector('.checkpoint-confirmation-dialog .confirm-action:not(:disabled)')")
     driver.click_text(".checkpoint-confirmation-dialog button", "Delete checkpoint reference")
-    driver.wait("""return document.querySelector('gc-error-toast [role=alert]')
+    driver.wait("""return document.querySelector('gk-error-toast [role=alert]')
       ?.textContent.includes('checkpoint has moved or no longer exists')""")
     assert checkpoint_refs(fixtures, repository) == expected
     driver.wait(f"return !!document.querySelector({json.dumps(row('replacement'))})")
@@ -902,10 +925,10 @@ def menu_tab_focus(driver, report):
             if menu == ".app-menu-popover":
                 # Loading/error escapes are also menuitems. Qualify the actual
                 # deferred content, not merely focus inside its placeholder.
-                driver.wait("""return [...document.querySelectorAll('.app-menu-popover gc-main-menu-content [role=menuitem]')]
+                driver.wait("""return [...document.querySelectorAll('.app-menu-popover gk-main-menu-content [role=menuitem]')]
                   .some(element => element.textContent.includes('Manage Repositories') && element === document.activeElement)""")
                 layout = driver.script("""const menu = document.querySelector('.app-menu-popover');
-                  const content = menu.querySelector('gc-main-menu-content');
+                  const content = menu.querySelector('gk-main-menu-content');
                   const bounds = menu.getBoundingClientRect();
                   return {headerHeight: content.querySelector('header').getBoundingClientRect().height,
                     scrollHeight: content.querySelector('.app-menu-scroll').clientHeight,
@@ -925,13 +948,13 @@ def menu_tab_focus(driver, report):
 
 def terminal_csp_rendering(driver, report):
     driver.click('[title="Open repository terminal (Alt+T or Ctrl+`)"]')
-    driver.wait("return !!document.querySelector('gc-terminal-panel .xterm-screen')")
-    session_id = driver.script("return document.querySelector('gc-terminal-panel .terminal-host').dataset.terminalId")
+    driver.wait("return !!document.querySelector('gk-terminal-panel .xterm-screen')")
+    session_id = driver.script("return document.querySelector('gk-terminal-panel .terminal-host').dataset.terminalId")
     command = (r"printf '\033[31mCSP_ANSI\033[0m \033[38;2;52;178;128mCSP_RGB\033[0m "
                r"\033[48;2;40;60;80mCSP_BG\033[0m\n'" + "\n")
     driver.invoke("write_terminal", sessionId=session_id, data=list(command.encode()))
     probe = driver.wait("""return (() => {
-      const screen = document.querySelector('gc-terminal-panel .xterm-screen');
+      const screen = document.querySelector('gk-terminal-panel .xterm-screen');
       const rows = screen?.querySelector('.xterm-rows');
       const spans = [...(rows?.querySelectorAll('span') || [])];
       const ansi = spans.find(span => span.classList.contains('xterm-fg-1') && span.textContent === 'CSP_ANSI');
@@ -967,8 +990,8 @@ def terminal_csp_rendering(driver, report):
     """)
     assert not unnonced_loaded, "Unnonced style element was allowed by CSP"
     driver.screenshot(Path(report["artifactsDirectory"]) / "terminal-csp.png")
-    driver.click('gc-terminal-panel [title="Close terminal tab"]')
-    driver.wait("return !document.querySelector('gc-terminal-panel')")
+    driver.click('gk-terminal-panel [title="Close terminal tab"]')
+    driver.wait("return !document.querySelector('gk-terminal-panel')")
     report["terminalRender"] = probe
     report["scenarios"].append("native-terminal-csp-font-and-colors")
 
@@ -987,29 +1010,29 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
 
     driver.click(".workspace-toggle")
     driver.click_scrolled_text(".workspace-menu-actions [role=menuitem]", "Repository files", wait_for_ready=True)
-    driver.wait("""const paths = [...document.querySelectorAll('gc-workspace-center .file-entry code')]
+    driver.wait("""const paths = [...document.querySelectorAll('gk-workspace-center .file-entry code')]
       .map(code => code.textContent);
       return paths.includes('native-recovery-file.bin') && paths.includes('native-recovery-nested/notes.bin');""")
     assert driver.invoke("system_info")["repositoryFileCreationAvailable"] is False
-    assert driver.script("""const workspace = document.querySelector('gc-workspace-center');
+    assert driver.script("""const workspace = document.querySelector('gk-workspace-center');
       return !workspace.querySelector('.file-tools form')
         && workspace.textContent.includes('Create files in your file manager or editor, then refresh this list.');""")
-    assert driver.script("""const row = [...document.querySelectorAll('gc-workspace-center .file-entry')]
+    assert driver.script("""const row = [...document.querySelectorAll('gk-workspace-center .file-entry')]
       .find(row => row.querySelector('code')?.textContent === 'native-recovery-nested/notes.bin');
       return row?.textContent.includes('Untracked · deletion unavailable')
         && row.querySelector('button')?.textContent.trim() === 'Open'
         && row.querySelectorAll('button').length === 1;""")
-    driver.click_text("gc-workspace-center .file-entry button", "Delete with recovery")
-    driver.wait("return !!document.querySelector('gc-workspace-center [role=alertdialog]')")
+    driver.click_text("gk-workspace-center .file-entry button", "Delete with recovery")
+    driver.wait("return !!document.querySelector('gk-workspace-center [role=alertdialog]')")
     assert "Recovery History" in driver.script(
-        "return document.querySelector('gc-workspace-center [role=alertdialog]').textContent"
+        "return document.querySelector('gk-workspace-center [role=alertdialog]').textContent"
     )
-    driver.click_text("gc-workspace-center [role=alertdialog] button", "Delete file")
+    driver.click_text("gk-workspace-center [role=alertdialog] button", "Delete file")
     # The deleted entry is removed by an asynchronous listing refresh. On
     # slower WebKit builds, success text can be present before the modal's
     # contents and focus have settled. Wait for the refreshed list and the
     # dismissal target, not just early acknowledgement of the write.
-    driver.wait("""const workspace = document.querySelector('gc-workspace-center');
+    driver.wait("""const workspace = document.querySelector('gk-workspace-center');
       return !!workspace && !workspace.querySelector('[role=alertdialog]')
         && [...workspace.querySelectorAll('[role=status]')].some(element =>
           element.textContent.includes('Deleted native-recovery-file.bin and saved it to Recovery History'))
@@ -1018,8 +1041,8 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
         && [...workspace.querySelectorAll('.file-tools button')].some(button =>
           !button.disabled && button.textContent.trim() === 'Refresh files');""")
     assert not file.exists()
-    driver.click_visible("gc-workspace-center header button", "Close")
-    driver.wait("return !document.querySelector('gc-workspace-center')")
+    driver.click_visible("gk-workspace-center header button", "Close")
+    driver.wait("return !document.querySelector('gk-workspace-center')")
 
     driver.click_visible('[aria-label="Main menu"]')
     driver.click_visible(".app-menu-popover [role=menuitem] strong", "Recovery History")
@@ -1113,7 +1136,7 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     driver.click('.commit-row[data-commit-oid]')
     driver.wait("return !!document.querySelector('.commit-row.selected')")
     driver.click('[aria-label="Preferences"]')
-    driver.wait("return !!document.querySelector('gc-preferences-dialog [role=dialog]')")
+    driver.wait("return !!document.querySelector('gk-preferences-dialog [role=dialog]')")
     assert not driver.script(RENDER_PROBE)["blocked"], "Lazy styles blocked by CSP"
     driver.reload()
     driver.wait("return !!document.querySelector('.commit-row[data-commit-oid]')")
@@ -1189,16 +1212,16 @@ def performance(driver, fixtures, report):
 
 def main():
     suites = (
-        "smoke", "full", "environment", "performance", "recovery", "gitlab", "file-tools",
+        "smoke", "full", "environment", "performance", "recovery", "integrity-ui", "gitlab", "gitlab-fork-ui", "file-tools",
         "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates", "application-update-consent",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
         "workspace-pull-upstreams", "pull-submodule-scope", "merge-preview",
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
-        "stash-selection", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection", "diff-rendering",
+        "stash-selection", "stash-clear", "autosquash-amend", "signed-tag", "signed-commit", "empty-commit", "lfs-lock-actions", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection", "diff-rendering",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
-        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness",
+        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness", "file-history",
         "commit-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
     )
     forced_inherited = ("environment",)
@@ -1229,6 +1252,22 @@ def main():
         parser.error(f"{args.suite} requires --headless (private Xvfb)")
     if args.suite == "patch-export" and not args.headless:
         parser.error("patch-export requires --headless (private Xvfb)")
+    if args.suite == "integrity-ui" and not args.headless:
+        parser.error("integrity-ui requires --headless (private Xvfb)")
+    if args.suite == "merge-preview" and not args.headless:
+        parser.error("merge-preview requires --headless (private Xvfb)")
+    if args.suite == "autosquash-amend" and not args.headless:
+        parser.error("autosquash-amend requires --headless (private Xvfb)")
+    if args.suite == "signed-tag" and not args.headless:
+        parser.error("signed-tag requires --headless (private Xvfb)")
+    if args.suite == "signed-commit" and not args.headless:
+        parser.error("signed-commit requires --headless (private Xvfb)")
+    if args.suite == "empty-commit" and not args.headless:
+        parser.error("empty-commit requires --headless (private Xvfb)")
+    if args.suite == "file-history" and not args.headless:
+        parser.error("file-history requires --headless (private Xvfb)")
+    if args.suite == "lfs-lock-actions" and not args.headless:
+        parser.error("lfs-lock-actions requires --headless (private Xvfb)")
     if args.suite == "application-update-consent" and not (
         args.headless and args.installed and {name for _, name in socket.if_nameindex()} == {"lo"}
     ):
@@ -1246,7 +1285,14 @@ def main():
     driver = None
     temporary_directory = None
     try:
-        for name in ("git", "tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon", "dbus-send") + (("Xvfb",) if args.headless else ()) + (("readelf",) if args.suite == "gitlab" else ()):
+        required_tools = ("git", "tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon", "dbus-send")
+        if args.headless:
+            required_tools += ("Xvfb",)
+        if args.suite in ("gitlab", "gitlab-fork-ui"):
+            required_tools += ("readelf",)
+        if args.suite in ("full", "environment", "lfs-counts", "lfs-snapshot-timeout"):
+            required_tools += ("git-lfs",)
+        for name in required_tools:
             if not shutil.which(name):
                 raise RuntimeError(f"Missing {name}. See docs/linux-acceptance.md; no tests were skipped.")
         report["git"] = run("git", "--version")
@@ -1290,7 +1336,11 @@ def main():
         report["installedExecutable"] = args.installed
         if args.suite in ("full", "environment"):
             probe_git_toolchain(fixtures, report)
-        if args.suite == "gitlab":
+        if args.suite == "signed-tag":
+            probe_signed_tag_toolchain(fixtures, report)
+        if args.suite == "signed-commit":
+            probe_signed_commit_toolchain(fixtures, report)
+        if args.suite in ("gitlab", "gitlab-fork-ui"):
             dependencies = run("dpkg-deb", "-f", str(package), "Depends")
             names = {alternative.strip().split()[0] for clause in dependencies.split(",")
                      for alternative in clause.split("|") if alternative.strip()}
@@ -1315,12 +1365,38 @@ def main():
                     raise TimeoutError("Xvfb did not allocate a display")
                 number = display.stdout.readline().decode().strip()
                 if not number.isdecimal():
-                    raise RuntimeError("Xvfb failed; see driver.log")
+                    # Some WSL/container hosts have a pre-existing X0 socket
+                    # and a non-sticky /tmp/.X11-unix directory. In that
+                    # configuration Xvfb -displayfd can exit without trying
+                    # other displays, even though an explicit free display
+                    # works. Fall back to an unused high display, without
+                    # touching shared X11 sockets or lock files.
+                    display = None
+                    for candidate in range(90, 190):
+                        if Path(f"/tmp/.X{candidate}-lock").exists() or Path(f"/tmp/.X11-unix/X{candidate}").exists():
+                            continue
+                        attempt = subprocess.Popen(
+                            ["Xvfb", f":{candidate}", "-noreset", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
+                            env=fixtures.env, stdout=subprocess.DEVNULL, stderr=log,
+                            start_new_session=True,
+                        )
+                        time.sleep(0.15)
+                        if attempt.poll() is None:
+                            display = attempt
+                            number = str(candidate)
+                            children.append(display)
+                            break
+                        attempt.wait()
+                    if display is None:
+                        raise RuntimeError("Xvfb failed; see driver.log")
                 fixtures.env["DISPLAY"] = ":" + number
                 fixtures.env["GDK_BACKEND"] = "x11"
                 owned_display = (fixtures.env["DISPLAY"], display)
             listen_port, native_port = webdriver_ports()
             application_env = fixtures.env.copy()
+            if args.suite == "integrity-ui":
+                from native_integrity_scenarios import integrity_cancellation_environment
+                application_env.update(integrity_cancellation_environment(fixtures))
             if owned_picker_suite:
                 application_env.update(LC_ALL="C.UTF-8", LANGUAGE="en")
             if args.suite == "lfs-snapshot-timeout":
@@ -1340,7 +1416,9 @@ def main():
             if args.suite in ("repository-open-scope", "checkout-snapshot", "comparison-responsiveness",
                               "stash-responsiveness", "commit-responsiveness", "ignore-responsiveness"):
                 application_env.update(fixtures.history_environment())
-            if args.suite in ("gitlab", "repository-creation-scope"):
+            if args.suite == "file-history":
+                application_env.update(fixtures.history_environment())
+            if args.suite in ("gitlab", "gitlab-fork-ui", "repository-creation-scope"):
                 from native_gitlab_scenarios import start_gitlab_fixture
                 application_env.update(start_gitlab_fixture(fixtures, children, log, report))
             if args.suite == "watcher-refresh" or os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1":
@@ -1442,6 +1520,43 @@ def main():
                 repository, repo_id = stash_apply_collision_scope(
                     driver, fixtures, report, saved_as_tracked=True,
                 )
+            elif args.suite == "stash-clear":
+                from native_scenarios import clear_stash_stack_preserves_every_object
+                repository, repo_id = clear_stash_stack_preserves_every_object(driver, fixtures, report)
+            elif args.suite == "autosquash-amend":
+                from native_scenarios import (
+                    amended_commit_recovery_history, autosquash_amend_message,
+                    prepare_fixup_from_staged,
+                )
+                repository, repo_id = autosquash_amend_message(driver, fixtures, report)
+                repository, repo_id = prepare_fixup_from_staged(driver, fixtures, report)
+                repository, repo_id = amended_commit_recovery_history(driver, fixtures, report)
+            elif args.suite == "signed-tag":
+                from native_signed_tag_scenarios import signed_tag_creation
+                repository, repo_id = signed_tag_creation(driver, fixtures, report)
+            elif args.suite == "signed-commit":
+                from native_commit_signing_scenarios import signed_commit_creation
+                repository, repo_id = signed_commit_creation(driver, fixtures, report)
+            elif args.suite == "empty-commit":
+                from native_empty_commit_scenarios import empty_commit_policy
+                repository, repo_id = empty_commit_policy(driver, fixtures, report)
+            elif args.suite == "lfs-lock-actions":
+                from native_lfs_lock_ui_scenarios import lfs_lock_dialog_actions
+                repository, repo_id = lfs_lock_dialog_actions(driver, fixtures, report)
+            elif args.suite == "file-history":
+                from native_scenarios import (
+                    blame_read_acceptance, bounded_file_history_reads, commit_preview_output,
+                    file_history_tracks_renames,
+                )
+                from native_tracked_file_search_scenarios import (
+                    deleted_file_history_from_exact_path, tracked_file_search_during_merge,
+                )
+                repository, repo_id = commit_preview_output(driver, fixtures, report)
+                file_history_tracks_renames(driver, fixtures, report)
+                bounded_file_history_reads(driver, fixtures, report)
+                blame_read_acceptance(driver, fixtures, report)
+                tracked_file_search_during_merge(driver, fixtures, report)
+                repository, repo_id = deleted_file_history_from_exact_path(driver, fixtures, report)
             elif args.suite == "patch-export":
                 from native_patch_export_scenarios import patch_export_scope
                 repository, repo_id = patch_export_scope(driver, fixtures, report)
@@ -1554,6 +1669,20 @@ def main():
                 progress.enter_phase("gitlab-catalogue")
                 from native_gitlab_scenarios import gitlab_catalogue
                 gitlab_catalogue(driver, fixtures, repository, report)
+            if args.suite == "gitlab-fork-ui":
+                progress.enter_phase("gitlab-fork-ui")
+                from native_gitlab_fork_scenarios import gitlab_reviewed_forks
+                gitlab_reviewed_forks(driver, fixtures, repository, report)
+            if args.suite == "integrity-ui":
+                progress.enter_phase("integrity-ui")
+                from native_integrity_scenarios import (
+                    cancelled_integrity_ui,
+                    damaged_integrity_ui,
+                    healthy_integrity_maintenance_ui,
+                )
+                damaged_integrity_ui(driver, fixtures, report)
+                healthy_integrity_maintenance_ui(driver, fixtures, report)
+                cancelled_integrity_ui(driver, fixtures, report)
             if args.suite == "file-tools":
                 from native_file_tool_scenarios import file_tools
                 file_tools(driver, fixtures, repository, report)

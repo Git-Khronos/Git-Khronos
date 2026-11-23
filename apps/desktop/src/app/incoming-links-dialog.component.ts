@@ -3,7 +3,7 @@ import type { IncomingRepositoryLink } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 
 @Component({
-  selector: 'gc-incoming-links-dialog',
+  selector: 'gk-incoming-links-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="inbox-backdrop" (click)="closed.emit()">

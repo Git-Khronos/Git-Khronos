@@ -1886,11 +1886,7 @@ mod tests {
         fixture.git(&["rm", "-f", "file.txt"]);
         let exclude = operation_storage::git_entry(&fixture.repo, "info/exclude").unwrap();
         fs::create_dir_all(exclude.parent().unwrap()).unwrap();
-        fs::write(
-            exclude,
-            "/file.txt\n/saved.txt\n",
-        )
-        .unwrap();
+        fs::write(exclude, "/file.txt\n/saved.txt\n").unwrap();
         fs::write(fixture.repo.join("file.txt"), "Ignored private data").unwrap();
         let refs = fixture.refs();
         let index = fixture.index();

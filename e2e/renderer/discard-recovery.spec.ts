@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 
 async function mockHistoryDiscards(page: Page, options: { fail?: boolean; delay?: boolean } = {}): Promise<void> {
   await page.evaluate(({ fail, delay }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const fixture = {
@@ -377,7 +377,7 @@ for (const action of ['apply', 'forget'] as const) {
     await mockHistoryDiscards(page);
     await page.evaluate((action) => {
       const fixture = (window as any).__historyDiscards;
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       git.recordDiscard(repository.id, 'Current discard', fixture.records[0].id);
       git.recordDiscard('other-repository', 'Other discard', 'other-id');
@@ -416,7 +416,7 @@ for (const action of ['apply', 'forget'] as const) {
     await expect(history.getByRole('alert')).toContainText('Nothing was changed');
     await expect(history.getByRole('alert')).toBeFocused();
     const afterFailure = await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       return {
         current: git.operationHistory()[git.repository().id] ?? null,
         other: git.operationHistory()['other-repository'],
@@ -444,7 +444,7 @@ test('ignores a discarded-change load completed after Recovery History was close
   await history.getByRole('button', { name: 'Close recovery history' }).click();
   await page.evaluate(() => (window as any).__historyDiscards.release());
   await expect.poll(() => page.evaluate(() =>
-    (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+    (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.getByRole('dialog', { name: 'Discarded-change recovery' })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: 'Recovery history' })).toHaveCount(0);
 });
@@ -456,7 +456,7 @@ test('does not open stale discarded-change captures after a repository switch', 
   await history.getByRole('button', { name: 'Open discarded-change recovery…' }).click();
   await expect(history.getByRole('status')).toContainText('Reading discarded-change captures');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const other = { ...git.repository(), id: 'another-repository', path: '/test/another' };
     git.repositories.update((repositories: any[]) => [...repositories, other]);
     git.activeRepositoryId.set(other.id);
@@ -474,7 +474,7 @@ for (const selected of [false, true]) {
     ? 'refuses a selected nested path before discarding'
     : 'refuses a mixed root and nested bulk request before discarding', async ({ page }) => {
     await page.evaluate(({ path, selected }) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const git = app.git;
       const before = git.repository().status;
       const test = { calls: [] as Array<{ command: string; args: any }>, before };
@@ -520,7 +520,7 @@ for (const selected of [false, true]) {
     if (selected) {
       await expect(dialog).toHaveCount(0);
       await expect.poll(() => page.evaluate(() =>
-        (window as any).ng.getComponent(document.querySelector('gc-root')).git.error()))
+        (window as any).ng.getComponent(document.querySelector('gk-app')).git.error()))
         .toContain('selected nested path cannot be discarded safely');
       const preview = await page.evaluate(() => (window as any).__discardTest.calls.filter(
         (call: { command: string }) => call.command !== 'refresh_repository_status' && call.command !== 'working_tree_change_summary'));
@@ -547,7 +547,7 @@ for (const selected of [false, true]) {
     } }]);
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     const result = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       return { calls: (window as any).__discardTest.calls, status: app.git.repository().status,
         before: (window as any).__discardTest.before };
     });
@@ -558,7 +558,7 @@ for (const selected of [false, true]) {
 
 test('offers a fresh root-file preview after blocking a mixed discard request', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const before = git.repository().status;
     const fixture = { calls: [] as Array<{ command: string; args: any }>, before, previews: 0 };
@@ -659,7 +659,7 @@ test('offers a fresh root-file preview after blocking a mixed discard request', 
 
 test('returns to the blocked review without retaining root selections', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const before = git.repository().status;
     const fixture = { calls: [] as Array<{ command: string; args: any }>, before, previews: 0 };
@@ -697,12 +697,12 @@ test('returns to the blocked review without retaining root selections', async ({
   const result = await page.evaluate(() => (window as any).__discardChoiceTest);
   expect(result.calls.some((call: { command: string }) => call.command === 'discard_changes')).toBe(false);
   expect(result.before).toEqual((await page.evaluate(() =>
-    (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().status)));
+    (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().status)));
 });
 
 test('does not use a refreshed preview after switching repositories and back', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const fixture = { calls: [] as Array<{ command: string; args: any }>, release: null as null | (() => void) };
@@ -735,7 +735,7 @@ test('does not use a refreshed preview after switching repositories and back', a
   await dialog.getByRole('button', { name: 'Choose root files…' }).click();
   await expect(dialog.getByRole('status')).toContainText('Refreshing the file list');
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const original = git.repository();
     const other = { ...original, id: 'another-discard-repository', path: '/test/another' };
@@ -758,7 +758,7 @@ test('does not use a refreshed preview after switching repositories and back', a
 
 test('refuses a selected-file preview that contains unselected paths', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const fixture = { calls: [] as Array<{ command: string; args: any }>, previews: 0 };
     (window as any).__discardChoiceTest = fixture;
@@ -802,7 +802,7 @@ test('refuses a selected-file preview that contains unselected paths', async ({ 
 
 test('keeps stale root selections in review without discarding', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const fixture = { calls: [] as Array<{ command: string; args: any }>, previews: 0 };
     (window as any).__discardChoiceTest = fixture;
@@ -842,7 +842,7 @@ test('keeps stale root selections in review without discarding', async ({ page }
 
 test('a stale preview surfaces its error and keeps current files', async ({ page }) => {
   await page.evaluate((path) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = {
@@ -862,13 +862,13 @@ test('a stale preview surfaces its error and keeps current files', async ({ page
   await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Discard captured changes' }).click();
   await expect(page.locator('#unstaged-files-list').getByRole('button', { name: `Stage ${path}` })).toBeVisible();
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.error()))
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.error()))
     .toContain('Nothing was discarded');
 });
 
 test('manual recovery keeps matching toolbar undo and redo in sync', async ({ page }) => {
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.recordDiscard(repository.id, 'Discard Unstaged Changes', 'saved-id');
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -888,7 +888,7 @@ test('manual recovery keeps matching toolbar undo and redo in sync', async ({ pa
 
 test('removing a saved recovery clears only its matching toolbar action', async ({ page }) => {
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.recordDiscard(repository.id, 'Current discard', 'saved-id');
     git.recordDiscard('other-repository', 'Other discard', 'other-id');
@@ -906,7 +906,7 @@ test('removing a saved recovery clears only its matching toolbar action', async 
 
 test('saved recovery updates a legacy toolbar entry only when native ownership matches', async ({ page }) => {
   const results = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const results = [];
@@ -937,7 +937,7 @@ for (const [action, outcome] of [
 ] as const) {
   test(`late saved-recovery ${action} ${outcome} cannot replace newer history`, async ({ page }) => {
     const result = await page.evaluate(async ({ action, outcome }) => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       git.recordDiscard(repository.id, 'Older discard', 'saved-id');
       git.recordDiscard('other-repository', 'Other discard', 'other-id');
@@ -972,7 +972,7 @@ for (const [action, outcome] of [
 
 test('partial recovery outcomes invalidate only the matching history entry', async ({ page }) => {
   const results = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const cases = [
@@ -1015,7 +1015,7 @@ test('partial recovery outcomes invalidate only the matching history entry', asy
 
 test('partial capture removal and toolbar recovery invalidate only affected actions', async ({ page }) => {
   const results = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const results = [];
@@ -1066,7 +1066,7 @@ test('partial capture removal and toolbar recovery invalidate only affected acti
 
 test('unknown recovery outcomes invalidate only possibly affected undo actions', async ({ page }) => {
   const results = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const results = [];
@@ -1119,7 +1119,7 @@ test('unknown recovery outcomes invalidate only possibly affected undo actions',
 
 test('an uncertain discard invalidates the previous toolbar action without hiding its error', async ({ page }) => {
   const results = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const results = [];
@@ -1149,7 +1149,7 @@ test('an uncertain discard invalidates the previous toolbar action without hidin
 
 test('unknown discard outcomes invalidate the matching diff and undo across discard actions', async ({ page }) => {
   const results = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const results = [];
@@ -1191,7 +1191,7 @@ test('unknown discard outcomes invalidate the matching diff and undo across disc
 
 test('a late uncertain discard preserves a newer undo action and inspection', async ({ page }) => {
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.recordDiscard(repository.id, 'Earlier discard', 'old-id');
@@ -1217,7 +1217,7 @@ test('a late uncertain discard preserves a newer undo action and inspection', as
 
 test('discovers saved recovery after restart and confirms capture removal', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__recoveryCalls = [];
     (window as any).__recoveryRepositoryId = app.git.activeRepositoryId();
@@ -1256,7 +1256,7 @@ test('discovers saved recovery after restart and confirms capture removal', asyn
   // A legitimate background read can follow deletion; it is not the mutation
   // under test and must not determine whether capture removal succeeded.
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     await app.git.refreshStatusInBackground(app.git.activeRepositoryId(), true);
   });
   await expect(confirmation).toHaveCount(0);

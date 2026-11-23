@@ -15,7 +15,7 @@ function containsCredentials(source: string): boolean {
 }
 
 @Component({
-  selector: 'gc-workspace-clone',
+  selector: 'gk-workspace-clone',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="actions">

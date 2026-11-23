@@ -8,7 +8,7 @@ async function mockNewFile(page: Page, truncated = false, stale = false, staged 
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(({ file, patch, truncated, stale, staged, tracked }) => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const status = {
       ...repository.status, staged: staged ? 1 : 0, unstaged: tracked ? 1 : 0, untracked: staged || tracked ? 0 : 1, entryCount: 1,

@@ -30,7 +30,7 @@ class GitLabSshFixtureTests(unittest.TestCase):
         driver.wait.return_value = {"kind": "closed"}
         wait_for_ssh_clone_outcome(driver, Path("unused-journal.jsonl"))
         self.assertEqual(len(driver.method_calls), 1)
-        self.assertIn("gc-gitlab-clone [role=", driver.wait.call_args.args[0])
+        self.assertIn("gk-gitlab-clone [role=", driver.wait.call_args.args[0])
 
     def test_native_clone_refusal_reports_terminal_feedback_without_dumping_fixture_logs(self):
         with tempfile.TemporaryDirectory() as directory:

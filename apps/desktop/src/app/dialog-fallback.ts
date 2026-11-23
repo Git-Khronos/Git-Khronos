@@ -57,7 +57,7 @@ export const DIALOG_FALLBACKS = {
 
 export type DialogFallbackKind = keyof typeof DIALOG_FALLBACKS;
 
-@Directive({ selector: 'button[gcDialogFallbackFocus]' })
+@Directive({ selector: 'button[gkDialogFallbackFocus]' })
 export class DialogFallbackFocusDirective {
   constructor() {
     const button = inject<ElementRef<HTMLButtonElement>>(ElementRef).nativeElement;

@@ -42,7 +42,7 @@ def remote_review_workflows(driver, fixtures, report):
     open_ui(driver, repository)
     original = snapshot()
     driver.click_visible('[aria-label="Publish main to origin"]')
-    publish = 'gc-repository-confirmations [aria-label="Publish main"]'
+    publish = 'gk-repository-confirmations [aria-label="Publish main"]'
     driver.wait('return !!document.querySelector(' + json.dumps(publish) + ')')
     assert str(repository) in driver.script('return document.querySelector(arguments[0]).textContent', publish)
     driver.click_visible(publish + ' .confirm-action', 'Publish Branch')
@@ -68,7 +68,7 @@ def remote_review_workflows(driver, fixtures, report):
     fixtures.git(repository, 'update-ref', 'refs/heads/main', child)
     open_ui(driver, repository)
     before_force = snapshot()
-    force = 'gc-repository-confirmations [aria-labelledby="force-push-title"]'
+    force = 'gk-repository-confirmations [aria-labelledby="force-push-title"]'
 
     def open_force(expected_remote, expected_local=child):
         driver.click_visible('[aria-label="Push options"]')
@@ -153,7 +153,7 @@ def remote_review_workflows(driver, fixtures, report):
     before_lfs = snapshot()
     driver.click_visible('[aria-label="Git LFS options"]')
     driver.click_visible('.lfs-menu button:not(:disabled) strong', 'Clean LFS storage')
-    lfs = 'gc-lfs-prune-dialog [aria-labelledby="prune-lfs-title"]'
+    lfs = 'gk-lfs-prune-dialog [aria-labelledby="prune-lfs-title"]'
     driver.wait('return !!document.querySelector(' + json.dumps(lfs + ' [title="sha256:' + oid + '"]') + ')')
     assert str(repository) in driver.script('return document.querySelector(arguments[0]).textContent', lfs)
     driver.click_visible(lfs + ' .confirm-action', 'Remove 1 Object')

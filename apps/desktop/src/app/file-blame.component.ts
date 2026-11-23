@@ -5,7 +5,7 @@ import { GitKhronosService } from './git-khronos.service';
 import { shouldDecorateDiff } from './diff-rendering';
 
 @Component({
-  selector: 'gc-file-blame',
+  selector: 'gk-file-blame',
   imports: [DatePipe, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

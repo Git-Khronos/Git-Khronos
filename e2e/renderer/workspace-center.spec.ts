@@ -10,7 +10,7 @@ async function open(page: Page, section: boolean | 'files' = false) {
 async function installFileBrowser(page: Page, repositoryFileCreationAvailable = true) {
   await page.evaluate((canCreate) => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test', repositoryFileCreationAvailable: canCreate }));
     fixture.calls = [];
     fixture.files = [
@@ -86,7 +86,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.branch-item').first()).toBeVisible();
   await page.evaluate(() => {
     localStorage.removeItem('git-khronos.identity-profiles.v1');
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const base = git.repository();
     const first = { ...base, name: 'Alpha', path: '/owned/alpha', status: { ...base.status, branch: 'main', ahead: 2, behind: 1, staged: 1, unstaged: 2, untracked: 3, conflicted: 1, mergeInProgress: true }, branches: [{ ...base.branches[0], current: true, upstream: 'origin/main' }] };
@@ -110,12 +110,12 @@ test('shows local repository state, filters attention and opens a repository', a
   await expect(dialog.getByRole('article')).toHaveCount(1);
   await dialog.getByRole('button', { name: 'Open repository', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId())).toBe('clean-repo');
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId())).toBe('clean-repo');
 });
 
 async function prepareWorkspaceClone(page: Page, heldFolder: string | null = null) {
   await page.evaluate(held => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const fixture = (window as any).__center;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -169,7 +169,7 @@ test('reviews workspace clones and keeps successful tabs without switching even 
     ['git@example.test:other/example.git', '/owned/clones', 'other-example'],
   ]);
   expect(await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { active: git.repository().path, tabs: git.repositories().map((repo: any) => repo.path), saved: git.activeWorkspace().repositoryPaths };
   })).toEqual({ active: '/owned/alpha', tabs: ['/owned/alpha', '/owned/beta', '/owned/clones/example', '/owned/clones/other-example'],
     saved: ['/owned/alpha', '/owned/beta', '/owned/clones/example', '/owned/clones/other-example'] });
@@ -197,7 +197,7 @@ test('closing workspace clones saves a completed checkout without opening it or 
   await expect(form).toBeHidden();
   await page.evaluate(() => (window as any).__center.releaseClone());
   await expect.poll(() => page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { busy: git.busy(), active: git.repository().path, tabs: git.repositories().map((repo: any) => repo.path),
       saved: git.activeWorkspace().repositoryPaths.includes('/owned/clones/first') };
   })).toEqual({ busy: false, active: '/owned/alpha', tabs: ['/owned/alpha', '/owned/beta'], saved: true });
@@ -216,7 +216,7 @@ async function openCloneRecipe(page: Page, denyClipboard = false) {
   await prepareWorkspaceClone(page);
   await page.evaluate(deny => {
     const host = window as any;
-    const { git } = host.ng.getComponent(document.querySelector('gc-root'));
+    const { git } = host.ng.getComponent(document.querySelector('gk-app'));
     const fixture = host.__center;
     fixture.clipboard = [];
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => {
@@ -288,7 +288,7 @@ test('keeps the clone recipe preview usable when the clipboard denies the write'
 test('refuses to copy a clone recipe when a selected fetch remote has changed', async ({ page }) => {
   const { recipe } = await openCloneRecipe(page);
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.repositories.update((rows: any[]) => rows.map(row => row.name === 'Alpha' ? { ...row, remotes: [] } : row));
   });
   await recipe.getByRole('button', { name: 'Copy clone recipe (2)' }).click();
@@ -313,7 +313,7 @@ test('rejects a clone recipe with an unsafe entry before any repository is clone
 test('reopens a closed tab in its own workspace and original saved slot', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const workspace = git.activeWorkspace();
     const third = { ...fixture.second, id: 'reopen-third', path: '/owned/third', name: 'Gamma' };
     fixture.origin = workspace.id;
@@ -340,11 +340,11 @@ test('reopens a closed tab in its own workspace and original saved slot', async 
     } };
   });
   const switchTo = (target: string) => page.evaluate(async key => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     await git.switchWorkspace((window as any).__center[key]);
   }, target);
-  const reopen = () => page.evaluate(async () => (window as any).ng.getComponent(document.querySelector('gc-root')).git.reopenClosedRepository());
-  const recent = () => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.recentlyClosedRepositoryPath());
+  const reopen = () => page.evaluate(async () => (window as any).ng.getComponent(document.querySelector('gk-app')).git.reopenClosedRepository());
+  const recent = () => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.recentlyClosedRepositoryPath());
   const closeBeta = page.getByRole('button', { name: 'Close Beta', exact: true });
   const betaTab = page.getByRole('tab', { name: /^Beta(?:,|$)/ });
   await betaTab.hover();
@@ -369,7 +369,7 @@ test('reopens a closed tab in its own workspace and original saved slot', async 
   await expect(betaTab).toHaveAttribute('aria-selected', 'true');
   await expect.poll(recent).toBeNull();
   const state = await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__center;
     const workspaces = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
     return {
@@ -391,7 +391,7 @@ test('reopens a closed tab in its own workspace and original saved slot', async 
 test('a reopen reply from an earlier visit cannot repopulate the current workspace', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.systemInfo.update((value: any) => ({ ...value, appVersion: 'renderer test' }));
     git.closeRepository(fixture.second.id);
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
@@ -403,7 +403,7 @@ test('a reopen reply from an earlier visit cannot repopulate the current workspa
   await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseReopen)).toBe('function');
   const state = await page.evaluate(async () => {
     const fixture = (window as any).__center;
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     // Change the visit while deliberately keeping the same ID and closed entry.
     git.workspaceVisit += 1;
     fixture.releaseReopen();
@@ -415,7 +415,7 @@ test('a reopen reply from an earlier visit cannot repopulate the current workspa
 
 async function prepareSavedStatus(page: Page, hold = false) {
   await page.evaluate(hold => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const { git } = app;
     const fixture = (window as any).__center;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -445,7 +445,7 @@ test('checks saved checkout status without opening tabs and keeps errors per pat
   await expect(dirty).toContainText('2 ahead · 0 behind');
   await expect(saved.getByRole('alert')).toContainText('That path no longer exists.');
   expect(await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { active: git.repository().path, tabs: git.repositories().map((repo: any) => repo.path),
       reads: (window as any).__center.calls.filter((call: any) => /saved_checkout_status|open_repository|fetch_/.test(call.command))
         .map((call: any) => [call.command, call.args.path]) };
@@ -502,7 +502,7 @@ test('closing the overview retires a pending saved checkout result', async ({ pa
 test('retries a saved path, preserves membership and does not carry a draft into the opened checkout', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const workspace = git.activeWorkspace();
     git.workspaces.update((items: any[]) => items.map(item => item.id === workspace.id ? {
@@ -532,7 +532,7 @@ test('retries a saved path, preserves membership and does not carry a draft into
   await expect(page.locator('.status-repository-path')).toHaveText('/owned/canonical');
   await expect(page.getByRole('textbox', { name: 'Commit summary', exact: true })).toHaveValue('');
   const state = await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return { saved: git.activeWorkspace().repositoryPaths, opened: (window as any).__center.calls };
   });
   expect(state).toEqual({
@@ -546,7 +546,7 @@ test('retries a saved path, preserves membership and does not carry a draft into
 test('removing a saved path revokes its pending restore only in this workspace', async ({ page }) => {
   await page.evaluate(async () => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const path = '/saved/removable';
     const workspace = git.activeWorkspace();
@@ -572,7 +572,7 @@ test('removing a saved path revokes its pending restore only in this workspace',
   await expect(dialog.getByLabel('Filter repositories')).toBeFocused();
   const state = await page.evaluate(async () => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     fixture.finishRestore();
     await fixture.restore;
     const workspaces = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
@@ -598,7 +598,7 @@ const retainedPath = '/saved/retain';
 async function prepareSavedRemoval(page: Page, holdRestore = false) {
   await page.evaluate(({ paths, retained, hold }) => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const workspace = git.activeWorkspace();
     git.workspaces.update((items: any[]) => [
       ...items.map(item => item.id === workspace.id ? {
@@ -653,7 +653,7 @@ test('reviews and removes selected unopened paths in one workspace without dispa
   ]);
   const current = await page.evaluate(async () => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     fixture.releaseSavedRestore();
     await fixture.savedRestore;
     const workspaces = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
@@ -680,7 +680,7 @@ test('refuses the entire saved-path removal when one reviewed checkout becomes o
   await saved.getByRole('button', { name: 'Remove selected saved paths (2)…' }).click();
   await page.evaluate(path => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((repos: any[]) => [...repos, { ...fixture.first, id: 'newly-restored', path, name: 'Newly restored' }]);
   }, removablePaths[0]);
   const review = page.getByRole('alertdialog', { name: 'Remove selected saved paths?' });
@@ -688,14 +688,14 @@ test('refuses the entire saved-path removal when one reviewed checkout becomes o
   await expect(saved.getByRole('alert')).toContainText('No paths were removed.');
   await expect(saved.getByRole('button', { name: 'Remove selected saved paths (1)…' })).toBeFocused();
   await expect(dialog.getByRole('article', { name: 'Newly restored' })).toBeVisible();
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeWorkspace().repositoryPaths))
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeWorkspace().repositoryPaths))
     .toEqual(['/owned/alpha', removablePaths[0], retainedPath, removablePaths[1], '/owned/beta']);
 });
 
 async function installSavedPathPicker(page: Page) {
   await page.evaluate(path => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const workspace = git.activeWorkspace();
     git.workspaces.update((items: any[]) => [
@@ -738,7 +738,7 @@ test('locates a moved checkout in its saved slot and revokes a late restore of t
   await installSavedPathPicker(page);
   await page.evaluate(path => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const restoration = { workspaceId: git.activeWorkspaceId(), pending: new Set([path]), failed: new Set() };
     git.repositoryRestoration = restoration;
     fixture.restore = git.restoreRepositoryTabs(restoration);
@@ -752,7 +752,7 @@ test('locates a moved checkout in its saved slot and revokes a late restore of t
   await expect(dialog.getByRole('searchbox', { name: 'Filter repositories' })).toBeFocused();
   const state = await page.evaluate(async () => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     fixture.restoreOld();
     await fixture.restore;
     const workspaces = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
@@ -813,7 +813,7 @@ test('keeps saved paths when relocation is cancelled, invalid, or resolves to an
   await expect(saved.getByRole('alert')).toContainText('already in this workspace');
   await expect(locate).toBeFocused();
   const state = await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return {
       paths: git.activeWorkspace().repositoryPaths, active: git.repository().path,
       opened: (window as any).__center.calls.filter((call: any) => call.command === 'open_repository').map((call: any) => call.path),
@@ -841,9 +841,9 @@ test('closing the overview retires both the folder picker and a pending relocati
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.evaluate(() => (window as any).__center.finishOpen());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   const state = await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return {
       paths: git.activeWorkspace().repositoryPaths, active: git.repository().path,
       opened: (window as any).__center.calls.filter((call: any) => call.command === 'open_repository').map((call: any) => call.path),
@@ -860,7 +860,7 @@ test('locates selected checkouts in saved order and stops remaining prompts when
   const chosenPaths = [movedPath, '/saved/offline', '/saved/invalid', '/saved/cancelled', '/saved/not-started'];
   await page.evaluate(paths => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.workspaces.update((items: any[]) => items.map(item => item.id === git.activeWorkspaceId() ? {
       ...item, repositoryPaths: [fixture.first.path, ...paths, fixture.second.path],
     } : item));
@@ -890,7 +890,7 @@ test('locates selected checkouts in saved order and stops remaining prompts when
   await expect(saved).toContainText('Located 2 of 5 selected repositories');
   const state = await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const layouts = JSON.parse(localStorage.getItem('git-khronos.workspaces.v1')!);
     return { current: layouts.find((ws: any) => ws.id === git.activeWorkspaceId()).repositoryPaths,
       other: layouts.find((ws: any) => ws.id === 'other-layout').repositoryPaths,
@@ -918,10 +918,10 @@ test('closing a batch keeps a late native open from applying and never prompts f
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await page.evaluate(() => (window as any).__center.finishOpen());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   const state = await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return { paths: git.activeWorkspace().repositoryPaths, active: git.repository().path,
       titles: fixture.calls.filter((entry: any) => entry.command === 'plugin:dialog|open').map((entry: any) => entry.options.title) };
   });
@@ -933,7 +933,7 @@ test('closing a batch keeps a late native open from applying and never prompts f
 
 test('refreshes every local repository, retains failed cached rows and performs no transport', async ({ page }) => {
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       const fixture = (window as any).__center; fixture.calls.push({ command, args });
@@ -961,7 +961,7 @@ test('refreshes every local repository, retains failed cached rows and performs 
 test('fetches selected repositories independently and reports each result', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     fixture.calls = [];
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
@@ -998,7 +998,7 @@ for (const replacement of ['original', 'matching newer failure']) {
   test(`workspace Fetch resumes only the selected checkout's matching pause: ${replacement}`, async ({ page }) => {
     await page.evaluate(async () => {
       const fixture = (window as any).__center;
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
       (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
         const repository = args?.repoId === fixture.second.id ? fixture.second : fixture.first;
@@ -1037,7 +1037,7 @@ for (const replacement of ['original', 'matching newer failure']) {
 test('workspace Pull distinguishes a prepared merge and still processes the next repository', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const first = { ...fixture.first, status: { ...fixture.first.status, operations: [], conflicted: 0 } };
     const prepared = { ...first, status: { ...first.status, operations: [{ kind: 'merge' }], staged: 1 } };
@@ -1063,7 +1063,7 @@ test('workspace Pull distinguishes a prepared merge and still processes the next
 test('workspace Pull explains an ambiguous upstream and continues to the next repository', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       const isFirst = args.repoId === fixture.first.id;
@@ -1104,7 +1104,7 @@ test('workspace Pull honors the saved strategy and keeps it for the whole batch'
   await page.keyboard.press('Escape');
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const { git } = app;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
@@ -1151,7 +1151,7 @@ test('workspace Pull honors the saved strategy and keeps it for the whole batch'
 test('a queued workspace pull keeps the original checkout rather than adopting a later branch', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const checkedOut = { ...fixture.second, status: { ...fixture.second.status, branch: 'external-change' } };
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
@@ -1190,7 +1190,7 @@ test('a queued workspace pull keeps the original checkout rather than adopting a
 test('a native cancellation stops the remaining selected pulls', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       fixture.calls.push({ command, args });
@@ -1220,7 +1220,7 @@ test('a native cancellation stops the remaining selected pulls', async ({ page }
 test('stop after current keeps its real outcome and skips undispatched fetches', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     fixture.hold = true;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
@@ -1267,7 +1267,7 @@ test('stop after current keeps its real outcome and skips undispatched fetches',
 test('opens multiple selected directories, keeps individual outcomes and switches commit drafts', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     fixture.calls = [];
     fixture.gamma = { ...fixture.first, id: 'gamma-repo', name: 'Gamma', path: '/owned/gamma' };
@@ -1301,7 +1301,7 @@ test('opens multiple selected directories, keeps individual outcomes and switche
 test('closing the overview stops queued opens and keeps draft edits made while an open finishes', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       if (command === 'plugin:dialog|open') return Promise.resolve(['/owned/first-open', '/owned/not-dispatched']);
@@ -1348,7 +1348,7 @@ test('closing the active tab does not revive its former draft when reopened', as
 test('a bulk pull invalidates its old diff without clearing a newer inspection', async ({ page }) => {
   await page.evaluate(async () => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     fixture.calls = [];
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
@@ -1368,30 +1368,30 @@ test('a bulk pull invalidates its old diff without clearing a newer inspection',
   await dialog.getByLabel('Select alpha').check();
   await dialog.getByRole('button', { name: 'Pull selected (1)' }).click();
   await expect(dialog.getByLabel('Repository action results')).toContainText('alpha — success');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.workingTreeFileDiff())).toBeNull();
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.workingTreeFileDiff())).toBeNull();
   expect(await page.evaluate(() => (window as any).__center.calls.some((call: any) => call.command === 'refresh_repository_status'))).toBe(true);
 
   await page.evaluate(async () => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     await git.inspectWorkingTreeFile('old.txt', false);
     fixture.holdPull = true;
   });
   await dialog.getByRole('button', { name: 'Pull selected (1)' }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releasePull)).toBe('function');
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     await git.inspectWorkingTreeFile('new.txt', false);
     (window as any).__center.releasePull();
   });
   await expect(dialog.getByLabel('Repository action results')).toContainText('alpha — success');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.workingTreeFileDiff()?.path)).toBe('new.txt');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.workingTreeFileDiff()?.path)).toBe('new.txt');
 });
 
 test('reviews filtered-out selections and closes only those tabs without touching Git', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const gamma = { ...fixture.second, id: 'keep-open', name: 'Gamma', path: '/owned/gamma' };
     git.repositories.update((items: any[]) => [...items, gamma]);
     const active = git.activeWorkspace();
@@ -1433,7 +1433,7 @@ test('reviews filtered-out selections and closes only those tabs without touchin
   await expect(page.locator('.status-repository-path')).toHaveText('/owned/gamma');
   const state = await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return { open: git.repositories().map((repo: any) => repo.path), saved: git.activeWorkspace().repositoryPaths,
       other: git.workspaces().find((item: any) => item.id === 'other-saved').repositoryPaths,
       ipc: fixture.calls };
@@ -1450,7 +1450,7 @@ test('refuses the whole close review when a selected tab no longer matches its r
   const review = dialog.getByRole('alertdialog', { name: 'Close selected repository tabs?' });
   await expect(review).toContainText('/owned/beta');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map(item => item.id === 'clean-repo' ? { ...item, path: '/owned/beta-replacement' } : item));
   });
   await review.getByRole('button', { name: 'Close 2 tabs', exact: true }).click();
@@ -1468,14 +1468,14 @@ test('closing all selected tabs leaves the workspace available', async ({ page }
   await expect(dialog.getByRole('button', { name: 'Close selected (0)…', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator('gc-welcome-launcher')).toBeVisible();
+  await expect(page.locator('gk-welcome-launcher')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Workspace: Default' })).toBeFocused();
 });
 
 test('an open response cannot attach to a workspace that changed while opening', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string) => {
       if (command === 'open_repository') return new Promise(resolve => { fixture.releaseOpen = () => resolve({ ...fixture.first, id: 'foreign', path: '/owned/foreign' }); });
@@ -1486,7 +1486,7 @@ test('an open response cannot attach to a workspace that changed while opening',
   await expect.poll(() => page.evaluate(() => typeof (window as any).__center.releaseOpen)).toBe('function');
   const result = await page.evaluate(async () => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.activeWorkspaceId.set('different-workspace');
     fixture.releaseOpen();
     return { result: await fixture.openResult, paths: git.repositories().map((repo: any) => repo.path) };
@@ -1503,7 +1503,7 @@ test('saves, edits and deletes identities without changing a repository and pers
   await dialog.getByLabel('Commit author email', { exact: true }).fill('work@example.test');
   await dialog.getByRole('button', { name: 'Save profile', exact: true }).click();
   await expect(dialog).toContainText('Saved Work');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().identity.name)).not.toBe('Work Author');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().identity.name)).not.toBe('Work Author');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   dialog = await open(page, true);
   await expect(dialog.getByRole('button', { name: 'Edit Work', exact: true })).toBeVisible();
@@ -1529,9 +1529,9 @@ test('requires an explicit repository confirmation before applying a profile', a
   await dialog.getByRole('button', { name: 'Use Work…', exact: true }).click();
   await dialog.getByRole('button', { name: 'Apply to this repository', exact: true }).click();
   await expect(dialog).toContainText('Applied Work to /owned/alpha');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().identity)).toEqual({ name: 'Work Author', email: 'work@example.test' });
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().identity)).toEqual({ name: 'Work Author', email: 'work@example.test' });
   await dialog.getByRole('button', { name: 'Use Work…', exact: true }).click();
-  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId.set('clean-repo'));
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId.set('clean-repo'));
   await expect(dialog.getByRole('button', { name: 'Apply to this repository', exact: true })).toHaveCount(0);
 });
 
@@ -1563,7 +1563,7 @@ test('keeps profiles unchanged when device storage refuses writes', async ({ pag
 
 test('does not accept mixed checkout snapshots as a successful overview refresh', async ({ page }) => {
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       const fixture = (window as any).__center;
@@ -1583,7 +1583,7 @@ test('does not accept mixed checkout snapshots as a successful overview refresh'
 test('creates files and deletes files with explicit Git and recovery behavior', async ({ page }) => {
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.systemInfo.update((info: any) => ({ ...info, repositoryFileCreationAvailable: true }));
     fixture.files = {
       files: [
@@ -1759,7 +1759,7 @@ test('offers browsing but not creation when the native build cannot create files
   await expect(dialog.getByRole('button', { name: 'Create file', exact: true })).toHaveCount(0);
   await expect(dialog).toContainText('Create files in your file manager or editor, then refresh this list.');
   expect(await page.evaluate(async () => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-workspace-center'));
     component.newFilePath.set('suppressed.txt');
     await component.createFile();
     return (window as any).__center.calls.some((call: any) => call.command === 'create_repository_file');
@@ -1777,7 +1777,7 @@ test('refuses subdirectory creation and preserves spaces in a valid root file na
     await expect(dialog).toContainText('Enter a file name without folders.');
   }
   expect(await page.evaluate(async () => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-workspace-center'));
     await component.createFile();
     return (window as any).__center.calls.some((call: any) => call.command === 'create_repository_file');
   })).toBe(false);
@@ -1796,8 +1796,8 @@ for (const returnToFirst of [false, true]) {
     const input = dialog.getByLabel('New repository-relative file path');
     await input.fill('belongs-to-alpha.txt');
     expect(await page.evaluate(async (returnToFirst) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-      const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      const component = (window as any).ng.getComponent(document.querySelector('gk-workspace-center'));
       const first = app.git.activeRepositoryId();
       app.git.activateRepository('clean-repo');
       if (returnToFirst) app.git.activateRepository(first);
@@ -1838,7 +1838,7 @@ test('opens untracked files without offering deletion when native recovery is un
   await expect(dialog.getByRole('article').filter({ hasText: 'b.txt' })
     .getByRole('button', { name: 'Delete with recovery' })).toBeEnabled();
   expect(await page.evaluate(() => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-workspace-center'));
     component.confirmDelete(component.files().files.find((file: any) => file.path === 'src/notes.txt'));
     return component.pendingFileDelete() !== null;
   })).toBe(false);
@@ -1850,8 +1850,8 @@ test('a file deletion review cannot survive a round trip to the same checkout', 
   await dialog.getByRole('article').filter({ hasText: 'b.txt' }).getByRole('button', { name: 'Delete with recovery' }).click();
   await expect(dialog.getByRole('alertdialog')).toBeVisible();
   expect(await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
-    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-workspace-center'));
     const first = app.git.activeRepositoryId();
     app.git.activateRepository('clean-repo');
     app.git.activateRepository(first);
@@ -1867,7 +1867,7 @@ test('dismissed file deletion controls cannot consume a replacement review', asy
   await dialog.getByRole('article').filter({ hasText: 'b.txt' }).getByRole('button', { name: 'Delete with recovery' }).click();
   await expect(dialog.getByRole('alertdialog')).toBeVisible();
   expect(await page.evaluate(async () => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-workspace-center'));
     const previous = component.pendingFileDelete();
     component.cancelDelete(previous);
     component.confirmDelete(component.files().files.find((file: any) => file.path === 'a.txt'));
@@ -1907,7 +1907,7 @@ test('guards duplicate submissions and reports completed changes with refresh fa
   await expect(dialog.getByText('a.txt', { exact: true })).toBeVisible();
   await dialog.getByLabel('New repository-relative file path').fill('new.txt');
   await page.evaluate(() => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-workspace-center'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-workspace-center'));
     void component.createFile(); void component.createFile();
   });
   await expect.poll(() => page.evaluate(() => (window as any).__center.calls.filter((call: any) => call.command === 'create_repository_file').length)).toBe(1);
@@ -1928,7 +1928,7 @@ for (const kind of ['repositoryFileRefused', 'gitFailure', 'gitUnavailable'] as 
     await installFileBrowser(page);
     await page.evaluate((errorKind) => {
       const fixture = (window as any).__center;
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.recordDiscard(fixture.first.id, 'Earlier discard', 'earlier-id');
       fixture.deleteError = { kind: errorKind, message: 'File changed.', hint: 'Review it again.' };
     }, kind);
@@ -1941,7 +1941,7 @@ for (const kind of ['repositoryFileRefused', 'gitFailure', 'gitUnavailable'] as 
     await expect(dialog.getByText('Staged deletion of a.txt')).toHaveCount(0);
     const history = await page.evaluate(() => {
       const fixture = (window as any).__center;
-      return (window as any).ng.getComponent(document.querySelector('gc-root')).git.operationHistory()[fixture.first.id];
+      return (window as any).ng.getComponent(document.querySelector('gk-app')).git.operationHistory()[fixture.first.id];
     });
     expect(history).toMatchObject({ recoveryId: 'earlier-id', undone: false });
   });
@@ -1952,7 +1952,7 @@ for (const failure of ['backend', 'connection'] as const) {
     await installFileBrowser(page);
     await page.evaluate((source) => {
       const fixture = (window as any).__center;
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.recordDiscard(fixture.first.id, 'Earlier discard', 'earlier-id');
       git.recordDiscard('clean-repo', 'Other discard', 'other-id');
       const internal = (window as any).__TAURI_INTERNALS__, invoke = internal.invoke;
@@ -1980,7 +1980,7 @@ for (const failure of ['backend', 'connection'] as const) {
     await expect(dialog.getByLabel('Filter files')).toBeFocused();
     const result = await page.evaluate(() => {
       const fixture = (window as any).__center;
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       return {
         history: git.operationHistory()[fixture.first.id] ?? null,
         other: git.operationHistory()['clean-repo'],
@@ -1997,7 +1997,7 @@ test('preserves newer undo history when an uncertain tracked deletion finishes l
   await installFileBrowser(page);
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.recordDiscard(fixture.first.id, 'Earlier discard', 'earlier-id');
     const internal = (window as any).__TAURI_INTERNALS__, invoke = internal.invoke;
     internal.invoke = (command: string, args: any) => {
@@ -2014,7 +2014,7 @@ test('preserves newer undo history when an uncertain tracked deletion finishes l
   await expect.poll(() => page.evaluate(() => typeof (window as any).__center.rejectTrackedDelete)).toBe('function');
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.recordDiscard(fixture.first.id, 'Newer discard', 'newer-id');
     fixture.rejectTrackedDelete({
       kind: 'repositoryFileDeletionUncertain',
@@ -2026,7 +2026,7 @@ test('preserves newer undo history when an uncertain tracked deletion finishes l
   await expect(dialog.getByRole('alert')).toContainText('file or index may');
   const history = await page.evaluate(() => {
     const fixture = (window as any).__center;
-    return (window as any).ng.getComponent(document.querySelector('gc-root')).git.operationHistory()[fixture.first.id];
+    return (window as any).ng.getComponent(document.querySelector('gk-app')).git.operationHistory()[fixture.first.id];
   });
   expect(history).toMatchObject({ recoveryId: 'newer-id', undone: false });
 });
@@ -2088,7 +2088,7 @@ for (const failure of ['backend', 'connection', 'background', 'unknown'] as cons
     await installFileBrowser(page);
     await page.evaluate((source) => {
       const fixture = (window as any).__center;
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       git.recordDiscard(fixture.first.id, 'Earlier discard', 'earlier-id');
       git.recordDiscard('clean-repo', 'Other discard', 'other-id');
       const internal = (window as any).__TAURI_INTERNALS__, invoke = internal.invoke;
@@ -2117,7 +2117,7 @@ for (const failure of ['backend', 'connection', 'background', 'unknown'] as cons
     await expect(dialog.getByLabel('Filter files')).toBeFocused();
     const result = await page.evaluate(() => {
       const fixture = (window as any).__center;
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       return {
         history: git.operationHistory()[fixture.first.id] ?? null,
         other: git.operationHistory()['clean-repo'],
@@ -2134,7 +2134,7 @@ test('keeps the confirmation and undo history after a safe untracked deletion re
   await installFileBrowser(page);
   await page.evaluate(() => {
     const fixture = (window as any).__center;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.recordDiscard(fixture.first.id, 'Earlier discard', 'earlier-id');
     fixture.deleteError = { kind: 'staleWorkingTreeFile', message: 'The file changed.', hint: 'Review it again.' };
   });
@@ -2146,7 +2146,7 @@ test('keeps the confirmation and undo history after a safe untracked deletion re
   await expect(confirmation.getByRole('button', { name: 'Cancel' })).toBeFocused();
   const history = await page.evaluate(() => {
     const fixture = (window as any).__center;
-    return (window as any).ng.getComponent(document.querySelector('gc-root')).git.operationHistory()[fixture.first.id];
+    return (window as any).ng.getComponent(document.querySelector('gk-app')).git.operationHistory()[fixture.first.id];
   });
   expect(history).toMatchObject({ recoveryId: 'earlier-id', undone: false });
 });
@@ -2197,7 +2197,7 @@ test('previews ignored text read-only while the underlying workspace dialog is s
   await opener.click();
   const content = page.getByRole('dialog', { name: 'ignored.log', exact: true });
   await expect(content.getByText('Reading text…')).toBeVisible();
-  await expect(page.locator('gc-workspace-center .backdrop')).toHaveAttribute('inert', '');
+  await expect(page.locator('gk-workspace-center .backdrop')).toHaveAttribute('inert', '');
   await expect(content.getByRole('button', { name: 'Close file content' })).toBeFocused();
   await page.evaluate(() => (window as any).__center.releaseText('private ignored text\n'));
   await expect(content.locator('pre')).toHaveText('private ignored text\n');
@@ -2247,7 +2247,7 @@ for (const acknowledged of [true, false]) {
       .filter((call: any) => call.command === 'cancel_git_operation' && call.args.operationId === operationId).length, operationId))
       .toBe(acknowledged ? 2 : 3);
     if (acknowledged) {
-      expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.error())).toBeNull();
+      expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.error())).toBeNull();
     } else {
       await expect(workspace.getByRole('region', { name: 'Background operation warnings' }).getByRole('alert'))
         .toContainText('previous text preview may still be running');
@@ -2263,7 +2263,7 @@ test('shows a stalled text cancellation inside the current preview without repla
     const fixture = (window as any).__center;
     fixture.holdText = true;
     fixture.cancelReplies = ['held'];
-    (window as any).ng.getComponent(document.querySelector('gc-root')).git.error.set('A separate Git error.');
+    (window as any).ng.getComponent(document.querySelector('gk-app')).git.error.set('A separate Git error.');
   });
   const workspace = await open(page, 'files');
   await workspace.getByLabel('Filter files').fill('ignored');
@@ -2282,7 +2282,7 @@ test('shows a stalled text cancellation inside the current preview without repla
     (window as any).__center.textReleases[0]('stale text\n');
   });
   await expect(content.locator('pre')).toHaveText('new text\n');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.error()))
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.error()))
     .toBe('A separate Git error.');
   await content.getByRole('button', { name: 'Close file content' }).click();
   const workspaceWarning = workspace.getByRole('region', { name: 'Background operation warnings' });

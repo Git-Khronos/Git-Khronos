@@ -19,7 +19,7 @@ export interface PendingFileAction {
 }
 
 @Component({
-  selector: 'gc-file-confirmation-details',
+  selector: 'gk-file-confirmation-details',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './file-confirmation-details.component.html',
   styleUrl: './file-confirmation-details.component.scss',

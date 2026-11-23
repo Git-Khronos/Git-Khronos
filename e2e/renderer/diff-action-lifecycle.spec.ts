@@ -4,7 +4,7 @@ async function prepare(page: Page, untrackedPath?: string): Promise<void> {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(async untrackedPath => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const original = git.repository();
     const status = untrackedPath

@@ -4,7 +4,7 @@ import { IconComponent } from './icon.component';
 import { TextValueDirective } from './text-value.directive';
 
 @Component({
-  selector: 'gc-tag-creation-dialog',
+  selector: 'gk-tag-creation-dialog',
   imports: [IconComponent, TextValueDirective],
   templateUrl: './tag-creation-dialog.component.html',
   styleUrl: './reference-edit-dialogs.component.scss',
@@ -20,7 +20,7 @@ export class TagCreationDialogComponent {
 }
 
 @Component({
-  selector: 'gc-branch-upstream-dialog',
+  selector: 'gk-branch-upstream-dialog',
   imports: [IconComponent],
   templateUrl: './branch-upstream-dialog.component.html',
   styleUrl: './reference-edit-dialogs.component.scss',

@@ -70,7 +70,7 @@ for (const outcome of ['loaded', 'failed', 'closed'] as const) {
       expect(layout.requests()).toBe(0);
       expect(await layout.installed()).toBe(false);
       await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const actions: string[] = (window as any).__setupActions = [];
         app.git.stageAll = async () => { actions.push('stage'); return null; };
         app.git.commit = async () => { actions.push('commit'); return false; };
@@ -196,7 +196,7 @@ for (const outcome of ['loaded', 'failed'] as const) {
       const summary = page.getByLabel('Commit summary', { exact: true });
       await summary.fill('Do not commit while managing repositories');
       await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         (window as any).__ambientRepositoryWrites = [];
         app.git.stageAll = async () => { (window as any).__ambientRepositoryWrites.push('stage'); return null; };
         app.git.commit = async () => { (window as any).__ambientRepositoryWrites.push('commit'); return false; };
@@ -320,7 +320,7 @@ for (const outcome of ['loaded', 'failed'] as const) {
       const draft = page.getByLabel('Commit summary', { exact: true });
       await draft.fill('Keep my draft while checking recovery');
       await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         (window as any).__recoveryAmbientWrites = [];
         app.git.stageAll = async () => { (window as any).__recoveryAmbientWrites.push('stage'); };
         app.git.commit = async () => { (window as any).__recoveryAmbientWrites.push('commit'); };

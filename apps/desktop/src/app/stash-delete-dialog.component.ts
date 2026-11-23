@@ -9,7 +9,7 @@ export interface StashDeleteRequest {
 }
 
 @Component({
-  selector: 'gc-stash-delete-dialog',
+  selector: 'gk-stash-delete-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="backdrop" (click)="close(false)">

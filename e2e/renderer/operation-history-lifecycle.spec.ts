@@ -7,7 +7,7 @@ for (const { operation, unrelatedError } of operations.flatMap(operation =>
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     await page.evaluate(operation => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const other = { ...repository, id: 'other-history', name: 'Other history', path: '/fixture/other-history',
         headOid: 'other-repository-head', status: { ...repository.status, branch: 'other-repository-branch' } };
@@ -83,7 +83,7 @@ test('records a remote checkout after a verified partial update failure', async 
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const partial = { ...repository, status: { ...repository.status, branch: 'remote-branch' } };
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -106,7 +106,7 @@ for (const operation of ['checkout', 'revertCommit', 'commit', 'renameBranch']) 
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const entry = await page.evaluate(async operation => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const partial = { ...repository, headOid: 'partially-changed-head',
         status: { ...repository.status, branch: 'partially-changed-branch' } };

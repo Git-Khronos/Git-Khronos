@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const original = git.repository();
@@ -61,7 +61,7 @@ test.beforeEach(async ({ page }) => {
 
 async function openReview(page: Page, multi = false): Promise<void> {
   await page.evaluate(multi => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const commits = app.git.repository().commits.filter((commit: any) => commit.parents.length === 1).slice(0, 3).reverse();
     const oids = multi ? commits.map((commit: any) => commit.oid) : [commits[0].oid];
     app.openHistoryConfirmation({ kind: 'cherry-pick', oid: oids[0], oids, label: 'Reviewed no-commit changes' });
@@ -79,14 +79,14 @@ for (const multi of [false, true]) {
     await expect(dialog).toContainText('HEAD stays unchanged');
     await expect(dialog).toContainText('your own message and identity');
     const captured = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       app.commitMessage.set('Retained explicit commit draft');
       return app.pendingHistoryAction().oids;
     });
     await dialog.locator('.confirm-action').click();
     await expect(dialog).toHaveCount(0);
     const result = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       return { fixture: (window as any).__noCommit, head: app.git.repository().headOid,
         activity: app.git.activity(), draft: app.commitMessage() };
     });
@@ -108,7 +108,7 @@ test('no-commit refusal retains the explicit choice and no staged application is
   await expect(dialog.locator('.recovery-error')).toContainText('Commit or stash');
   await expect(dialog.locator('.recovery-error')).toBeFocused();
   await expect(dialog.getByRole('checkbox')).toBeChecked();
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activity()))
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activity()))
     .not.toBe('Selected changes staged; no commit created');
   await page.keyboard.press('Escape');
   await openReview(page);
@@ -122,7 +122,7 @@ test('empty no-commit effects report unchanged HEAD rather than inventing staged
   await page.evaluate(() => { (window as any).__noCommit.empty = true; });
   await dialog.locator('.confirm-action').click();
   await expect(dialog).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activity()))
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activity()))
     .toBe('Selected changes have no effect; HEAD unchanged and no commit created');
 });
 
@@ -140,7 +140,7 @@ for (const action of ['continue', 'abort', 'quit'] as const) {
     await expect(progress.getByRole('button', { name: 'Skip', exact: true })).toHaveCount(0);
     await expect(progress.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       app.changesOpen.set(true);
       app.commitMessage.set('Draft retained across conflict recovery');
     });
@@ -157,7 +157,7 @@ for (const action of ['continue', 'abort', 'quit'] as const) {
     await progress.getByRole('button', { name: action === 'quit' ? 'Finish manually' : action === 'abort' ? 'Abort' : 'Continue', exact: true }).click();
     await expect(progress).toHaveCount(0);
     const result = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       return { fixture: (window as any).__noCommit, head: app.git.repository().headOid,
         status: app.git.repository().status, draft: app.commitMessage(), activity: app.git.activity() };
     });
@@ -183,7 +183,7 @@ for (const action of ['continue', 'abort', 'quit'] as const) {
 
 test('marker-only status refresh toggles no-commit controls without losing unchanged repository contents', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__noCommit;
     fixture.snapshot = { ...fixture.snapshot, status: { ...fixture.snapshot.status, historyOperation: 'cherry-pick' } };
     app.git.repositories.update((items: any[]) => items.map(item => item.id === fixture.snapshot.id ? fixture.snapshot : item));
@@ -192,7 +192,7 @@ test('marker-only status refresh toggles no-commit controls without losing uncha
   await expect(progress.getByRole('button', { name: 'Skip', exact: true })).toBeVisible();
   for (const enabled of [true, false]) {
     expect(await page.evaluate(async enabled => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const fixture = (window as any).__noCommit;
       fixture.snapshot = { ...fixture.snapshot, status: { ...fixture.snapshot.status, historyNoCommit: enabled } };
       return app.git.refreshStatusInBackground(fixture.snapshot.id, true);
@@ -211,7 +211,7 @@ test('marker-only status refresh toggles no-commit controls without losing uncha
     }
   }
   const result = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { fixture: (window as any).__noCommit, repository: app.git.repository() };
   });
   expect(result.repository.headOid).toBe(result.fixture.original.headOid);
@@ -221,7 +221,7 @@ test('marker-only status refresh toggles no-commit controls without losing uncha
 
 test('preview Finish manually retains staged and conflicted contents and never pretends to abort', async ({ page }) => {
   const entries = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__noCommit;
     const entries = [{ path: 'file.txt', oldPath: null, indexStatus: 'U', worktreeStatus: 'U', conflicted: true }];
     fixture.snapshot = { ...fixture.snapshot, status: { ...fixture.snapshot.status,
@@ -234,7 +234,7 @@ test('preview Finish manually retains staged and conflicted contents and never p
   await progress.getByRole('button', { name: 'Finish manually', exact: true }).click();
   await expect(progress).toHaveCount(0);
   const result = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { fixture: (window as any).__noCommit, repository: app.git.repository(), activity: app.git.activity() };
   });
   expect(result.repository.headOid).toBe(result.fixture.original.headOid);

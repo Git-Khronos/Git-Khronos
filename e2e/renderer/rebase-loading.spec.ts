@@ -32,7 +32,7 @@ for (const mode of ['load', 'cancel', 'failure'] as const) {
     await page.keyboard.press('Shift+Tab');
     await expect(close).toBeFocused();
     const before = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       (window as any).__rebaseLoadCalls = [];
       (window as any).__TAURI_INTERNALS__ = {
         invoke: (command: string) => {
@@ -63,6 +63,6 @@ for (const mode of ['load', 'cancel', 'failure'] as const) {
     await expect(loading).toHaveCount(0);
     expect(await page.evaluate(() => (window as any).__rebaseLoadCalls)).toEqual([]);
     expect(await page.evaluate(() => (window as any).ng
-      .getComponent(document.querySelector('gc-root')).git.repository().commits[0].oid)).toBe(before);
+      .getComponent(document.querySelector('gk-app')).git.repository().commits[0].oid)).toBe(before);
   });
 }

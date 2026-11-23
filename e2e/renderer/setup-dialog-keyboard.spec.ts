@@ -5,7 +5,7 @@ const editors: Editor[] = ['worktree', 'submodule', 'remote-add', 'remote-edit',
 
 async function open(page: Page, editor: Editor, focusGap = false) {
   await page.evaluate(({ editor, focusGap }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     (window as any).__keyboardIntents = [];
     const record = (name: string) => () => (window as any).__keyboardIntents.push(name);
     for (const name of ['commit', 'stageAllAndCommit', 'openCommandPalette', 'activateRelativeRepository',
@@ -69,13 +69,13 @@ for (const editor of editors) {
     const modal = await open(page, editor);
     await modal.getByRole('button', { name: 'Cancel', exact: true }).focus();
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       app.git.selectedWorkingTreeFile.set('unstaged:owned.txt');
     });
     await page.keyboard.press('s');
     await page.keyboard.press('j');
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       app.git.selectedWorkingTreeFile.set('staged:owned.txt');
     });
     await page.keyboard.press('u');
@@ -130,7 +130,7 @@ for (const editor of editors) {
       const modal = await open(page, editor);
       await modal.locator('input:not([readonly])').first().focus();
       await page.evaluate(editor => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const outgoing = document.activeElement!;
         if (editor === 'worktree') app.closeWorktreeDialog(false);
         else if (editor === 'submodule') app.closeSubmoduleDialog(false);

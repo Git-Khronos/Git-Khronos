@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const state: any = { app, git, repository, calls: [] };
@@ -36,10 +36,10 @@ test.beforeEach(async ({ page }) => {
 
 async function open(page: import('@playwright/test').Page, action: string) {
   await page.evaluate(action => (window as any).__refScope.open(action), action);
-  const dialog = page.locator('gc-reference-action-dialog [role=alertdialog]');
+  const dialog = page.locator('gk-reference-action-dialog [role=alertdialog]');
   await expect(dialog).toBeVisible();
   await page.evaluate(action => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-reference-action-dialog'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-reference-action-dialog'));
     if (action.startsWith('rename')) component.newName.set('owned-renamed-reference');
     if (action === 'delete-remote-tag') component.remoteExpected.set('b'.repeat(40));
   }, action);
@@ -51,11 +51,11 @@ for (const action of actions) {
   test(`${action} refuses a same-ID checkout replacement before effects run`, async ({ page }) => {
     await open(page, action);
     await page.evaluate(() => {
-      const confirm = document.querySelector<HTMLButtonElement>('gc-reference-action-dialog footer button:last-child')!;
+      const confirm = document.querySelector<HTMLButtonElement>('gk-reference-action-dialog footer button:last-child')!;
       (window as any).__refScope.change('path'); confirm.click();
     });
     expect(await page.evaluate(writes => (window as any).__refScope.calls.filter((call: any) => writes.includes(call.command)), writes)).toEqual([]);
-    await expect(page.locator('gc-reference-action-dialog [role=alertdialog]')).toHaveCount(0);
+    await expect(page.locator('gk-reference-action-dialog [role=alertdialog]')).toHaveCount(0);
   });
 
   test(`${action} still dispatches the valid source-bound action`, async ({ page }) => {
@@ -73,11 +73,11 @@ for (const action of ['confirm', 'cancel']) {
     await open(page, 'rename-tag');
     await page.evaluate(action => {
       const control = document.querySelector<HTMLButtonElement>(action === 'confirm'
-        ? 'gc-reference-action-dialog footer button:last-child' : '[data-reference-cancel]')!;
+        ? 'gk-reference-action-dialog footer button:last-child' : '[data-reference-cancel]')!;
       (window as any).__refScope.open('rename-tag'); control.click();
     }, action);
     expect(await page.evaluate(writes => (window as any).__refScope.calls.filter((call: any) => writes.includes(call.command)), writes)).toEqual([]);
-    await expect(page.locator('gc-reference-action-dialog [role=alertdialog]')).toBeVisible();
+    await expect(page.locator('gk-reference-action-dialog [role=alertdialog]')).toBeVisible();
   });
 }
 
@@ -106,7 +106,7 @@ test('reference rename isolates modifier shortcuts but supports explicit Enter',
   await field.press('Control+Shift+Enter');
   await field.press('Control+p');
   await expect(dialog).toBeVisible();
-  await expect(page.locator('gc-command-palette')).toHaveCount(0);
+  await expect(page.locator('gk-command-palette')).toHaveCount(0);
   expect(await page.evaluate(writes => (window as any).__refScope.calls.filter((call: any) => writes.includes(call.command)), writes)).toEqual([]);
   await field.press('Enter');
   await expect(dialog).toHaveCount(0);
@@ -116,7 +116,7 @@ test('reference rename isolates modifier shortcuts but supports explicit Enter',
 test('late remote-tag read cannot qualify a replacement reference review', async ({ page }) => {
   await page.evaluate(() => { (window as any).__refScope.hold = 'preview_remote_tag'; });
   const dialog = await open(page, 'delete-remote-tag');
-  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-reference-action-dialog')).remoteExpected.set(null));
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-reference-action-dialog')).remoteExpected.set(null));
   await dialog.getByRole('button', { name: 'Check remote tag', exact: true }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__refScope.finish)).toBe('function');
   await page.evaluate(() => (window as any).__refScope.open('delete-remote-tag'));

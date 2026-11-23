@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     app.worktreesOpen.set(true);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -104,7 +104,7 @@ test('repository switch prevents old worktree move submission', async ({ page })
   await setup(page);
   await openMove(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
   });
@@ -116,7 +116,7 @@ test('repository switch prevents old worktree move submission', async ({ page })
 test('locked worktree move is unavailable from its contextual menu', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map((item) => ({ ...item,
       worktrees: item.worktrees.map((worktree: any) => !worktree.current ? { ...worktree, locked: true } : worktree) })));
   });
@@ -128,7 +128,7 @@ test('locked worktree move is unavailable from its contextual menu', async ({ pa
 test('open worktree tab disables moving and explains the required close action', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const snapshot = git.repository();
     const worktree = snapshot.worktrees.find((item: any) => !item.current);
     git.repositories.update((items: any[]) => [...items, { ...snapshot, id: 'linked-tab', path: worktree.path }]);

@@ -25,7 +25,7 @@ const ACTIVITY_LOG_TOP_CLEARANCE = 110;
 const ACTIVITY_LOG_HEIGHT_KEY = 'git-khronos.ui.activity-log-height';
 
 @Component({
-  selector: 'gc-activity-log-drawer',
+  selector: 'gk-activity-log-drawer',
   imports: [DatePipe, IconComponent],
   templateUrl: './activity-log-drawer.component.html',
   encapsulation: ViewEncapsulation.None,

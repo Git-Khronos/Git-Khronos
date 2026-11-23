@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15000 });
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__rebaseCalls = [];
@@ -109,7 +109,7 @@ for (const failure of [
     if (failure.hint) await expect(page.locator('.error-toast')).toContainText(failure.hint);
     await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => (window as any).ng
-      .getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+      .getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
     expect(await page.evaluate(() => (window as any).__rebaseCalls
       .some((call: any) => call.command === 'execute_interactive_rebase'))).toBe(false);
     await page.evaluate(() => { (window as any).__rebasePreparationError = null; });
@@ -136,13 +136,13 @@ test('Edit keyboard action sends the explicit stop and displays truthful pause a
   await expect(status).toContainText('Continue unchanged');
   await expect(status.getByRole('button', { name: 'Skip', exact: true })).toHaveCount(0);
   await expect(status.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root'))
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app'))
     .git.activity())).toContain('paused for Edit');
   const call = await page.evaluate(() => (window as any).__rebaseCalls.find((call: any) => call.command === 'execute_interactive_rebase'));
   expect(call.args.steps[0]).toEqual({ oid: '1'.repeat(40), action: 'edit', message: null });
   await status.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(status).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root'))
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app'))
     .git.activity())).toBe('Rebase complete');
   expect(await page.evaluate(() => (window as any).__rebaseCalls.some((call: any) => call.command === 'commit_changes'))).toBe(false);
 });
@@ -155,7 +155,7 @@ test('Edit amendment retains the draft on hook refusal and requires explicit sta
   const status = page.getByRole('status', { name: 'Git rebase in progress' });
   await expect(status).toContainText('REBASE PAUSED FOR EDIT');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.repositories.update((repos: any[]) => repos.map(repo => ({ ...repo,
       status: { ...repo.status, unstaged: 1, entryCount: 1,
         entries: [{ path: 'edited-file.txt', indexStatus: '.', worktreeStatus: 'M', conflicted: false }] } })));
@@ -193,7 +193,7 @@ test('Continue to another Edit stop never announces completion and Abort remains
   const status = page.getByRole('status', { name: 'Git rebase in progress' });
   await status.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(status).toContainText('REBASE PAUSED FOR EDIT');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.activity()))
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activity()))
     .toContain('paused for Edit');
   await status.getByRole('button', { name: 'Abort', exact: true }).click();
   await expect(status).toHaveCount(0);
@@ -210,7 +210,7 @@ test('same-count status refresh removes an Edit stop without retaining stale pau
   const status = page.getByRole('status', { name: 'Git rebase in progress' });
   await expect(status).toContainText('REBASE PAUSED FOR EDIT');
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     (window as any).__editMarkerOnlyRefresh = true;
     await app.git.refreshStatusInBackground(app.git.activeRepositoryId(), true);
   });
@@ -222,7 +222,7 @@ test('same-count status refresh removes an Edit stop without retaining stale pau
 test('autosquash previews exact targets and stable actions without starting Git, then Reset restores original order', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'Interactive rebase', exact: true });
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const state = app.interactiveRebase();
     const steps = state.steps.map((step: any, index: number) => ({
       ...step, subject: ['Target message', 'Independent', 'fixup! Target message'][index],
@@ -257,7 +257,7 @@ test('autosquash previews exact targets and stable actions without starting Git,
 test('autosquash refuses ambiguous or unsupported targets and preserves manual actions and reword drafts', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'Interactive rebase', exact: true });
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const state = app.interactiveRebase();
     app.interactiveRebase.set({ ...state, steps: state.steps.map((step: any, index: number) => ({
       ...step, subject: index === 2 ? 'fixup! Duplicate' : 'Duplicate',
@@ -267,7 +267,7 @@ test('autosquash refuses ambiguous or unsupported targets and preserves manual a
   await expect(dialog.getByRole('alert')).toContainText('Ambiguous autosquash target');
   expect(await dialog.locator('.rebase-commit-copy strong').allTextContents()).toEqual(['Duplicate', 'Duplicate', 'fixup! Duplicate']);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const state = app.interactiveRebase();
     app.interactiveRebase.set({ ...state, steps: state.original });
   });
@@ -428,7 +428,7 @@ test('reordering fixup before its recipient never silently changes it to Pick', 
 
 test('changing repositories closes the plan and refuses stale execution against another repository', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     (window as any).__savedRebase = app.interactiveRebase();
     const other = { ...app.git.repository(), id: 'other-fixture', name: 'Other fixture' };
     app.git.repositories.update((repositories: any[]) => [...repositories, other]);
@@ -436,7 +436,7 @@ test('changing repositories closes the plan and refuses stale execution against 
   });
   await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.interactiveRebase.set((window as any).__savedRebase);
     await app.executeInteractiveRebase();
   });
@@ -452,7 +452,7 @@ test('late preparation cannot reopen a plan after switching away and back', asyn
   await page.getByRole('menuitem', { name: 'Interactive rebase main onto feature/partial-staging' }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__resolveRebasePreparation)).toBe('function');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     (window as any).__originalRepositoryId = app.git.activeRepositoryId();
     const other = { ...app.git.repository(), id: 'other-fixture', name: 'Other fixture' };
     app.git.repositories.update((repositories: any[]) => [...repositories, other]);
@@ -460,13 +460,13 @@ test('late preparation cannot reopen a plan after switching away and back', asyn
   });
   await page.evaluate(() => new Promise(requestAnimationFrame));
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.activateRepository((window as any).__originalRepositoryId);
   });
   await page.evaluate(() => new Promise(requestAnimationFrame));
   await page.evaluate(() => (window as any).__resolveRebasePreparation());
   await expect.poll(() => page.evaluate(() => (window as any).ng
-    .getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+    .getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__rebaseCalls
     .some((call: any) => call.command === 'execute_interactive_rebase'))).toBe(false);
@@ -479,7 +479,7 @@ test('a late rebase plan cannot reopen after an away-and-back transition within 
   await page.getByRole('menuitem', { name: 'Interactive rebase main onto feature/partial-staging' }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__resolveRebasePreparation)).toBe('function');
   const changedVisit = await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const original = git.repository();
     const originalScope = git.activeRepositoryReadScope();
     git.repositories.update((items: any[]) => [...items, { ...original, id: 'transient-rebase-fixture', path: '/owned/rebase-other' }]);
@@ -490,13 +490,13 @@ test('a late rebase plan cannot reopen after an away-and-back transition within 
   });
   expect(changedVisit).toBe(true);
   await expect.poll(() => page.evaluate(() => (window as any).ng
-    .getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+    .getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.getByRole('dialog', { name: 'Interactive rebase', exact: true })).toHaveCount(0);
 });
 
 test('a reviewed rebase cannot start after returning to the same checkout before render', async ({ page }) => {
   await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const original = app.git.repository();
     app.git.repositories.update((items: any[]) => [...items, { ...original, id: 'transient-rebase-fixture', path: '/owned/rebase-other' }]);
     app.git.activateRepository('transient-rebase-fixture');

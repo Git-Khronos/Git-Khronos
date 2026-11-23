@@ -3,7 +3,7 @@ import { iconPrimitives, type IconName } from './icon-shapes';
 export type { IconName } from './icon-shapes';
 
 @Component({
-  selector: 'gc-icon',
+  selector: 'gk-icon',
   template: `
     <svg
       viewBox="0 0 24 24"

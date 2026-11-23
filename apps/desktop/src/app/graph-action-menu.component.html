@@ -12,112 +12,115 @@
         <div class="context-section-label" aria-hidden="true">Checkout and inspect</div>
       }
       @if (menu.kind === 'original') {
-        <button type="button" role="menuitem" (click)="view.copyContextValue(menu.label)"><span><gc-icon name="copy" [size]="13" /></span>Copy original reference</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy() || view.git.historyLoading() || view.git.checkpointVisibilityUpdating()" (click)="view.requestStoredReferenceDelete(menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete original reference…</button>
+        <button type="button" role="menuitem" (click)="view.copyContextValue(menu.label)"><span><gk-icon name="copy" [size]="13" /></span>Copy original reference</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy() || view.git.historyLoading() || view.git.checkpointVisibilityUpdating()" (click)="view.requestStoredReferenceDelete(menu)"><span><gk-icon name="trash" [size]="13" /></span>Delete original reference…</button>
       } @else if (menu.kind === 'checkpoint') {
-        <button type="button" role="menuitem" (click)="view.copyContextValue(menu.label)"><span><gc-icon name="copy" [size]="13" /></span>Copy checkpoint reference</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy() || view.git.historyLoading() || view.git.checkpointVisibilityUpdating()" (click)="view.requestStoredReferenceDelete(menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete checkpoint reference…</button>
+        <button type="button" role="menuitem" (click)="view.copyContextValue(menu.label)"><span><gk-icon name="copy" [size]="13" /></span>Copy checkpoint reference</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy() || view.git.historyLoading() || view.git.checkpointVisibilityUpdating()" (click)="view.requestStoredReferenceDelete(menu)"><span><gk-icon name="trash" [size]="13" /></span>Delete checkpoint reference…</button>
       } @else {
       <button type="button" role="menuitem" [disabled]="(menu.kind !== 'tag' && view.git.busy()) || (menu.kind === 'commit' && menu.oids.length > 1) || (menu.kind === 'branch' && menu.label === view.git.repository()?.status?.branch)" (click)="view.checkoutContextTarget()">
-        <span><gc-icon [name]="menu.kind === 'tag' ? 'tag' : menu.kind === 'remote' ? 'remote' : menu.kind === 'branch' ? (menu.label === view.git.repository()?.status?.branch ? 'check' : 'branch') : 'git-commit'" [size]="13" /></span>{{ menu.kind === 'commit' ? 'Checkout this commit' : menu.kind === 'tag' ? 'View tagged commit' : menu.kind === 'remote' ? 'Fetch and check out local branch' : menu.label === view.git.repository()?.status?.branch ? 'Current branch' : 'Checkout branch' }}
+        <span><gk-icon [name]="menu.kind === 'tag' ? 'tag' : menu.kind === 'remote' ? 'remote' : menu.kind === 'branch' ? (menu.label === view.git.repository()?.status?.branch ? 'check' : 'branch') : 'git-commit'" [size]="13" /></span>{{ menu.kind === 'commit' ? 'Checkout this commit' : menu.kind === 'tag' ? 'View tagged commit' : menu.kind === 'remote' ? 'Fetch and check out local branch' : menu.label === view.git.repository()?.status?.branch ? 'Current branch' : 'Checkout branch' }}
       </button>
       @if (menu.kind === 'remote') {
         <button type="button" role="menuitem" [disabled]="!view.fixedFetchTarget(menu)" (click)="view.openContextFetchBranch(menu)">
-          <span><gc-icon name="refresh" [size]="13" /></span>Fetch this branch only…
+          <span><gk-icon name="refresh" [size]="13" /></span>Fetch this branch only…
         </button>
       }
-      <button type="button" role="menuitem" [disabled]="view.git.busy() || view.git.browserPreview() || (menu.kind === 'commit' && menu.oids.length !== 1)" (click)="view.shareRepositoryContext()"><span><gc-icon name="copy" [size]="13" /></span>Share repository context…</button>
+      <button type="button" role="menuitem" [disabled]="view.git.busy() || view.git.browserPreview() || (menu.kind === 'commit' && menu.oids.length !== 1)" (click)="view.shareRepositoryContext()"><span><gk-icon name="copy" [size]="13" /></span>Share repository context…</button>
       <button type="button" role="menuitem" (click)="view.copyContextValue(menu.kind === 'commit' ? menu.oids.join('\n') : menu.label)">
-        <span><gc-icon name="copy" [size]="13" /></span>Copy {{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'commit SHA' : menu.oids.length + ' commit SHAs') : menu.kind === 'tag' ? 'tag name' : menu.kind === 'remote' ? 'remote branch name' : 'branch name' }}
+        <span><gk-icon name="copy" [size]="13" /></span>Copy {{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'commit SHA' : menu.oids.length + ' commit SHAs') : menu.kind === 'tag' ? 'tag name' : menu.kind === 'remote' ? 'remote branch name' : 'branch name' }}
       </button>
       @if (menu.kind === 'branch' && view.git.repository()?.status?.branch) {
-        <button type="button" role="menuitem" data-integration-entry [disabled]="view.git.busy()" (click)="view.openContextIntegration()"><span><gc-icon name="merge" [size]="13" /></span>{{ menu.label === view.git.repository()?.status?.branch ? 'Merge or rebase another branch into ' + menu.label + '…' : 'Merge or rebase into ' + view.git.repository()?.status?.branch + '…' }}</button>
+        <button type="button" role="menuitem" data-integration-entry [disabled]="view.git.busy()" (click)="view.openContextIntegration()"><span><gk-icon name="merge" [size]="13" /></span>{{ menu.label === view.git.repository()?.status?.branch ? 'Merge or rebase another branch into ' + menu.label + '…' : 'Merge or rebase into ' + view.git.repository()?.status?.branch + '…' }}</button>
       }
       @if (menu.kind === 'commit') {
-        <button type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="view.compareContextCommitWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
+        <button type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="view.compareContextCommitWithWorkingTree()"><span><gk-icon name="file" [size]="13" /></span>Compare with working directory</button>
         @if (menu.oids.length === 1) {
           <button type="button" role="menuitem" [disabled]="view.git.busy() || view.git.browserPreview()"
-            (click)="view.compareFromContextCommit(menu)"><span><gc-icon name="merge" [size]="13" /></span>Compare from this commit…</button>
+            (click)="view.compareFromContextCommit(menu)"><span><gk-icon name="merge" [size]="13" /></span>Compare from this commit…</button>
           <button type="button" role="menuitem" [disabled]="view.git.busy() || view.git.browserPreview()"
             title="Export the selected commit's files, without history or uncommitted changes" (click)="view.saveContextCommitSourceZip(menu)">
-            <span><gc-icon name="archive" [size]="13" /></span>Save committed files as ZIP…
+            <span><gk-icon name="archive" [size]="13" /></span>Save committed files as ZIP…
           </button>
         }
         @if (view.contextShallowBoundary(menu)) {
           <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length"
             [title]="view.git.repository()?.remotes?.length ? 'Review fetch options without downloading yet' : 'Configure a remote to download older history'"
-            (click)="view.reviewContextHistoryDepth(menu)"><span><gc-icon name="history" [size]="13" /></span>Review history depth…</button>
+            (click)="view.reviewContextHistoryDepth(menu)"><span><gk-icon name="history" [size]="13" /></span>Review history depth…</button>
         }
       }
       @if (menu.kind === 'branch' && menu.label !== view.git.repository()?.status?.branch && view.git.repository()?.status?.entryCount) {
-        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openStashOptions('switch')"><span><gc-icon name="archive" [size]="13" /></span>Stash changes and checkout…</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openStashOptions('switch')"><span><gk-icon name="archive" [size]="13" /></span>Stash changes and checkout…</button>
       }
       @if (menu.kind === 'tag') {
-        <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length" (click)="view.requestReferenceAction('push-tag', menu)"><span><gc-icon name="push" [size]="13" /></span>Push this tag…</button>
-        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.verifyContextTag()"><span><gc-icon name="check" [size]="13" /></span>Verify tag signature</button>
-        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('rename-tag', menu)"><span><gc-icon name="edit" [size]="13" /></span>Rename tag…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('delete-tag', menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete tag locally…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length" (click)="view.requestReferenceAction('delete-remote-tag', menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete tag on remote…</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length" (click)="view.requestReferenceAction('push-tag', menu)"><span><gk-icon name="push" [size]="13" /></span>Push this tag…</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.verifyContextTag()"><span><gk-icon name="check" [size]="13" /></span>Verify tag signature</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('rename-tag', menu)"><span><gk-icon name="edit" [size]="13" /></span>Rename tag…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('delete-tag', menu)"><span><gk-icon name="trash" [size]="13" /></span>Delete tag locally…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.remotes?.length" (click)="view.requestReferenceAction('delete-remote-tag', menu)"><span><gk-icon name="trash" [size]="13" /></span>Delete tag on remote…</button>
       }
       @if (menu.kind === 'branch' || menu.kind === 'remote') {
-        <button type="button" role="menuitem" (click)="view.compareContextReferenceWithWorkingTree()"><span><gc-icon name="file" [size]="13" /></span>Compare with working directory</button>
+        <button type="button" role="menuitem" (click)="view.compareContextReferenceWithWorkingTree()"><span><gk-icon name="file" [size]="13" /></span>Compare with working directory</button>
       }
       @if (menu.kind === 'remote') {
         <div class="context-divider"></div>
         <div class="context-section-label context-section-label-danger" aria-hidden="true">Manage remote branch</div>
-        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('rename-remote-branch', menu)"><span><gc-icon name="edit" [size]="13" /></span>Rename branch on remote…</button>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('delete-remote-branch', menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete branch on remote…</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('rename-remote-branch', menu)"><span><gk-icon name="edit" [size]="13" /></span>Rename branch on remote…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestReferenceAction('delete-remote-branch', menu)"><span><gk-icon name="trash" [size]="13" /></span>Delete branch on remote…</button>
       }
       @if (menu.kind === 'commit') {
         <div class="context-divider"></div>
         <div class="context-section-label" aria-hidden="true">History operations</div>
         @if (view.canEditContextCommitMessage()) {
-          <button type="button" role="menuitem" (click)="view.editContextCommitMessage()"><span><gc-icon name="edit" [size]="13" /></span>Edit author, message or co-authors…</button>
+          <button type="button" role="menuitem" (click)="view.editContextCommitMessage()"><span><gk-icon name="edit" [size]="13" /></span>Edit author, message or co-authors…</button>
         }
-        <button type="button" role="menuitem" (click)="view.requestHistoryAction('cherry-pick')"><span><gc-icon name="cherry-pick" [size]="13" /></span>Cherry-pick {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
-        <button type="button" role="menuitem" (click)="view.requestHistoryAction('revert')"><span><gc-icon name="revert" [size]="13" /></span>Revert {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
-        <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.status?.branch" (click)="view.openSelectedRebase()"><span><gc-icon name="edit" [size]="13" /></span>{{ menu.oids.length === 1 ? 'Edit history from this commit…' : 'Edit selected range…' }}</button>
-        <button type="button" role="menuitem" [disabled]="menu.oids.length > 1 || !view.canStartBisectAt(menu.oid)" (click)="view.requestBisectFromContext()"><span><gc-icon name="history" [size]="13" /></span>Start bisect from here…</button>
+        @if (menu.oids.length === 1 && menu.repositoryId === view.git.activeRepositoryId() && menu.repositoryPath === view.git.repository()?.path) {
+          <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.headOid" (click)="view.prepareContextCommitFixup()"><span><gk-icon name="git-commit" [size]="13" /></span>Prepare fixup commit from staged changes…</button>
+        }
+        <button type="button" role="menuitem" (click)="view.requestHistoryAction('cherry-pick')"><span><gk-icon name="cherry-pick" [size]="13" /></span>Cherry-pick {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
+        <button type="button" role="menuitem" (click)="view.requestHistoryAction('revert')"><span><gk-icon name="revert" [size]="13" /></span>Revert {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.status?.branch" (click)="view.openSelectedRebase()"><span><gk-icon name="edit" [size]="13" /></span>{{ menu.oids.length === 1 ? 'Edit history from this commit…' : 'Edit selected range…' }}</button>
+        <button type="button" role="menuitem" [disabled]="menu.oids.length > 1 || !view.canStartBisectAt(menu.oid)" (click)="view.requestBisectFromContext()"><span><gk-icon name="history" [size]="13" /></span>Start bisect from here…</button>
         <div class="context-divider"></div>
         <div class="context-section-label context-section-label-danger" aria-hidden="true">Move current branch</div>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="view.requestHistoryAction('reset')"><span><gc-icon name="reset" [size]="13" /></span>Reset to this commit…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="view.requestHistoryAction('reset')"><span><gk-icon name="reset" [size]="13" /></span>Reset to this commit…</button>
       } @else if (menu.kind === 'branch') {
-        <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.headOid" (click)="view.previewContextMerge()"><span><gc-icon name="merge" [size]="13" /></span>Preview merge conflicts…</button>
+        <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.headOid" (click)="view.previewContextMerge()"><span><gk-icon name="merge" [size]="13" /></span>Preview merge conflicts…</button>
         <div class="context-divider"></div>
         <div class="context-section-label" aria-hidden="true">Tracking and worktrees</div>
-        <button type="button" role="menuitem" [disabled]="!view.remoteUpstreamBranches().length" (click)="view.requestBranchUpstream()"><span><gc-icon name="remote" [size]="13" /></span>{{ view.contextBranchUpstream(menu.label) ? 'Change upstream…' : 'Set upstream…' }}</button>
+        <button type="button" role="menuitem" [disabled]="!view.remoteUpstreamBranches().length" (click)="view.requestBranchUpstream()"><span><gk-icon name="remote" [size]="13" /></span>{{ view.contextBranchUpstream(menu.label) ? 'Change upstream…' : 'Set upstream…' }}</button>
         @if (view.contextBranchUpstream(menu.label)) {
-          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.unsetContextBranchUpstream()"><span><gc-icon name="x" [size]="13" /></span>Unset upstream <small>{{ view.contextBranchUpstream(menu.label) }}</small></button>
+          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.unsetContextBranchUpstream()"><span><gk-icon name="x" [size]="13" /></span>Unset upstream <small>{{ view.contextBranchUpstream(menu.label) }}</small></button>
         }
-        <button type="button" role="menuitem" [disabled]="!view.canCreateContextWorktree()" (click)="view.openContextWorktreeDialog()"><span><gc-icon name="folder-git" [size]="13" /></span>Create worktree</button>
+        <button type="button" role="menuitem" [disabled]="!view.canCreateContextWorktree()" (click)="view.openContextWorktreeDialog()"><span><gk-icon name="folder-git" [size]="13" /></span>Create worktree</button>
         <div class="context-divider"></div>
         <div class="context-section-label" aria-hidden="true">Graph visibility</div>
-        <button type="button" role="menuitem" (click)="view.hideContextBranch()"><span><gc-icon [name]="view.isBranchHidden(menu.label) ? 'eye' : 'eye-off'" [size]="13" /></span>{{ view.isBranchHidden(menu.label) ? 'Show' : 'Hide' }} in graph</button>
-        <button type="button" role="menuitem" (click)="view.soloContextBranch()"><span><gc-icon name="eye" [size]="13" /></span>{{ view.isBranchSoloed(menu.label) ? 'Unsolo' : 'Solo' }} branch</button>
-        <button type="button" role="menuitem" (click)="view.toggleContextBranchPin()"><span><gc-icon name="pin" [size]="13" /></span>{{ view.isBranchPinned(menu.label) ? 'Unpin from left' : 'Pin to left' }}</button>
+        <button type="button" role="menuitem" (click)="view.hideContextBranch()"><span><gk-icon [name]="view.isBranchHidden(menu.label) ? 'eye' : 'eye-off'" [size]="13" /></span>{{ view.isBranchHidden(menu.label) ? 'Show' : 'Hide' }} in graph</button>
+        <button type="button" role="menuitem" (click)="view.soloContextBranch()"><span><gk-icon name="eye" [size]="13" /></span>{{ view.isBranchSoloed(menu.label) ? 'Unsolo' : 'Solo' }} branch</button>
+        <button type="button" role="menuitem" (click)="view.toggleContextBranchPin()"><span><gk-icon name="pin" [size]="13" /></span>{{ view.isBranchPinned(menu.label) ? 'Unpin from left' : 'Pin to left' }}</button>
         <div class="context-divider"></div>
         <div class="context-section-label" aria-hidden="true">History and integration</div>
         @if (menu.label === view.git.repository()?.status?.branch) {
-          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openRootRebase()"><span><gc-icon name="edit" [size]="13" /></span>Edit entire history, including root…</button>
+          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openRootRebase()"><span><gk-icon name="edit" [size]="13" /></span>Edit entire history, including root…</button>
         } @else {
-          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openInteractiveRebaseFromContext()"><span><gc-icon name="edit" [size]="13" /></span>Interactive rebase {{ view.git.repository()?.status?.branch }} onto {{ menu.label }}</button>
-          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openMergeRebase()"><span><gc-icon name="merge" [size]="13" /></span>Rebase preserving merges…</button>
+          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openInteractiveRebaseFromContext()"><span><gk-icon name="edit" [size]="13" /></span>Interactive rebase {{ view.git.repository()?.status?.branch }} onto {{ menu.label }}</button>
+          <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openMergeRebase()"><span><gk-icon name="merge" [size]="13" /></span>Rebase preserving merges…</button>
           @if (menu.integration; as integration) {
             <div class="context-divider"></div>
             <div class="context-section-label" aria-hidden="true">Integrate into {{ integration.review.target }}</div>
-            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('ff-only', integration)"><span><gc-icon name="merge" [size]="13" /></span>Fast-forward {{ integration.review.target }} to {{ integration.review.source }}</button>
-            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('merge', integration)"><span><gc-icon name="merge" [size]="13" /></span>Merge {{ integration.review.source }} into {{ integration.review.target }}</button>
-            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('squash', integration)"><span><gc-icon name="merge" [size]="13" /></span>Squash {{ integration.review.source }} into {{ integration.review.target }}</button>
-            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestContextRebase(integration)"><span><gc-icon name="refresh" [size]="13" /></span>Rebase {{ integration.review.target }} onto {{ integration.review.source }}…</button>
+            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('ff-only', integration)"><span><gk-icon name="merge" [size]="13" /></span>Fast-forward {{ integration.review.target }} to {{ integration.review.source }}</button>
+            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('merge', integration)"><span><gk-icon name="merge" [size]="13" /></span>Merge {{ integration.review.source }} into {{ integration.review.target }}</button>
+            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.integrateContextBranch('squash', integration)"><span><gk-icon name="merge" [size]="13" /></span>Squash {{ integration.review.source }} into {{ integration.review.target }}</button>
+            <button type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.requestContextRebase(integration)"><span><gk-icon name="refresh" [size]="13" /></span>Rebase {{ integration.review.target }} onto {{ integration.review.source }}…</button>
           }
         }
         <div class="context-divider"></div>
         <div class="context-section-label" aria-hidden="true">Manage branch</div>
         <form novalidate class="context-branch-form" (submit)="$event.preventDefault(); view.renameContextBranch(menu)">
           <label for="context-rename-name">Rename branch</label>
-          <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [gcTextValue]="view.contextRenameName()" (gcTextValueChange)="view.contextRenameName.set($event)" /><button type="submit" [disabled]="!view.contextRenameName().trim() || view.contextRenameName().trim() === menu.label || view.git.busy()">Rename</button></div>
+          <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [gkTextValue]="view.contextRenameName()" (gkTextValueChange)="view.contextRenameName.set($event)" /><button type="submit" [disabled]="!view.contextRenameName().trim() || view.contextRenameName().trim() === menu.label || view.git.busy()">Rename</button></div>
         </form>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.label === view.git.repository()?.status?.branch || view.git.busy()" (click)="view.requestContextBranchDelete(menu)"><span><gc-icon name="trash" [size]="13" /></span>Delete branch…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.label === view.git.repository()?.status?.branch || view.git.busy()" (click)="view.requestContextBranchDelete(menu)"><span><gk-icon name="trash" [size]="13" /></span>Delete branch…</button>
       }
       <div class="context-divider"></div>
       @if (menu.kind === 'commit') {
@@ -138,16 +141,16 @@
               [disabled]="view.git.busy()"
               [attr.aria-invalid]="view.contextBranchError() ? 'true' : null"
               [attr.aria-describedby]="view.contextBranchError() ? 'context-branch-error' : null"
-              [gcTextValue]="view.contextBranchName()"
-              (gcTextValueChange)="view.changeContextBranchName($event, request)"
+              [gkTextValue]="view.contextBranchName()"
+              (gkTextValueChange)="view.changeContextBranchName($event, request)"
             />
             <button type="submit" [disabled]="!view.contextBranchName().trim() || view.git.busy()">Create</button>
-            <button class="context-branch-cancel" type="button" title="Cancel branch creation" aria-label="Cancel branch creation" (click)="view.closeContextBranchCreator($event, request)"><gc-icon name="x" [size]="10" /></button>
+            <button class="context-branch-cancel" type="button" title="Cancel branch creation" aria-label="Cancel branch creation" (click)="view.closeContextBranchCreator($event, request)"><gk-icon name="x" [size]="10" /></button>
           </div>
           @if (view.contextBranchError()) { <p id="context-branch-error" class="context-branch-error" role="alert">{{ view.contextBranchError() }}</p> }
         </form>
       } @empty {
-        <button data-create-context-branch type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openContextBranchCreator($event, menu)"><span><gc-icon name="branch" [size]="13" /></span>Create branch here…</button>
+        <button data-create-context-branch type="button" role="menuitem" [disabled]="view.git.busy()" (click)="view.openContextBranchCreator($event, menu)"><span><gk-icon name="branch" [size]="13" /></span>Create branch here…</button>
       }
-      <button type="button" role="menuitem" (click)="view.openContextTagCreator()"><span><gc-icon name="tag" [size]="13" /></span>Create tag here…</button>
+      <button type="button" role="menuitem" (click)="view.openContextTagCreator()"><span><gk-icon name="tag" [size]="13" /></span>Create tag here…</button>
       }

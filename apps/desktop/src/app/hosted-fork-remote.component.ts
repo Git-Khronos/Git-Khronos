@@ -3,7 +3,7 @@ import { ipc, type HostedCloneTransport, type HostedForkInspection, type HostedF
 import { GitKhronosService } from './git-khronos.service';
 
 @Component({
-  selector: 'gc-hosted-fork-remote',
+  selector: 'gk-hosted-fork-remote',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section #panel aria-label="Local fork remote" tabindex="-1">

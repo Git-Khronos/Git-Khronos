@@ -3,7 +3,7 @@ import { ipc, type AppError, type ForkRecordEntry, type ForkRecordList, type For
 import { GitKhronosService } from './git-khronos.service';
 
 type Operation = { id: string; kind: 'listing' | 'inspecting' | 'archiving'; cancelled: boolean };
-@Component({ selector: 'gc-gitlab-fork-records', changeDetection: ChangeDetectionStrategy.OnPush,
+@Component({ selector: 'gk-gitlab-fork-records', changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './gitlab-fork-records.component.html', styleUrl: './gitlab-fork-records.component.scss' })
 export class GitLabForkRecordsComponent implements OnDestroy {
   readonly connection = input<GitLabConnection | null>(null);

@@ -43,7 +43,7 @@ def context_branch_workflow(driver, fixtures, report):
         ''', 'args': []})
         state = {'chord': label, 'checkout': checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt')),
                  'formOpen': driver.script('return !!document.querySelector(arguments[0])', form),
-                 'paletteOpen': driver.script('return !!document.querySelector("gc-command-palette")'),
+                 'paletteOpen': driver.script('return !!document.querySelector("gk-command-palette")'),
                  'draft': driver.script("return document.querySelector('#commit-summary').value"),
                  'commitAttempted': marker.exists()}
         observed.append(state)

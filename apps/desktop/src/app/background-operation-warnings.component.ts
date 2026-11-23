@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, inject, input } from '@
 import { GitKhronosService } from './git-khronos.service';
 
 @Component({
-  selector: 'gc-background-operation-warnings',
+  selector: 'gk-background-operation-warnings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '[class.floating]': 'floating()' },
   template: `

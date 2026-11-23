@@ -5,7 +5,7 @@ export type WorkingTreeFileListSection = 'unstaged' | 'staged';
 type WorkingTreeViewportContext = { $implicit: WorkingTreeFileListSection };
 
 @Component({
-  selector: 'gc-working-tree-viewport',
+  selector: 'gk-working-tree-viewport',
   imports: [NgTemplateOutlet],
   template: '<ng-container [ngTemplateOutlet]="content()" [ngTemplateOutletContext]="{ $implicit: section() }" />',
   host: { style: 'display: contents' },

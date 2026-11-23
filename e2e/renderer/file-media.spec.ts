@@ -12,7 +12,7 @@ async function prepare(page: Page, side = raster(), mode = 'ready') {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(async ({ side, mode }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     await git.inspectCommit(git.repository().headOid);
     const details = git.commitDetails();
@@ -95,7 +95,7 @@ test('reports actual browser decoding errors for a raster with a truncated body'
   side.dataUrl = `data:image/png;base64,${bytes.subarray(0, 24).toString('base64')}`;
   await prepare(page, side);
   await expect(page.getByText('Image decoding failed. Reload content to try again.', { exact: true })).toHaveCount(2);
-  await expect(page.locator('gc-file-media').getByRole('img')).toHaveCount(0);
+  await expect(page.locator('gk-file-media').getByRole('img')).toHaveCount(0);
 });
 
 test('keeps readable and absent sides distinct from an unavailable object', async ({ page }) => {
@@ -109,7 +109,7 @@ test('keeps readable and absent sides distinct from an unavailable object', asyn
   await page.getByRole('button', { name: 'Reload content', exact: true }).click();
   await expect(page.getByText('File is absent on this side.', { exact: true })).toBeVisible();
   await expect(page.getByText('Text content is available in the Diff view. SVG remains text.', { exact: true })).toBeVisible();
-  await expect(page.locator('gc-file-media').getByRole('img')).toHaveCount(0);
+  await expect(page.locator('gk-file-media').getByRole('img')).toHaveCount(0);
 });
 
 test('cancels a held native read and ignores its late response before an explicit retry', async ({ page }) => {
@@ -118,7 +118,7 @@ test('cancels a held native read and ignores its late response before an explici
   await expect(page.getByText('Waiting for the content read to stop.', { exact: false })).toBeVisible();
   await page.evaluate(() => { const state = (window as any).__media; state.finish(); state.mode = 'ready'; });
   await expect(page.getByText('Content load dismissed.', { exact: false })).toBeVisible();
-  await expect(page.locator('gc-file-media').getByRole('img')).toHaveCount(0);
+  await expect(page.locator('gk-file-media').getByRole('img')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__media.calls.some((call: any) => call.command === 'cancel_git_operation'))).toBe(true);
   await page.getByRole('button', { name: 'Retry content load', exact: true }).click();
   await expect(page.getByText('Displayed orientation: 3 × 2 px', { exact: true })).toHaveCount(2);
@@ -136,7 +136,7 @@ test('retries cancellation when the native read has not registered yet', async (
   await expect(page.getByRole('button', { name: 'Retry cancellation', exact: true })).toHaveCount(0);
   await page.evaluate(() => (window as any).__media.finish());
   await expect(page.getByText('Content load dismissed.', { exact: false })).toBeVisible();
-  await expect(page.locator('gc-file-media').getByRole('img')).toHaveCount(0);
+  await expect(page.locator('gk-file-media').getByRole('img')).toHaveCount(0);
 });
 
 for (const failure of ['unacknowledged', 'error'] as const) {
@@ -146,16 +146,16 @@ for (const failure of ['unacknowledged', 'error'] as const) {
       (window as any).__media.cancelReplies = failure === 'error' ? ['error'] : [false, false, false];
     }, failure);
     await page.getByRole('button', { name: 'Cancel content load', exact: true }).click();
-    const alert = page.locator('gc-file-media').getByRole('alert');
+    const alert = page.locator('gk-file-media').getByRole('alert');
     await expect(alert).toContainText(failure === 'error' ? 'Cancellation IPC refused' : 'Cancellation was not acknowledged');
     await expect(alert).toContainText('may still be running');
-    await expect(page.locator('gc-file-media').getByRole('img')).toHaveCount(0);
+    await expect(page.locator('gk-file-media').getByRole('img')).toHaveCount(0);
     await page.evaluate(() => { (window as any).__media.cancelReplies = [true]; });
     await page.getByRole('button', { name: 'Retry cancellation', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retry cancellation', exact: true })).toHaveCount(0);
     await page.evaluate(() => (window as any).__media.finish());
     await expect(page.getByText('Content load dismissed.', { exact: false })).toBeVisible();
-    await expect(page.locator('gc-file-media').getByRole('img')).toHaveCount(0);
+    await expect(page.locator('gk-file-media').getByRole('img')).toHaveCount(0);
   });
 }
 
@@ -167,15 +167,15 @@ test('does not report a cancellation failure after the held read already finishe
   await page.evaluate(() => (window as any).__media.finish());
   await expect(page.getByText('Content load dismissed.', { exact: false })).toBeVisible();
   await page.evaluate(() => (window as any).__media.finishCancel(false));
-  await expect(page.locator('gc-file-media').getByRole('alert')).toHaveText(/Content load dismissed/);
-  await expect(page.locator('gc-file-media').getByRole('img')).toHaveCount(0);
+  await expect(page.locator('gk-file-media').getByRole('alert')).toHaveText(/Content load dismissed/);
+  await expect(page.locator('gk-file-media').getByRole('img')).toHaveCount(0);
 });
 
 test('allows another cancellation request when the first reply never arrives', async ({ page }) => {
   await prepare(page, raster(), 'held');
   await page.evaluate(() => { (window as any).__media.cancelReplies = ['held']; });
   await page.getByRole('button', { name: 'Cancel content load', exact: true }).click();
-  await expect(page.locator('gc-file-media').getByRole('alert')).toContainText('Cancellation was not acknowledged');
+  await expect(page.locator('gk-file-media').getByRole('alert')).toContainText('Cancellation was not acknowledged');
   await page.evaluate(() => { (window as any).__media.cancelReplies = [true]; });
   await page.getByRole('button', { name: 'Retry cancellation', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Cancellation requested', exact: true })).toBeVisible();
@@ -185,7 +185,7 @@ test('allows another cancellation request when the first reply never arrives', a
     state.finish();
   });
   await expect(page.getByText('Content load dismissed.', { exact: false })).toBeVisible();
-  await expect(page.locator('gc-file-media').getByRole('img')).toHaveCount(0);
+  await expect(page.locator('gk-file-media').getByRole('img')).toHaveCount(0);
 });
 
 test('ignores a late cancellation rejection after a newer request succeeds', async ({ page }) => {
@@ -194,7 +194,7 @@ test('ignores a late cancellation rejection after a newer request succeeds', asy
   await prepare(page, raster(), 'held');
   await page.evaluate(() => { (window as any).__media.cancelReplies = ['held']; });
   await page.getByRole('button', { name: 'Cancel content load', exact: true }).click();
-  await expect(page.locator('gc-file-media').getByRole('alert')).toContainText('Cancellation was not acknowledged');
+  await expect(page.locator('gk-file-media').getByRole('alert')).toContainText('Cancellation was not acknowledged');
   await page.evaluate(() => { (window as any).__media.cancelReplies = [true]; });
   await page.getByRole('button', { name: 'Retry cancellation', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Cancellation requested', exact: true })).toBeVisible();
@@ -203,7 +203,7 @@ test('ignores a late cancellation rejection after a newer request succeeds', asy
     await new Promise(resolve => setTimeout(resolve, 0));
   });
   await expect(page.getByRole('button', { name: 'Cancellation requested', exact: true })).toBeVisible();
-  await expect(page.locator('gc-file-media').getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('gk-file-media').getByRole('alert')).toHaveCount(0);
   expect(errors).toEqual([]);
   await page.evaluate(() => (window as any).__media.finish());
   await expect(page.getByText('Content load dismissed.', { exact: false })).toBeVisible();
@@ -235,12 +235,12 @@ test('destroys a content view on navigation and never applies a late old selecti
   await expect(page.getByRole('button', { name: 'Cancel content load', exact: true })).toBeVisible();
   const operationId = await mediaOperationId(page);
   await page.getByRole('group', { name: 'File view', exact: true }).getByRole('button', { name: 'Diff', exact: true }).click();
-  await expect(page.locator('gc-file-media')).toHaveCount(0);
+  await expect(page.locator('gk-file-media')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as any).__media.calls
     .filter((call: any) => call.command === 'cancel_git_operation')
     .map((call: any) => call.args.operationId))).toEqual([operationId]);
   await page.evaluate(async () => { (window as any).__media.finish(); await Promise.resolve(); });
-  await expect(page.locator('gc-file-media')).toHaveCount(0);
+  await expect(page.locator('gk-file-media')).toHaveCount(0);
 });
 
 test('shares an in-flight cancellation when navigation destroys the content view', async ({ page }) => {
@@ -250,7 +250,7 @@ test('shares an in-flight cancellation when navigation destroys the content view
   await page.getByRole('button', { name: 'Cancel content load', exact: true }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__media.finishCancel)).toBe('function');
   await page.getByRole('group', { name: 'File view', exact: true }).getByRole('button', { name: 'Diff', exact: true }).click();
-  await expect(page.locator('gc-file-media')).toHaveCount(0);
+  await expect(page.locator('gk-file-media')).toHaveCount(0);
   await page.evaluate(() => (window as any).__media.finishCancel(false));
   await expect.poll(() => page.evaluate(() => (window as any).__media.calls
     .filter((call: any) => call.command === 'cancel_git_operation')
@@ -267,7 +267,7 @@ test('retries cancellation after navigation and reports an unacknowledged read',
   });
   const operationId = await mediaOperationId(page);
   await page.getByRole('group', { name: 'File view', exact: true }).getByRole('button', { name: 'Diff', exact: true }).click();
-  await expect(page.locator('gc-file-media')).toHaveCount(0);
+  await expect(page.locator('gk-file-media')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as any).__media.calls
     .filter((call: any) => call.command === 'cancel_git_operation')
     .map((call: any) => call.args.operationId))).toEqual([operationId, operationId, operationId]);
@@ -278,7 +278,7 @@ test('retries cancellation after navigation and reports an unacknowledged read',
   await expect(warning).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__media.git.error())).toBe('A separate Git error.');
   await page.evaluate(() => (window as any).__media.finish());
-  await expect(page.locator('gc-file-media')).toHaveCount(0);
+  await expect(page.locator('gk-file-media')).toHaveCount(0);
 });
 
 for (const width of [320, 360, 700, 780, 1051, 1440]) {
@@ -286,7 +286,7 @@ for (const width of [320, 360, 700, 780, 1051, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await prepare(page);
     await expect(page.getByText('Displayed orientation: 3 × 2 px', { exact: true })).toHaveCount(2);
-    const host = page.locator('gc-file-media');
+    const host = page.locator('gk-file-media');
     const controls = page.getByRole('group', { name: 'File view', exact: true }).getByRole('button');
     for (const control of await controls.all()) {
       const box = await control.boundingBox();
@@ -327,7 +327,7 @@ for (const url of ['https://example.test/forbidden.png', 'data:text/html;base64,
     const requests: string[] = [];
     page.on('request', request => { if (request.url().includes('example.test')) requests.push(request.url()); });
     await prepare(page, { ...raster(), dataUrl: url });
-    const host = page.locator('gc-file-media');
+    const host = page.locator('gk-file-media');
     await expect(host.getByText('Image response is invalid. Reload content to try again.', { exact: true })).toHaveCount(2);
     await expect(host.locator('img, iframe, object, embed')).toHaveCount(0);
     expect(requests).toEqual([]);

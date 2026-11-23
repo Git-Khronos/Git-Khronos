@@ -5,7 +5,7 @@ type Comparison = { incomingCount: number; outgoingCount: number; outgoingPublis
 async function installBackend(page: Page, comparison: Comparison | 'error' | 'deferred'): Promise<void> {
   await page.evaluate((comparison) => {
     const host = window as any;
-    const app = host.ng.getComponent(document.querySelector('gc-root'));
+    const app = host.ng.getComponent(document.querySelector('gk-app'));
     let snapshot = structuredClone(app.git.repository());
     host.__integrationCalls = [];
     host.__integrationPending = [];
@@ -224,7 +224,7 @@ test('a moved reference retires a branch drop before it can integrate', async ({
   await expect(menu.getByRole('menuitem', { name: /Fast-forward main/ })).toBeFocused();
   await expect.poll(() => calls(page, 'compare_branches')).toHaveLength(1);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repo = app.git.repository();
     app.git.repositories.update((repos: any[]) => repos.map(candidate => candidate.id !== repo.id ? candidate : ({
       ...candidate, branches: candidate.branches.map((branch: any) => branch.name !== 'release' || branch.remote

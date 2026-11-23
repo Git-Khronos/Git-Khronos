@@ -6,7 +6,7 @@ import { GitKhronosService } from './git-khronos.service';
 const sameAccount = (a: GitLabAccount, b: GitLabAccount) => a.origin === b.origin && a.id === b.id && a.login === b.login;
 type Operation = { id: string; scope: string; kind: 'namespaces' | 'preparing' | 'submitting'; cancelled: boolean };
 const identity = (value: string) => /^[a-f0-9]{32}$/.test(value);
-@Component({ selector: 'gc-gitlab-fork-create', changeDetection: ChangeDetectionStrategy.OnPush,
+@Component({ selector: 'gk-gitlab-fork-create', changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './gitlab-fork-create.component.html', styleUrl: './gitlab-fork-create.component.scss' })
 export class GitLabForkCreateComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);

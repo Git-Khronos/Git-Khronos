@@ -47,7 +47,7 @@ for line in sys.stdin:
         driver.click('[aria-label="Preferences"]')
         driver.wait("return !!document.querySelector('#preferences-tab-terminal')")
         driver.click('#preferences-tab-terminal')
-        driver.wait("return !!document.querySelector('gc-configured-tools-panel')")
+        driver.wait("return !!document.querySelector('gk-configured-tools-panel')")
 
     try:
         repo_id = driver.invoke('open_repository', path=str(repository))['id']
@@ -74,33 +74,33 @@ for line in sys.stdin:
 
         open_ui(driver, repository)
         preferences()
-        driver.click_scrolled_text('gc-configured-tools-panel button', 'New program profile')
+        driver.click_scrolled_text('gk-configured-tools-panel button', 'New program profile')
         fill('[name=toolName]', profile['name']); fill('[name=toolExecutable]', profile['executable'])
         for number, argument in enumerate(profile['arguments']):
-            driver.click_scrolled_text('gc-configured-tools-panel button', 'Add argument')
+            driver.click_scrolled_text('gk-configured-tools-panel button', 'Add argument')
             fill('[aria-label=' + json.dumps('Program argument ' + str(number + 1)) + ']', argument)
-        driver.click_scrolled_text('gc-configured-tools-panel .default-choice', 'Use for new terminal tabs')
-        driver.click_scrolled_text('gc-configured-tools-panel button', 'Save program profile')
-        driver.wait("return [...document.querySelectorAll('gc-configured-tools-panel [role=status]')].some(p=>p.textContent.includes('Profile saved.'))")
+        driver.click_scrolled_text('gk-configured-tools-panel .default-choice', 'Use for new terminal tabs')
+        driver.click_scrolled_text('gk-configured-tools-panel button', 'Save program profile')
+        driver.wait("return [...document.querySelectorAll('gk-configured-tools-panel [role=status]')].some(p=>p.textContent.includes('Profile saved.'))")
         assert len(observed(1)) == 1, 'Saving a profile started a program'
         driver.click('[aria-label="Close preferences"]')
         driver.reload()
         driver.wait("return !!document.querySelector('.commit-row')")
         preferences()
-        driver.wait("return [...document.querySelectorAll('gc-configured-tools-panel .profiles button')].some(button=>button.textContent.includes('Owned configured recorder') && button.textContent.includes('default terminal'))")
+        driver.wait("return [...document.querySelectorAll('gk-configured-tools-panel .profiles button')].some(button=>button.textContent.includes('Owned configured recorder') && button.textContent.includes('default terminal'))")
         assert len(observed(1)) == 1, 'Loading preferences started a program'
         driver.click('[aria-label="Close preferences"]')
         driver.click('[title="Open repository terminal (Alt+T or Ctrl+`)"]')
-        driver.wait("return [...document.querySelectorAll('gc-terminal-panel [role=tab]')].some(tab=>tab.textContent.includes('Owned configured recorder'))")
+        driver.wait("return [...document.querySelectorAll('gk-terminal-panel [role=tab]')].some(tab=>tab.textContent.includes('Owned configured recorder'))")
         rows = observed(2); assert len(rows) == 2 and rows[1] == rows[0], rows
         driver.screenshot(Path(report['artifactsDirectory']) / 'configured-program-default-native.png')
-        driver.click('gc-terminal-panel .terminal-tab-close')
-        driver.wait("return !document.querySelector('gc-terminal-panel .terminal-tab')")
+        driver.click('gk-terminal-panel .terminal-tab-close')
+        driver.wait("return !document.querySelector('gk-terminal-panel .terminal-tab')")
         preferences()
-        driver.click_scrolled_text('gc-configured-tools-panel button', 'Use system shell for new terminal tabs')
-        driver.click_visible('gc-configured-tools-panel .profiles button')
-        driver.click_scrolled_text('gc-configured-tools-panel button', 'Delete program profile')
-        driver.wait("return document.querySelectorAll('gc-configured-tools-panel .profiles button').length === 0")
+        driver.click_scrolled_text('gk-configured-tools-panel button', 'Use system shell for new terminal tabs')
+        driver.click_visible('gk-configured-tools-panel .profiles button')
+        driver.click_scrolled_text('gk-configured-tools-panel button', 'Delete program profile')
+        driver.wait("return document.querySelectorAll('gk-configured-tools-panel .profiles button').length === 0")
         driver.click('[aria-label="Close preferences"]')
         report['scenarios'].append('native-ui-configured-program-persistence-default-explicit-launch-close-and-delete')
         assert (repository / '.git/index').read_bytes() == index
@@ -113,12 +113,12 @@ for line in sys.stdin:
             try:
                 directory = Path(report['artifactsDirectory'])
                 driver.screenshot(directory / 'configured-program-failure.png')
-                (directory / 'configured-program-failure.json').write_text(json.dumps(driver.script("return {preferences:document.querySelector('gc-preferences-dialog')?.innerText,terminal:document.querySelector('gc-terminal-panel')?.innerText}"), indent=2))
+                (directory / 'configured-program-failure.json').write_text(json.dumps(driver.script("return {preferences:document.querySelector('gk-preferences-dialog')?.innerText,terminal:document.querySelector('gk-terminal-panel')?.innerText}"), indent=2))
             except Exception as error:
                 report.setdefault('configuredCaptureErrors', []).append(str(error))
         try:
             for session in sessions: driver.invoke('close_terminal', sessionId=session)
-            if driver.script("return !!document.querySelector('gc-preferences-dialog')"):
+            if driver.script("return !!document.querySelector('gk-preferences-dialog')"):
                 driver.click('[aria-label="Close preferences"]')
             open_ui(driver, original_repository)
         except Exception as error:

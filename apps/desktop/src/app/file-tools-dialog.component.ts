@@ -12,7 +12,7 @@ type Operation = {
   cancellationSupported: boolean; safety: ActionSafety | null;
 };
 @Component({
-  selector: 'gc-file-tools-dialog', changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'gk-file-tools-dialog', changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [BackgroundOperationWarningsComponent],
   templateUrl: './file-tools-dialog.component.html', styleUrl: './file-tools-dialog.component.scss',
 })

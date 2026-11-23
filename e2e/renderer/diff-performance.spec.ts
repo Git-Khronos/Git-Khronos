@@ -6,7 +6,7 @@ test('wrapped plain context keeps the text and number highlight without a span f
   await expect(page.locator('.split-diff-body')).toBeVisible();
   const source = ' context line 120' + ' long readable source content'.repeat(8);
   await page.evaluate(source => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.comparisonFileDiff.update((diff: any) => ({
       ...diff, path: 'example.txt', patch: '@@ -1 +1 @@\n' + source + '\n',
     }));
@@ -28,7 +28,7 @@ test('bounds syntax work for long and dense diff and blame lines without losing 
   await expect(page.locator('.blame-line').first()).toBeVisible();
 
   await page.evaluate(({ dense, long }) => {
-    const root = document.querySelector('gc-root');
+    const root = document.querySelector('gk-app');
     if (!root) throw new Error('Application root not found');
     const app = (window as Window & {
       ng: {

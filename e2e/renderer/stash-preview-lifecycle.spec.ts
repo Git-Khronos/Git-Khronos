@@ -4,7 +4,7 @@ test('stash details and later file previews keep the selected immutable object a
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const root = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const root = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = root.git;
     const oid = 'a'.repeat(40);
     const stash = { reference: 'stash@{0}', oid, message: 'Owned selected stash' };
@@ -34,7 +34,7 @@ test('a listed stash outside loaded history opens its details without loading un
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const root = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const root = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = root.git;
     const oid = 'a'.repeat(40);
     const stash = { reference: 'stash@{1}', oid, message: 'Owned older stash' };

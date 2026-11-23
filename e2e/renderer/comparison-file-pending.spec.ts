@@ -5,7 +5,7 @@ for (const outcome of ['success', 'error']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     await page.evaluate(() => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const files = ['first.txt', 'second.txt'].map(path => ({ path, previousPath: null, status: 'M', additions: 1, deletions: 0 }));
       const replies: Array<{ resolve: (value: unknown) => void; reject: (value: unknown) => void }> = [];
       const state: any = { git, files, replies };

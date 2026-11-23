@@ -2,7 +2,7 @@
 <div class="confirmation-backdrop" (click)="closed.emit()">
   <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="history-confirmation-title"
     (click)="$event.stopPropagation()" (keydown)="keyPressed.emit($event)">
-    <div class="confirmation-icon" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'"><gc-icon [name]="review.kind === 'checkout-commit' ? 'git-commit' : review.kind === 'split' ? 'edit' : review.kind === 'cherry-pick' ? 'cherry-pick' : review.kind === 'revert' ? 'revert' : 'reset'" [size]="19" /></div>
+    <div class="confirmation-icon" [class.danger]="review.kind === 'reset' && resetMode() === 'hard'"><gk-icon [name]="review.kind === 'checkout-commit' ? 'git-commit' : review.kind === 'split' ? 'edit' : review.kind === 'cherry-pick' ? 'cherry-pick' : review.kind === 'revert' ? 'revert' : 'reset'" [size]="19" /></div>
     <div class="confirmation-copy">
       <span>{{ review.kind === 'checkout-commit' ? 'Check out a commit' : review.kind === 'split' ? 'Split stopped commit' : review.kind === 'cherry-pick' ? (review.targetBranch ? 'Cherry-pick onto ' + review.targetBranch : 'Cherry-pick ' + (review.oids.length === 1 ? 'commit' : review.oids.length + ' commits')) : review.kind === 'revert' ? 'Revert ' + (review.oids.length === 1 ? 'commit' : review.oids.length + ' commits') : 'Reset to commit' }}</span>
       <h2 id="history-confirmation-title">{{ review.kind !== 'reset' && review.oids.length > 1 ? review.oids.length + ' selected commits' : review.label }}</h2>

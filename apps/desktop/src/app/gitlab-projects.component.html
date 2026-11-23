@@ -4,7 +4,7 @@
     @if (notice()) { <p role="status">{{ notice() }}</p> }
     @if (busy() === 'disconnecting') { <p role="status">Disconnecting the inspection account…</p> }
     @if (selected(); as connection) { <button type="button" [disabled]="!canDisconnect()" (click)="disconnect()">Disconnect {{ connection.account.login }}</button> }
-    <gc-gitlab-fork-records [connection]="connectionsStale() || busy() === 'disconnecting' ? null : selected()" [initialId]="outcomeId()" (back)="closeOutcomes()" />
+    <gk-gitlab-fork-records [connection]="connectionsStale() || busy() === 'disconnecting' ? null : selected()" [initialId]="outcomeId()" (back)="closeOutcomes()" />
   } @else {
   <h3 #heading tabindex="-1">Projects on GitLab</h3>
   <p>Connect to the instance and account you want to browse. Project reads leave your local repositories unchanged.</p>
@@ -80,13 +80,13 @@
   }
   @for (target of forkTarget() ? [forkTarget()!] : []; track target.generation) {
     @defer (on immediate) {
-      <gc-gitlab-forks #forkBrowser [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
+      <gk-gitlab-forks #forkBrowser [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
         (back)="closeForks()" (outcomes)="openOutcomes($event)" (opening)="opening.emit()" (opened)="opened.emit()" />
     } @placeholder { <p role="status">Opening fork controls…</p><button #forkLoaderClose type="button" (click)="closeForks()">Cancel opening forks</button>
     } @error { <p role="alert">Fork controls could not load. Preserve work and restart the application to load them again.</p><button #forkLoaderClose type="button" (click)="closeForks()">Close unavailable forks</button> }
   }
   @for (target of cloneViews(); track target.generation) {
-    <gc-gitlab-clone [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
+    <gk-gitlab-clone [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
       (back)="closeClone()" (opening)="opening.emit()" (opened)="opened.emit()" />
   }
   }

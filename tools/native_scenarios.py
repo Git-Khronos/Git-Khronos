@@ -183,7 +183,7 @@ def control_character_stashes(driver, fixtures, report):
     fixtures.git(repository, "config", "i18n.logOutputEncoding", "UTF-16")
     fixtures.git(repository, "config", "log.date", "iso-strict")
     head = fixtures.git(repository, "rev-parse", "HEAD")
-    repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+    repo_id = open_ui(driver, repository)
     file = repository / "fixture.txt"
     original_contents = file.read_bytes()
     messages = [
@@ -251,6 +251,65 @@ def control_character_stashes(driver, fixtures, report):
     report["scenarios"].append("native-control-character-stash-labels-duplicate-objects-and-exact-target-actions")
 
 
+def clear_stash_stack_preserves_every_object(driver, fixtures, report):
+    repository = fixtures.repository("clear-stash-stack", commits=2)
+    file = repository / "fixture.txt"
+    file.write_text("first stash payload\n")
+    fixtures.git(repository, "stash", "push", "-m", "first reviewed stash")
+    first = fixtures.git(repository, "rev-parse", "refs/stash")
+    file.write_text("second stash payload\n")
+    fixtures.git(repository, "stash", "push", "-m", "second reviewed stash")
+    second = fixtures.git(repository, "rev-parse", "refs/stash")
+    repo_id = open_ui(driver, repository)
+    expected = [second, first]
+    captures_before = driver.invoke("load_operation_recoveries", repoId=repo_id)
+    try:
+        driver.invoke("clear_stashes", repoId=repo_id, expectedOids=[first])
+    except RuntimeError as error:
+        assert json.loads(str(error))["kind"] == "staleStash", str(error)
+    else:
+        raise AssertionError("A stale reviewed stash stack was cleared")
+    assert driver.invoke("load_operation_recoveries", repoId=repo_id) == captures_before
+    assert [entry["oid"] for entry in driver.invoke("refresh_repository", repoId=repo_id)["stashes"]] == expected
+
+    row = '.stash-item'
+    driver.click('#reference-section-stashes .sidebar-heading')
+    driver.wait("return !!document.querySelector('.stash-item:not(:disabled)')")
+
+    def open_clear_dialog():
+        driver.script("""
+          const element = document.querySelector(arguments[0]);
+          element.scrollIntoView({block: 'center'});
+          element.focus();
+          const bounds = element.getBoundingClientRect();
+          element.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: bounds.left + 10, clientY: bounds.top + 10}));
+        """, row)
+        driver.click_scrolled_text('.stash-context-menu [role="menuitem"]', 'Clear All Stashes…', wait_for_ready=True)
+        dialog = 'gk-stash-clear-dialog [role="alertdialog"]'
+        driver.wait(f"return document.querySelector('{dialog}')?.contains(document.activeElement) && document.activeElement.textContent === 'Cancel'")
+        return dialog
+
+    dialog = open_clear_dialog()
+    dialog_text = driver.script(f"return document.querySelector('{dialog}').innerText")
+    assert '2 reviewed entries' in dialog_text and 'first reviewed stash' in dialog_text and 'second reviewed stash' in dialog_text
+    driver.click_text(f'{dialog} button', 'Cancel')
+    driver.wait("return !document.querySelector('gk-stash-clear-dialog')")
+    assert [entry["oid"] for entry in driver.invoke("refresh_repository", repoId=repo_id)["stashes"]] == expected
+
+    dialog = open_clear_dialog()
+    driver.click_text(f'{dialog} button', 'Clear All Stashes')
+    driver.wait("return !document.querySelector('gk-stash-clear-dialog') && !document.querySelector('.stash-item')")
+    cleared = driver.invoke("refresh_repository", repoId=repo_id)
+    assert not cleared["stashes"], "Clear should remove every stash reference"
+    recoveries = driver.invoke("load_operation_recoveries", repoId=repo_id)
+    captured_oids = {entry["snapshotOid"] for entry in recoveries}
+    assert set(expected).issubset(captured_oids), "Every removed stash object must have a recovery capture"
+    for oid in expected:
+        assert fixtures.git(repository, "cat-file", "-e", f"{oid}^{{commit}}") == ""
+    report["scenarios"].append("native-ui-clear-stash-stack-confirmation-cancel-stale-review-and-recovery-preservation")
+    return repository, repo_id
+
+
 def stash_delete_confirmation(driver, fixtures, report):
     repository = fixtures.repository("ui-stash-delete", commits=3)
     file = repository / "fixture.txt"
@@ -271,7 +330,7 @@ def stash_delete_confirmation(driver, fixtures, report):
       element.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, clientX: bounds.left + 10, clientY: bounds.top + 10}));
     """, row)
     driver.click_scrolled_text('.stash-context-menu [role="menuitem"]', 'Delete Stash…', wait_for_ready=True)
-    dialog = 'gc-stash-delete-dialog [role="alertdialog"]'
+    dialog = 'gk-stash-delete-dialog [role="alertdialog"]'
     driver.wait(f"return document.querySelector('{dialog}')?.contains(document.activeElement) && document.activeElement.textContent === 'Cancel'")
     lock = repository / ".git/refs/stash.lock"
     assert not lock.exists(), "Owned stash refusal must not overwrite a lock"
@@ -285,7 +344,7 @@ def stash_delete_confirmation(driver, fixtures, report):
     finally:
         lock.unlink()
     driver.click_text(f'{dialog} button', 'Retry Delete')
-    driver.wait("return !document.querySelector('gc-stash-delete-dialog') && document.activeElement?.matches('.wip-nav')")
+    driver.wait("return !document.querySelector('gk-stash-delete-dialog') && document.activeElement?.matches('.wip-nav')")
     assert not driver.invoke("refresh_repository", repoId=repo_id)["stashes"]
     captures = driver.invoke("load_operation_recoveries", repoId=repo_id)
     assert any(capture["snapshotOid"] == oid for capture in captures)
@@ -512,6 +571,51 @@ def commit_preview_output(driver, fixtures, report):
     assert file.read_text() == "second saved contents\n"
     assert (repository / ".git/index").read_bytes() == index
     report["scenarios"].append("native-file-history-control-characters-and-utf16-metadata-reads")
+    return repository, repo_id
+
+
+def file_history_tracks_renames(driver, fixtures, report):
+    """A renamed path must retain its own history without neighbouring commits."""
+    repository = fixtures.repository("file-history-follow-rename", commits=1)
+    base = fixtures.git(repository, "rev-parse", "HEAD")
+    (repository / "unrelated.txt").write_text("Not part of the renamed file history.\n", encoding="utf-8")
+    fixtures.git(repository, "add", "--", "unrelated.txt")
+    fixtures.git(repository, "commit", "-qm", "Unrelated neighboring change")
+    fixtures.git(repository, "mv", "fixture.txt", "renamed.txt")
+    original_contents = (repository / "renamed.txt").read_text(encoding="utf-8")
+    (repository / "renamed.txt").write_text(
+        original_contents + "x\n", encoding="utf-8",
+    )
+    fixtures.git(repository, "commit", "-qam", "Rename and edit selected file")
+    tip = fixtures.git(repository, "rev-parse", "HEAD")
+    expected = fixtures.git(
+        repository, "log", "--follow", "--format=%H", tip, "--", "renamed.txt",
+    ).splitlines()
+    assert expected[0] == tip and base in expected and len(expected) == 2, expected
+    before = (
+        fixtures.git(repository, "rev-parse", "HEAD"),
+        (repository / ".git/index").read_bytes(),
+        fixtures.git(repository, "status", "--porcelain=v1", "-z"),
+    )
+    repo_id = open_ui(driver, repository)
+    history = driver.invoke(
+        "inspect_file_history", repoId=repo_id, revision=tip, path="renamed.txt",
+    )
+    assert [entry["oid"] for entry in history] == expected, history
+    page = driver.invoke(
+        "inspect_file_history_page", repoId=repo_id, revision=tip,
+        path="renamed.txt", cursor=None, operationId=str(uuid.uuid4()),
+    )
+    assert [entry["oid"] for entry in page["entries"]] == expected, page
+    assert all("Unrelated neighboring change" not in entry["subject"] for entry in history)
+    assert (
+        fixtures.git(repository, "rev-parse", "HEAD"),
+        (repository / ".git/index").read_bytes(),
+        fixtures.git(repository, "status", "--porcelain=v1", "-z"),
+    ) == before, "Reading file history changed repository state"
+    report["scenarios"].append(
+        "native-file-history-follows-renamed-path-and-excludes-neighboring-commit"
+    )
 
 
 def bounded_file_history_reads(driver, fixtures, report):
@@ -699,14 +803,14 @@ def blame_read_acceptance(driver, fixtures, report):
     driver.wait("return !!document.querySelector('.diff-insight-toggle button:nth-child(3):not(:disabled)')")
     driver.click_text('.diff-insight-toggle button', 'Blame')
     driver.wait("return document.querySelectorAll('.blame-line').length === 100")
-    driver.click_text('gc-file-blame button', 'Next lines')
-    driver.wait("return document.querySelector('gc-file-blame header')?.textContent.includes('Lines 101–200')")
-    element = driver.request("POST", driver.path("element"), {"using": "css selector", "value": "gc-file-blame input[name=line]"})
+    driver.click_text('gk-file-blame button', 'Next lines')
+    driver.wait("return document.querySelector('gk-file-blame header')?.textContent.includes('Lines 101–200')")
+    element = driver.request("POST", driver.path("element"), {"using": "css selector", "value": "gk-file-blame input[name=line]"})
     element_id = element["element-6066-11e4-a52e-4f735466cecf"]
     driver.request("POST", driver.path(f"element/{element_id}/clear"), {})
     driver.request("POST", driver.path(f"element/{element_id}/value"), {"text": "99901"})
-    driver.click_text('gc-file-blame button', 'Go')
-    driver.wait("return document.querySelector('gc-file-blame header')?.textContent.includes('Lines 99901–100000')")
+    driver.click_text('gk-file-blame button', 'Go')
+    driver.wait("return document.querySelector('gk-file-blame header')?.textContent.includes('Lines 99901–100000')")
     assert driver.script("return document.querySelectorAll('.blame-line').length === 100")
     selected_commit = driver.script("return document.querySelector('.commit-row.selected')?.getAttribute('data-commit-oid')")
     assert selected_commit == revision
@@ -719,24 +823,24 @@ def blame_read_acceptance(driver, fixtures, report):
     driver.script("const lines = document.querySelector('.blame-lines'); lines.scrollTop = 240; window.__blameScroll = lines.scrollTop")
     driver.click_text('.diff-insight-toggle button', 'Diff')
     driver.click_text('.diff-insight-toggle button', 'Blame')
-    driver.wait("return document.querySelector('gc-file-blame header')?.textContent.includes('Lines 99901–100000')")
+    driver.wait("return document.querySelector('gk-file-blame header')?.textContent.includes('Lines 99901–100000')")
     assert driver.script("return document.querySelector('.blame-lines').scrollTop === window.__blameScroll"), "Returning to blame lost its viewport"
     driver.screenshot(Path(report["artifactsDirectory"]) / "blame-return.png")
     expected_history = fixtures.git(large, "log", "--encoding=UTF-8", "--format=%H", revision, "--", "fixture.txt").splitlines()
     driver.click_text('.diff-insight-toggle button', 'History')
-    driver.wait("return !!document.querySelector('gc-file-history .history-entry') && document.querySelector('gc-file-history header').textContent.trim().endsWith(' · complete')")
+    driver.wait("return !!document.querySelector('gk-file-history .history-entry') && document.querySelector('gk-file-history header').textContent.trim().endsWith(' · complete')")
     driver.click_text('.diff-insight-toggle button', 'Diff')
     driver.click_text('.diff-insight-toggle button', 'History')
-    assert driver.script("return document.querySelectorAll('gc-file-history .history-entry').length") == len(expected_history), "Returning to history lost its loaded results"
-    assert driver.script("return !![...document.querySelectorAll('gc-file-history button')].find(button => button.textContent.trim() === 'Reload file history' && !button.disabled)")
+    assert driver.script("return document.querySelectorAll('gk-file-history .history-entry').length") == len(expected_history), "Returning to history lost its loaded results"
+    assert driver.script("return !![...document.querySelectorAll('gk-file-history button')].find(button => button.textContent.trim() === 'Reload file history' && !button.disabled)")
     driver.script("document.querySelector('#repository-reference-panel').focus()")
     driver.key("\ue036")
-    assert driver.script("return document.activeElement?.matches('gc-file-history .history-list')"), "F6 skipped the visible file history viewport"
-    driver.script("[...document.querySelectorAll('gc-file-history button')].find(button => button.textContent.trim() === 'Reload file history').focus()")
+    assert driver.script("return document.activeElement?.matches('gk-file-history .history-list')"), "F6 skipped the visible file history viewport"
+    driver.script("[...document.querySelectorAll('gk-file-history button')].find(button => button.textContent.trim() === 'Reload file history').focus()")
     driver.key("\ue036")
     assert driver.script("return document.activeElement?.id === 'repository-commit-panel'"), "F6 lost its region when starting from a history control"
     driver.screenshot(Path(report["artifactsDirectory"]) / "history-return.png")
-    driver.script("document.querySelector('gc-file-history .history-list').focus()")
+    driver.script("document.querySelector('gk-file-history .history-list').focus()")
     driver.key("\ue037")  # WebDriver F7.
     driver.wait("return document.activeElement?.matches('.focus-diff-view, .split-diff-body') && document.querySelector('.diff-primary-view')?.getClientRects().length > 0")
     assert driver.script("return document.querySelector('.history-insight').getClientRects().length === 0"), "F7 navigated a hidden diff without revealing it"
@@ -1265,14 +1369,14 @@ def authenticated_push_rejection(driver, fixtures, original_repository, report):
         push = '.toolbar-split:has(> [aria-label="Push options"]) > .split-main'
         driver.wait(f"return !!document.querySelector({json.dumps(push)}) && !document.querySelector({json.dumps(push)}).disabled")
         driver.click(push)
-        driver.wait("return !!document.querySelector('gc-authentication dialog[open] input[type=password]')", 10)
+        driver.wait("return !!document.querySelector('gk-authentication dialog[open] input[type=password]')", 10)
         driver.script("""
-          const input = document.querySelector('gc-authentication input');
+          const input = document.querySelector('gk-authentication input');
           input.value = 'native-fixture-not-a-real-secret';
           input.dispatchEvent(new Event('input', {bubbles: true}));
         """)
-        driver.click('gc-authentication button[type=submit]')
-        driver.wait("return !document.querySelector('gc-authentication dialog[open]')", 10)
+        driver.click('gk-authentication button[type=submit]')
+        driver.wait("return !document.querySelector('gk-authentication dialog[open]')", 10)
         driver.wait("return !!document.querySelector('.error-toast')", 10)
         message = driver.script("return document.querySelector('.error-toast').textContent")
         assert "remote rejected the push" in message, message
@@ -1854,26 +1958,26 @@ def committed_merge_preview(driver, fixtures, original_repository, report):
         report["scenarios"].append("native-committed-merge-preview-exact-refs-and-conflict-paths")
         driver.click('[aria-label="Main menu"]')
         driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Command Palette')
-        driver.wait("return !!document.querySelector('gc-command-palette input')")
+        driver.wait("return !!document.querySelector('gk-command-palette input')")
         driver.script("""
-          const input = document.querySelector('gc-command-palette input');
+          const input = document.querySelector('gk-command-palette input');
           input.value = 'Preview merge conflicts';
           input.dispatchEvent(new Event('input', {bubbles: true}));
         """)
-        driver.wait("return [...document.querySelectorAll('gc-command-palette [role=option]')].filter(x => !x.disabled).length === 1")
-        driver.click('gc-command-palette [role=option]:not(:disabled)')
-        driver.wait("return !!document.querySelector('gc-merge-preview-dialog #preview-target')")
+        driver.wait("return [...document.querySelectorAll('gk-command-palette [role=option]')].filter(x => !x.disabled).length === 1")
+        driver.click('gk-command-palette [role=option]:not(:disabled)')
+        driver.wait("return !!document.querySelector('gk-merge-preview-dialog #preview-target')")
         driver.script("""
-          const select = document.querySelector('gc-merge-preview-dialog #preview-target');
+          const select = document.querySelector('gk-merge-preview-dialog #preview-target');
           select.value = 'refs/heads/preview-source';
           select.dispatchEvent(new Event('change', {bubbles: true}));
         """)
-        assert driver.script("return document.querySelector('gc-merge-preview-dialog #preview-source').value") == "refs/heads/main"
-        assert driver.script("return document.querySelector('gc-merge-preview-dialog #preview-target').value") == "refs/heads/preview-source"
-        driver.click_text('gc-merge-preview-dialog button', 'Preview conflicts')
-        driver.wait("return document.querySelector('gc-merge-preview-dialog')?.textContent.includes('Git reports merge conflicts')")
-        assert driver.script("return [...document.querySelectorAll('gc-merge-preview-dialog li')].map(x => x.textContent)") == [path]
-        driver.click_text('gc-merge-preview-dialog button', 'Close')
+        assert driver.script("return document.querySelector('gk-merge-preview-dialog #preview-source').value") == "refs/heads/main"
+        assert driver.script("return document.querySelector('gk-merge-preview-dialog #preview-target').value") == "refs/heads/preview-source"
+        driver.click_text('gk-merge-preview-dialog button', 'Preview conflicts')
+        driver.wait("return document.querySelector('gk-merge-preview-dialog')?.textContent.includes('Git reports merge conflicts')")
+        assert driver.script("return [...document.querySelectorAll('gk-merge-preview-dialog li')].map(x => x.textContent)") == [path]
+        driver.click_text('gk-merge-preview-dialog button', 'Close')
         assert fixtures.git(repository, "show-ref") == before_refs
         assert (repository / ".git/index").read_bytes() == before_index
         assert (repository / "fixture.txt").read_text() == "unstaged local work\n"
@@ -1881,6 +1985,93 @@ def committed_merge_preview(driver, fixtures, original_repository, report):
         assert (repository / "untracked.txt").read_text() == "preserved untracked work\n"
         report["scenarios"].append("native-merge-preview-dialog-default-direction-and-dirty-state-preservation")
         report["scenarios"].append("native-merge-preview-uses-nested-committed-rules-without-working-tree-attributes")
+
+        fast_forward = fixtures.repository("clean-fast-forward-preview", commits=2)
+        base = fixtures.git(fast_forward, "rev-parse", "HEAD")
+        fixtures.git(fast_forward, "checkout", "-q", "-b", "preview-source")
+        payload = fast_forward / "fast-forward.txt"
+        payload.write_text("included by fast-forward\n")
+        fixtures.git(fast_forward, "add", "--", payload.name)
+        fixtures.git(fast_forward, "commit", "-qm", "Owned preview source")
+        source = fixtures.git(fast_forward, "rev-parse", "HEAD")
+        expected_tree = fixtures.git(fast_forward, "rev-parse", "HEAD^{tree}")
+        fixtures.git(fast_forward, "checkout", "-q", "main")
+        fast_forward_repo_id = open_ui(driver, fast_forward)
+        fast_forward_request = {
+            "source": "refs/heads/preview-source", "target": "refs/heads/main",
+            "sourceOid": source, "targetOid": base,
+        }
+        refs_before = fixtures.git(fast_forward, "show-ref")
+        index_before = (fast_forward / ".git/index").read_bytes()
+        worktree_before = payload.exists()
+        preview = driver.invoke(
+            "preview_merge", repoId=fast_forward_repo_id, request=fast_forward_request,
+            operationId=str(uuid.uuid4()),
+        )
+        assert preview["clean"] and preview["conflictedPaths"] == [], preview
+        assert preview["request"] == fast_forward_request
+        assert fixtures.git(fast_forward, "rev-parse", "HEAD") == base
+        assert fixtures.git(fast_forward, "show-ref") == refs_before
+        assert (fast_forward / ".git/index").read_bytes() == index_before
+        assert payload.exists() == worktree_before
+        assert not payload.exists(), "Preview must not write source-only files into the target checkout"
+
+        driver.invoke("integrate_branch", repoId=fast_forward_repo_id,
+                      name="preview-source", strategy="ff-only")
+        assert fixtures.git(fast_forward, "rev-parse", "HEAD") == source
+        assert fixtures.git(fast_forward, "rev-parse", "HEAD^{tree}") == expected_tree
+        assert payload.read_text() == "included by fast-forward\n"
+        report["scenarios"].append(
+            "native-clean-merge-preview-matches-read-only-fast-forward-result"
+        )
+
+        clean_merge = fixtures.repository("clean-merge-preview", commits=1)
+        fixtures.git(clean_merge, "checkout", "-q", "-b", "preview-source")
+        source_file = clean_merge / "source-only.txt"
+        source_file.write_text("source side\n")
+        fixtures.git(clean_merge, "add", "--", source_file.name)
+        fixtures.git(clean_merge, "commit", "-qm", "Owned disjoint source change")
+        source_oid = fixtures.git(clean_merge, "rev-parse", "HEAD")
+        fixtures.git(clean_merge, "checkout", "-q", "main")
+        target_file = clean_merge / "target-only.txt"
+        target_file.write_text("target side\n")
+        fixtures.git(clean_merge, "add", "--", target_file.name)
+        fixtures.git(clean_merge, "commit", "-qm", "Owned disjoint target change")
+        target_oid = fixtures.git(clean_merge, "rev-parse", "HEAD")
+        clean_merge_repo_id = open_ui(driver, clean_merge)
+        clean_merge_request = {
+            "source": "refs/heads/preview-source", "target": "refs/heads/main",
+            "sourceOid": source_oid, "targetOid": target_oid,
+        }
+        refs_before = fixtures.git(clean_merge, "show-ref")
+        index_before = (clean_merge / ".git/index").read_bytes()
+        config_before = (clean_merge / ".git/config").read_bytes()
+        preview = driver.invoke(
+            "preview_merge", repoId=clean_merge_repo_id, request=clean_merge_request,
+            operationId=str(uuid.uuid4()),
+        )
+        assert preview["clean"] and preview["conflictedPaths"] == [], preview
+        assert preview["request"] == clean_merge_request
+        assert fixtures.git(clean_merge, "rev-parse", "HEAD") == target_oid
+        assert fixtures.git(clean_merge, "show-ref") == refs_before
+        assert (clean_merge / ".git/index").read_bytes() == index_before
+        assert (clean_merge / ".git/config").read_bytes() == config_before
+        assert not source_file.exists(), "Clean merge preview must not write source-side files"
+        assert target_file.read_text() == "target side\n"
+
+        driver.invoke("integrate_branch", repoId=clean_merge_repo_id,
+                      name="preview-source", strategy="merge")
+        merge_head = fixtures.git(clean_merge, "rev-parse", "HEAD")
+        parents = fixtures.git(clean_merge, "rev-list", "--parents", "-n", "1", merge_head).split()
+        assert parents == [merge_head, target_oid, source_oid], parents
+        assert fixtures.git(clean_merge, "show", "HEAD:source-only.txt") == "source side"
+        assert fixtures.git(clean_merge, "show", "HEAD:target-only.txt") == "target side"
+        assert source_file.read_text() == "source side\n"
+        assert target_file.read_text() == "target side\n"
+        assert not fixtures.git(clean_merge, "status", "--porcelain")
+        report["scenarios"].append(
+            "native-clean-merge-preview-matches-disjoint-merge-commit-result"
+        )
     finally:
         open_ui(driver, original_repository)
 
@@ -1898,36 +2089,36 @@ def workspace_center_workflows(driver, fixtures, original_repository, report):
         repo_id = open_ui(driver, repository)
         driver.click('.workspace-toggle')
         driver.click_text('.workspace-menu-actions button', 'Repository overview')
-        driver.wait("return !!document.querySelector('gc-workspace-center [role=dialog]')")
-        driver.click_text('gc-workspace-center button', 'Refresh local state')
-        driver.wait("return document.querySelector('gc-workspace-center')?.textContent.includes('Read locally at')")
-        assert driver.script("return document.querySelector('gc-workspace-center').textContent").find(str(repository)) >= 0
+        driver.wait("return !!document.querySelector('gk-workspace-center [role=dialog]')")
+        driver.click_text('gk-workspace-center button', 'Refresh local state')
+        driver.wait("return document.querySelector('gk-workspace-center')?.textContent.includes('Read locally at')")
+        assert driver.script("return document.querySelector('gk-workspace-center').textContent").find(str(repository)) >= 0
         assert fixtures.git(repository, "config", "user.name") == before_name
         report["scenarios"].append("native-workspace-overview-explicit-local-refresh")
-        driver.click_text('gc-workspace-center nav button', 'Identity profiles')
+        driver.click_text('gk-workspace-center nav button', 'Identity profiles')
         driver.script("""
           const values = {'Profile label': arguments[0], 'Commit author name': 'Owned Native Author',
             'Commit author email': 'native-owned@example.test'};
           for (const [text,value] of Object.entries(values)) {
-            const label = [...document.querySelectorAll('gc-workspace-center form label')].find(label => label.textContent.trim() === text);
+            const label = [...document.querySelectorAll('gk-workspace-center form label')].find(label => label.textContent.trim() === text);
             const input = label.querySelector('input'); input.value = value;
             input.dispatchEvent(new Event('input', {bubbles:true}));
           }
         """, label)
-        driver.click_text('gc-workspace-center button', 'Save profile')
-        driver.wait("return document.querySelector('gc-workspace-center')?.textContent.includes('Saved Owned native identity')")
+        driver.click_text('gk-workspace-center button', 'Save profile')
+        driver.wait("return document.querySelector('gk-workspace-center')?.textContent.includes('Saved Owned native identity')")
         assert fixtures.git(repository, "config", "user.name") == before_name
-        driver.click_text('gc-workspace-center button', 'Use ' + label + '…')
-        assert str(repository) in driver.script("return document.querySelector('gc-workspace-center aside').textContent")
-        driver.click_text('gc-workspace-center button', 'Apply to this repository')
-        driver.wait("return document.querySelector('gc-workspace-center')?.textContent.includes('Applied Owned native identity')")
+        driver.click_text('gk-workspace-center button', 'Use ' + label + '…')
+        assert str(repository) in driver.script("return document.querySelector('gk-workspace-center aside').textContent")
+        driver.click_text('gk-workspace-center button', 'Apply to this repository')
+        driver.wait("return document.querySelector('gk-workspace-center')?.textContent.includes('Applied Owned native identity')")
         assert fixtures.git(repository, "config", "--local", "user.name") == "Owned Native Author"
         assert fixtures.git(repository, "config", "--local", "user.email") == "native-owned@example.test"
         assert fixtures.git(repository, "show-ref") == before_refs
         assert (repository / ".git/index").read_bytes() == before_index
         assert (repository / "fixture.txt").read_text() == "kept local edits\n"
         report["scenarios"].append("native-identity-profile-explicit-local-application-preserves-git-state")
-        driver.click_text('gc-workspace-center button', 'Close')
+        driver.click_text('gk-workspace-center button', 'Close')
         for command, args in [
             ("load_hosting_page", {"remote": "missing", "section": "pullRequests"}),
             ("load_hosted_review", {"remote": "missing", "pullNumber": 1, "expectedHeadOid": "not-an-oid"}),
@@ -1942,7 +2133,7 @@ def workspace_center_workflows(driver, fixtures, original_repository, report):
         driver.script("""
           if (arguments[1] === null) localStorage.removeItem(arguments[0]);
           else localStorage.setItem(arguments[0], arguments[1]);
-          document.querySelector('gc-workspace-center header button')?.click();
+          document.querySelector('gk-workspace-center header button')?.click();
         """, storage_key, previous)
         open_ui(driver, original_repository)
 
@@ -2009,23 +2200,23 @@ def hosted_paging_and_decisions(driver, fixtures, original_repository, report):
         report["scenarios"].append("native-hosted-partial-permissions-retain-accessible-sections")
         driver.click('.workspace-toggle')
         driver.click_text('.workspace-menu-actions button', 'Reviews and checks')
-        driver.wait("return !!document.querySelector('gc-hosting-panel #hosting-state')")
-        driver.click_text('gc-hosting-panel button', 'Load from GitHub')
-        driver.wait("return document.querySelector('gc-hosting-panel')?.textContent.includes('Owned hosted page 1')")
-        driver.click_text('gc-hosting-panel button', 'Inspect #1')
-        driver.wait("return document.querySelector('gc-hosting-panel')?.textContent.includes('owned-legacy-ci')")
-        assert driver.script("return document.querySelector('gc-hosting-panel').textContent.includes('Check runs could not be loaded')")
-        assert driver.script("return document.querySelector('gc-hosting-panel').textContent.includes('APPROVED')")
-        driver.click_text('gc-hosting-panel button', 'Next changed files page')
-        driver.wait("return document.querySelector('gc-hosting-panel')?.textContent.includes('second.txt')")
-        driver.click_text('gc-workspace-center header button', 'Close')
+        driver.wait("return !!document.querySelector('gk-hosting-panel #hosting-state')")
+        driver.click_text('gk-hosting-panel button', 'Load from GitHub')
+        driver.wait("return document.querySelector('gk-hosting-panel')?.textContent.includes('Owned hosted page 1')")
+        driver.click_text('gk-hosting-panel button', 'Inspect #1')
+        driver.wait("return document.querySelector('gk-hosting-panel')?.textContent.includes('owned-legacy-ci')")
+        assert driver.script("return document.querySelector('gk-hosting-panel').textContent.includes('Check runs could not be loaded')")
+        assert driver.script("return document.querySelector('gk-hosting-panel').textContent.includes('APPROVED')")
+        driver.click_text('gk-hosting-panel button', 'Next changed files page')
+        driver.wait("return document.querySelector('gk-hosting-panel')?.textContent.includes('second.txt')")
+        driver.click_text('gk-workspace-center header button', 'Close')
         assert fixtures.git(repository, "show-ref") == before_refs
         assert (repository / ".git/index").read_bytes() == before_index
         requests = [json.loads(line) for line in request_log.read_text().splitlines()[request_start:]]
         assert requests and all(item["method"] == "GET" and item["cwd"] != str(repository) for item in requests)
         report["scenarios"].append("native-hosted-dialog-paging-and-partial-status-preserve-git-state")
     finally:
-        driver.script("document.querySelector('gc-workspace-center header button')?.click()")
+        driver.script("document.querySelector('gk-workspace-center header button')?.click()")
         fixtures.git(repository, "remote", "remove", "origin")
         open_ui(driver, original_repository)
 
@@ -2155,23 +2346,23 @@ def hosted_reviewed_writes(driver, fixtures, original_repository, report):
         config_path.write_text(json.dumps(config))
         driver.click('.workspace-toggle')
         driver.click_text('.workspace-menu-actions button', 'Reviews and checks')
-        driver.wait("return !!document.querySelector('gc-hosting-panel #hosting-remote')")
-        driver.click_text('gc-hosting-panel button', 'Create pull request')
+        driver.wait("return !!document.querySelector('gk-hosting-panel #hosting-remote')")
+        driver.click_text('gk-hosting-panel button', 'Create pull request')
         driver.wait("return !!document.querySelector('#hosted-head-remote')")
         for selector, value, event in [("#hosted-head-remote", "fork", "change"), ("#hosted-head-branch", "feature", "input"),
                                        ("#hosted-base-branch", "main", "input"), ("#hosted-write-title", "Owned native UI request", "input"),
                                        ("#hosted-write-body", "Original UI body", "input")]:
             driver.script("const field=document.querySelector(arguments[0]); field.value=arguments[1]; field.dispatchEvent(new Event(arguments[2],{bubbles:true}));", selector, value, event)
-        driver.click_text('gc-hosted-write-panel button', 'Prepare submission preview')
-        driver.wait("return !!document.querySelector('gc-hosted-write-panel [data-write-preview]')")
-        assert driver.script("return document.querySelector('gc-hosted-write-panel').textContent.includes('owned-other-account')")
+        driver.click_text('gk-hosted-write-panel button', 'Prepare submission preview')
+        driver.wait("return !!document.querySelector('gk-hosted-write-panel [data-write-preview]')")
+        assert driver.script("return document.querySelector('gk-hosted-write-panel').textContent.includes('owned-other-account')")
         driver.screenshot(Path(report["artifactsDirectory"]) / "hosted-submission-preview.png")
-        driver.click_text('gc-hosted-write-panel button', 'Create draft pull request')
-        driver.wait("return !!document.querySelector('gc-hosted-write-panel [data-write-receipt]')")
+        driver.click_text('gk-hosted-write-panel button', 'Create draft pull request')
+        driver.wait("return !!document.querySelector('gk-hosted-write-panel [data-write-receipt]')")
         created = json.loads(state_path.read_text())["created"]
         assert len(created) == 2 and created[-1]["title"] == "Owned native UI request"
-        driver.click_text('gc-hosted-write-panel button', 'Close submission')
-        driver.click_text('gc-workspace-center header button', 'Close')
+        driver.click_text('gk-hosted-write-panel button', 'Close submission')
+        driver.click_text('gk-workspace-center header button', 'Close')
         report["scenarios"].append("native-hosted-draft-creation-ui-previews-and-confirms-provider-receipt")
         preview = prepare({"kind": "merge", "number": 1, "expectedHeadOid": head, "method": "squash", "title": "Owned merge", "body": "Original merge body"})
         receipt = execute(preview)
@@ -2185,7 +2376,7 @@ def hosted_reviewed_writes(driver, fixtures, original_repository, report):
     finally:
         (gate / "hold").unlink(missing_ok=True)
         config_path.write_bytes(original_config)
-        driver.script("document.querySelector('gc-workspace-center header button')?.click()")
+        driver.script("document.querySelector('gk-workspace-center header button')?.click()")
         fixtures.git(repository, "remote", "remove", "origin")
         fixtures.git(repository, "remote", "remove", "fork")
         open_ui(driver, original_repository)
@@ -2235,6 +2426,161 @@ def rebase_row_keyboard_preview(driver, fixtures, original_repository, report):
 
 
 
+
+
+def autosquash_amend_message(driver, fixtures, report):
+    """Exercise amend! preview, replacement visibility and the real Git result."""
+    repository = fixtures.repository("autosquash-amend-message", 3)
+    original = fixtures.git(repository, "rev-list", "--reverse", "main").splitlines()
+    target_oid = original[1]
+    (repository / "amend-payload.txt").write_text("amend payload\n")
+    fixtures.git(repository, "add", "--", "amend-payload.txt")
+    fixtures.git(repository, "-c", "user.name=Native Fixture", "-c", "user.email=native@example.test",
+                 "commit", "-m", "amend! Native commit 000001", "-m", "Replacement subject", "-m", "Replacement body")
+    amend_oid = fixtures.git(repository, "rev-parse", "HEAD")
+    original_tip = amend_oid
+    try:
+        repo_id = open_ui(driver, repository)
+        driver.script("document.querySelector(arguments[0]).focus()", '[aria-label="Local branch main, current"]')
+        driver.click_visible('[aria-label="Branch actions for main"]')
+        driver.click_scrolled_text('.context-menu [role="menuitem"]', 'Edit entire history, including root…',
+                                   wait_for_ready=True)
+        driver.wait("return document.querySelectorAll('.interactive-rebase [data-rebase-oid]').length === 4")
+        driver.click_text('.autosquash-review button', 'Preview autosquash')
+        driver.wait("return document.querySelector('.autosquash-review [role=status]')?.textContent.includes('Matched 1 commit')")
+        expected_order = [original[0], target_oid, amend_oid, original[2]]
+        actual_order = driver.script("return [...document.querySelectorAll('.interactive-rebase [data-rebase-oid]')].map(row => row.dataset.rebaseOid)")
+        assert actual_order == expected_order, (actual_order, expected_order)
+        selector = f'.interactive-rebase [data-rebase-oid="{amend_oid}"]'
+        action = driver.script("return document.querySelector(arguments[0] + ' select')?.value", selector)
+        assert action == "fixup-reword", action
+        preview = driver.script("return document.querySelector(arguments[0] + ' .rebase-message-preview')?.textContent", selector)
+        assert "Replacement subject" in preview, preview
+        driver.screenshot(Path(report["artifactsDirectory"]) / "autosquash-amend-message-preview.png")
+        driver.click('.interactive-rebase button.primary')
+        driver.wait("return !document.querySelector('.interactive-rebase')")
+        deadline = time.monotonic() + 20
+        subjects = []
+        while time.monotonic() < deadline:
+            subjects = fixtures.git(repository, "log", "--format=%s", "--reverse", "main").splitlines()
+            if len(subjects) == 3 and subjects[1] == "Replacement subject":
+                break
+            time.sleep(.1)
+        assert subjects == ["Native commit 000000", "Replacement subject", "Native commit 000002"], subjects
+        message = fixtures.git(repository, "show", "-s", "--format=%B", "main~1")
+        assert message.strip() == "Replacement subject\n\nReplacement body", message
+        assert (repository / "amend-payload.txt").read_text() == "amend payload\n"
+        assert fixtures.git(repository, "rev-parse", "HEAD") != original_tip
+        assert repo_id
+        report["scenarios"].append("native-ui-autosquash-amend-replaces-message-and-combines-tree")
+        return repository, repo_id
+    except Exception:
+        driver.screenshot(Path(report["artifactsDirectory"]) / "autosquash-amend-message-failure.png")
+        raise
+    finally:
+        if (repository / ".git/rebase-merge").exists() or (repository / ".git/rebase-apply").exists():
+            fixtures.git(repository, "rebase", "--abort")
+
+
+def prepare_fixup_from_staged(driver, fixtures, report):
+    """Create a reviewed fixup from staged files without consuming the normal draft."""
+    repository = fixtures.repository("prepare-fixup-from-staged", 3)
+    commits = fixtures.git(repository, "rev-list", "--reverse", "main").splitlines()
+    target_oid = commits[1]
+    payload = repository / "fixup-payload.txt"
+    payload.write_text("staged fixup payload\n")
+    fixtures.git(repository, "add", "--", payload.name)
+    try:
+        repo_id = open_ui(driver, repository)
+        driver.click('.wip-nav')
+        driver.wait("return !!document.querySelector('[aria-label=\"Commit summary\"]')")
+        driver.script("document.querySelector('[aria-label=\"Commit summary\"]').value = 'Preserved ordinary draft'; document.querySelector('[aria-label=\"Commit summary\"]').dispatchEvent(new Event('input', {bubbles: true}))")
+        row = f'.commit-row[data-commit-oid="{target_oid}"]'
+        driver.wait(f"return !!document.querySelector({json.dumps(row)})")
+        driver.script("const element = document.querySelector(arguments[0]); const bounds = element.getBoundingClientRect(); element.dispatchEvent(new MouseEvent('contextmenu', {bubbles:true, clientX:bounds.left+10, clientY:bounds.top+10}));", row)
+        driver.wait("return [...document.querySelectorAll('.context-menu [role=menuitem]')].some(item => item.textContent.includes('Prepare fixup commit from staged changes'))")
+        driver.click_scrolled_text('.context-menu [role="menuitem"]', 'Prepare fixup commit from staged changes…', wait_for_ready=True)
+        driver.wait("return document.querySelector('.commit-fixup-banner')?.textContent.includes('Native commit 000001')")
+        driver.click_visible('.commit-form button[type="submit"]')
+        deadline = time.monotonic() + 20
+        subject = ''
+        while time.monotonic() < deadline:
+            subject = fixtures.git(repository, "log", "-1", "--format=%s").strip()
+            if subject.startswith("fixup! Native commit 000001"):
+                break
+            time.sleep(.1)
+        assert subject == "fixup! Native commit 000001", subject
+        assert payload.read_text() == "staged fixup payload\n"
+        assert fixtures.git(repository, "status", "--porcelain").strip() == "", "fixup left staged or unstaged changes"
+        assert fixtures.git(repository, "rev-parse", "HEAD^") == target_oid or fixtures.git(repository, "merge-base", "--is-ancestor", target_oid, "HEAD") == ""
+        assert driver.script("return document.querySelector('[aria-label=\"Commit summary\"]')?.value") == "Preserved ordinary draft"
+        report["scenarios"].append("native-ui-prepares-fixup-from-staged-changes-and-preserves-draft")
+        return repository, repo_id
+    except Exception:
+        driver.screenshot(Path(report["artifactsDirectory"]) / "prepare-fixup-from-staged-failure.png")
+        raise
+        open_ui(driver, repository)
+
+
+def amended_commit_recovery_history(driver, fixtures, report):
+    """Prove a successful amend is visible and restorable in Recovery History."""
+    repository = fixtures.repository("amend-recovery-history", commits=3)
+    old_head = fixtures.git(repository, "rev-parse", "HEAD")
+    payload = repository / "amend-recovery.txt"
+    payload.write_text("staged before amendment\n")
+    fixtures.git(repository, "add", "--", payload.name)
+
+    repo_id = open_ui(driver, repository)
+    driver.click(".wip-nav")
+    driver.wait("return !!document.querySelector('[aria-label=\"Commit summary\"]')")
+    driver.click('[aria-label="Amend previous commit"]')
+    driver.wait("return document.querySelector('[aria-label=\"Amend previous commit\"]')?.checked === true")
+    driver.wait("return document.querySelector('.commit-form button[type=submit]')?.disabled === false")
+    driver.click_visible('.commit-form button[type="submit"]')
+
+    deadline = time.monotonic() + 20
+    amended_head = old_head
+    while time.monotonic() < deadline:
+        amended_head = fixtures.git(repository, "rev-parse", "HEAD")
+        if amended_head != old_head:
+            break
+        time.sleep(.1)
+    assert amended_head != old_head, "The reviewed commit amendment did not move HEAD"
+    assert fixtures.git(repository, "rev-parse", "HEAD^") == fixtures.git(repository, "rev-parse", f"{old_head}^")
+    assert fixtures.git(repository, "show", "HEAD:amend-recovery.txt") == "staged before amendment"
+    assert not fixtures.git(repository, "status", "--porcelain"), "Amend did not consume the staged change"
+
+    captures = driver.invoke("load_operation_recoveries", repoId=repo_id)
+    capture = next((entry for entry in captures if entry["label"] == "Before amended commit"), None)
+    assert capture and capture["headOid"] == old_head and capture["snapshotOid"], captures
+    assert fixtures.git(repository, "show", f"{capture['snapshotOid']}:amend-recovery.txt") == "staged before amendment"
+
+    driver.click_visible('[aria-label="Main menu"]')
+    driver.click_visible('.app-menu-popover [role="menuitem"] strong', "Recovery History")
+    driver.wait("""return [...document.querySelectorAll('.operation-capture')]
+      .some(card => card.textContent.includes('Before amended commit')
+        && card.textContent.includes('History and tracked contents'))""")
+    card = f'.operation-capture[data-capture-id="{capture["id"]}"]'
+    driver.click_text(f'{card} button[data-capture-action="restore"]', "Restore on new branch...")
+    driver.wait("return !!document.querySelector('.recovery-capture-form [name=recoveryCaptureBranch]')")
+    driver.script("""const input = document.querySelector('.recovery-capture-form [name=recoveryCaptureBranch]');
+      input.value = 'amend-recovery'; input.dispatchEvent(new Event('input', {bubbles: true}));""")
+    driver.click_text('.recovery-capture-form button[type="submit"]', "Restore and switch")
+
+    deadline = time.monotonic() + 20
+    branch = head = status = ""
+    while time.monotonic() < deadline:
+        branch = fixtures.git(repository, "branch", "--show-current")
+        head = fixtures.git(repository, "rev-parse", "HEAD")
+        status = fixtures.git(repository, "status", "--porcelain")
+        if branch == "amend-recovery" and head == old_head and status.startswith("A  amend-recovery.txt"):
+            break
+        time.sleep(.1)
+    assert branch == "amend-recovery" and head == old_head, (branch, head, old_head)
+    assert status.startswith("A  amend-recovery.txt"), status
+    assert payload.read_text() == "staged before amendment\n"
+    report["scenarios"].append("native-ui-amend-saves-and-restores-head-and-staged-state-through-recovery-history")
+    return repository, repo_id
 
 
 def _workflow_repository(fixtures, name):
@@ -2324,8 +2670,8 @@ def branch_workflow_native_boundary(driver, fixtures, original_repository, repor
 
 
 def _workflow_button(driver, text):
-    driver.wait(f"return [...document.querySelectorAll('gc-branch-workflow-dialog button')].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
-    driver.click_text('gc-branch-workflow-dialog button', text)
+    driver.wait(f"return [...document.querySelectorAll('gk-branch-workflow-dialog button')].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
+    driver.click_text('gk-branch-workflow-dialog button', text)
 
 def branch_workflow_desktop(driver, fixtures, original_repository, report):
     """Packaged UI actions with exact Git refs, parents, tags and recovery oracles."""
@@ -2334,11 +2680,11 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
     initial_refs = fixtures.git(repository, "show-ref")
     initial_index = (repository / ".git/index").read_bytes()
     initial_bytes = (repository / "fixture.txt").read_bytes()
-    selector = 'gc-branch-workflow-dialog'
+    selector = 'gk-branch-workflow-dialog'
 
     def ready(timeout=30):
         driver.wait("""return (() => {
-          const dialog = document.querySelector('gc-branch-workflow-dialog');
+          const dialog = document.querySelector('gk-branch-workflow-dialog');
           return dialog && !dialog.querySelector('.progress') &&
             [...dialog.querySelectorAll('button')].some(button =>
               button.textContent.trim() === 'Reload workflow state' && !button.disabled);
@@ -2347,7 +2693,7 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
     def enter():
         driver.click('.workspace-toggle')
         driver.click_text('.workspace-menu-actions button', 'Branch workflows')
-        driver.wait("return !!document.querySelector('gc-branch-workflow-dialog [role=dialog]')")
+        driver.wait("return !!document.querySelector('gk-branch-workflow-dialog [role=dialog]')")
         ready()
 
     def fill(selector, value, event="input"):
@@ -2363,7 +2709,7 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
         _workflow_button(driver, text)
 
     def apply():
-        driver.wait("return !!document.querySelector('gc-branch-workflow-dialog .review')")
+        driver.wait("return !!document.querySelector('gk-branch-workflow-dialog .review')")
         started = time.monotonic()
         button('Apply reviewed workflow')
         # A finish can merge multiple protected targets, write the reviewed
@@ -2374,7 +2720,7 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
         except TimeoutError:
             report['branchWorkflowApplyTimeoutMs'] = round((time.monotonic() - started) * 1000)
             raise
-        error = driver.script("return document.querySelector('gc-branch-workflow-dialog [role=alert]')?.textContent")
+        error = driver.script("return document.querySelector('gk-branch-workflow-dialog [role=alert]')?.textContent")
         assert not error, error
         report.setdefault('branchWorkflowApplyMs', []).append(round((time.monotonic() - started) * 1000))
 
@@ -2460,7 +2806,7 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
         fill('#workflow-tag-message', 'Owned native release\nRelease notes')
         fill('#workflow-signing', 'unsigned', 'change')
         driver.script("""
-          const checkbox = [...document.querySelectorAll('gc-branch-workflow-dialog input[type=checkbox]')][0];
+          const checkbox = [...document.querySelectorAll('gk-branch-workflow-dialog input[type=checkbox]')][0];
           checkbox.checked = true; checkbox.dispatchEvent(new Event('change', {bubbles:true}));
         """)
         button('Review finish')
@@ -2504,8 +2850,8 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
     except Exception:
         driver.screenshot(Path(report['artifactsDirectory']) / 'branch-workflow-ui-failure.png')
         state = driver.script("""return {
-          dialog: document.querySelector('gc-branch-workflow-dialog')?.textContent,
-          controls: [...document.querySelectorAll('gc-branch-workflow-dialog button')].map(button => ({text: button.textContent, disabled: button.disabled})),
+          dialog: document.querySelector('gk-branch-workflow-dialog')?.textContent,
+          controls: [...document.querySelectorAll('gk-branch-workflow-dialog button')].map(button => ({text: button.textContent, disabled: button.disabled})),
           mainStatus: document.querySelector('[role=status]')?.textContent
         }""")
         (Path(report['artifactsDirectory']) / 'branch-workflow-ui-failure.json').write_text(json.dumps(state, indent=2))
@@ -2540,12 +2886,12 @@ def branch_workflow_restart_and_abort(driver, fixtures, original_repository, rep
             repo_id = open_ui(driver, repository)
             driver.click('.workspace-toggle')
             driver.click_text('.workspace-menu-actions button', 'Branch workflows')
-            driver.wait("return !!document.querySelector('gc-branch-workflow-dialog .topics')")
+            driver.wait("return !!document.querySelector('gk-branch-workflow-dialog .topics')")
             _workflow_button(driver, 'Finish release/recovery')
             _workflow_button(driver, 'Review finish')
-            driver.wait("return !!document.querySelector('gc-branch-workflow-dialog .review')")
+            driver.wait("return !!document.querySelector('gk-branch-workflow-dialog .review')")
             _workflow_button(driver, 'Apply reviewed workflow')
-            driver.wait("return document.querySelector('gc-branch-workflow-dialog')?.textContent.includes('Workflow paused for conflicts')", 60)
+            driver.wait("return document.querySelector('gk-branch-workflow-dialog')?.textContent.includes('Workflow paused for conflicts')", 60)
             status = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
             assert status['phase'] == 'conflicted' and len(status['completedTargets']) == 1, status
             first_integration = fixtures.git(repository, 'rev-parse', 'main')
@@ -2553,9 +2899,9 @@ def branch_workflow_restart_and_abort(driver, fixtures, original_repository, rep
             assert fixtures.git(repository, 'rev-parse', 'develop') == development_before
             assert not fixtures.git(repository, 'for-each-ref', '--format=%(refname)', 'refs/tags/vrecovery')
             if action == 'continue':
-                driver.wait("return [...document.querySelectorAll('gc-branch-workflow-dialog button')].some(button => button.textContent.trim() === 'Inspect and continue' && button.disabled)")
+                driver.wait("return [...document.querySelectorAll('gk-branch-workflow-dialog button')].some(button => button.textContent.trim() === 'Inspect and continue' && button.disabled)")
                 _workflow_button(driver, 'Show conflicted files')
-                driver.wait("return !document.querySelector('gc-branch-workflow-dialog') && document.activeElement?.textContent.includes('Conflicted Files')")
+                driver.wait("return !document.querySelector('gk-branch-workflow-dialog') && document.activeElement?.textContent.includes('Conflicted Files')")
                 assert fixtures.git(repository, 'rev-parse', 'main') == first_integration
                 assert fixtures.git(repository, 'diff', '--name-only', '--diff-filter=U') == 'fixture.txt'
                 report['scenarios'].append('native-ui-workflow-opens-conflicted-files-without-advancing')
@@ -2569,10 +2915,10 @@ def branch_workflow_restart_and_abort(driver, fixtures, original_repository, rep
                 fixtures.git(repository, 'add', 'fixture.txt')
             driver.click('.workspace-toggle')
             driver.click_text('.workspace-menu-actions button', 'Branch workflows')
-            driver.wait("return document.querySelector('gc-branch-workflow-dialog')?.textContent.includes('Workflow paused for conflicts')")
+            driver.wait("return document.querySelector('gk-branch-workflow-dialog')?.textContent.includes('Workflow paused for conflicts')")
             if action == 'continue':
                 _workflow_button(driver, 'Inspect and continue')
-                driver.wait("return document.querySelector('gc-branch-workflow-dialog')?.textContent.includes('Workflow complete')", 60)
+                driver.wait("return document.querySelector('gk-branch-workflow-dialog')?.textContent.includes('Workflow complete')", 60)
                 final = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
                 assert final['phase'] == 'complete' and len(final['completedTargets']) == 2, final
                 assert fixtures.git(repository, 'rev-parse', 'main') == first_integration
@@ -2583,7 +2929,7 @@ def branch_workflow_restart_and_abort(driver, fixtures, original_repository, rep
             else:
                 _workflow_button(driver, 'Review stop')
                 _workflow_button(driver, 'Stop workflow')
-                driver.wait("return document.querySelector('gc-branch-workflow-dialog')?.textContent.includes('Workflow stopped')", 60)
+                driver.wait("return document.querySelector('gk-branch-workflow-dialog')?.textContent.includes('Workflow stopped')", 60)
                 final = driver.invoke('load_branch_workflow', repoId=repo_id, operationId=str(uuid.uuid4()))['finish']
                 assert final['phase'] == 'aborted', final
                 assert fixtures.git(repository, 'rev-parse', 'main') == first_integration
@@ -2622,8 +2968,8 @@ def hosted_repository_discovery_and_clone(driver, fixtures, original_repository,
     query = dict(page=1, expectedAccountId=None, visibility='all', affiliation='accessible', sort='fullName', direction='ascending')
     context = 'owned-native-hosted-clone'
     def hosted_button(text):
-        driver.wait(f"return [...document.querySelectorAll('gc-hosted-repository-browser button')].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
-        driver.click_text('gc-hosted-repository-browser button', text)
+        driver.wait(f"return [...document.querySelectorAll('gk-hosted-repository-browser button')].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
+        driver.click_text('gk-hosted-repository-browser button', text)
     def prepare(folder, transport='https', depth=None, branch=None):
         return driver.invoke('prepare_hosted_clone', contextId=context, operationId=str(uuid.uuid4()), request={
             'fullName': config['repository'], 'repositoryId': '9007199254740993', 'accountId': '501',
@@ -2678,9 +3024,9 @@ def hosted_repository_discovery_and_clone(driver, fixtures, original_repository,
         open_ui(driver, original_repository)
         driver.click('[aria-label="New repository tab"]')
         driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
-        driver.wait("return [...document.querySelectorAll('gc-repository-dialog button')].some(button => button.textContent.trim() === 'Browse repositories on GitHub')")
-        driver.click_text('gc-repository-dialog button', 'Browse repositories on GitHub')
+        driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
+        driver.wait("return [...document.querySelectorAll('gk-repository-dialog button')].some(button => button.textContent.trim() === 'Browse repositories on GitHub')")
+        driver.click_text('gk-repository-dialog button', 'Browse repositories on GitHub')
         hosted_button('Load repositories')
         driver.wait("return document.querySelector('[data-hosted-account]')?.textContent.includes('owned-author')")
         hosted_button('Select owned-fixture/native-repo')
@@ -2691,11 +3037,11 @@ def hosted_repository_discovery_and_clone(driver, fixtures, original_repository,
         driver.wait(f"return document.querySelector('#hosted-parent')?.value === {json.dumps(str(fixtures.root))}")
         driver.script("const input=document.querySelector('#hosted-folder'); input.value='hosted-clone-ui'; input.dispatchEvent(new Event('input',{bubbles:true}));")
         hosted_button('Review hosted clone')
-        driver.wait("return !!document.querySelector('gc-hosted-repository-browser [aria-label=\"Review hosted clone\"]')")
+        driver.wait("return !!document.querySelector('gk-hosted-repository-browser [aria-label=\"Review hosted clone\"]')")
         assert not (fixtures.root / 'hosted-clone-ui').exists()
         driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-clone-ui-review.png')
         hosted_button('Clone reviewed repository')
-        driver.wait("return !document.querySelector('gc-repository-dialog')", 60)
+        driver.wait("return !document.querySelector('gk-repository-dialog')", 60)
         checkout = fixtures.root / 'hosted-clone-ui'
         assert fixtures.git(checkout, 'rev-parse', 'HEAD') == head
         assert fixtures.git(checkout, 'config', '--get', 'remote.origin.url') == 'https://github.com/owned-fixture/native-repo.git'
@@ -2857,7 +3203,7 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
         config.update(forkOwner='owned-organization', forkOwnerId=702, forkOwnerType='Organization',
                       forkName='organization-fork', forkDefaultBranchOnly=False, uncertainAfterWrite=False)
         save_config()
-        def button(text, selector='gc-hosted-forks button'):
+        def button(text, selector='gk-hosted-forks button'):
             driver.click_scrolled_text(selector, text, wait_for_ready=True)
         def fill(selector, value):
             driver.script("const input=document.querySelector(arguments[0]); input.value=arguments[1]; input.dispatchEvent(new Event('input',{bubbles:true}));", selector, value)
@@ -2869,43 +3215,43 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
             assert boxes and all(12 <= box['width'] <= 20 and 12 <= box['height'] <= 20 and box['offset'] <= 2 for box in boxes), boxes
         driver.click('[aria-label="New repository tab"]')
         driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
-        button('Browse repositories on GitHub', 'gc-repository-dialog button')
-        button('Load repositories', 'gc-hosted-repository-browser button')
-        button('Select owned-fixture/native-repo', 'gc-hosted-repository-browser button')
-        button('Manage forks and saved requests', 'gc-hosted-repository-browser button')
+        driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
+        button('Browse repositories on GitHub', 'gk-repository-dialog button')
+        button('Load repositories', 'gk-hosted-repository-browser button')
+        button('Select owned-fixture/native-repo', 'gk-hosted-repository-browser button')
+        button('Manage forks and saved requests', 'gk-hosted-repository-browser button')
         driver.wait("return !!document.querySelector('#fork-name')")
-        checkbox_layout('gc-hosted-forks .check input[type=checkbox]')
-        driver.script("const input=document.querySelector('gc-hosted-forks input[type=checkbox]'); input.checked=true; input.dispatchEvent(new Event('change',{bubbles:true}));")
+        checkbox_layout('gk-hosted-forks .check input[type=checkbox]')
+        driver.script("const input=document.querySelector('gk-hosted-forks input[type=checkbox]'); input.checked=true; input.dispatchEvent(new Event('change',{bubbles:true}));")
         driver.wait("return !!document.querySelector('#fork-owner')")
         fill('#fork-owner', 'owned-organization')
         fill('#fork-name', 'organization-fork')
-        driver.script("const inputs=document.querySelectorAll('gc-hosted-forks fieldset input[type=checkbox]'); const input=inputs[inputs.length-1]; input.checked=false; input.dispatchEvent(new Event('change',{bubbles:true}));")
+        driver.script("const inputs=document.querySelectorAll('gk-hosted-forks fieldset input[type=checkbox]'); const input=inputs[inputs.length-1]; input.checked=false; input.dispatchEvent(new Event('change',{bubbles:true}));")
         button('Review fork creation')
-        driver.wait("return document.querySelector('gc-hosted-forks [aria-label=\"Review fork creation\"]')?.textContent.includes('All branches')")
+        driver.wait("return document.querySelector('gk-hosted-forks [aria-label=\"Review fork creation\"]')?.textContent.includes('All branches')")
         assert len(submissions()) == 1
         driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-organization-fork-review.png')
         button('Submit reviewed fork request')
-        driver.wait("return document.querySelector('gc-hosted-forks [aria-label=\"Saved fork outcome\"]')?.textContent.includes('Accepted; verification pending')")
+        driver.wait("return document.querySelector('gk-hosted-forks [aria-label=\"Saved fork outcome\"]')?.textContent.includes('Accepted; verification pending')")
         assert submissions()[-1] == dict(name='organization-fork', default_branch_only=False, organization='owned-organization')
         button('Check fork status')
-        driver.wait("return document.querySelector('gc-hosted-forks [aria-label=\"Saved fork outcome\"]')?.textContent.includes('Fork verified and ready for use')")
+        driver.wait("return document.querySelector('gk-hosted-forks [aria-label=\"Saved fork outcome\"]')?.textContent.includes('Fork verified and ready for use')")
         button('Inspect fork for cloning')
-        driver.wait("return !!document.querySelector('gc-hosted-forks [aria-label=\"Verified fork for cloning\"]')")
+        driver.wait("return !!document.querySelector('gk-hosted-forks [aria-label=\"Verified fork for cloning\"]')")
         button('Use this fork for cloning')
-        driver.wait("return document.querySelector('gc-hosted-repository-browser .selection h3')?.textContent.trim() === 'owned-organization/organization-fork'")
+        driver.wait("return document.querySelector('gk-hosted-repository-browser .selection h3')?.textContent.trim() === 'owned-organization/organization-fork'")
         assert driver.script("return document.querySelector('#hosted-folder').value") == 'organization-fork'
-        checkbox_layout('gc-hosted-repository-browser .check input[type=checkbox]')
+        checkbox_layout('gk-hosted-repository-browser .check input[type=checkbox]')
         assert not (fixtures.root / 'organization-fork').exists()
         assert len(submissions()) == 2
         driver.screenshot(Path(report['artifactsDirectory']) / 'hosted-fork-clone-handoff.png')
         report['scenarios'].append('native-ui-reviewed-organization-all-branches-fork-readiness-and-separate-clone-handoff')
         fill('#hosted-parent', str(fixtures.root))
-        button('Review hosted clone', 'gc-hosted-repository-browser button')
-        driver.wait("return !!document.querySelector('gc-hosted-repository-browser [aria-label=\"Review hosted clone\"]')")
+        button('Review hosted clone', 'gk-hosted-repository-browser button')
+        driver.wait("return !!document.querySelector('gk-hosted-repository-browser [aria-label=\"Review hosted clone\"]')")
         assert not (fixtures.root / 'organization-fork').exists()
-        button('Clone reviewed repository', 'gc-hosted-repository-browser button')
-        driver.wait("return !document.querySelector('gc-repository-dialog')", 60)
+        button('Clone reviewed repository', 'gk-hosted-repository-browser button')
+        driver.wait("return !document.querySelector('gk-repository-dialog')", 60)
         checkout = fixtures.root / 'organization-fork'
         assert fixtures.git(checkout, 'rev-parse', 'HEAD') == head
         assert fixtures.git(checkout, 'rev-list', '--count', 'HEAD') == '3'
@@ -3162,6 +3508,7 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     damaged_history_pagination(driver, fixtures, report)
     control_character_history(driver, fixtures, report)
     control_character_stashes(driver, fixtures, report)
+    clear_stash_stack_preserves_every_object(driver, fixtures, report)
     selected_stash_actions(driver, fixtures, report)
     immutable_stash_previews(driver, fixtures, report)
     commit_preview_output(driver, fixtures, report)
@@ -3249,6 +3596,21 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     driver.click('[aria-label="Stage all changes"]')
     driver.script("const input = document.querySelector('[aria-label=\"Commit summary\"]'); input.value = 'Native UI commit'; input.dispatchEvent(new Event('input', { bubbles: true }));")
     driver.wait("return !!document.querySelector('.commit-form button[type=submit]:not(:disabled)')")
+    hook_option = driver.script("""
+      const input = document.querySelector('.commit-form input[name="skipHooks"]');
+      const label = input?.closest('label');
+      return label ? { title: label.title, text: label.textContent.trim() } : null;
+    """)
+    assert hook_option == {
+        "title": "Bypass only Git's pre-commit and commit-msg hooks. Other hooks may still run; their side effects are not rolled back. Use only when intentional.",
+        "text": "Skip hooks",
+    }, (
+        "Skip-hooks control must identify the exact verification hooks and intentional-use warning", hook_option)
+    assert driver.script("return !document.querySelector('.commit-hook-warning')")
+    driver.click('.commit-form input[name="skipHooks"]')
+    driver.wait("return document.querySelector('.commit-hook-warning')?.textContent.includes('Other hooks may still run')")
+    driver.click('.commit-form input[name="skipHooks"]')
+    driver.wait("return !document.querySelector('.commit-hook-warning')")
     hook = repository / ".git/hooks/pre-commit"
     assert not hook.exists(), "UI refusal fixture must not overwrite an existing hook"
     hook.write_text("#!/bin/sh\nprintf 'Native hook refused the commit\\n' >&2\nexit 1\n")
@@ -3309,21 +3671,21 @@ def authentication_prompt_recovery(driver, repo_id, report):
                 "requestId": request, "operationId": f"native-fixture-operation-{index}",
                 "repositoryId": repo_id, "secret": index == 0,
             })
-        driver.wait("return !!document.querySelector('gc-authentication dialog[open] input[type=password]')")
+        driver.wait("return !!document.querySelector('gk-authentication dialog[open] input[type=password]')")
         driver.script("""
-          const input = document.querySelector('gc-authentication input');
+          const input = document.querySelector('gk-authentication input');
           input.value = 'native-fixture-not-a-real-secret';
           input.dispatchEvent(new Event('input', {bubbles: true}));
         """)
-        driver.click('gc-authentication button[type=submit]')
-        driver.wait("return document.querySelector('gc-authentication [role=alert]')?.textContent.includes('Cancel and retry')")
-        assert driver.script("return document.querySelector('gc-authentication input').value") == ""
-        driver.click('gc-authentication button[type=button]')
-        driver.wait("return !!document.querySelector('gc-authentication dialog[open] input[type=text]')", 10)
-        assert driver.script("return document.querySelector('gc-authentication input').value") == ""
+        driver.click('gk-authentication button[type=submit]')
+        driver.wait("return document.querySelector('gk-authentication [role=alert]')?.textContent.includes('Cancel and retry')")
+        assert driver.script("return document.querySelector('gk-authentication input').value") == ""
+        driver.click('gk-authentication button[type=button]')
+        driver.wait("return !!document.querySelector('gk-authentication dialog[open] input[type=text]')", 10)
+        assert driver.script("return document.querySelector('gk-authentication input').value") == ""
         driver.wait("return document.querySelector('.error-toast')?.textContent.includes('could not confirm cancellation')")
-        driver.click('gc-authentication button[type=button]')
-        driver.wait("return !document.querySelector('gc-authentication dialog[open]')", 10)
+        driver.click('gk-authentication button[type=button]')
+        driver.wait("return !document.querySelector('gk-authentication dialog[open]')", 10)
         assert driver.invoke("pending_authentication") == []
     finally:
         for request in requests:
@@ -3375,10 +3737,10 @@ def terminal_renderer_startup_failure(driver, fixtures, report):
             assert json.loads(str(error))["kind"] == "unknownTerminal"
         else:
             raise AssertionError("Failed startup remained in the native terminal registry")
-        assert driver.script("return document.querySelectorAll('gc-terminal-panel [role=tab]').length") == 0
+        assert driver.script("return document.querySelectorAll('gk-terminal-panel [role=tab]').length") == 0
         driver.click('.terminal-error button')
-        driver.wait("return !!document.querySelector('gc-terminal-panel .xterm-screen')", 10)
-        sessions.append(driver.script("return document.querySelector('gc-terminal-panel .terminal-host').dataset.terminalId"))
+        driver.wait("return !!document.querySelector('gk-terminal-panel .xterm-screen')", 10)
+        sessions.append(driver.script("return document.querySelector('gk-terminal-panel .terminal-host').dataset.terminalId"))
         assert sessions[0] != sessions[1]
         deadline = time.monotonic() + 5
         retry_pids = fixtures.terminal_pids.read_text().splitlines()
@@ -3388,7 +3750,7 @@ def terminal_renderer_startup_failure(driver, fixtures, report):
         assert len(retry_pids) == len(pids) + 1, "The retried owned shell never started"
         retry_pid = int(retry_pids[-1])
         driver.click('.terminal-tab-close')
-        driver.wait("return !document.querySelector('gc-terminal-panel')", 10)
+        driver.wait("return !document.querySelector('gk-terminal-panel')", 10)
         driver.wait("return window.__terminalStartupFailure.exitIds.includes(" + json.dumps(sessions[1]) + ")", 10)
         assert not Path(f"/proc/{retry_pid}/stat").exists(), "Retry cleanup left its observed shell running"
     finally:

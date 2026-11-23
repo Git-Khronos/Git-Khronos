@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(oid => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repo = git.repository();
     const archived = { ...repo.commits[0], oid, subject: 'Archived release beyond the graph', decorations: [] };
@@ -71,7 +71,7 @@ test('a captured tag result does not follow a moved reference', async ({ page })
   await expect(page.getByRole('option', { name: /^View tag archive-one/ })).toBeVisible();
   expect(await page.evaluate(async () => {
     const { app, git, calls } = (window as any).__referenceNavigation;
-    const palette = (window as any).ng.getComponent(document.querySelector('gc-command-palette'));
+    const palette = (window as any).ng.getComponent(document.querySelector('gk-command-palette'));
     const row = palette.commandActions().find((action: any) => action.label === 'View tag archive-one');
     const repo = git.repository();
     git.repositories.set([{ ...repo, tags: [{ ...repo.tags[0], oid: '8'.repeat(40) }, repo.tags[1]] }]);

@@ -106,6 +106,8 @@ describe('Git feature documentation', () => {
     const topic = GIT_DOCUMENTATION_TOPICS.find(topic => topic.id === 'rebase');
     expect(topic?.hint).toContain('Fixup combines changes but retains the preceding message');
     expect(topic?.hint).toContain('not a dropped row');
+    expect(topic?.hint).toContain('Fixup + message combines changes and replaces the preceding message');
+    expect(topic?.hint).toContain('amend!');
     expect(topic?.hint).toContain('recovery reference');
     expect(topic?.caution).toContain('not remote rollback');
     expect(topic?.hint).toContain('autosquash');
@@ -123,9 +125,12 @@ describe('Git feature documentation', () => {
     const topic = GIT_DOCUMENTATION_TOPICS.find(topic => topic.id === 'rebase');
     expect(topic?.commands).toContain('--autosquash');
     expect(topic?.hint).toContain('without executing Git');
+    expect(topic?.hint).toContain('unique exact/prefix subject');
     expect(topic?.caution).toContain('ambiguous/unmatched targets');
+    expect(topic?.caution).toContain('ambiguous prefixes');
     expect(topic?.caution).toContain('existing manual actions');
-    expect(topic?.caution).toContain('amend! message replacement are unsupported');
+    expect(topic?.hint).toContain('amend!');
+    expect(topic?.hint).toContain('Fixup + message combines changes');
   });
   it('explains full selected-range scope, unchanged refs and uncertain publication', () => {
     const topic = GIT_DOCUMENTATION_TOPICS.find(topic => topic.id === 'rebase');

@@ -7,7 +7,7 @@ import { GitLabCloneComponent } from './gitlab-clone.component';
 type Operation = { id: string; scope: string; cancelled: boolean };
 const sameAccount = (a: GitLabAccount, b: GitLabAccount) => a.origin === b.origin && a.id === b.id && a.login === b.login;
 @Component({
-  selector: 'gc-gitlab-forks', imports: [GitLabCloneComponent, GitLabForkCreateComponent], changeDetection: ChangeDetectionStrategy.OnPush,
+  selector: 'gk-gitlab-forks', imports: [GitLabCloneComponent, GitLabForkCreateComponent], changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './gitlab-forks.component.html', styleUrl: './gitlab-forks.component.scss',
 })
 export class GitLabForksComponent implements OnDestroy {

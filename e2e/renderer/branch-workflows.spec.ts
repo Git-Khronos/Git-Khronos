@@ -12,7 +12,7 @@ async function open(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/'); await expect(page.locator('.branch-item').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root')); const git = app.git;
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app')); const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const base = git.repository();
     const settings = { version: 1, production: 'main', development: 'develop', featurePrefix: 'feature/', releasePrefix: 'release/', hotfixPrefix: 'hotfix/', tagPrefix: 'v' };
@@ -84,7 +84,7 @@ test.beforeEach(async ({ page }) => {
 
 async function featureCheckout(page: Page, comparison: Record<string, unknown> | null = {}) {
   await page.evaluate(comparison => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__workflow;
     const feature = fixture.topics[0];
     fixture.featureComparison = comparison;
@@ -186,7 +186,7 @@ test('editing a form or moving a ref invalidates its native preview', async ({ p
   await dialog.getByLabel('Topic name', { exact: true }).fill('changed');
   await expect(dialog.getByLabel('Review branch workflow')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Review topic creation', exact: true }).click();
-  await page.evaluate(() => { const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git; git.repositories.update((items: any[]) => items.map(r => ({ ...r, branches: r.branches.map((b: any) => b.name === 'develop' ? { ...b, oid: 'f'.repeat(40) } : b) }))); });
+  await page.evaluate(() => { const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git; git.repositories.update((items: any[]) => items.map(r => ({ ...r, branches: r.branches.map((b: any) => b.name === 'develop' ? { ...b, oid: 'f'.repeat(40) } : b) }))); });
   await expect(dialog).toContainText('Repository references changed');
   await expect(dialog.getByLabel('Review branch workflow')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__workflow.calls.filter((c: any) => c.command === 'discard_branch_workflow_plan'))).toHaveLength(2);
@@ -250,7 +250,7 @@ test('a workflow conflict opens and focuses the conflicted files before allowing
   await expect(show).toBeEnabled();
   await expect(dialog.getByRole('button', { name: 'Inspect and continue' })).toBeDisabled();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.conflictedFilesOpen.set(false);
     app.fileFilter.set('does-not-match');
   });
@@ -265,7 +265,7 @@ test('a workflow conflict opens and focuses the conflicted files before allowing
   expect(await page.evaluate(() => (window as any).__workflow.calls.some((c: any) => c.command === 'control_branch_workflow_finish'))).toBe(false);
 
   await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__workflow;
     fixture.repo = { ...fixture.repo, status: { ...fixture.repo.status, entries: [], conflicted: 0 } };
     git.repositories.update((items: any[]) => items.map(repo => repo.id === fixture.repo.id ? fixture.repo : repo));
@@ -315,7 +315,7 @@ test('repository switch closes the workflow and prevents late previews from cros
   await page.evaluate(() => { (window as any).__workflow.hold = 'prepare_branch_workflow'; });
   await dialog.getByLabel('Topic name', { exact: true }).fill('switch-owned');
   await dialog.getByRole('button', { name: 'Review topic creation', exact: true }).click();
-  await page.evaluate(() => { const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git; const other = { ...git.repository(), id: 'other-workflow', path: '/owned/other-workflow' }; git.repositories.update((items: any[]) => [...items, other]); git.activeRepositoryId.set(other.id); });
+  await page.evaluate(() => { const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git; const other = { ...git.repository(), id: 'other-workflow', path: '/owned/other-workflow' }; git.repositories.update((items: any[]) => [...items, other]); git.activeRepositoryId.set(other.id); });
   await expect(dialog).toHaveCount(0);
   await page.evaluate(() => { (window as any).__workflow.finish(); });
   await expect.poll(() => page.evaluate(() => (window as any).__workflow.calls.some((c: any) => c.command === 'discard_branch_workflow_plan'))).toBe(true);
@@ -329,7 +329,7 @@ test('switching workspaces retires a reviewed plan even when the same checkout s
   const apply = dialog.getByRole('button', { name: 'Apply reviewed workflow', exact: true });
   await expect(apply).toBeEnabled();
   const sameCheckout = await apply.evaluate((button: HTMLButtonElement) => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const initial = git.repository();
     git.activeWorkspaceId.set('another-workflow-workspace');
     // Deliver the old click before the root effect has removed the workflow.
@@ -345,7 +345,7 @@ test('switching workspaces retires a reviewed plan even when the same checkout s
 
 for (const theme of ['khronos', 'midnight']) test(`${theme} compact dialog contains keyboard focus and fits the viewport`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
-  await page.evaluate(theme => { const app = (window as any).ng.getComponent(document.querySelector('gc-root')); app.setAppTheme(theme); }, theme);
+  await page.evaluate(theme => { const app = (window as any).ng.getComponent(document.querySelector('gk-app')); app.setAppTheme(theme); }, theme);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   const dialog = await open(page);
   const close = dialog.getByRole('button', { name: 'Close', exact: true }); await close.focus(); await close.press('Shift+Tab');
@@ -376,7 +376,7 @@ test('controls remain unavailable while an applied workflow refreshes its reposi
 
 test('an already-running graph refresh is reported as pending while fresh workflow state remains available', async ({ page }) => {
   const dialog = await open(page);
-  await page.evaluate(() => { const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git; git.refreshRepositoryInBackground = async () => false; });
+  await page.evaluate(() => { const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git; git.refreshRepositoryInBackground = async () => false; });
   await dialog.getByLabel('Topic name', { exact: true }).fill('pending-refresh');
   await dialog.getByRole('button', { name: 'Review topic creation', exact: true }).click();
   await dialog.getByRole('button', { name: 'Apply reviewed workflow', exact: true }).click();

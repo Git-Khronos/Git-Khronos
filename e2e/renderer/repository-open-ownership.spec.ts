@@ -33,7 +33,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/?worktree-tabs');
   await expect(selectedPath(page)).toHaveText(ROOT);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const fixture = (window as any).__managedOpen = { pending: {} as Record<string, (value: string | boolean) => void>, opened: [] as string[] };
     app.setAutoFetchInterval(0);

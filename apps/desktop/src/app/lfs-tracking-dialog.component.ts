@@ -12,7 +12,7 @@ export interface LfsTrackingRequest {
 }
 
 @Component({
-  selector: 'gc-lfs-tracking-dialog',
+  selector: 'gk-lfs-tracking-dialog',
   imports: [FormsModule, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -54,7 +54,7 @@ export interface LfsTrackingRequest {
                 </select>
                 <p>Fetch is a separate, reviewed action for one committed HEAD object. Git LFS uses the remote's configured
                   endpoint, which can differ from the Git remote URL. Staged-only objects cannot be fetched here.</p>
-                <gc-git-help topic="lfs-fetch" [disabled]="git.busy() || loading()" label="Learn about LFS fetching…" />
+                <gk-git-help topic="lfs-fetch" [disabled]="git.busy() || loading()" label="Learn about LFS fetching…" />
                 @if (!listing.files.length) { <p>No nonempty LFS pointers were reported in this scope. This does not prove all files are hydrated.</p> }
                 <ul aria-label="Local LFS objects">
                   @for (file of listing.files; track file.name) {
@@ -101,7 +101,7 @@ export interface LfsTrackingRequest {
             }
             @if (checkoutPreview(); as preview) {
               <div class="checkout-review">
-                <gc-git-help topic="lfs-checkout" [disabled]="git.busy() || loading()" label="Learn about LFS hydration…" />
+                <gk-git-help topic="lfs-checkout" [disabled]="git.busy() || loading()" label="Learn about LFS hydration…" />
                 <h3>Hydrate <code>{{ preview.file }}</code> from local storage?</h3>
                 <p>{{ preview.size }} bytes · sha256:<code>{{ preview.oid }}</code></p>
                 <p>Replaces only the existing canonical working pointer matching the included stage-zero index entry.
@@ -123,7 +123,7 @@ export interface LfsTrackingRequest {
             <summary [attr.aria-disabled]="unavailable()" (click)="guardDisclosure($event)">File locks on the LFS server</summary>
             <p>Locks tell collaborators you are editing a file that cannot be merged. They are advisory and held by the LFS server,
               so loading contacts the configured LFS endpoint. Nothing is locked or unlocked automatically.</p>
-            <gc-git-help topic="lfs-locks" [disabled]="git.busy() || loading()" label="Learn about LFS file locks…" />
+            <gk-git-help topic="lfs-locks" [disabled]="git.busy() || loading()" label="Learn about LFS file locks…" />
             <button data-lfs-locks-load type="button" [disabled]="unavailable()" (click)="loadLocks()">{{ locks() ? 'Reload locks' : 'Load locks' }}</button>
             @if (locks(); as listing) {
               <div class="lock-result" role="status" tabindex="-1">
@@ -210,7 +210,7 @@ export interface LfsTrackingRequest {
             }
           }
           @if (notice()) { <p role="status" tabindex="-1">{{ notice() }}</p> }
-          <gc-git-help topic="lfs" [disabled]="git.busy() || loading()" label="Learn about tracking rules and LFS pointers…" />
+          <gk-git-help topic="lfs" [disabled]="git.busy() || loading()" label="Learn about tracking rules and LFS pointers…" />
           <footer><button type="button" [disabled]="unavailable()" (click)="reload()">Reload patterns</button>
             <button data-lfs-close type="button" [disabled]="git.busy() || loading()" (click)="close()">Close</button></footer>
         </section>

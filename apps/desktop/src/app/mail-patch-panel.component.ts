@@ -9,7 +9,7 @@ import { repositoryOperationState } from './repository-operation';
 const MAX_SERIES = 500;
 
 @Component({
-  selector: 'gc-mail-patch-panel',
+  selector: 'gk-mail-patch-panel',
   imports: [GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -86,7 +86,7 @@ const MAX_SERIES = 500;
         <p>Series up to 16 MiB and {{ max }} patches. Applying requires a committed current branch with
           no staged or modified tracked files; untracked files are kept.</p>
       }
-      <gc-git-help topic="mail-patch" label="Learn about format-patch and am…" [disabled]="disabled() || pending()" />
+      <gk-git-help topic="mail-patch" label="Learn about format-patch and am…" [disabled]="disabled() || pending()" />
     </details>
   `,
   styles: [`

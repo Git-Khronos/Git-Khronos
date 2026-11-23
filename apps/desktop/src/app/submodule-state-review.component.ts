@@ -8,7 +8,7 @@ import { submoduleFindings } from './submodule-findings';
 
 
 @Component({
-  selector: 'gc-submodule-state-review',
+  selector: 'gk-submodule-state-review',
   imports: [GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -217,7 +217,7 @@ import { submoduleFindings } from './submodule-findings';
             </ul>
             <p class="footnote">These are sequential observations. Nested submodules report their changes through their parent submodule.</p>
           }
-          <gc-git-help topic="submodule" label="Learn about submodule state…" />
+          <gk-git-help topic="submodule" label="Learn about submodule state…" />
           <footer><button type="button" [disabled]="unavailable() || syncing()" (click)="reload()">Reload review</button>
             <button data-submodule-close type="button" [disabled]="loading() || syncing()" (click)="close()">Close</button></footer>
         </section>

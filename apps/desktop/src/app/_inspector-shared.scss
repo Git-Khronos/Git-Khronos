@@ -38,7 +38,7 @@
 @mixin file-directory {
   .file-tree-directory { width: 100%; height: 27px; display: grid; grid-template-columns: 11px 13px minmax(0, 1fr); align-items: center; gap: 5px; border-top: 1px solid var(--inspector-divider); background: var(--inspector-row); color: var(--muted); font: var(--font-size-body) var(--font-mono); text-align: left; }
   .file-tree-directory:hover { background: var(--inspector-row-hover); color: var(--inspector-text-strong); }
-  .file-tree-directory > gc-icon:nth-child(2) { color: #6c91b6; }
+  .file-tree-directory > gk-icon:nth-child(2) { color: #6c91b6; }
   .file-tree-directory span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 

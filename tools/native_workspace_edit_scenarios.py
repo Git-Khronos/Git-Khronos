@@ -21,7 +21,7 @@ def saved_checkout_status(driver, fixtures, report):
     workspace = {'id': 'owned-saved-status', 'name': 'Owned saved status',
                  'repositoryPaths': [str(path) for path in (active, saved, gone)],
                  'activeRepositoryPath': str(active)}
-    driver.wait("return !!document.querySelector('gc-root')")
+    driver.wait("return !!document.querySelector('gk-root')")
     driver.script("""
       localStorage.clear();
       localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify([arguments[0]]));
@@ -49,7 +49,7 @@ def saved_checkout_status(driver, fixtures, report):
     assert original['active'] == str(active) and original['tabs'] == [active.name], original
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    region = 'gc-workspace-center [aria-label="Saved repositories not open"]'
+    region = 'gk-workspace-center [aria-label="Saved repositories not open"]'
 
     def row(path):
         return region + ' li:has(input[aria-label=' + json.dumps('Select saved path ' + str(path)) + '])'
@@ -81,7 +81,7 @@ def reopen_workspace_tab(driver, fixtures, report):
                'activeRepositoryPath': str(first)}
     other = {'id': 'owned-reopen-other', 'name': 'Owned reopen other',
              'repositoryPaths': [str(middle)], 'activeRepositoryPath': str(middle)}
-    driver.wait("return !!document.querySelector('gc-root')")
+    driver.wait("return !!document.querySelector('gk-root')")
     driver.script("""
       localStorage.clear();
       localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify(arguments[0]));
@@ -191,7 +191,7 @@ def workspace_edit_workflow(driver, fixtures, report):
     fill('Owned workspace')
     driver.click_visible(editor + ' footer button', 'Create Workspace')
     at_workspace('Owned workspace')
-    driver.wait('return !!document.querySelector("gc-welcome-launcher")')
+    driver.wait('return !!document.querySelector("gk-welcome-launcher")')
     created = persisted()
     assert len(created['layouts']) == 2 and created['selected'] != 'default', created
     assert next(item for item in created['layouts'] if item['id'] == 'default')['repositoryPaths'] == [str(repository)]
@@ -245,7 +245,7 @@ def saved_workspace_repository_workflow(driver, fixtures, report):
                'repositoryPaths': saved, 'activeRepositoryPath': str(kept)}
     empty = {'id': 'owned-empty', 'name': 'Owned empty workspace',
              'repositoryPaths': [], 'activeRepositoryPath': None}
-    driver.wait('return !!document.querySelector("gc-root")', 60)
+    driver.wait('return !!document.querySelector("gk-root")', 60)
     driver.script("""
       localStorage.clear();
       localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify(arguments[0]));
@@ -254,7 +254,7 @@ def saved_workspace_repository_workflow(driver, fixtures, report):
     driver.reload()
 
     toggle = '.workspace-toggle'
-    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    overview = 'gk-workspace-center [aria-label="Workspace center"]'
     saved_region = overview + ' [aria-label="Saved repositories not open"]'
 
     def wait_checkout(path):
@@ -336,7 +336,7 @@ def remove_saved_workspace_paths(driver, fixtures, report):
                'repositoryPaths': saved, 'activeRepositoryPath': str(active)}
     other = {'id': 'other-memberships', 'name': 'Other memberships',
              'repositoryPaths': [str(first), str(second)], 'activeRepositoryPath': str(first)}
-    driver.wait('return !!document.querySelector("gc-root")', 60)
+    driver.wait('return !!document.querySelector("gk-root")', 60)
     driver.script("""
       localStorage.clear();
       localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify(arguments[0]));
@@ -360,7 +360,7 @@ def remove_saved_workspace_paths(driver, fixtures, report):
     assert stored() == original
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    overview = 'gk-workspace-center [aria-label="Workspace center"]'
     region = overview + ' [aria-label="Saved repositories not open"]'
     review = overview + ' [aria-labelledby="saved-paths-remove-title"]'
     driver.click_scrolled_text(region + ' button', 'Select all saved paths', wait_for_ready=True)

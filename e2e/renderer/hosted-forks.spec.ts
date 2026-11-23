@@ -46,7 +46,7 @@ async function calls(page: Page, command: string) { return page.evaluate(command
 test.beforeEach(async ({ page }) => {
   await page.goto('/'); await expect(page.locator('.branch-item').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root')); const git = app.git;
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app')); const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const account = { host: 'github.com', id: '9007199254740993', login: 'owned-user' };
     const repository = { id: '9007199254740995', ownerId: '11', owner: 'team', name: 'owned', fullName: 'team/owned', url: 'https://github.com/team/owned', cloneHttps: 'https://github.com/team/owned.git', cloneSsh: 'git@github.com:team/owned.git', description: null, defaultBranch: 'main', private: true, archived: false, disabled: false, fork: false, parent: null, source: null, canPull: true, canPush: false, forkingAllowed: true };
@@ -138,7 +138,7 @@ test('personal fork creation uses a server-held review and accepts no client-aut
   const { forks } = await reviewed(page);
   await expect(forks.getByRole('region', { name: 'Review fork creation', exact: true })).toContainText('owned-user/owned');
   expect(await calls(page, 'execute_hosted_fork')).toHaveLength(0);
-  await page.evaluate(() => { const component = (window as any).ng.getComponent(document.querySelector('gc-hosted-forks')); component.preview().plan.intent.destination.login = 'forged-owner'; });
+  await page.evaluate(() => { const component = (window as any).ng.getComponent(document.querySelector('gk-hosted-forks')); component.preview().plan.intent.destination.login = 'forged-owner'; });
   await forks.getByRole('button', { name: 'Submit reviewed fork request', exact: true }).click();
   await expect(forks.getByRole('region', { name: 'Saved fork outcome', exact: true })).toContainText('owned-user/owned');
   const execution = await calls(page, 'execute_hosted_fork'); expect(execution).toHaveLength(1); expect(Object.keys(execution[0].args).sort()).toEqual(['contextId', 'operationId', 'token']);
@@ -238,7 +238,7 @@ test('a mismatched inspection cannot hand an unverified fork to clone controls',
 
 for (const theme of ['khronos', 'midnight']) test(`${theme} fork review wraps in a compact keyboard-contained dialog`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
-  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
+  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gk-app')).setAppTheme(theme), theme);
   const { dialog, forks } = await reviewed(page);
   await expect(dialog.locator('.check input[type=checkbox]')).toHaveCount(4);
   await expect(forks.getByRole('region', { name: 'Review fork creation', exact: true })).toContainText('owned-user/owned');
@@ -294,7 +294,7 @@ test('local fork attachment requires a separate reviewed server token and preser
   await expect(dialog.getByRole('textbox', { name: 'Folder name', exact: true })).toHaveValue('owned');
   const request = (await calls(page, 'prepare_hosted_fork_remote'))[0].args;
   expect(request.request).toMatchObject({ sourceRemote: 'origin', remoteName: 'fork', transport: 'https', selection: { forkRepositoryId: '9007199254740997', accountId: '9007199254740993' } });
-  await page.evaluate(() => { const component = (window as any).ng.getComponent(document.querySelector('gc-hosted-fork-remote')); component.preview().plan.url = 'https://unowned.example.test/replaced.git'; });
+  await page.evaluate(() => { const component = (window as any).ng.getComponent(document.querySelector('gk-hosted-fork-remote')); component.preview().plan.url = 'https://unowned.example.test/replaced.git'; });
   await remote.getByRole('button', { name: 'Add reviewed remote', exact: true }).click();
   await expect(remote.getByRole('region', { name: 'Confirmed local remote', exact: true })).toContainText('https://github.com/owned-user/forked.git');
   const apply = (await calls(page, 'execute_hosted_fork_remote'))[0].args;
@@ -326,7 +326,7 @@ test('changing active local repository invalidates the old attachment preview us
   const { remote } = await reviewedAttachment(page);
   const original = (await calls(page, 'prepare_hosted_fork_remote'))[0].args.repoId;
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const next = { ...git.repository(), id: 'another-local', name: 'Another local repository', path: '/owned/another-local' };
     git.repositories.update((rows: any[]) => [...rows, next]); git.activeRepositoryId.set(next.id);
   });
@@ -340,7 +340,7 @@ test('a closed local repository discards the reviewed token using the original s
   const { remote } = await reviewedAttachment(page);
   const original = (await calls(page, 'prepare_hosted_fork_remote'))[0].args.repoId;
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.activeRepositoryId.set(null); git.repositories.set([]);
   });
   await expect(remote).toContainText('Open a local repository before attaching a fork remote');
@@ -353,7 +353,7 @@ test('a closed local repository discards the reviewed token using the original s
 test('attachment without an active local repository explains the prerequisite without preparing a remote', async ({ page }) => {
   const { remote } = await attachment(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.activeRepositoryId.set(null); git.repositories.set([]);
   });
   await expect(remote).toContainText('Open a local repository before attaching a fork remote');
@@ -408,7 +408,7 @@ test('rapid local controls close and reopen creates a usable new review context'
   const { remote } = await reviewedAttachment(page);
   const old = (await calls(page, 'prepare_hosted_fork_remote'))[0].args.contextId;
   await page.evaluate(() => {
-    const toggle = [...document.querySelectorAll('gc-hosted-forks button')].find(button => button.textContent?.trim() === 'Hide local remote controls') as HTMLButtonElement;
+    const toggle = [...document.querySelectorAll('gk-hosted-forks button')].find(button => button.textContent?.trim() === 'Hide local remote controls') as HTMLButtonElement;
     toggle.click(); toggle.click();
   });
   await remote.getByRole('button', { name: 'Review local remote', exact: true }).click();
@@ -418,7 +418,7 @@ test('rapid local controls close and reopen creates a usable new review context'
 
 for (const theme of ['khronos', 'midnight']) test(`${theme} local attachment review remains readable and keyboard-contained`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 360, height: 560 });
-  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
+  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gk-app')).setAppTheme(theme), theme);
   const { remote, dialog } = await reviewedAttachment(page);
   expect(await dialog.evaluate(element => { const box = element.getBoundingClientRect(); return box.left >= 0 && box.right <= innerWidth && element.scrollWidth <= element.clientWidth; })).toBe(true);
   await page.screenshot({ path: testInfo.outputPath(`local-fork-remote-${theme}.png`) });

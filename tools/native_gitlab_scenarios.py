@@ -114,17 +114,17 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     assert requests() == []
     driver.click_navigation('[aria-label="New repository tab"]')
     driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-    driver.click_text('gc-repository-dialog [role=tab]', 'Clone')
+    driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
     button("Browse GitLab projects")
     driver.wait("return !!document.querySelector('#gitlab-origin') && !document.querySelector('#gitlab-origin').disabled")
     assert requests() == []
     fill("#gitlab-origin", origin)
     fill("#gitlab-token", token)
-    driver.click_scrolled_text("gc-gitlab-projects button", "Connect to GitLab", wait_for_ready=True)
+    driver.click_scrolled_text("gk-gitlab-projects button", "Connect to GitLab", wait_for_ready=True)
     # Do not turn a completed refusal into a generic wait timeout or replay
     # the connection. Report only the category and credential-safe counters.
     connect_result = driver.wait("""
-        const catalogue = document.querySelector('gc-gitlab-projects');
+        const catalogue = document.querySelector('gk-gitlab-projects');
         if (!catalogue || catalogue.querySelector('section')?.getAttribute('aria-busy') === 'true') return null;
         if (catalogue.querySelector('#gitlab-account')?.value) return 'connected';
         const alert = catalogue.querySelector('[role=alert]')?.textContent.trim();
@@ -158,7 +158,7 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     report["scenarios"].append("native-gitlab-explicit-connect-verified-private-tls-native-account-and-cleared-token")
 
     button("Load GitLab projects")
-    driver.wait("return document.querySelector('gc-gitlab-projects ul')?.textContent.includes('team/subgroup/owned-project')")
+    driver.wait("return document.querySelector('gk-gitlab-projects ul')?.textContent.includes('team/subgroup/owned-project')")
     assert len(requests()) == 4, requests()
     assert all(record["credentialMatched"] and not record["destination"] for record in requests())
     assert "owned-not-exported-marker" not in driver.script("return document.body.textContent")
@@ -180,16 +180,16 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     mode("stalled")
     before = len(requests())
     button("Load GitLab projects")
-    driver.wait("return [...document.querySelectorAll('gc-gitlab-projects button')].some(b => b.textContent.trim() === 'Cancel GitLab request' && !b.disabled)")
+    driver.wait("return [...document.querySelectorAll('gk-gitlab-projects button')].some(b => b.textContent.trim() === 'Cancel GitLab request' && !b.disabled)")
     deadline = time.monotonic() + 5
     while len(requests()) == before:
         if time.monotonic() >= deadline:
             raise TimeoutError("Owned stalled GitLab request was not observed")
         time.sleep(.02)
     button("Cancel GitLab request")
-    driver.wait("return [...document.querySelectorAll('gc-gitlab-projects button')].some(b => b.textContent.trim() === 'Load GitLab projects' && !b.disabled)")
+    driver.wait("return [...document.querySelectorAll('gk-gitlab-projects button')].some(b => b.textContent.trim() === 'Load GitLab projects' && !b.disabled)")
     assert len(requests()) == before + 1
-    assert driver.script("return document.querySelector('gc-gitlab-projects ul').textContent.includes('team/subgroup/owned-project')")
+    assert driver.script("return document.querySelector('gk-gitlab-projects ul').textContent.includes('team/subgroup/owned-project')")
     report["scenarios"].append("native-gitlab-stalled-https-cancellation-retains-previous-results-and-stops-later-provider-reads")
 
     mode("normal")
@@ -210,7 +210,7 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     assert len(driver.invoke("gitlab_connections")) == 1
     before = len(requests())
     driver.restart_application()
-    driver.wait("return !!document.querySelector('gc-root')")
+    driver.wait("return !!document.querySelector('gk-root')")
     assert driver.invoke("gitlab_connections") == []
     assert len(requests()) == before
     report["scenarios"].append("native-gitlab-application-restart-restores-no-credential-and-replays-no-provider-request")

@@ -3,39 +3,39 @@
   @let menu = request.value;
   <div class="context-heading"><span>{{ menu.conflicted ? 'Conflicted file' : menu.staged ? 'Staged file' : menu.untracked ? 'Untracked file' : 'Modified file' }}</span><strong>{{ menu.path }}</strong></div>
   @if (menu.conflicted) {
-    <button type="button" role="menuitem" (click)="choose('merge-tool')"><span><gc-icon name="merge" [size]="13" /></span>Open Merge Tool</button>
-    <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
+    <button type="button" role="menuitem" (click)="choose('merge-tool')"><span><gk-icon name="merge" [size]="13" /></span>Open Merge Tool</button>
+    <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gk-icon name="file" [size]="13" /></span>Preview file content</button>
     <div class="context-divider"></div>
     <div class="context-subheading">Resolve conflict</div>
-    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('take-current')"><span><gc-icon name="check" [size]="13" /></span>Take current</button>
-    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('take-incoming')"><span><gc-icon name="check" [size]="13" /></span>Take incoming</button>
+    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('take-current')"><span><gk-icon name="check" [size]="13" /></span>Take current</button>
+    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('take-incoming')"><span><gk-icon name="check" [size]="13" /></span>Take incoming</button>
   } @else {
-    <button type="button" role="menuitem" (click)="choose('changes')"><span><gc-icon name="file" [size]="13" /></span>View changes</button>
-    <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
-    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('stage-toggle')"><span><gc-icon name="check" [size]="13" /></span>{{ menu.staged ? 'Unstage file' : 'Stage file' }}</button>
+    <button type="button" role="menuitem" (click)="choose('changes')"><span><gk-icon name="file" [size]="13" /></span>View changes</button>
+    <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gk-icon name="file" [size]="13" /></span>Preview file content</button>
+    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('stage-toggle')"><span><gk-icon name="check" [size]="13" /></span>{{ menu.staged ? 'Unstage file' : 'Stage file' }}</button>
     <div class="context-divider"></div>
-    <button type="button" role="menuitem" (click)="choose('lfs')"><span><gc-icon name="server" [size]="13" /></span>Configure Git LFS for this file type…</button>
+    <button type="button" role="menuitem" (click)="choose('lfs')"><span><gk-icon name="server" [size]="13" /></span>Configure Git LFS for this file type…</button>
   }
   @if (!menu.conflicted && !menu.staged) {
     <div class="context-divider"></div>
-    <button class="danger-item" type="button" role="menuitem" [disabled]="busy()" (click)="choose('discard')"><span><gc-icon name="trash" [size]="13" /></span>Discard changes…</button>
+    <button class="danger-item" type="button" role="menuitem" [disabled]="busy()" (click)="choose('discard')"><span><gk-icon name="trash" [size]="13" /></span>Discard changes…</button>
     <div class="context-divider"></div>
     <div class="context-subheading">Ignore</div>
-    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('ignore-file')"><span><gc-icon name="file" [size]="13" /></span>Ignore file{{ menu.untracked ? '' : ' and stop tracking…' }}</button>
-    <button type="button" role="menuitem" [disabled]="busy() || !hasExtension()" (click)="choose('ignore-extension')"><span><gc-icon name="file" [size]="13" /></span>Ignore all with this extension{{ menu.untracked ? '…' : ' and stop tracking…' }}</button>
-    <button type="button" role="menuitem" [disabled]="busy() || !hasParentDirectory()" (click)="choose('ignore-directory')"><span><gc-icon name="folder-git" [size]="13" /></span>Ignore directory{{ menu.untracked ? '…' : ' and stop tracking…' }}</button>
+    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('ignore-file')"><span><gk-icon name="file" [size]="13" /></span>Ignore file{{ menu.untracked ? '' : ' and stop tracking…' }}</button>
+    <button type="button" role="menuitem" [disabled]="busy() || !hasExtension()" (click)="choose('ignore-extension')"><span><gk-icon name="file" [size]="13" /></span>Ignore all with this extension{{ menu.untracked ? '…' : ' and stop tracking…' }}</button>
+    <button type="button" role="menuitem" [disabled]="busy() || !hasParentDirectory()" (click)="choose('ignore-directory')"><span><gk-icon name="folder-git" [size]="13" /></span>Ignore directory{{ menu.untracked ? '…' : ' and stop tracking…' }}</button>
   }
 } @else {
   @let menu = request.value;
   <div class="context-heading"><span>{{ menu.paths.length === 1 ? 'File' : menu.paths.length + ' files selected' }} at {{ menu.oid.slice(0, 8) }}</span><strong>{{ menu.paths.length === 1 ? menu.file.path : 'Restore or inspect the focused file' }}</strong></div>
-  <button type="button" role="menuitem" (click)="choose('changes')"><span><gc-icon name="file" [size]="13" /></span>View changes</button>
-  <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gc-icon name="file" [size]="13" /></span>Preview file content</button>
-  <button type="button" role="menuitem" (click)="choose('history')"><span><gc-icon name="history" [size]="13" /></span>View file history</button>
-  <button type="button" role="menuitem" (click)="choose('blame')"><span><gc-icon name="git-commit" [size]="13" /></span>Blame file</button>
+  <button type="button" role="menuitem" (click)="choose('changes')"><span><gk-icon name="file" [size]="13" /></span>View changes</button>
+  <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gk-icon name="file" [size]="13" /></span>Preview file content</button>
+  <button type="button" role="menuitem" (click)="choose('history')"><span><gk-icon name="history" [size]="13" /></span>View file history</button>
+  <button type="button" role="menuitem" (click)="choose('blame')"><span><gk-icon name="git-commit" [size]="13" /></span>Blame file</button>
   <div class="context-divider"></div>
   @if (stash()) {
-    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('apply-stash')"><span><gc-icon name="archive-restore" [size]="13" /></span>Apply stashed changes for this file…</button>
+    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('apply-stash')"><span><gk-icon name="archive-restore" [size]="13" /></span>Apply stashed changes for this file…</button>
   } @else {
-    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('restore')"><span><gc-icon name="archive-restore" [size]="13" /></span>{{ menu.paths.length === 1 ? 'Restore file' : 'Restore ' + menu.paths.length + ' selected files' }} from this commit…</button>
+    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('restore')"><span><gk-icon name="archive-restore" [size]="13" /></span>{{ menu.paths.length === 1 ? 'Restore file' : 'Restore ' + menu.paths.length + ' selected files' }} from this commit…</button>
   }
 }

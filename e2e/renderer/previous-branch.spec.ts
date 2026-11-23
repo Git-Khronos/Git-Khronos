@@ -8,7 +8,7 @@ async function installFixture(page: Page, result: 'target' | 'empty' | 'hold' | 
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(({ result, target }) => {
     const host = window as any;
-    const { git } = host.ng.getComponent(document.querySelector('gc-root'));
+    const { git } = host.ng.getComponent(document.querySelector('gk-app'));
     let repo = { ...git.repository(), worktrees: git.repository().worktrees.filter((tree: any) => tree.current) };
     git.repositories.update((rows: any[]) => rows.map(candidate => candidate.id === repo.id ? repo : candidate));
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'previous branch fixture' }));
@@ -93,7 +93,7 @@ for (const retirement of ['typing another query', 'changing the checkout', 'clos
       await page.keyboard.press('Escape');
       await expect(opener).toBeFocused();
     } else await page.evaluate(() => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const next = { ...git.repository(), id: 'next-previous-branch-visit', path: '/owned/previous-branch-other' };
       git.repositories.update((repos: any[]) => [...repos, next]);
       git.activeRepositoryId.set(next.id);

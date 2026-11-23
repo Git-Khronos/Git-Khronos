@@ -9,7 +9,7 @@ for (const scenario of ['load', 'close', 'error'] as const) {
     await page.route('**/chunk-*.js', async route => {
       const response = await route.fetch();
       const text = await response.text();
-      if (!text.includes('gc-diff-workspace') || !text.includes('Jump to change')) {
+      if (!text.includes('gk-diff-workspace') || !text.includes('Jump to change')) {
         await route.fulfill({ response, body: text });
         return;
       }

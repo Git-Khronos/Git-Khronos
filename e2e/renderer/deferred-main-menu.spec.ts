@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { lazyChunkForExport, requestIsChunk } from './lazy-chunk-routing';
 
 async function interceptMenu(page: Page, fail = false) {
   let release!: () => void;
@@ -6,10 +7,12 @@ async function interceptMenu(page: Page, fail = false) {
   let delivered!: () => void;
   const delivery = new Promise<void>(resolve => { delivered = resolve; });
   let requests = 0;
+  let menuChunk: string | null = null;
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
     const source = await response.text();
-    if (!source.includes('MainMenuContentComponent')) {
+    menuChunk = lazyChunkForExport(source, 'MainMenuContentComponent') ?? menuChunk;
+    if (!requestIsChunk(route.request().url(), menuChunk)) {
       await route.fulfill({ response, body: source });
       return;
     }
@@ -104,7 +107,7 @@ test('retired main-menu DOM does not consume the next key', async ({ page }) => 
   await page.getByRole('button', { name: 'Main menu', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Manage Repositories' })).toBeVisible();
   expect(await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const menu = document.querySelector('.app-menu-popover')!;
     app.appMenuOpen.set(false);
     const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });

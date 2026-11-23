@@ -5,7 +5,7 @@ async function mockRecovery(page: Page, stale = false, loadFailure = false): Pro
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
   await page.evaluate(({ stale, loadFailure }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const repository = git.repository();
@@ -118,7 +118,7 @@ test('discovers durable reset captures and restores on an explicitly named clean
   await expect(capture.getByRole('button', { name: 'Restore and switch' })).toBeDisabled();
   await expect(capture).toContainText('Save current changes');
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repository = app.git.repository();
     app.git.repositories.update((repositories: any[]) => repositories.map((item) => item.id === repository.id
       ? { ...item, status: { ...item.status, entryCount: 0, entries: [], staged: 0, unstaged: 0, untracked: 0 } } : item));
@@ -166,7 +166,7 @@ test('blocks cross-repository capture actions and focuses the recovery error', a
   const capture = dialog.locator('.operation-capture');
   await capture.getByRole('button', { name: 'Remove capture...' }).click();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const other = { ...app.git.repository(), id: 'another-repository', path: '/test/another' };
     app.git.repositories.update((repositories: any[]) => [...repositories, other]);
     app.git.activeRepositoryId.set('another-repository');
@@ -200,7 +200,7 @@ test('keeps reflog branch creation scoped to the reviewed repository', async ({ 
   await openRecovery(page);
   const dialog = page.getByRole('dialog', { name: 'Recovery history' });
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.git.reflog.set({
       entries: [{
         oid: app.git.repository().headOid, selector: 'HEAD@{0}', subject: 'Before reset',
@@ -210,7 +210,7 @@ test('keeps reflog branch creation scoped to the reviewed repository', async ({ 
   });
   await dialog.getByRole('button', { name: 'Create branch', exact: true }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((repositories: any[]) => [
       ...repositories, { ...git.repository(), id: 'another-repository', path: '/test/another' },
     ]);

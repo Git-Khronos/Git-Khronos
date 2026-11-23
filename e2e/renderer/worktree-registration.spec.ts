@@ -10,7 +10,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     app.worktreesOpen.set(true);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -66,7 +66,7 @@ test('registration review distinguishes prunable and locked entries and invokes 
     item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   });
   await expect.poll(() => page.evaluate(() =>
-    (window as any).ng.getComponent(document.querySelector('gc-root')).worktreeRegistrationRequest())).toBeNull();
+    (window as any).ng.getComponent(document.querySelector('gk-app')).worktreeRegistrationRequest())).toBeNull();
   await expect(actions).toBeFocused();
   expect(await page.evaluate(reads => (window as any).__worktreeRegistration.calls.filter(
     (call: { command: string }) => !reads.includes(call.command)), independentBackgroundReads)).toEqual([]);
@@ -117,7 +117,7 @@ test('pending registration scan blocks dismissal and repository switches prevent
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
     (window as any).__worktreeRegistration.finish();
@@ -271,7 +271,7 @@ test('locked and main registrations never offer removal, and a repository switch
   await expect(items.nth(2).getByRole('button')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Remove with recovery…', exact: true }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
   });

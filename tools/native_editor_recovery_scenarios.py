@@ -104,17 +104,17 @@ def editor_draft_recovery(driver, fixtures, original_repository, report):
     def recovery_panel():
         driver.click('[aria-label="Main menu"]')
         driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Editor draft recovery')
-        driver.wait("return !!document.querySelector('gc-editor-draft-recovery [role=dialog]')")
+        driver.wait("return !!document.querySelector('gk-editor-draft-recovery [role=dialog]')")
 
     open_ui(driver, repository)
     driver.click('.wip-nav')
     selector = '[aria-label=' + json.dumps('View changes in ' + path) + ']'
     driver.context_click(selector)
-    driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
-    button('gc-file-content-dialog button', 'Edit working copy')
+    driver.click_scrolled_text('gk-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
+    button('gk-file-content-dialog button', 'Edit working copy')
     driver.wait("return !!document.querySelector('#working-editor-text')&&!document.querySelector('#working-editor-text').readOnly")
     driver.script("const input=document.querySelector('#working-editor-text');input.value=arguments[0];input.dispatchEvent(new Event('input',{bubbles:true}));", draft)
-    driver.wait("return [...document.querySelectorAll('gc-working-file-editor [role=status]')].some(p=>p.textContent.includes('Local recovery copy saved.'))")
+    driver.wait("return [...document.querySelectorAll('gk-working-file-editor [role=status]')].some(p=>p.textContent.includes('Local recovery copy saved.'))")
     inventory = driver.invoke('inspect_editor_drafts')
     entries = [entry for entry in inventory['entries'] if (entry.get('draft') or {}).get('repositoryPath') == str(repository)]
     assert not inventory['incomplete'] and len(entries) == 1, inventory
@@ -162,25 +162,25 @@ def editor_draft_recovery(driver, fixtures, original_repository, report):
     assert cache_file.read_bytes() == cache_bytes
     metadata_unchanged()
     recovery_panel()
-    driver.wait('return [...document.querySelectorAll("gc-editor-draft-recovery nav button")].some(b=>b.textContent.includes(' + json.dumps(path) + '))')
-    entry = driver.script('return [...document.querySelectorAll("gc-editor-draft-recovery nav button")].find(b=>b.textContent.includes(arguments[0]))', path)
+    driver.wait('return [...document.querySelectorAll("gk-editor-draft-recovery nav button")].some(b=>b.textContent.includes(' + json.dumps(path) + '))')
+    entry = driver.script('return [...document.querySelectorAll("gk-editor-draft-recovery nav button")].find(b=>b.textContent.includes(arguments[0]))', path)
     identifier = entry['element-6066-11e4-a52e-4f735466cecf']
     driver.request('POST', driver.path('element/' + identifier + '/click'), {})
     driver.wait('return document.querySelector("#retained-editor-text")?.value===' + json.dumps(draft))
-    assert driver.script("return document.querySelectorAll('gc-editor-draft-recovery img,gc-editor-draft-recovery iframe').length") == 0
-    button('gc-editor-draft-recovery button', 'Review working file')
+    assert driver.script("return document.querySelectorAll('gk-editor-draft-recovery img,gk-editor-draft-recovery iframe').length") == 0
+    button('gk-editor-draft-recovery button', 'Review working file')
     driver.wait("return document.querySelector('#working-editor-text')?.value==='working before crash\\n'")
-    button('gc-working-file-editor button', 'Load recovered text into editor')
+    button('gk-working-file-editor button', 'Load recovered text into editor')
     driver.wait('return document.querySelector("#working-editor-text")?.value===' + json.dumps(draft))
     assert file.read_bytes() == working
     assert cache_file.read_bytes() == cache_bytes
     metadata_unchanged()
     driver.screenshot(Path(report['artifactsDirectory']) / 'recovery-reviewed-before-save.png')
-    button('gc-working-file-editor button', 'Save file')
-    driver.wait("return [...document.querySelectorAll('gc-working-file-editor [role=status]')].some(p=>p.textContent.trim()==='File saved.')")
+    button('gk-working-file-editor button', 'Save file')
+    driver.wait("return [...document.querySelectorAll('gk-working-file-editor [role=status]')].some(p=>p.textContent.trim()==='File saved.')")
     assert file.read_bytes() == b'\xef\xbb\xbf' + draft.replace('\n', '\r\n').encode()
     metadata_unchanged()
-    driver.wait('return !document.querySelector("gc-working-file-editor [role=alert]")')
+    driver.wait('return !document.querySelector("gk-working-file-editor [role=alert]")')
     remaining = driver.invoke('inspect_editor_drafts')
     assert not remaining['incomplete'] and not any(entry['id'] == source['id'] for entry in remaining['entries']), remaining
     assert not cache_file.exists()
@@ -189,6 +189,6 @@ def editor_draft_recovery(driver, fixtures, original_repository, report):
         'native-recovery-explicit-inert-review-load-without-disk-index-ref-config-mutation',
         'native-recovery-explicit-save-preserves-bom-crlf-and-index-cleans-reviewed-source',
     ])
-    button('gc-working-file-editor button', 'Back to preview')
+    button('gk-working-file-editor button', 'Back to preview')
     driver.key('\ue00c')
     open_ui(driver, original_repository)

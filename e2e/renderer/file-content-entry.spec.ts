@@ -17,7 +17,7 @@ async function prepare(page: Page, context: Context, held = false) {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(async ({ context, path, previousPath, response, held }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git, original = git.repository();
     await git.inspectCommit(original.headOid);
     const details = git.commitDetails();
@@ -171,7 +171,7 @@ test('a stale menu click cannot read the same path from a different repository',
     if (!(button instanceof HTMLButtonElement)) throw Error('Expected a file content menu button');
     button.click();
   });
-  await expect(page.locator('gc-file-content-dialog')).toHaveCount(0);
+  await expect(page.locator('gk-file-content-dialog')).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__directContent.calls.filter((call: any) => call.command === 'inspect_file_media').length)).toBe(0);
 });
 
@@ -233,7 +233,7 @@ test('cancelling before deferred content code arrives never starts a late file r
     await expect(loading).toHaveCount(0);
     release();
     await page.waitForLoadState('networkidle');
-    await expect(page.locator('gc-file-content-dialog')).toHaveCount(0);
+    await expect(page.locator('gk-file-content-dialog')).toHaveCount(0);
     expect(await page.evaluate(() => (window as any).__directContent.calls.filter((call: any) => call.command === 'inspect_file_media').length)).toBe(0);
   } finally {
     release();

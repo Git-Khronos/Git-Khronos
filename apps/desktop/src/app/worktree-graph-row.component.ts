@@ -4,7 +4,7 @@ import type { GraphRowView, WorktreeWipRow } from './app.component';
 import { IconComponent } from './icon.component';
 
 @Component({
-  selector: 'gc-worktree-graph-row',
+  selector: 'gk-worktree-graph-row',
   imports: [TextValueDirective, IconComponent],
   templateUrl: './worktree-graph-row.component.html',
   styles: ':host { display: contents; }',

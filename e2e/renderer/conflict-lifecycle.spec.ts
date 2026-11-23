@@ -4,7 +4,7 @@ async function prepare(page: Page, ui = false): Promise<void> {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(async ui => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const status = { ...repository.status, staged: 0, unstaged: 0, untracked: 0, conflicted: 2, entryCount: 2, mergeInProgress: true,

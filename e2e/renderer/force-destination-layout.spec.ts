@@ -5,13 +5,13 @@ for (const viewport of [{ width: 780, height: 560 }, { width: 1100, height: 700 
     await page.setViewportSize(viewport);
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
-    await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).requestForcePush());
+    await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).requestForcePush());
     const modal = page.getByRole('alertdialog', { name: 'Force push main', exact: true });
     const destinations = modal.getByRole('list', { name: 'Configured push destinations' });
     await expect(destinations).toBeVisible();
     // Presentation-only probe at the native count limit; no Git command runs.
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       (window as any).__layoutPushes = 0;
       app.git.forcePushWithLease = () => { (window as any).__layoutPushes++; };
       app.forcePushDestination.set({ state: 'd'.repeat(64), destinations: Array.from({ length: 128 }, (_, index) =>

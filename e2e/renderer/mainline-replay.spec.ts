@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const repository = git.repository();
@@ -108,7 +108,7 @@ test('merge parent confirmation keeps keyboard navigation and cancellation indep
 
 test('mixed cherry-pick selection containing a merge refuses a shared implicit mainline', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__mainline;
     app.openHistoryConfirmation({ kind: 'cherry-pick', oid: fixture.oid,
       oids: [app.git.repository().commits.find((commit: any) => commit.oid !== fixture.oid).oid, fixture.oid],
@@ -144,7 +144,7 @@ test('mainline reference selects the relevant official Git topic without executi
 
 test('inspector action reviews a searched merge outside the loaded graph instead of losing its parents', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__mainline;
     const commit = { ...app.git.repository().commits.find((commit: any) => commit.oid === fixture.oid),
       oid: 'c'.repeat(40), subject: 'Searched merge outside loaded graph' };
@@ -166,7 +166,7 @@ test('repository change dismisses merge confirmation and cannot replay captured 
   await openReplay(page, 'revert');
   await page.getByRole('alertdialog').getByLabel('Mainline parent (required)').selectOption({ index: 2 });
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repository = app.git.repository();
     app.git.repositories.update((items: any[]) => [...items, { ...repository, id: 'other-mainline-repository' }]);
     app.git.activeRepositoryId.set('other-mainline-repository');
@@ -179,7 +179,7 @@ test('repository change dismisses merge confirmation and cannot replay captured 
 for (const returnBack of [false, true]) {
   test(`repository switch ${returnBack ? 'away and back' : 'away'} during target checkout invalidates the original review`, async ({ page }) => {
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const fixture = (window as any).__mainline;
       fixture.deferCheckout = true;
       app.openHistoryConfirmation({ kind: 'cherry-pick', oid: fixture.oid, oids: [fixture.oid],
@@ -190,18 +190,18 @@ for (const returnBack of [false, true]) {
     await dialog.getByRole('button', { name: 'Cherry-pick onto feature/partial-staging', exact: true }).click();
     await expect.poll(() => page.evaluate(() => !!(window as any).__mainline.resolveCheckout)).toBe(true);
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repository = app.git.repository();
       app.git.repositories.update((items: any[]) => [...items, { ...repository, id: 'other-mainline-repository' }]);
       app.git.activeRepositoryId.set('other-mainline-repository');
     });
     await expect(dialog).toHaveCount(0);
     await page.evaluate(returnBack => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       if (returnBack) app.git.activeRepositoryId.set((window as any).__mainline.repoId);
       (window as any).__mainline.resolveCheckout();
     }, returnBack);
-    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
     expect(await page.evaluate(() => (window as any).__mainline.calls
       .some((call: any) => ['cherry_pick_commits', 'revert_commit'].includes(call.command)))).toBe(false);
   });

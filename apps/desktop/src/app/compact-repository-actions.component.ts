@@ -33,7 +33,7 @@ export interface CompactRepositoryActionsView {
 
 /** The root retains keyboard intent, repository identity and Git dispatch. */
 @Component({
-  selector: 'div[gcCompactRepositoryActions]',
+  selector: 'div[gkCompactRepositoryActions]',
   imports: [IconComponent],
   templateUrl: './compact-repository-actions.component.html',
   styleUrl: './compact-repository-actions.component.scss',

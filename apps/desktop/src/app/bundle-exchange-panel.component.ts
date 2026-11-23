@@ -7,7 +7,7 @@ import { GitKhronosService, type ActivityReporter } from './git-khronos.service'
 import { GitHelpComponent } from './git-help.component';
 
 @Component({
-  selector: 'gc-bundle-exchange-panel',
+  selector: 'gk-bundle-exchange-panel',
   imports: [FormsModule, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -91,7 +91,7 @@ import { GitHelpComponent } from './git-help.component';
         Export also refuses shallow repositories and legacy grafted history. Larger exports,
         bare repositories and tag import require local Git. Git may retain
         imported objects after a failure; disk errors and outside processes are not transactional.</p>
-      <gc-git-help topic="bundle" label="Learn about offline bundles…" [disabled]="disabled() || pending()" />
+      <gk-git-help topic="bundle" label="Learn about offline bundles…" [disabled]="disabled() || pending()" />
     </details>
   `,
   styles: [`

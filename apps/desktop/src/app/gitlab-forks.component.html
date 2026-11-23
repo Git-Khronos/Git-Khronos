@@ -35,9 +35,9 @@
     </section>
   }
   @for (target of cloneTarget() ? [cloneTarget()!] : []; track target.key) {
-    <gc-gitlab-clone [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
+    <gk-gitlab-clone [connection]="target.connection" [project]="target.project" [initialParentPath]="initialParentPath()"
       (back)="closeClone()" (opening)="opening.emit()" (opened)="opened.emit()" />
   }
 </section>
 
-@if (creating()) { <gc-gitlab-fork-create [connection]="connection()" [project]="project()" (back)="closeCreation()" (outcomes)="inspectOutcomes($event)" /> }
+@if (creating()) { <gk-gitlab-fork-create [connection]="connection()" [project]="project()" (back)="closeCreation()" (outcomes)="inspectOutcomes($event)" /> }

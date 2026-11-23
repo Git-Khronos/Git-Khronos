@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('gc-authentication')).toBeAttached();
+  await expect(page.locator('gk-authentication')).toBeAttached();
   await page.evaluate(() => {
     (window as any).__authAnswers = [];
     (window as any).__TAURI_INTERNALS__ = {
@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
         throw new Error(`Unexpected command: ${command}`);
       },
     };
-    const component = (window as any).ng.getComponent(document.querySelector('gc-authentication'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-authentication'));
     component.receive({ requestId: 'auth-1', operationId: 'operation-1', repositoryId: null, secret: false });
   });
 });
@@ -28,7 +28,7 @@ test('asks for credentials, masks secrets, clears answers, and supports retry', 
   await username.press('Enter');
   await expect(dialog).not.toBeVisible();
   await page.evaluate(() => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-authentication'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-authentication'));
     component.receive({ requestId: 'auth-2', operationId: 'operation-1', repositoryId: null, secret: true });
   });
   const secret = page.getByLabel('Password or key passphrase', { exact: true });
@@ -46,7 +46,7 @@ test('asks for credentials, masks secrets, clears answers, and supports retry', 
     { requestId: 'auth-2', answer: 'fixture-secret' },
   ]);
   await page.evaluate(() => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-authentication'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-authentication'));
     component.receive({ requestId: 'auth-3', operationId: 'operation-1', repositoryId: null, secret: true });
   });
   await expect(secret).toHaveValue('');
@@ -58,14 +58,14 @@ test('asks for credentials, masks secrets, clears answers, and supports retry', 
 
 test('dismissal clears secrets and queued repository prompts remain separate', async ({ page }) => {
   await page.evaluate(() => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-authentication'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-authentication'));
     component.receive({ requestId: 'auth-2', operationId: 'operation-2', repositoryId: 'other', secret: true });
     component.dismiss('auth-1');
   });
   const secret = page.getByLabel('Password or key passphrase', { exact: true });
   await secret.fill('must-not-persist');
   await page.evaluate(() => {
-    const component = (window as any).ng.getComponent(document.querySelector('gc-authentication'));
+    const component = (window as any).ng.getComponent(document.querySelector('gk-authentication'));
     component.dismiss('auth-2');
     component.receive({ requestId: 'auth-3', operationId: 'operation-3', repositoryId: null, secret: true });
   });
@@ -93,7 +93,7 @@ test('shows bounded submission feedback and actionable errors without retaining 
 
 test('compact authentication keeps both actions inside the dialog', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 650 });
-  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).setZoom(200));
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).setZoom(200));
   const dialog = page.getByRole('dialog', { name: 'Git authentication' });
   const actions = dialog.locator('.actions');
   expect(await actions.evaluate(element => {

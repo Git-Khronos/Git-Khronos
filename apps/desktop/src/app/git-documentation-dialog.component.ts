@@ -5,7 +5,7 @@ import { GitDocumentationService } from './git-documentation.service';
 import { GIT_DOCUMENTATION_TOPICS, GIT_RELATED_MANUALS } from './git-documentation-topics';
 
 @Component({
-  selector: 'gc-git-documentation-dialog',
+  selector: 'gk-git-documentation-dialog',
   imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

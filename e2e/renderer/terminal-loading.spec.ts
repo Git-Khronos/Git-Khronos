@@ -9,7 +9,7 @@ for (const scenario of ['cancel while loading', 'failed import', 'failure after 
     await page.route('**/chunk-*.js', async route => {
       const response = await route.fetch();
       const body = await response.text();
-      if (!body.includes('gc-terminal-panel') || !body.includes('Repository terminals for')) {
+      if (!body.includes('gk-terminal-panel') || !body.includes('Repository terminals for')) {
         await route.fulfill({ response, body });
         return;
       }
@@ -28,7 +28,7 @@ for (const scenario of ['cancel while loading', 'failed import', 'failure after 
       const fallback = scenario === 'failed import' ? failed : loading;
       const close = fallback.getByRole('button', { name: 'Back to graph', exact: true });
       await expect(close).toBeFocused();
-      await expect(page.locator('gc-terminal-panel')).toHaveCount(0);
+      await expect(page.locator('gk-terminal-panel')).toHaveCount(0);
       if (scenario === 'failure after moving focus') {
         const search = page.getByRole('button', { name: 'Search all repository history', exact: true });
         await search.focus();
@@ -47,7 +47,7 @@ for (const scenario of ['cancel while loading', 'failed import', 'failure after 
       await expect(opener).toBeFocused();
       await expect(loading).toHaveCount(0);
       await expect(failed).toHaveCount(0);
-      await expect(page.locator('gc-terminal-panel')).toHaveCount(0);
+      await expect(page.locator('gk-terminal-panel')).toHaveCount(0);
       await expect(page.locator('.commit-row').first()).toBeVisible();
     } finally {
       release();

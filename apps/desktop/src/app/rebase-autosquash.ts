@@ -18,7 +18,7 @@ export function previewAutosquash(steps: readonly RebaseStepView[]): AutosquashR
   let matched = 0;
   for (let index = 0; index < steps.length; index++) {
     const step = steps[index];
-    const marker = /^(fixup|squash)! (.+)$/.exec(step.subject);
+    const marker = /^(fixup|squash|amend)! (.+)$/.exec(step.subject);
     if (!marker) {
       if (/^(fixup|squash|amend)!/.test(step.subject)) {
         return refuse(`Unsupported autosquash marker in "${step.subject}". Set its action manually.`);
@@ -31,8 +31,14 @@ export function previewAutosquash(steps: readonly RebaseStepView[]): AutosquashR
     const target = marker[2];
     const preceding = steps.slice(0, index);
     const exact = preceding.filter(candidate => candidate.subject === target || candidate.oid === target);
-    const candidates = exact.length ? exact : /^[0-9a-f]{4,64}$/i.test(target)
+    const abbreviations = exact.length ? [] : /^[0-9a-f]{4,64}$/i.test(target)
       ? preceding.filter(candidate => candidate.oid.toLowerCase().startsWith(target.toLowerCase())) : [];
+    // Git's autosquash recognizes a unique subject prefix (for example
+    // `fixup! Add parser` for `Add parser with tests`). Preserve exact-match
+    // precedence, then unique object-ID abbreviations, then unique subject
+    // prefixes; never choose silently if any fallback has multiple targets.
+    const candidates = exact.length ? exact : abbreviations.length ? abbreviations
+      : preceding.filter(candidate => candidate.subject.startsWith(target));
     if (candidates.length !== 1) {
       return refuse(`${candidates.length ? 'Ambiguous' : 'Unmatched'} autosquash target "${target}". Use an exact unique subject or commit ID from an earlier row.`);
     }
@@ -40,7 +46,8 @@ export function previewAutosquash(steps: readonly RebaseStepView[]): AutosquashR
     const group = root ? groups.get(root) : undefined;
     if (!root || !group) return refuse(`Unsupported autosquash target "${target}". Set its action manually.`);
     roots.set(step.oid, root);
-    group.push({ ...step, action: marker[1] === 'fixup' ? 'fixup' : 'squash' });
+    const action = marker[1] === 'amend' ? 'fixup-reword' : marker[1] === 'fixup' ? 'fixup' : 'squash';
+    group.push({ ...step, action });
     matched++;
   }
   if (!matched) return refuse('No fixup! or squash! commits matched. The plan is unchanged.');

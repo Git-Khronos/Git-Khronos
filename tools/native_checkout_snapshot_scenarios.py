@@ -15,7 +15,7 @@ def coherent_checkout_snapshot(driver, fixtures, report):
     (gate / 'mode').write_text('refs/remotes')
     hold = gate / 'hold'
     entered = gate / 'started'
-    driver.wait('return !!document.querySelector("gc-root")')
+    driver.wait('return !!document.querySelector("gk-root")')
     hold.touch()
     try:
         driver.script("""window.__ownedCheckoutSnapshot = { pending: true };

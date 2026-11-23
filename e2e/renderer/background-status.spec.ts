@@ -5,7 +5,7 @@ test('a repository file event is not lost while a periodic status read is active
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const updated = { ...repository, tags: [
@@ -40,7 +40,7 @@ test('a repository file event is not lost while a periodic status read is active
   });
   await page.clock.runFor(2_000);
   const state = await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return { metadataReads: (window as any).__watcherStatusRace.metadataReads,
       names: git.repository().tags.map((tag: { name: string }) => tag.name) };
   });
@@ -52,7 +52,7 @@ test('continuous repository watcher events cannot postpone a visible refresh ind
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const fixture = { app, repository, reads: 0 };
@@ -87,7 +87,7 @@ test('repository change timers retire on close and coalesce for the reopened tab
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const fixture = { app, git, repository, metadataReads: 0 };
@@ -128,7 +128,7 @@ test('ignores status replies started before closing and reopening a repository',
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const status = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const fresh = { ...repository, status: { ...repository.status,
       entries: [], entryCount: 0, staged: 0, unstaged: 0, untracked: 0 } };
@@ -157,7 +157,7 @@ test('restored tags load after the deferred metadata read meets an in-flight sta
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const thin = { ...repository, tags: [] };
     const full = { ...thin, tags: [{ name: 'retained-tag', fullName: 'refs/tags/retained-tag', oid: repository.commits[0].oid }] };
@@ -208,7 +208,7 @@ test('a failed tags read stays distinguishable from an empty repository and retr
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = { ...git.repository(), tags: [] };
     const state = { reads: 0 };
     (window as any).__tagReadRetry = state;
@@ -251,7 +251,7 @@ test('each workspace keeps its own tag-loading state when the same repository is
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const originalWorkspace = git.activeWorkspaceId();
     const thin = { ...git.repository(), tags: [] };
     const hydrated = { ...thin, tags: [{ name: 'shared-tag', fullName: 'refs/tags/shared-tag', oid: thin.commits[0].oid }] };
@@ -300,7 +300,7 @@ for (const read of ['metadata', 'background fetch'] as const) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     await page.evaluate(async read => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const origin = git.activeWorkspaceId();
       const thin = { ...git.repository(), tags: [] };
       const withTag = (name: string) => ({
@@ -349,7 +349,7 @@ test('keeps untracked discovery after an external branch change', async ({ page 
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const clean = { ...repository.status, branch: 'externally-checked-out',
       entries: [], entryCount: 0, staged: 0, unstaged: 0, untracked: 0 };
@@ -379,7 +379,7 @@ test('retries inconsistent branch snapshots without looping or losing untracked 
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const initial = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const knownEntry = { path: 'known.txt', indexStatus: '?', worktreeStatus: '?', conflicted: false };
     const nextEntry = { path: 'after-checkout.txt', indexStatus: '?', worktreeStatus: '?', conflicted: false };
@@ -425,7 +425,7 @@ test('reports an inconsistent branch after a manual refresh', async ({ page }) =
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   const result = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const commands: string[] = [];
     (window as any).__TAURI_INTERNALS__ = {
@@ -451,7 +451,7 @@ for (const mode of ['background', 'manual', 'fetch']) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const result = await page.evaluate(async (mode) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const git = app.git;
       const repository = git.repository();
       const clean = { ...repository.status, entries: [], entryCount: 0, staged: 0, unstaged: 0, untracked: 0 };

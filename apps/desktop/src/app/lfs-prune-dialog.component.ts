@@ -4,7 +4,7 @@ import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
 
 @Component({
-  selector: 'gc-lfs-prune-dialog',
+  selector: 'gk-lfs-prune-dialog',
   imports: [IconComponent],
   templateUrl: './lfs-prune-dialog.component.html',
   styleUrl: './lfs-prune-dialog.component.scss',

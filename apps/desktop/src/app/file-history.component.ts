@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, Injector, afterNextRend
 import { HistorySearchService } from './history-search.service';
 
 @Component({
-  selector: 'gc-file-history',
+  selector: 'gk-file-history',
   imports: [DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

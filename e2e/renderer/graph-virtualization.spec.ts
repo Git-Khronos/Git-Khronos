@@ -8,7 +8,7 @@ async function loadLongHistory(page: Page, total = TOTAL): Promise<void> {
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
   await page.evaluate((total) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repository = app.git.repository();
     const template = repository.commits[1];
     const oid = (index: number) => index.toString(16).padStart(40, '0');
@@ -152,7 +152,7 @@ test('scrolling evaluates graph paths only for rows entering the window', async 
   await page.setViewportSize({ width: 1600, height: 900 });
   await loadLongHistory(page, 20_000);
   const work = await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const list = document.querySelector<HTMLElement>('.commit-list')!;
     const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const waitForRows = async () => {
@@ -272,7 +272,7 @@ test('wheel bursts larger than the overscan never expose an empty viewport', asy
 test('wheel rendering checks only the history viewport, not the working-tree panel', async ({ page }) => {
   await loadLongHistory(page, 20_000);
   const result = await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const viewport = app.graphViewport();
     const originalRender = viewport.render;
     const originalDirectory = app.fileDirectory;
@@ -316,7 +316,7 @@ for (const input of ['wheel', 'scrollbar'] as const) {
     const list = page.locator('.commit-list');
     await list.hover();
     const result = await page.evaluate((input) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const list = document.querySelector<HTMLElement>('.commit-list')!;
       const before = app.hoveredCommitOid();
       if (input === 'wheel') {
@@ -330,7 +330,7 @@ for (const input of ['wheel', 'scrollbar'] as const) {
     }, input);
     expect(result.during).toBe(result.before);
     await expect.poll(() => page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const row = document.querySelector<HTMLElement>('.commit-row[data-commit-oid]:hover');
       return app.graphHoverResumeTimer === null
         && app.hoveredCommitOid() === (row?.dataset['commitOid'] ?? null);
@@ -341,7 +341,7 @@ for (const input of ['wheel', 'scrollbar'] as const) {
 test('scrolling defers reference-stack pointer previews but preserves keyboard focus', async ({ page }) => {
   await loadLongHistory(page);
   const result = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const list = document.querySelector<HTMLElement>('.commit-list')!;
     list.dispatchEvent(new WheelEvent('wheel', { deltaY: 4000, cancelable: true }));
     app.openReferenceStack('pointer-preview', new PointerEvent('pointerenter'));
@@ -358,7 +358,7 @@ test('scrolling defers reference-stack pointer previews but preserves keyboard f
 test('scrolling releases a pinned reference stack after its virtual row leaves the viewport', async ({ page }) => {
   await loadLongHistory(page);
   const result = await page.evaluate(async () => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const list = document.querySelector<HTMLElement>('.commit-list')!;
     const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 

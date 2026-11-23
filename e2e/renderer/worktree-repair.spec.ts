@@ -4,7 +4,7 @@ async function setup(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     app.worktreesOpen.set(true);
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -73,7 +73,7 @@ test('repair missing worktree explains registration-only scope and pins selected
     item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   });
   await expect.poll(() => page.evaluate(() =>
-    (window as any).ng.getComponent(document.querySelector('gc-root')).worktreeMoveRequest())).toBeNull();
+    (window as any).ng.getComponent(document.querySelector('gk-app')).worktreeMoveRequest())).toBeNull();
   await expect(actions).toBeFocused();
   expect(await page.evaluate(() => (window as any).__worktreeRepair.calls
     .some((entry: { command: string }) => entry.command === 'repair_worktree'))).toBe(false);
@@ -145,7 +145,7 @@ test('repository switch prevents repairing an old repository registration', asyn
   await setup(page);
   await openRepair(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => [...items, { ...git.repository(), id: 'other' }]);
     git.activeRepositoryId.set('other');
   });
@@ -157,7 +157,7 @@ test('repository switch prevents repairing an old repository registration', asyn
 test('locked and open missing registrations cannot be repaired from their menu', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map((item) => ({ ...item,
       worktrees: item.worktrees.map((worktree: any) => !worktree.current ? { ...worktree, locked: true } : worktree) })));
   });
@@ -166,7 +166,7 @@ test('locked and open missing registrations cannot be repaired from their menu',
   await expect(page.getByRole('menuitem', { name: 'Repair after external move…', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const snapshot = git.repository();
     const worktree = snapshot.worktrees.find((item: any) => !item.current);
     git.repositories.update((items: any[]) => [...items.map((item) => ({ ...item,

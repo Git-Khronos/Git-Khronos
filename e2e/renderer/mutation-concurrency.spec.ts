@@ -4,7 +4,7 @@ async function prepare(page: Page) {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const entries = ['first.txt', 'second.txt'].map(path => ({ path, indexStatus: ' ', worktreeStatus: 'M', conflicted: false }));
     const before = { ...repository.status, entries, staged: 0, unstaged: 2, untracked: 0, conflicted: 0,

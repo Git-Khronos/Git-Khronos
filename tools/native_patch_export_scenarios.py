@@ -15,7 +15,7 @@ def patch_export_scope(driver, fixtures, report):
     fixtures.git(repository, 'commit', '-qm', 'Record neighbour')
     repo_id = open_ui(driver, repository)
 
-    panel = 'gc-patch-exchange-panel > details'
+    panel = 'gk-patch-exchange-panel > details'
     export = panel + ' fieldset:first-of-type'
     save = export + ' > button'
     driver.click_visible('[aria-label="Preferences"]')

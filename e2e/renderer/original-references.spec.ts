@@ -7,7 +7,7 @@ const privateOid = 'a'.repeat(40);
 
 async function installFixture(page: Page): Promise<void> {
   await page.evaluate(({ privateRef, commaRef, siblingRef, privateOid }) => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const base = structuredClone(git.repository());
     const fixture = {
@@ -277,7 +277,7 @@ test('refuses a stale context menu before opening a deletion review for another 
     fixture.git.repositories.update((repos: unknown[]) => [...repos, { ...fixture.snapshot(), id: 'other', path: '/fixture/other' }]);
     fixture.git.activeRepositoryId.set('other');
     // Exercise a retained menu payload rather than silently retargeting its repository.
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.actionOverlays.open({ kind: 'context', value: {
       kind: 'original', repositoryId: oldMenu, oid: 'a'.repeat(40),
       oids: ['a'.repeat(40)], label: 'refs/original/refs/heads/private', x: 200, y: 200,

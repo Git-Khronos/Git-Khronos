@@ -6,7 +6,7 @@ import { TextValueDirective } from './text-value.directive';
 // Recovery History is opened on demand, so its view lives in a lazy chunk. State and actions stay
 // in AppComponent and arrive through the presenter, keeping keyboard and focus behaviour unchanged.
 @Component({
-  selector: 'gc-recovery-history-dialog',
+  selector: 'gk-recovery-history-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IconComponent, TextValueDirective],
   template: `
@@ -14,15 +14,15 @@ import { TextValueDirective } from './text-value.directive';
     <div class="recovery-backdrop" [inert]="!!host.savedDiscards() || host.savedDiscardConfirmation()" (click)="host.closeRecoveryHistory()">
       <section class="recovery-dialog" role="dialog" aria-modal="true" aria-label="Recovery history" (click)="$event.stopPropagation()" (keydown)="host.handleRecoveryHistoryKeydown($event)">
         <header>
-          <span class="recovery-mark"><gc-icon name="history" [size]="20" /></span>
+          <span class="recovery-mark"><gk-icon name="history" [size]="20" /></span>
           <div><small>LOCAL REPOSITORY</small><h2>Recovery History</h2><p>Find saved changes and commits recorded before a reference moved.</p></div>
-          <button type="button" aria-label="Close recovery history" title="Close recovery history" (click)="host.closeRecoveryHistory()"><gc-icon name="x" [size]="14" /></button>
+          <button type="button" aria-label="Close recovery history" title="Close recovery history" (click)="host.closeRecoveryHistory()"><gk-icon name="x" [size]="14" /></button>
         </header>
         <div class="recovery-toolbar">
-          <label><gc-icon name="search" [size]="14" /><input #recoverySearch type="search" aria-label="Search recovery history" placeholder="Search action, author, SHA, or reflog selector" [gcTextValue]="host.recoveryQuery()" (gcTextValueChange)="host.recoveryQuery.set($event)" /></label>
-          <button type="button" title="Refresh recovery history" aria-label="Refresh recovery history" [disabled]="host.git.reflogBusy() || host.git.busy() || host.recoveryCaptureBusy()" (click)="host.refreshRecoveryHistory()"><gc-icon name="refresh" [size]="13" /></button>
+          <label><gk-icon name="search" [size]="14" /><input #recoverySearch type="search" aria-label="Search recovery history" placeholder="Search action, author, SHA, or reflog selector" [gkTextValue]="host.recoveryQuery()" (gkTextValueChange)="host.recoveryQuery.set($event)" /></label>
+          <button type="button" title="Refresh recovery history" aria-label="Refresh recovery history" [disabled]="host.git.reflogBusy() || host.git.busy() || host.recoveryCaptureBusy()" (click)="host.refreshRecoveryHistory()"><gk-icon name="refresh" [size]="13" /></button>
         </div>
-        <div class="recovery-guidance"><gc-icon name="branch" [size]="15" /><span><strong>Preserve a commit safely.</strong> Creating a recovery branch keeps the selected commit reachable without moving your current branch or changing working files.</span></div>
+        <div class="recovery-guidance"><gk-icon name="branch" [size]="15" /><span><strong>Preserve a commit safely.</strong> Creating a recovery branch keeps the selected commit reachable without moving your current branch or changing working files.</span></div>
         <div class="recovery-list" aria-live="polite">
           <section class="operation-captures" aria-label="Discarded changes">
             <h3>Discarded changes</h3>
@@ -47,7 +47,7 @@ import { TextValueDirective } from './text-value.directive';
                   @if (action.record.id === record.id) {
                     <form novalidate class="recovery-capture-form" (submit)="$event.preventDefault(); host.confirmRecoveryCaptureAction()">
                       @if (action.kind === 'restore') {
-                        <label>Recovery branch name<input name="recoveryCaptureBranch" autocomplete="off" [disabled]="host.git.busy()" [gcTextValue]="host.recoveryCaptureBranch()" (gcTextValueChange)="host.recoveryCaptureBranch.set($event)" /></label>
+                        <label>Recovery branch name<input name="recoveryCaptureBranch" autocomplete="off" [disabled]="host.git.busy()" [gkTextValue]="host.recoveryCaptureBranch()" (gkTextValueChange)="host.recoveryCaptureBranch.set($event)" /></label>
                         <p>This switches to the new branch and restores the saved index and working contents. Your current repository must be clean.</p>
                         @if (host.git.repository()?.status?.entryCount) { <p>Save current changes before restoring this capture.</p> }
                       } @else {
@@ -66,21 +66,21 @@ import { TextValueDirective } from './text-value.directive';
             }
           </section>
           @if (host.git.reflogBusy() && !host.git.reflog()) {
-            <div class="recovery-empty"><gc-icon name="refresh" [size]="24" /><strong>Reading local history…</strong></div>
+            <div class="recovery-empty"><gk-icon name="refresh" [size]="24" /><strong>Reading local history…</strong></div>
           } @else {
             @for (entry of host.filteredRecoveryEntries(); track entry.selector + entry.oid) {
               <article class="recovery-entry" [class.branching]="host.recoveryBranchEntry()?.selector === entry.selector && host.recoveryBranchEntry()?.oid === entry.oid">
-                <span class="recovery-node"><gc-icon name="git-commit" [size]="13" /></span>
+                <span class="recovery-node"><gk-icon name="git-commit" [size]="13" /></span>
                 <div class="recovery-copy"><strong>{{ entry.subject }}</strong><small>{{ entry.authorName }} · {{ entry.selector }}</small></div>
                 <code title="{{ entry.oid }}">{{ host.shortOid(entry.oid) }}</code>
                 <div class="recovery-actions">
                   @if (host.recoveryEntryInGraph(entry)) { <button type="button" (click)="host.viewRecoveryEntry(entry)">View in graph</button> }
-                  <button type="button" title="Copy full commit SHA" (click)="host.copyRecoveryOid(entry)"><gc-icon name="copy" [size]="12" />Copy SHA</button>
-                  <button class="primary" type="button" [disabled]="host.git.busy()" (click)="host.beginRecoveryBranch(entry)"><gc-icon name="branch" [size]="12" />Create branch</button>
+                  <button type="button" title="Copy full commit SHA" (click)="host.copyRecoveryOid(entry)"><gk-icon name="copy" [size]="12" />Copy SHA</button>
+                  <button class="primary" type="button" [disabled]="host.git.busy()" (click)="host.beginRecoveryBranch(entry)"><gk-icon name="branch" [size]="12" />Create branch</button>
                 </div>
                 @if (host.recoveryBranchEntry()?.selector === entry.selector && host.recoveryBranchEntry()?.oid === entry.oid) {
                   <form novalidate class="recovery-branch-form" (submit)="$event.preventDefault(); host.createRecoveryBranch()">
-                    <label>New branch name<input name="recoveryBranchName" autocomplete="off" [disabled]="host.git.busy()" [attr.aria-invalid]="host.recoveryBranchError() ? 'true' : null" [attr.aria-describedby]="host.recoveryBranchError() ? 'recovery-branch-error' : null" [gcTextValue]="host.recoveryBranchName()" (gcTextValueChange)="host.recoveryBranchName.set($event); host.recoveryBranchError.set(null)" /></label>
+                    <label>New branch name<input name="recoveryBranchName" autocomplete="off" [disabled]="host.git.busy()" [attr.aria-invalid]="host.recoveryBranchError() ? 'true' : null" [attr.aria-describedby]="host.recoveryBranchError() ? 'recovery-branch-error' : null" [gkTextValue]="host.recoveryBranchName()" (gkTextValueChange)="host.recoveryBranchName.set($event); host.recoveryBranchError.set(null)" /></label>
                     <button type="button" [disabled]="host.git.busy()" (click)="host.recoveryBranchEntry.set(null); host.recoveryBranchName.set(''); host.recoveryBranchError.set(null)">Cancel</button>
                     <button class="primary" type="submit" [disabled]="!host.recoveryBranchName().trim() || host.git.busy()">Create at {{ host.shortOid(entry.oid) }}</button>
                     @if (host.recoveryBranchError()) { <p id="recovery-branch-error" class="recovery-branch-error" role="alert">{{ host.recoveryBranchError() }}</p> }
@@ -88,7 +88,7 @@ import { TextValueDirective } from './text-value.directive';
                 }
               </article>
             } @empty {
-              <div class="recovery-empty"><gc-icon name="history" [size]="25" /><strong>{{ host.recoveryQuery().trim() ? 'No matching recovery entries' : 'No recovery history found' }}</strong><small>{{ host.recoveryQuery().trim() ? 'Try another action, author, SHA, or selector.' : 'Git has not recorded any local reference movements yet.' }}</small></div>
+              <div class="recovery-empty"><gk-icon name="history" [size]="25" /><strong>{{ host.recoveryQuery().trim() ? 'No matching recovery entries' : 'No recovery history found' }}</strong><small>{{ host.recoveryQuery().trim() ? 'Try another action, author, SHA, or selector.' : 'Git has not recorded any local reference movements yet.' }}</small></div>
             }
           }
         </div>

@@ -5,7 +5,7 @@ import { GitKhronosService } from './git-khronos.service';
 export interface HostedWriteIntent { kind: 'createPull' | 'review' | 'merge'; number: number; headOid: string; }
 
 @Component({
-  selector: 'gc-hosted-write-panel',
+  selector: 'gk-hosted-write-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section aria-label="Hosted submission">

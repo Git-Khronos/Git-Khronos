@@ -7,7 +7,7 @@
       "projectType": "application",
       "root": "apps/desktop",
       "sourceRoot": "apps/desktop/src",
-      "prefix": "gc",
+      "prefix": "gk",
       "architect": {
         "build": {
           "builder": "@angular/build:application",

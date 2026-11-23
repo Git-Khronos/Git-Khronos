@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15000 });
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     (window as any).__pullCalls = [];
@@ -60,7 +60,7 @@ test('Pull identifies a clean merge left uncommitted by Git configuration', asyn
 
 test('status badges sync with the configured upstream, not the selected toolbar remote', async ({ page }) => {
   const headOid = await page.evaluate(() => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const snapshot = git.repository();
     const next = {
       ...snapshot, status: { ...snapshot.status, ahead: 1, behind: 1 },
@@ -104,7 +104,7 @@ for (const fixture of ['custom tracking ref', 'local upstream'] as const) {
   test(`status actions use Git's upstream target with a ${fixture}`, async ({ page }) => {
     const local = fixture === 'local upstream';
     await page.evaluate(local => {
-      const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const snapshot = git.repository();
       const next = {
         ...snapshot, status: { ...snapshot.status, ahead: 2, behind: 1 },
@@ -190,7 +190,7 @@ test('keyboard chooses the default Pull strategy without starting a pull', async
 
 test('Pull options describe submodule checkout scope without starting Git', async ({ page }) => {
   const configureSubmodules = async (hasSubmodules: boolean) => page.evaluate(hasSubmodules => {
-    const { git } = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const snapshot = git.repository();
     const submodules = hasSubmodules ? [{
       name: 'lib', path: 'lib', absolutePath: snapshot.path + '/lib', url: 'fixture://lib',

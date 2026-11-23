@@ -3,7 +3,7 @@
   <div class="coauthor-suggestions">
     <small>Repository authors</small>
     @for (author of suggestions(); track author.email) {
-      <button type="button" (click)="suggested.emit(author)"><span class="avatar" [style.--author-color]="author.color">{{ author.initials }}</span><span><strong>{{ author.name }}</strong><small>{{ author.email }}</small></span><gc-icon name="plus" [size]="10" /></button>
+      <button type="button" (click)="suggested.emit(author)"><span class="avatar" [style.--author-color]="author.color">{{ author.initials }}</span><span><strong>{{ author.name }}</strong><small>{{ author.email }}</small></span><gk-icon name="plus" [size]="10" /></button>
     }
   </div>
 }
@@ -11,11 +11,11 @@
   <small>Other contributor</small>
   <label class="manual-coauthor-field">
     <span>Name</span>
-    <input name="coAuthorName" autocomplete="name" [gcTextValue]="name()" (gcTextValueChange)="nameChanged.emit($event)" />
+    <input name="coAuthorName" autocomplete="name" [gkTextValue]="name()" (gkTextValueChange)="nameChanged.emit($event)" />
   </label>
   <label class="manual-coauthor-field">
     <span>Email</span>
-    <input type="email" name="coAuthorEmail" autocomplete="email" inputmode="email" spellcheck="false" placeholder="email@example.com" [gcTextValue]="email()" (gcTextValueChange)="emailChanged.emit($event)" />
+    <input type="email" name="coAuthorEmail" autocomplete="email" inputmode="email" spellcheck="false" placeholder="email@example.com" [gkTextValue]="email()" (gkTextValueChange)="emailChanged.emit($event)" />
   </label>
   <button type="button" [disabled]="!canAdd()" (click)="added.emit()">Add co-author</button>
 </div>

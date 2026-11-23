@@ -27,7 +27,7 @@ def reference_review_workflows(driver, fixtures, report):
     draft = 'Reference dialogs must not commit this staged draft'
     seed_commit_draft(driver, repository, draft)
     driver.click_visible('#reference-section-tags .sidebar-heading')
-    modal = 'gc-reference-action-dialog [role=alertdialog]'
+    modal = 'gk-reference-action-dialog [role=alertdialog]'
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'untracked-note.txt'))
     evidence = []
 
@@ -73,7 +73,7 @@ def reference_review_workflows(driver, fixtures, report):
       requestAnimationFrame(() => requestAnimationFrame(() => done(true)));
     ''', 'args': []})
     assert driver.script('return !!document.querySelector(arguments[0])', modal)
-    assert not driver.script('return !!document.querySelector("gc-command-palette")')
+    assert not driver.script('return !!document.querySelector("gk-command-palette")')
     assert checkout_footprint(fixtures, repository, ('fixture.txt', 'untracked-note.txt')) == before
     driver.click_visible(modal + ' input[name=referenceRenameRemote]')
     driver.click_visible(modal + ' button', 'Check remote tag')

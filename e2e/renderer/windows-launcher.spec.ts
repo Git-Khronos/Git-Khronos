@@ -46,7 +46,7 @@ async function mock(page: Page, responses: { inspect: unknown[]; repair?: unknow
         return Promise.resolve(null);
       },
     };
-    (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.set({
+    (window as any).ng.getComponent(document.querySelector('gk-app')).git.systemInfo.set({
       appVersion: 'launcher fixture', gitVersion: '2.50.0', gitSupported: true, minimumGitVersion: '2.39.0', windowsSubsystemForLinux: wsl, windowsInteropAvailable: wsl,
     });
   }, { responses, wsl });
@@ -76,7 +76,7 @@ test('offers the shortcut check only under WSL', async ({ page }) => {
   await page.getByRole('button', { name: 'Main menu', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: /Windows taskbar shortcut/ })).toBeVisible();
   await page.keyboard.press('Escape');
-  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.systemInfo.update((info: object) => ({ ...info, windowsInteropAvailable: false })));
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.systemInfo.update((info: object) => ({ ...info, windowsInteropAvailable: false })));
   await page.getByRole('button', { name: 'Main menu', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: /Windows taskbar shortcut/ })).toHaveCount(0);
 });

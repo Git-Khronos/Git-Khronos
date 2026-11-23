@@ -4860,10 +4860,16 @@ mod tests {
         )
         .unwrap();
         let id = execute_discard(&repository.0, &plan).unwrap();
-        assert_eq!(fs::read(repository.0.join("end")).unwrap(), b"old final line");
+        assert_eq!(
+            fs::read(repository.0.join("end")).unwrap(),
+            b"old final line"
+        );
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
         recover_discarded_changes(&repository.0, &id, false).unwrap();
-        assert_eq!(fs::read(repository.0.join("end")).unwrap(), b"new final line");
+        assert_eq!(
+            fs::read(repository.0.join("end")).unwrap(),
+            b"new final line"
+        );
     }
 
     #[cfg(target_os = "linux")]
@@ -4878,13 +4884,20 @@ mod tests {
             commit(&repository.0, "Before edits around blank context").unwrap();
             ensure_success(
                 "configure compact blank context",
-                &run_git(&repository.0, &["config", "diff.suppressBlankEmpty", "true"]).unwrap(),
+                &run_git(
+                    &repository.0,
+                    &["config", "diff.suppressBlankEmpty", "true"],
+                )
+                .unwrap(),
             )
             .unwrap();
             repository.write("blank-context.txt", changed.as_bytes());
             let index = fs::read(repository.0.join(".git/index")).unwrap();
             let diff = working_tree_file_diff(&repository.0, "blank-context.txt", false).unwrap();
-            assert!(diff.patch.contains(" keep before\n\n-old first\n+new first\n\n"));
+            assert!(
+                diff.patch
+                    .contains(" keep before\n\n-old first\n+new first\n\n")
+            );
             assert_eq!(diff.patch.matches("@@ -").count(), 1);
 
             let plan = prepare_partial_discard_with_preview(

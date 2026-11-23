@@ -1,23 +1,23 @@
-<gc-repository-form-styles />
+<gk-repository-form-styles />
 @let ui = view();
 @for (rendered of [request()]; track rendered) {
   @if (rendered.kind === 'worktree') {
     <div class="repository-backdrop" (click)="ui.close(rendered)">
       <section #dialog class="repository-dialog worktree-dialog" role="dialog" aria-modal="true" aria-labelledby="worktree-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event, rendered)">
         <header class="repository-dialog-header">
-          <span class="worktree-dialog-mark"><gc-icon name="folder-git" [size]="17" /></span>
+          <span class="worktree-dialog-mark"><gk-icon name="folder-git" [size]="17" /></span>
           <div><strong id="worktree-dialog-title">Create Worktree</strong><small>Check out a branch in another working directory</small></div>
-          <button type="button" aria-label="Close worktree setup" (click)="ui.close(rendered)"><gc-icon name="x" [size]="14" /></button>
+          <button type="button" aria-label="Close worktree setup" (click)="ui.close(rendered)"><gk-icon name="x" [size]="14" /></button>
         </header>
         <form novalidate class="repository-form" (submit)="$event.preventDefault(); ui.submit(rendered)">
           <div class="repository-form-body">
             <p class="form-help repository-editor-source">Checkout: <code>{{ rendered.owner.repositoryPath }}</code></p>
             <p class="form-help">{{ ui.worktreeCreationSource() ? 'Create a working directory for ' + ui.worktreeCreationSource() + '.' : 'Choose a new branch, its starting point, and a folder.' }}</p>
             @if (ui.worktreeCreationSource()) {
-              <label>Branch<input [disabled]="git.busy()" name="worktreeBranch" readonly [gcTextValue]="ui.worktreeBranch()" /></label>
+              <label>Branch<input [disabled]="git.busy()" name="worktreeBranch" readonly [gkTextValue]="ui.worktreeBranch()" /></label>
             } @else {
               <div class="worktree-dialog-fields">
-                <label>Branch name<input [disabled]="git.busy()" name="worktreeBranch" autocomplete="off" placeholder="worktree/branch-1" [gcTextValue]="ui.worktreeBranch()" (gcTextValueChange)="ui.owns(rendered) && ui.worktreeBranch.set($event)" /></label>
+                <label>Branch name<input [disabled]="git.busy()" name="worktreeBranch" autocomplete="off" placeholder="worktree/branch-1" [gkTextValue]="ui.worktreeBranch()" (gkTextValueChange)="ui.owns(rendered) && ui.worktreeBranch.set($event)" /></label>
                 <label>Base branch<select [disabled]="git.busy()" name="worktreeBase" [value]="ui.worktreeBase()" (change)="ui.owns(rendered) && ui.worktreeBase.set($any($event.target).value)">
                   @if (!git.repository()?.status?.branch) { <option value="HEAD" [selected]="ui.worktreeBase() === 'HEAD'">HEAD</option> }
                   @for (branch of git.repository()?.branches ?? []; track branch.fullName) { @if (!branch.remote) { <option [value]="branch.name" [selected]="ui.worktreeBase() === branch.name">{{ branch.name }}</option> } }
@@ -28,8 +28,8 @@
                 <option value="terminal">Open the worktree and a terminal</option>
               </select><small class="worktree-field-note">The terminal starts in the new worktree.</small></label>
             }
-            <label>Worktree location<div class="path-picker"><input [disabled]="git.busy()" name="worktreeParent" readonly [gcTextValue]="ui.worktreeParent()" /><button type="button" [disabled]="git.busy()" (click)="ui.browseWorktree(rendered)">Browse</button></div></label>
-            <label>Folder name<input [disabled]="git.busy()" name="worktreeFolder" autocomplete="off" [gcTextValue]="ui.worktreeFolder()" (gcTextValueChange)="ui.owns(rendered) && ui.worktreeFolder.set($event)" /></label>
+            <label>Worktree location<div class="path-picker"><input [disabled]="git.busy()" name="worktreeParent" readonly [gkTextValue]="ui.worktreeParent()" /><button type="button" [disabled]="git.busy()" (click)="ui.browseWorktree(rendered)">Browse</button></div></label>
+            <label>Folder name<input [disabled]="git.busy()" name="worktreeFolder" autocomplete="off" [gkTextValue]="ui.worktreeFolder()" (gkTextValueChange)="ui.owns(rendered) && ui.worktreeFolder.set($event)" /></label>
           </div>
           <footer><button type="button" (click)="ui.close(rendered)">Cancel</button><button class="primary" type="submit" [disabled]="!ui.worktreeBranch().trim() || (!ui.worktreeCreationSource() && !ui.worktreeBase()) || !ui.worktreeParent() || !ui.worktreeFolder().trim() || git.busy()">Create worktree</button></footer>
         </form>
@@ -39,16 +39,16 @@
     <div class="repository-backdrop" (click)="ui.close(rendered)">
       <section #dialog class="repository-dialog submodule-dialog" role="dialog" aria-modal="true" aria-labelledby="submodule-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event, rendered)">
         <header class="repository-dialog-header">
-          <span class="submodule-dialog-mark"><gc-icon name="repo" [size]="17" /></span>
+          <span class="submodule-dialog-mark"><gk-icon name="repo" [size]="17" /></span>
           <div><strong id="submodule-dialog-title">Add Submodule</strong><small>Reference another repository at a fixed commit</small></div>
-          <button type="button" aria-label="Close add submodule dialog" (click)="ui.close(rendered)"><gc-icon name="x" [size]="14" /></button>
+          <button type="button" aria-label="Close add submodule dialog" (click)="ui.close(rendered)"><gk-icon name="x" [size]="14" /></button>
         </header>
         <form novalidate class="repository-form" (submit)="$event.preventDefault(); ui.submit(rendered)">
           <div class="repository-form-body">
             <p class="form-help repository-editor-source">Checkout: <code>{{ rendered.owner.repositoryPath }}</code></p>
-            <label>Remote URL<input [disabled]="git.busy()" name="submoduleUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="submodule-url-help" [gcTextValue]="ui.submoduleUrl()" (gcTextValueChange)="ui.owns(rendered) && ui.submoduleUrl.set($event)" /></label>
+            <label>Remote URL<input [disabled]="git.busy()" name="submoduleUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="submodule-url-help" [gkTextValue]="ui.submoduleUrl()" (gkTextValueChange)="ui.owns(rendered) && ui.submoduleUrl.set($event)" /></label>
             <p id="submodule-url-help" class="form-help">HTTPS, SSH, or a local repository path.</p>
-            <label>Name / Path<input [disabled]="git.busy()" name="submodulePath" autocomplete="off" placeholder="vendor/library" aria-describedby="submodule-path-help" [gcTextValue]="ui.submodulePath()" (gcTextValueChange)="ui.owns(rendered) && ui.submodulePath.set($event)" /></label>
+            <label>Name / Path<input [disabled]="git.busy()" name="submodulePath" autocomplete="off" placeholder="vendor/library" aria-describedby="submodule-path-help" [gkTextValue]="ui.submodulePath()" (gkTextValueChange)="ui.owns(rendered) && ui.submodulePath.set($event)" /></label>
             <p id="submodule-path-help" class="form-help">Folder inside the current repository, such as vendor/library.</p>
           </div>
           <footer><button type="button" (click)="ui.close(rendered)">Cancel</button><button class="primary add-submodule" type="submit" [disabled]="!ui.submoduleUrl().trim() || !ui.submodulePath().trim() || git.busy()">Add Submodule</button></footer>
@@ -60,27 +60,27 @@
     <div class="repository-backdrop" (click)="ui.close(rendered)">
       <section #dialog class="repository-dialog remote-dialog" role="dialog" aria-modal="true" aria-labelledby="remote-dialog-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event, rendered)">
         <header class="repository-dialog-header">
-          <span class="remote-dialog-mark"><gc-icon name="remote" [size]="17" /></span>
+          <span class="remote-dialog-mark"><gk-icon name="remote" [size]="17" /></span>
           <div><strong id="remote-dialog-title">{{ mode === 'add' ? 'Add Remote' : 'Edit Remote' }}</strong><small>{{ mode === 'add' ? 'Connect another Git repository' : 'Fetch and push destinations for ' + ui.remoteDialogOriginalName() }}</small></div>
-          <button type="button" aria-label="Close remote dialog" (click)="ui.close(rendered)"><gc-icon name="x" [size]="14" /></button>
+          <button type="button" aria-label="Close remote dialog" (click)="ui.close(rendered)"><gk-icon name="x" [size]="14" /></button>
         </header>
         <form novalidate class="repository-form" (submit)="$event.preventDefault(); ui.submit(rendered)">
           <div class="repository-form-body">
             <p class="form-help repository-editor-source">Checkout: <code>{{ rendered.owner.repositoryPath }}</code></p>
             <p class="form-help">Save connection settings here. Fetch and push run separately.</p>
-            <label>Name<input [disabled]="git.busy()" name="remoteName" autocomplete="off" placeholder="origin" [attr.aria-describedby]="ui.remoteNameTaken() ? 'remote-name-error' : mode === 'edit' ? 'remote-name-help' : null" [attr.aria-invalid]="ui.remoteNameTaken() || null" [gcTextValue]="ui.remoteName()" (gcTextValueChange)="ui.owns(rendered) && ui.remoteName.set($event)" /></label>
+            <label>Name<input [disabled]="git.busy()" name="remoteName" autocomplete="off" placeholder="origin" [attr.aria-describedby]="ui.remoteNameTaken() ? 'remote-name-error' : mode === 'edit' ? 'remote-name-help' : null" [attr.aria-invalid]="ui.remoteNameTaken() || null" [gkTextValue]="ui.remoteName()" (gkTextValueChange)="ui.owns(rendered) && ui.remoteName.set($event)" /></label>
             @if (ui.remoteNameTaken()) {
               <p id="remote-name-error" class="form-help field-error" role="alert">Another remote already uses this name.</p>
             } @else if (mode === 'edit') {
               <p id="remote-name-help" class="form-help">Renaming also updates remote-tracking branches and the branches that track them.</p>
             }
-            <label>Fetch URL<input [disabled]="git.busy()" name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="remote-url-help" [gcTextValue]="ui.remoteUrl()" (gcTextValueChange)="ui.owns(rendered) && ui.remoteUrl.set($event)" /></label>
+            <label>Fetch URL<input [disabled]="git.busy()" name="remoteUrl" autocomplete="off" placeholder="https://host/owner/repository.git" aria-describedby="remote-url-help" [gkTextValue]="ui.remoteUrl()" (gkTextValueChange)="ui.owns(rendered) && ui.remoteUrl.set($event)" /></label>
             <p id="remote-url-help" class="form-help">HTTPS, SSH, or a local repository path.</p>
             <details class="form-disclosure">
               <summary>Advanced: separate push destination</summary>
               <div class="form-disclosure-body">
                 @if (mode === 'edit') { <p class="form-help remote-push-note">Push currently uses {{ ui.editedRemotePushUrl() }}.</p> }
-                <label>Push URL<input [disabled]="git.busy()" name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" aria-describedby="remote-push-help" [gcTextValue]="ui.remotePushUrl()" (gcTextValueChange)="ui.owns(rendered) && ui.remotePushUrl.set($event)" /></label>
+                <label>Push URL<input [disabled]="git.busy()" name="remotePushUrl" autocomplete="off" placeholder="Use the fetch URL" aria-describedby="remote-push-help" [gkTextValue]="ui.remotePushUrl()" (gkTextValueChange)="ui.owns(rendered) && ui.remotePushUrl.set($event)" /></label>
                 <p id="remote-push-help" class="form-help">Leave empty to use the fetch URL. This changes where branches and tags are sent, not fetched.</p>
               </div>
             </details>

@@ -1,14 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
+import { lazyChunkForExport, requestIsChunk } from './lazy-chunk-routing';
 
 async function holdGraphSettings(page: Page, fail = false) {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   let requests = 0;
   let delivered = false;
+  let graphSettingsChunk: string | null = null;
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
     const body = await response.text();
-    if (!body.includes('GraphSettingsContentComponent')) {
+    graphSettingsChunk = lazyChunkForExport(body, 'GraphSettingsContentComponent') ?? graphSettingsChunk;
+    if (!requestIsChunk(route.request().url(), graphSettingsChunk)) {
       await route.fulfill({ response, body });
       return;
     }

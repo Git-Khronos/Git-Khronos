@@ -15,7 +15,7 @@ def wait_for_line_recaps(driver, unstaged, staged, *, uncounted=0, changed_files
             label += '; partial totals'
             details.append('(partial)')
         return {
-            'selector': f'.{section}-section gc-working-tree-summary .summary',
+            'selector': f'.{section}-section gk-working-tree-summary .summary',
             'label': label,
             'added': f'+{added}',
             'removed': f'−{removed}',

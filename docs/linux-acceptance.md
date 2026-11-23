@@ -5,7 +5,7 @@ application extracted from the Debian package. It does not install the package, 
 personal Git configuration, reuse personal repositories, or expose a
 development-only application endpoint.
 
-The CI-only `--installed` mode checks both the installed executable and the
+The optional `--installed` mode checks both the installed executable and the
 `git-khronos.desktop` launcher against the reviewed package before starting
 WebDriver. It records the installed launcher's SHA-256. This catches a missing
 or stale launcher (including altered link arguments or window identity);
@@ -17,8 +17,10 @@ does not qualify the finished menu. The report records header/scroll-area layout
 and checks that the menu remains inside the native viewport. Renderer checks
 separately hold/fail its module request and exercise compact-height scrolling.
 
-The full and inherited-environment suites check the fixture Git toolchain
-before launching WebDriver. The report records the executable, Git's helper
+The full and inherited-environment suites check the fixture Git and Git LFS
+toolchains before launching WebDriver; the LFS-only counts/timeout suites also
+require Git LFS. A missing executable is reported during preflight rather than
+surfacing later as a misleading transport failure. The report records the executable, Git's helper
 directory and the outcome of `git fsck` on a fresh fixture. If using a custom
 Git in `PATH`, provision its matching helpers where that executable looks for
 them; the fixture intentionally discards inherited `GIT_*` overrides. This
@@ -67,7 +69,20 @@ the renderer itself.
 Use `--suite conflict-navigation` to start a real conflicting merge and
 move from the commit inspector to the focused **Conflicted Files** section
 with **Show conflicted files**. Independent Git reads verify that
-`MERGE_HEAD`, refs, index, config and working files do not change.
+`MERGE_HEAD`, refs, index, config and working files do not change. The packaged
+Merge Tool is then opened for seven conflicted paths: **Take Incoming**,
+**Take Current**, edited output, a binary conflict, modify/delete and
+rename/modify conflicts, and a submodule gitlink conflict. Independent Git
+reads verify exact staged blobs and removal; the submodule choice changes only
+the parent gitlink, not the checked-out submodule's HEAD or status. The merge
+remains active until all unmerged index entries are cleared, with `MERGE_HEAD`
+preserved for the user's next merge action.
+
+The focused `desktop:native-file-tools` target also exercises an external
+merge profile in the installed package: the tool receives exact base/current/
+incoming bytes in private copies, its binary output is explicitly reviewed,
+the saved worktree result is separately reviewed before staging, and cleanup
+retires the private tool session without modifying repository configuration.
 
 Read-only readiness checks tolerate WebKit's exact transient result-parsing
 error within the original deadline. Direct scripts, clicks and Git
@@ -643,7 +658,11 @@ runtime for the target distribution, including the scripted helper on Git
 2.39; a copied executable alone is not equivalent.
 The `merge-preview` suite checks a conflict that depends on nested
 committed attributes, not the dirty checkout's rules; it also verifies
-direction, conflict paths, and unchanged working files and index.
+direction, conflict paths, and unchanged working files and index. Clean
+fast-forward and disjoint non-fast-forward fixtures prove previews do not
+write source-only files or move refs, then compare actual integration parents,
+tree contents and checkout bytes to each reviewed outcome. Run it with
+`pnpm nx run desktop:native-merge-preview`.
 
 To check whether the retained reports cover every required Linux runtime
 suite for one release candidate, add `--release-matrix` before the package
@@ -1148,6 +1167,28 @@ and X.509 signing tests, serially and without caching. It requires `ssh-keygen`,
 Unix because GnuPG's agent sockets have a platform pathname-length limit.
 The CI checks job installs these tools and runs this target explicitly. Keys
 and trust stores are fixture-local; personal signing material is not used.
+`desktop:native-signed-tag` separately exercises packaged annotated-tag
+creation for lightweight and OpenPGP-signed annotated tags through the UI,
+plus SSH- and X.509-signed annotated tags through native IPC. It verifies all
+three signatures and checks tag objects, peeled targets, and unchanged
+worktree/index state. A signing-tool preflight reports missing `gpg`,
+`ssh-keygen`, `gpgsm`, or `openssl` before launching the application.
+`desktop:native-signed-commit` exercises the explicit Sign commit control in
+the commit form, confirms the new commit's parent, tree content, signature, and
+signature display, and checks that Git configuration is unchanged. It needs
+`gpg` and fails before launch with a missing-tool diagnostic.
+`desktop:native-empty-commit` verifies that an unchanged-tree commit stays
+disabled until the user enables the explicit commit policy, then records an
+empty commit without staging pre-existing unstaged edits. It checks the original
+index bytes, unchanged commit tree, successful pre-commit hook execution, and
+the resulting working-tree status.
+`desktop:native-tag-preview` verifies that selecting a tag navigates to its
+peeled commit and that branch creation from the tag opens the exact tagged
+commit and switches to the new branch without disturbing other refs or leaving
+worktree changes.
+`desktop:native-file-history` qualifies rename-following file history, bounded
+history and blame pages, exact literal paths, timeout/cancellation handling,
+and large-file blame navigation against the packaged application.
 The CRLF-pointer regression first asks Git LFS to accept the pointer, writes it
 as an unreachable Git blob, and verifies that cleanup retains the referenced
 object and rejects a stale pre-pointer removal preview without changing HEAD or
@@ -1715,6 +1756,9 @@ different repository rename preferences. The installed check then adds one
 line externally without changing the porcelain record and expects +2/−1
 without any click or index write. Renderer tests separately isolate the
 periodic/focus-refresh fallback from live watcher notifications.
+`desktop:native-working-tree-recaps` runs this UI workflow as focused packaged
+CI coverage and also checks independent staged/unstaged budgets and oversized
+status output without counting unresolved conflicts.
 The rename fixture also reviews the staged and unstaged diffs and stages and
 unstages the pair through the file row. Both previews must show the original
 name and +2/−1, with no hunk or line mutation controls. Git must show one staged

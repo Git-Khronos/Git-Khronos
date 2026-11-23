@@ -14,7 +14,7 @@ export interface FetchDialogRequest {
 }
 
 @Component({
-  selector: 'gc-fetch-options-dialog',
+  selector: 'gk-fetch-options-dialog',
   imports: [FormsModule, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -109,7 +109,7 @@ export interface FetchDialogRequest {
           </details>
           @if (cancelled()) { <p role="status" tabindex="-1">Fetch was cancelled. {{ target.fixedBranch || branchScope() === 'one' ? 'The tracking branch may already have updated.' : 'Earlier remotes may already be updated.' }} Review the refreshed graph before retrying.</p> }
           @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
-          <gc-git-help topic="fetch" label="Learn about fetch and remote-tracking pruning…" />
+          <gk-git-help topic="fetch" label="Learn about fetch and remote-tracking pruning…" />
           <footer>
             @if (git.busy() && git.activeActivity()?.operationId) { <button type="button" [disabled]="git.activeOperationCancelling()" (click)="cancelOperation(target)">Cancel operation</button> }
             <button type="button" data-fetch-cancel [disabled]="git.busy()" (click)="close(target)">Cancel</button>

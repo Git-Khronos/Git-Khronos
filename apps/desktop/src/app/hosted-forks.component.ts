@@ -3,7 +3,7 @@ import { HostedForkRemoteComponent } from './hosted-fork-remote.component';
 import { ipc, type HostedForkInspection, type HostedForkPage, type HostedForkStatus, type HostedRepository, type HostedRepositoryInspection, type PreparedForkAcknowledgement, type PreparedHostedFork } from '@git-khronos/contracts';
 
 @Component({
-  selector: 'gc-hosted-forks',
+  selector: 'gk-hosted-forks',
   imports: [HostedForkRemoteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -70,7 +70,7 @@ import { ipc, type HostedForkInspection, type HostedForkPage, type HostedForkSta
         </section>
         <button #remoteToggle type="button" [disabled]="disabled() || busy()" (click)="toggleRemote()">{{ showRemote() ? 'Hide local remote controls' : 'Attach fork to local repository' }}</button>
       }
-      @for (generation of remoteViews(); track generation) { <gc-hosted-fork-remote [fork]="checked()" [disabled]="disabled() || busy()" (busyChange)="remoteActivity($event)" (closed)="closeRemote(true)" /> }
+      @for (generation of remoteViews(); track generation) { <gk-hosted-fork-remote [fork]="checked()" [disabled]="disabled() || busy()" (busyChange)="remoteActivity($event)" (closed)="closeRemote(true)" /> }
     </section>
   `,
   styles: [`

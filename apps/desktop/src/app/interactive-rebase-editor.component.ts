@@ -27,7 +27,7 @@ export interface InteractiveRebaseState {
 }
 
 @Component({
-  selector: 'gc-interactive-rebase-editor',
+  selector: 'gk-interactive-rebase-editor',
   imports: [FormsModule, IconComponent, GitHelpComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './interactive-rebase-editor.component.html',
@@ -129,6 +129,12 @@ export class InteractiveRebaseEditorComponent {
 
   protected canCombine(index: number): boolean {
     return this.state().steps.slice(0, index).some(step => step.action !== 'drop');
+  }
+  protected replacementMessagePreview(step: RebaseStepView): string {
+    const message = step.subject.startsWith('amend! ')
+      ? step.message.split('\n').slice(1).join('\n').trim()
+      : step.message.trim();
+    return message.split('\n').find(line => line.trim())?.trim() || '(empty message)';
   }
   protected initials(name: string): string {
     return name.split(/\s+/).map(part => part[0]).join('').slice(0, 2).toUpperCase();

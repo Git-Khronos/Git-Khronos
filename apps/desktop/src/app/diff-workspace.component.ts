@@ -7,7 +7,7 @@ import { IconComponent } from './icon.component';
 import { renderDiffLines, splitRenderedDiff, tokenizeDiffLine } from './diff-rendering';
 
 @Component({
-  selector: 'gc-diff-workspace',
+  selector: 'gk-diff-workspace',
   imports: [IconComponent, FileBlameComponent, FileHistoryComponent, FileMediaComponent],
   templateUrl: './diff-workspace.component.html',
   styleUrl: './diff-workspace.component.scss',

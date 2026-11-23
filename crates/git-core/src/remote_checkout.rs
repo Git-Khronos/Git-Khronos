@@ -116,7 +116,10 @@ pub(crate) fn require_direct_remote_branch_mapping(
 }
 
 pub(super) fn require_direct_tracking_ref(path: &Path, reference: &str) -> Result<(), AppError> {
-    let symbolic = run_git(path, &["symbolic-ref", "--quiet", "--no-recurse", reference])?;
+    let symbolic = run_git(
+        path,
+        &["symbolic-ref", "--quiet", "--no-recurse", reference],
+    )?;
     if symbolic.status.success() {
         return Err(AppError::new(
             "invalidRemoteBranch",

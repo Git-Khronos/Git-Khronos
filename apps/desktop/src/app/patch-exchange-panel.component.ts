@@ -9,7 +9,7 @@ import { BundleExchangePanelComponent } from './bundle-exchange-panel.component'
 import { MailPatchPanelComponent } from './mail-patch-panel.component';
 
 @Component({
-  selector: 'gc-patch-exchange-panel',
+  selector: 'gk-patch-exchange-panel',
   imports: [FormsModule, GitHelpComponent, BundleExchangePanelComponent, MailPatchPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -90,10 +90,10 @@ import { MailPatchPanelComponent } from './mail-patch-panel.component';
       <p>Limits: complete 4 MiB patch and 2000 distinct paths. Symlinks, submodules, extended rename/copy
         records and non-UTF-8 paths require local Git. Ordinary file additions, deletions, executable
         modes and binary data are supported.</p>
-      <gc-git-help topic="patch" label="Learn about diff patches and apply…" [disabled]="pending() || disabled()" />
+      <gk-git-help topic="patch" label="Learn about diff patches and apply…" [disabled]="pending() || disabled()" />
     </details>
-    <gc-mail-patch-panel [repositoryId]="repositoryId()" [disabled]="disabled() || pending()" />
-    <gc-bundle-exchange-panel [repositoryId]="repositoryId()" [disabled]="disabled() || pending()" />
+    <gk-mail-patch-panel [repositoryId]="repositoryId()" [disabled]="disabled() || pending()" />
+    <gk-bundle-exchange-panel [repositoryId]="repositoryId()" [disabled]="disabled() || pending()" />
   `,
   styles: [`
     :host { display: block; margin-top: 16px; }

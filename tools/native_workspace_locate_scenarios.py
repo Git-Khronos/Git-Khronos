@@ -28,7 +28,7 @@ def locate_workspace_paths(driver, fixtures, report, batch, *, start_nearby=Fals
     saved = [str(path) for path in old_paths]
     primary = {'id': 'owned-locate', 'name': 'Owned relocation', 'repositoryPaths': saved, 'activeRepositoryPath': str(active)}
     other = {'id': 'other-locate', 'name': 'Other saved layouts', 'repositoryPaths': [str(first)], 'activeRepositoryPath': str(first)}
-    driver.wait('return !!document.querySelector("gc-root")', 60)
+    driver.wait('return !!document.querySelector("gk-root")', 60)
     driver.script("""
       localStorage.clear();
       localStorage.setItem('git-khronos.workspaces.v1', JSON.stringify(arguments[0]));
@@ -50,7 +50,7 @@ def locate_workspace_paths(driver, fixtures, report, batch, *, start_nearby=Fals
     assert memberships() == {primary['id']: saved, other['id']: [str(first)]}
     driver.click_visible('.workspace-toggle')
     driver.click_scrolled_text('.workspace-menu-actions [role=menuitem]', 'Repository overview', wait_for_ready=True)
-    overview = 'gc-workspace-center [aria-label="Workspace center"]'
+    overview = 'gk-workspace-center [aria-label="Workspace center"]'
     saved_region = overview + ' [aria-label="Saved repositories not open"]'
     evidence = report['workspacePathLocation'] = {'pickerInputs': [], 'before': memberships()}
     if batch:

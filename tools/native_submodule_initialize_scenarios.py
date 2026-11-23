@@ -44,7 +44,7 @@ def initialize_one_submodule(driver, fixtures, report):
         driver.click_visible(heading)
     name = f'Submodule {chosen}, {source}'
     row = '.submodule-main[aria-label=' + json.dumps(name) + ']'
-    dialog = 'gc-submodule-state-review [role="dialog"]'
+    dialog = 'gk-submodule-state-review [role="dialog"]'
     group = dialog + ' [aria-label="Initialize modules/chosen"]'
 
     driver.click_visible(row)

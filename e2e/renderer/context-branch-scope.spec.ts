@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const repository = git.repository();
     const state: any = { app, git, repository, authoritative: repository, calls: [] };
@@ -244,7 +244,7 @@ test('held context creation cannot rewrite frozen options or consume a reopened 
 test('plain Enter creates once and modifier palette shortcuts stay local', async ({ page }) => {
   const form = await open(page);
   await form.getByRole('textbox').press('Control+p');
-  await expect(page.locator('gc-command-palette')).toHaveCount(0);
+  await expect(page.locator('gk-command-palette')).toHaveCount(0);
   await expect(form).toContainText(await page.evaluate(() => (window as any).__contextBranchScope.repository.path));
   await form.getByRole('textbox').press('Enter');
   await expect(form).toHaveCount(0);

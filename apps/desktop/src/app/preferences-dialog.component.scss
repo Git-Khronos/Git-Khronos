@@ -1,5 +1,5 @@
 // Load dialog-specific layout with Preferences while keeping loader/error chrome global.
-:where(gc-preferences-dialog) {
+:where(gk-preferences-dialog) {
   .preferences-popover header { display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 8px 12px; border-bottom: 1px solid var(--overlay-header-border); background: color-mix(in srgb, var(--panel-raised) 88%, black); }
   .preferences-popover header > span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 5px; background: var(--overlay-icon); color: var(--accent); }
   .preferences-popover header > div { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 1px; }
@@ -22,7 +22,7 @@
   .preference-search-results > button { min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: 6px; padding: 7px 6px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--overlay-text); text-align: left; }
   .preference-search-results > button:hover, .preference-search-results > button:focus-visible { border-color: var(--overlay-control-border); outline: 0; background: var(--overlay-hover); color: white; }
   .preference-search-results > button.active { border-color: color-mix(in srgb, var(--purple) 48%, var(--border)); background: color-mix(in srgb, var(--purple) 16%, var(--surface-raised)); }
-  .preference-search-results > button > gc-icon { color: var(--accent); }
+  .preference-search-results > button > gk-icon { color: var(--accent); }
   .preference-search-results > button > span { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .preference-search-results strong { overflow: hidden; font-size: var(--font-size-body); text-overflow: ellipsis; white-space: nowrap; }
   .preference-search-results button small { color: var(--overlay-muted); font-size: var(--font-size-caption); }
@@ -35,7 +35,7 @@
   .preferences-navigation button:hover { background: var(--surface-hover); color: var(--text); }
   .preferences-navigation button.active { border-color: color-mix(in srgb, var(--purple) 48%, var(--border)); background: color-mix(in srgb, var(--purple) 18%, var(--surface-raised)); color: var(--text); }
   .preferences-navigation button:focus-visible { border-color: color-mix(in srgb, var(--purple) 72%, white); outline: 2px solid color-mix(in srgb, var(--purple) 52%, transparent); outline-offset: -3px; }
-  .preferences-navigation button > gc-icon { color: var(--accent); }
+  .preferences-navigation button > gk-icon { color: var(--accent); }
   .preferences-navigation button > span { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .preferences-navigation strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .preferences-navigation strong { font-size: var(--font-size-body); }
@@ -67,7 +67,7 @@
   .theme-options strong, .theme-options small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .theme-options strong { font-size: var(--font-size-body); font-weight: 750; }
   .theme-options small { color: var(--muted); font-size: var(--font-size-caption); }
-  .theme-options gc-icon { color: var(--accent); }
+  .theme-options gk-icon { color: var(--accent); }
   .theme-preview { width: 30px; height: 24px; display: grid; grid-template-columns: 9px 1fr; grid-template-rows: 7px 1fr; overflow: hidden; border: 1px solid #ffffff24; border-radius: 3px; }
   .theme-preview i { display: block; }
   .theme-preview i:first-child { grid-column: 1 / -1; background: #101019; }

@@ -60,9 +60,9 @@ def working_file_editor(driver, fixtures, original_repository, report):
         raise AssertionError('An invalid owned editor request unexpectedly succeeded')
 
     def button(text):
-        driver.wait('return [...document.querySelectorAll("gc-working-file-editor button")].some(button => button.textContent.trim() === '
+        driver.wait('return [...document.querySelectorAll("gk-working-file-editor button")].some(button => button.textContent.trim() === '
                     + json.dumps(text) + ' && !button.disabled)')
-        driver.click_text('gc-working-file-editor button', text)
+        driver.click_text('gk-working-file-editor button', text)
 
     def type_text(text):
         driver.script("const input=document.querySelector('#working-editor-text'); if(!input || input.readOnly) throw Error('Owned editor is not writable'); input.value=arguments[0]; input.dispatchEvent(new Event('input',{bubbles:true}));", text)
@@ -154,20 +154,20 @@ def working_file_editor(driver, fixtures, original_repository, report):
         driver.click('.wip-nav')
         selector = '[aria-label=' + json.dumps('View changes in ' + ui_path) + ']'
         driver.context_click(selector)
-        driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
-        driver.click_scrolled_text('gc-file-content-dialog button', 'Edit working copy', wait_for_ready=True)
+        driver.click_scrolled_text('gk-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
+        driver.click_scrolled_text('gk-file-content-dialog button', 'Edit working copy', wait_for_ready=True)
         driver.wait("return document.querySelector('#working-editor-text')?.value === 'working\\n'")
         actual_title = driver.invoke('plugin:window|title', label='main')
         assert repository.name in actual_title, actual_title
         report['editorNativeWindowTitle'] = actual_title
         type_text('saved through WebKit\n')
         button('Save file')
-        driver.wait("return [...document.querySelectorAll('gc-working-file-editor [role=status]')].some(p=>p.textContent.trim()==='File saved.')")
+        driver.wait("return [...document.querySelectorAll('gk-working-file-editor [role=status]')].some(p=>p.textContent.trim()==='File saved.')")
         assert (repository / ui_path).read_bytes() == encode_le('saved through WebKit\r\n')
         assert index_bytes(ui_path) == encode_le('baseline\r\n')
         type_text('retained unsaved draft\n')
         button('Stage saved file')
-        driver.wait("return [...document.querySelectorAll('gc-working-file-editor [role=status]')].some(p=>p.textContent.includes('Saved file staged.'))")
+        driver.wait("return [...document.querySelectorAll('gk-working-file-editor [role=status]')].some(p=>p.textContent.includes('Saved file staged.'))")
         assert index_bytes(ui_path) == encode_le('saved through WebKit\r\n')
         assert driver.script("return document.querySelector('#working-editor-text').value") == 'retained unsaved draft\n'
         driver.key('\ue00c')
@@ -186,9 +186,9 @@ def working_file_editor(driver, fixtures, original_repository, report):
         markdown = '# Owned preview\n\n**bold** and *emphasis*\n\n<script>window.__ownedEditorScript=true</script>\n\n![inactive](https://unrequested.invalid/image) [inactive](javascript:alert%281%29)\n'
         type_text(markdown)
         button('Preview Markdown')
-        driver.wait("return [...document.querySelectorAll('gc-markdown-preview [role=heading]')].some(h=>h.textContent.trim()==='Owned preview')")
-        assert driver.script("return document.querySelector('gc-markdown-preview strong')?.textContent.trim()") == 'bold'
-        assert driver.script("return document.querySelectorAll('gc-markdown-preview img, gc-markdown-preview script, gc-markdown-preview a[href], gc-markdown-preview iframe').length") == 0
+        driver.wait("return [...document.querySelectorAll('gk-markdown-preview [role=heading]')].some(h=>h.textContent.trim()==='Owned preview')")
+        assert driver.script("return document.querySelector('gk-markdown-preview strong')?.textContent.trim()") == 'bold'
+        assert driver.script("return document.querySelectorAll('gk-markdown-preview img, gk-markdown-preview script, gk-markdown-preview a[href], gk-markdown-preview iframe').length") == 0
         assert driver.script("return window.__ownedEditorScript === undefined")
         assert (repository / ui_path).read_bytes() == encode_le('saved through WebKit\r\n')
         assert index_bytes(ui_path) == encode_le('saved through WebKit\r\n')
@@ -197,7 +197,7 @@ def working_file_editor(driver, fixtures, original_repository, report):
         assert driver.script("return document.querySelector('#working-editor-text').value") == markdown
         button('Back to preview')
         button('Discard draft')
-        driver.wait("return !document.querySelector('gc-working-file-editor')")
+        driver.wait("return !document.querySelector('gk-working-file-editor')")
         driver.key('\ue00c')
         report['scenarios'].append('native-ui-editor-real-webkit-worker-csp-inert-markdown-keeps-unsaved-draft-disk-index')
         assert (repository / '.git/config').read_bytes() == config
@@ -208,18 +208,18 @@ def working_file_editor(driver, fixtures, original_repository, report):
             try:
                 destination = Path(report['artifactsDirectory'])
                 driver.screenshot(destination / 'working-file-editor-failure.png')
-                state = driver.script("return {editor:document.querySelector('gc-working-file-editor')?.innerText,editorHtml:document.querySelector('gc-working-file-editor')?.outerHTML,dialog:document.querySelector('gc-file-content-dialog')?.innerText,active:document.activeElement?.outerHTML}")
+                state = driver.script("return {editor:document.querySelector('gk-working-file-editor')?.innerText,editorHtml:document.querySelector('gk-working-file-editor')?.outerHTML,dialog:document.querySelector('gk-file-content-dialog')?.innerText,active:document.activeElement?.outerHTML}")
                 (destination / 'working-file-editor-failure.json').write_text(json.dumps(state, indent=2))
             except Exception as error:
                 report.setdefault('editorCaptureErrors', []).append(str(error))
         try:
             for identifier in contexts:
                 driver.invoke('close_working_file_editor', editorId=identifier)
-            if driver.script("return !!document.querySelector('gc-working-file-editor')"):
+            if driver.script("return !!document.querySelector('gk-working-file-editor')"):
                 button('Back to preview')
                 if driver.script("return !!document.querySelector('[aria-label=\"Review unsaved draft\"]')"):
                     button('Discard draft')
-            if driver.script("return !!document.querySelector('gc-file-content-dialog')"):
+            if driver.script("return !!document.querySelector('gk-file-content-dialog')"):
                 driver.key('\ue00c')
             open_ui(driver, original_repository)
         except Exception as error:

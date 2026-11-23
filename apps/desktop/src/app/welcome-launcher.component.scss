@@ -1,6 +1,6 @@
 /* Keep the launcher layout with its lazy component. The low-specificity
    scope also reaches the workspace menu from the shell’s template. */
-:where(gc-welcome-launcher) {
+:where(gk-welcome-launcher) {
   .brand { display: flex; flex: none; align-items: center; gap: 12px; font-size: 17px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
   .welcome { position: relative; height: 100%; min-height: 0; overflow: auto; padding: 28px clamp(28px, 6vw, 92px) 64px; background: radial-gradient(circle at 50% -20%, #34315b 0, transparent 45%), var(--bg); }
   .welcome-nav { position: relative; z-index: 10; display: flex; align-items: center; justify-content: space-between; }

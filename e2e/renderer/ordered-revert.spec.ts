@@ -4,7 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const repository = git.repository();
@@ -58,7 +58,7 @@ test.beforeEach(async ({ page }) => {
 
 async function openSelection(page: Page): Promise<void> {
   const subject = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const commits = (window as any).__orderedRevert.commits;
     app.selectedCommits.set(commits.map((commit: any) => commit.oid));
     return commits[0].subject;
@@ -84,7 +84,7 @@ test('multi-selection reviews every inverse newest-first and sends the exact lis
   await dialog.getByRole('button', { name: 'Revert 3 commits', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const result = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { fixture: (window as any).__orderedRevert, draft: app.commitMessage(), activity: app.git.activity() };
   });
   expect(result.fixture.calls.find((call: any) => call.command === 'revert_commit').args)
@@ -103,7 +103,7 @@ test('no-commit ordered revert applies the exact reviewed order without moving H
   await expect(dialog).toHaveCount(0);
   const result = await page.evaluate(() => {
     const fixture = (window as any).__orderedRevert;
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return { original: fixture.original, commits: fixture.commits,
       revertArgs: fixture.calls.find((call: any) => call.command === 'revert_commit').args,
       head: app.git.repository().headOid, staged: app.git.repository().status.staged, activity: app.git.activity() };
@@ -160,7 +160,7 @@ test('preflight refusal retains the exact reviewed list and provides a focused e
 
 test('multi-selection containing a merge cannot use an implicit shared mainline or run an ordinary prefix', async ({ page }) => {
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const fixture = (window as any).__orderedRevert;
     const mergeOid = fixture.commits[1].oid;
     app.git.repositories.update((items: any[]) => items.map(item => item.id === fixture.original.id
@@ -188,7 +188,7 @@ for (const action of ['continue', 'skip', 'abort'] as const) {
     await expect(progress.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
     if (action === 'continue') {
       await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const fixture = (window as any).__orderedRevert;
         fixture.snapshot = { ...fixture.snapshot, status: { ...fixture.snapshot.status, conflicted: 0,
           staged: 1, entries: [{ path: 'file', oldPath: null, indexStatus: 'M', worktreeStatus: '.', conflicted: false }] } };
@@ -199,7 +199,7 @@ for (const action of ['continue', 'skip', 'abort'] as const) {
     await progress.getByRole('button', { name: action[0].toUpperCase() + action.slice(1), exact: true }).click();
     await expect(progress).toHaveCount(0);
     const result = await page.evaluate(() => ({ fixture: (window as any).__orderedRevert,
-      head: (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().headOid }));
+      head: (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().headOid }));
     expect(result.fixture.calls.filter((call: any) => call.command === 'revert_commit')).toHaveLength(1);
     expect(result.fixture.calls.find((call: any) => call.command === 'control_history_operation').args)
       .toEqual({ repoId: result.fixture.original.id, operation: 'revert', action });
@@ -213,7 +213,7 @@ test('repository switch during ordered revert cannot redirect captured completio
   await page.getByRole('alertdialog').getByRole('button', { name: 'Revert 3 commits', exact: true }).click();
   await expect.poll(() => page.evaluate(() => !!(window as any).__orderedRevert.complete)).toBe(true);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const original = (window as any).__orderedRevert.original;
     app.git.repositories.update((items: any[]) => [...items,
       { ...original, id: 'other-ordered-revert', name: 'Other repository', headOid: 'd'.repeat(40) }]);
@@ -221,9 +221,9 @@ test('repository switch during ordered revert cannot redirect captured completio
   });
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
   await page.evaluate(() => { (window as any).__orderedRevert.complete(); });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   const result = await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return { fixture: (window as any).__orderedRevert, active: git.repository(), history: git.operationHistory() };
   });
   expect(result.active.id).toBe('other-ordered-revert');

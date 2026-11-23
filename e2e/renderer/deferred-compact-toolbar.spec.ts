@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { lazyChunkForExport, requestIsChunk } from './lazy-chunk-routing';
 
 const compactActionsToggleName = 'More repository actions';
 
@@ -7,10 +8,12 @@ async function holdCompactActions(page: Page, fail: boolean) {
   const gate = new Promise<void>(resolve => { release = resolve; });
   let requests = 0;
   let chunkUrl = '';
+  let compactActionsChunk: string | null = null;
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
     const body = await response.text();
-    if (body.includes('CompactRepositoryActionsComponent')) {
+    compactActionsChunk = lazyChunkForExport(body, 'CompactRepositoryActionsComponent') ?? compactActionsChunk;
+    if (requestIsChunk(route.request().url(), compactActionsChunk)) {
       requests++;
       chunkUrl = route.request().url();
       await gate;

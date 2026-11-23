@@ -3,10 +3,10 @@ import type { StashContextMenuState } from './app.component';
 import { IconComponent } from './icon.component';
 
 export type StashMenuAction = 'apply' | 'apply-options' | 'branch' | 'pop' | 'rename'
-  | 'visibility' | 'hide-all' | 'show-all' | 'delete';
+  | 'visibility' | 'hide-all' | 'show-all' | 'delete' | 'clear-all';
 
 @Component({
-  selector: 'gc-stash-action-menu',
+  selector: 'gk-stash-action-menu',
   imports: [IconComponent],
   templateUrl: './stash-action-menu.component.html',
   styleUrl: './stash-action-menu.component.scss',

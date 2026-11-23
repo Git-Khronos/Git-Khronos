@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.branch-item').first()).toBeVisible();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     const repo = git.repository();
@@ -87,7 +87,7 @@ test('moved or deleted references invalidate the displayed result and selection 
   await dialog.getByRole('button', { name: 'Preview conflicts', exact: true }).click();
   await expect(dialog).toContainText('No conflicts reported');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map(repo => ({ ...repo, branches: repo.branches.map((b: any) => b.name === 'preview-target' ? { ...b, oid: 'd'.repeat(40) } : b) })));
   });
   await expect(dialog).toContainText('References changed');
@@ -97,7 +97,7 @@ test('moved or deleted references invalidate the displayed result and selection 
   await dialog.getByRole('button', { name: 'Preview conflicts', exact: true }).click();
   await expect(dialog).toContainText('c'.repeat(40));
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((items: any[]) => items.map(repo => ({ ...repo, branches: repo.branches.filter((b: any) => b.fullName !== 'refs/remotes/origin/main') })));
   });
   await expect(dialog).toContainText('References changed');
@@ -127,14 +127,14 @@ test('repository switch closes and cancels pending preview and discards its repl
   await page.evaluate(() => { (window as any).__mergePreview.hold = true; });
   await dialog.getByRole('button', { name: 'Preview conflicts', exact: true }).click();
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const other = { ...git.repository(), id: 'other-preview-repo', name: 'Other fixture', path: '/owned/other' };
     git.repositories.update((items: any[]) => [...items, other]); git.activeRepositoryId.set(other.id);
   });
   await expect(dialog).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as any).__mergePreview.calls.some((x: any) => x.command === 'cancel_git_operation'))).toBe(true);
   await page.evaluate(() => { (window as any).__mergePreview.finish(); });
-  await expect(page.locator('gc-merge-preview-dialog')).toHaveCount(0);
+  await expect(page.locator('gk-merge-preview-dialog')).toHaveCount(0);
   await expect(page.locator('body')).not.toContainText('No conflicts reported for these commits');
 });
 

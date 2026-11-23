@@ -5,7 +5,7 @@ for (const compact of [false, true]) {
     await page.goto('/');
     await expect(page.locator('.author-node').first()).toBeVisible();
     await page.evaluate(compact => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repo = app.git.repository();
       const template = repo.commits[0];
       const topology: Array<[string, string[]]> = [
@@ -33,14 +33,14 @@ for (const compact of [false, true]) {
       (window as any).__straightLanes = { commits, initialRows };
     }, compact);
     await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repo = app.git.repository();
       app.git.repositories.update((items: any[]) => items.map(item => item.id === repo.id
         ? { ...item, commits: (window as any).__straightLanes.commits } : item));
     });
     await expect(page.locator('[data-commit-oid="base"]')).toBeVisible();
     const geometry = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const rows = app.graphRows();
       const initial = (window as any).__straightLanes.initialRows;
       const samples = rows.flatMap((row: any) => {
@@ -73,7 +73,7 @@ for (const compact of [false, true]) {
     await page.goto('/');
     await expect(page.locator('.author-node').first()).toBeVisible();
     await page.evaluate(compact => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repo = app.git.repository();
       const template = repo.commits[0];
       // Neutral form of Git-Khronos's dev/recovery/checkpoint/shared-parent graph.
@@ -116,7 +116,7 @@ for (const compact of [false, true]) {
       const avatar = element.querySelector('.author-node')!;
       const node = avatar.getBoundingClientRect();
       const offset = Number((avatar as HTMLElement).dataset['laneOffset']);
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const graphRow = app.graphRows().find((candidate: any) => candidate.commit.oid === 'shared');
       let departure: { x: number; y: number } | undefined;
       let expectedX = NaN;
@@ -162,7 +162,7 @@ for (const compact of [false, true]) {
     await page.goto('/');
     await expect(page.locator('.author-node').first()).toBeVisible();
     await page.evaluate(compact => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repo = app.git.repository();
       const template = repo.commits[0];
       const topology: Array<[string, string[]]> = [
@@ -193,7 +193,7 @@ for (const compact of [false, true]) {
     await expect(row).toBeVisible();
     const incoming: { from: number; trackY: number; attachmentY: number; radiusError: number; visible: boolean }[] =
       await row.evaluate(element => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const graphRow = app.graphRows().find((candidate: any) => candidate.commit.oid === 'target');
         const node = element.querySelector('.author-node')!.getBoundingClientRect();
         const paths = element.querySelectorAll<SVGPathElement>('.graph-edges path');
@@ -238,7 +238,7 @@ for (const compact of [false, true]) {
         await page.goto('/');
         await expect(page.locator('.author-node').first()).toBeVisible();
         await page.evaluate(({ compact, direction, edgeCount }) => {
-          const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+          const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
           const repo = app.git.repository();
           const template = repo.commits[0];
           const parents = Array.from({ length: edgeCount - 1 }, (_, index) => `parent-${index}`);
@@ -276,7 +276,7 @@ for (const compact of [false, true]) {
           }[];
           join: { sourceX: number; parentX: number; gap: number; sourceWidth: number; parentWidth: number };
         } = await row.evaluate((element, direction) => {
-          const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+          const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
           const rows = app.graphRows();
           const graphRow = rows.find((candidate: any) => candidate.commit.oid === 'merge');
           const incomingIndex = graphRow.segments.findIndex((segment: any) => segment.nodeConnection?.part === 'parent');
@@ -388,7 +388,7 @@ for (const compact of [false, true]) {
       await page.goto('/');
       await expect(page.locator('.author-node').first()).toBeVisible();
       await page.evaluate(({ compact, direction }) => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const repo = app.git.repository();
         const template = repo.commits[0];
         const topology: Array<[string, string[]]> = direction === 'right-to-left'
@@ -410,7 +410,7 @@ for (const compact of [false, true]) {
       await expect(page.locator('[data-commit-oid="source"]')).toBeVisible();
       await expect(page.locator('[data-commit-oid="parent"]')).toBeVisible();
       const geometry = await page.evaluate(() => {
-        const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+        const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
         const rows = app.graphRows();
         const read = (oid: string, part: 'source' | 'parent') => {
           const row = rows.find((candidate: any) => candidate.commit.oid === oid);
@@ -456,7 +456,7 @@ for (const compact of [false, true]) {
     await page.goto('/');
     await expect(page.locator('.author-node').first()).toBeVisible();
     await page.evaluate((compact) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repo = app.git.repository();
       const template = repo.commits[0];
       const topology: Array<[string, string[]]> = [
@@ -476,7 +476,7 @@ for (const compact of [false, true]) {
     }, compact);
     await expect(page.locator('[data-commit-oid="feature"]')).toBeVisible();
     const geometry = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const rows = app.graphRows();
       return ['merge', 'feature'].map((oid) => {
         const row = rows.find((candidate: any) => candidate.commit.oid === oid);
@@ -548,11 +548,11 @@ for (const compact of [false, true]) {
     await page.goto('/?unmerged-branch-preview');
     await expect(page.locator('.author-node').first()).toBeVisible();
     await page.evaluate(compact => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       app.setCompactGraphColumn(compact);
     }, compact);
     const attachments = await page.evaluate(() => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       return app.graphRows().flatMap((row: any) => {
         const element = document.querySelector(`[data-commit-oid="${row.commit.oid}"]`);
         const node = element?.querySelector('.author-node')?.getBoundingClientRect();
@@ -595,7 +595,7 @@ for (const compact of [false, true]) {
     await expect(page.locator('.author-node').first()).toBeVisible();
     const oid = 'c'.repeat(40);
     await page.evaluate(({ compact, oid }) => {
-      const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repo = app.git.repository();
       const [merge, other, base] = ['a', 'b', 'd'].map(letter => letter.repeat(40));
       const template = repo.commits[0];

@@ -5,7 +5,7 @@ for (const reading of [false, true]) {
     await page.goto('/');
     await expect(page.locator('.commit-row').first()).toBeVisible();
     const descriptions = await page.evaluate(async reading => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       git.activityLogs.set([]);
       git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));

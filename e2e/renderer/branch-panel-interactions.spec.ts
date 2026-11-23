@@ -35,7 +35,7 @@ declare global {
 async function installBackend(page: Page, options: { fail?: boolean; hold?: boolean; holdRecovery?: boolean; remoteOutcome?: 'upToDate' | 'ahead' | 'diverged' } = {}): Promise<void> {
   await page.evaluate(({ fail, hold, holdRecovery, remoteOutcome }) => {
     const host = window;
-    const app = host.ng.getComponent(document.querySelector('gc-root'));
+    const app = host.ng.getComponent(document.querySelector('gk-app'));
     let snapshot = structuredClone(app.git.repository());
     // These journeys exercise checkout of available branches. Occupied-branch
     // navigation has separate real-interaction coverage in branch-checkout-worktree.
@@ -110,7 +110,7 @@ test.beforeEach(async ({ page }) => {
 
 async function prepareRemoteDocsStack(page: Page, multiple: boolean): Promise<void> {
   await page.evaluate((multiple) => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const oid = repository.branches.find((branch) => branch.remote && branch.name === 'origin/docs')!.oid;
     git.repositories.update((repositories) => repositories.map((candidate) => candidate.id !== repository.id ? candidate : {
@@ -237,7 +237,7 @@ test('restores the Local section preference when changing repositories with the 
   await page.getByRole('button', { name: 'Create branch', exact: true }).first().click();
   await expect(splitter).toHaveAttribute('aria-valuenow', '150');
   await page.evaluate(() => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     const first = git.repository();
     git.repositories.set([...git.repositories(), { ...structuredClone(first), id: 'other-repository' }]);
     git.activeRepositoryId.set('other-repository');
@@ -292,7 +292,7 @@ test('preserves branch errors and blocks retries while a failed operation refres
   await expect(name).toBeDisabled();
   await expect(page.getByRole('button', { name: /Switch branch, current/ })).toBeDisabled();
   await page.evaluate(() => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     git.error.set(null);
     void git.checkout('main');
     void git.createBranch('duplicate');
@@ -322,7 +322,7 @@ test('keeps context branch creation editable after failure and retries at the ch
   await expect(name).toBeDisabled();
   await expect(menu.getByRole('menuitem', { name: 'Checkout this commit' })).toBeDisabled();
   await page.evaluate(() => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.error.set(null);
+    window.ng.getComponent(document.querySelector('gk-app')).git.error.set(null);
     window.__completeBranchRecovery();
   });
   await expect(menu.getByRole('alert')).toContainText('Branch name is invalid');
@@ -367,7 +367,7 @@ test('blocks competing branch operations while a branch mutation is running', as
   await expect(page.getByRole('button', { name: /Switch branch, current/ })).toBeDisabled();
   await page.evaluate(() => {
     const host = window;
-    const git = host.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = host.ng.getComponent(document.querySelector('gk-app')).git;
     void git.checkout('main');
     void git.checkoutRemote('origin/docs');
     void git.createBranch('duplicate');
@@ -426,7 +426,7 @@ test('keeps branch reference navigation and context menus available during a mut
 test('keeps recovery busy and blocks undo and detached checkout until the branch error refresh finishes', async ({ page }) => {
   await installBackend(page, { holdRecovery: true });
   await page.evaluate(async () => {
-    await window.ng.getComponent(document.querySelector('gc-root')).git.checkout('feature/partial-staging');
+    await window.ng.getComponent(document.querySelector('gk-app')).git.checkout('feature/partial-staging');
     window.__failNextBranchMutation();
   });
   await page.getByRole('button', { name: 'Create branch', exact: true }).first().click();
@@ -436,11 +436,11 @@ test('keeps recovery busy and blocks undo and detached checkout until the branch
   await expect.poll(() => page.evaluate(() => typeof window.__completeBranchRecovery)).toBe('function');
   await expect(page.getByRole('button', { name: 'Stage all changes' })).toBeDisabled();
   await page.evaluate(() => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.selectedWorkingTreeFile.set('unstaged:fixture.txt');
+    window.ng.getComponent(document.querySelector('gk-app')).git.selectedWorkingTreeFile.set('unstaged:fixture.txt');
   });
   await page.keyboard.press('s');
   await page.evaluate(() => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.selectedWorkingTreeFile.set('staged:fixture.txt');
+    window.ng.getComponent(document.querySelector('gk-app')).git.selectedWorkingTreeFile.set('staged:fixture.txt');
   });
   await page.keyboard.press('u');
   await page.keyboard.press('Control+Shift+S');
@@ -449,7 +449,7 @@ test('keeps recovery busy and blocks undo and detached checkout until the branch
   await page.keyboard.press('Control+L');
   expect(await page.evaluate(() => window.__otherCalls)).toEqual([]);
   await page.evaluate(async () => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     await Promise.all([git.undo(), git.checkoutCommit(git.repository().headOid!)]);
   });
   expect(await page.evaluate(() => window.__branchCalls)).toEqual([
@@ -463,7 +463,7 @@ test('keeps recovery busy and blocks undo and detached checkout until the branch
 test('preserves checkout undo and redo for the repository where checkout started', async ({ page }) => {
   await installBackend(page, { hold: true });
   const firstRepositoryId = await page.evaluate(() => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     const first = git.repository();
     git.repositories.set([...git.repositories(), {
       ...structuredClone(first), id: 'other-repository', name: 'Other repository',
@@ -474,24 +474,24 @@ test('preserves checkout undo and redo for the repository where checkout started
   });
   await expect.poll(() => page.evaluate(() => typeof window.__completeBranchMutation)).toBe('function');
   await page.evaluate(() => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId.set('other-repository');
+    window.ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId.set('other-repository');
   });
   await expect(page.getByRole('button', { name: 'Switch branch, current other-branch' })).toBeVisible();
   await page.evaluate(() => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.selectedWorkingTreeFile.set('unstaged:other-repository.txt');
+    window.ng.getComponent(document.querySelector('gk-app')).git.selectedWorkingTreeFile.set('unstaged:other-repository.txt');
     window.__completeBranchMutation();
   });
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   expect(await page.evaluate(() =>
-    window.ng.getComponent(document.querySelector('gc-root')).git.selectedWorkingTreeFile())).toBe('unstaged:other-repository.txt');
-  await page.evaluate((id) => window.ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId.set(id), firstRepositoryId);
+    window.ng.getComponent(document.querySelector('gk-app')).git.selectedWorkingTreeFile())).toBe('unstaged:other-repository.txt');
+  await page.evaluate((id) => window.ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId.set(id), firstRepositoryId);
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveAttribute('title', /Undo Checkout feature\/partial-staging/);
 });
 
 test('undoes and redoes a successful branch checkout', async ({ page }) => {
   await installBackend(page);
   await page.evaluate(async () => {
-    await window.ng.getComponent(document.querySelector('gc-root')).git.checkout('feature/partial-staging');
+    await window.ng.getComponent(document.querySelector('gk-app')).git.checkout('feature/partial-staging');
   });
   await expect(page.getByRole('button', { name: 'Switch branch, current feature/partial-staging' })).toBeVisible();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
@@ -513,7 +513,7 @@ test('preserves another repository selection when branch failure recovery finish
   await form.getByRole('button', { name: 'Create', exact: true }).click();
   await expect.poll(() => page.evaluate(() => typeof window.__completeBranchRecovery)).toBe('function');
   await page.evaluate(() => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     const first = git.repository();
     git.repositories.set([...git.repositories(), {
       ...structuredClone(first), id: 'other-repository', name: 'Other repository',
@@ -523,12 +523,12 @@ test('preserves another repository selection when branch failure recovery finish
   });
   await expect(page.getByRole('button', { name: 'Switch branch, current other-branch' })).toBeVisible();
   await page.evaluate(() => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.selectedWorkingTreeFile.set('unstaged:other-repository.txt');
+    window.ng.getComponent(document.querySelector('gk-app')).git.selectedWorkingTreeFile.set('unstaged:other-repository.txt');
     window.__completeBranchRecovery();
   });
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   expect(await page.evaluate(() =>
-    window.ng.getComponent(document.querySelector('gc-root')).git.selectedWorkingTreeFile())).toBe('unstaged:other-repository.txt');
+    window.ng.getComponent(document.querySelector('gk-app')).git.selectedWorkingTreeFile())).toBe('unstaged:other-repository.txt');
 });
 
 for (const fail of [false, true]) {
@@ -568,7 +568,7 @@ test('does not cherry-pick when switching to the requested target branch fails',
   await confirmation.getByRole('button', { name: 'Cherry-pick onto feature/partial-staging' }).click();
   await expect.poll(() => page.evaluate(() => typeof window.__completeBranchRecovery)).toBe('function');
   await page.evaluate(async () => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.error.set(null);
+    window.ng.getComponent(document.querySelector('gk-app')).git.error.set(null);
     window.__completeBranchRecovery();
     await new Promise((resolve) => setTimeout(resolve, 100));
   });
@@ -587,7 +587,7 @@ test('does not integrate branches when switching to the target branch fails', as
   await menu.getByRole('menuitem', { name: /Merge main into feature\/partial-staging/ }).click();
   await expect.poll(() => page.evaluate(() => typeof window.__completeBranchRecovery)).toBe('function');
   await page.evaluate(async () => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.error.set(null);
+    window.ng.getComponent(document.querySelector('gk-app')).git.error.set(null);
     window.__completeBranchRecovery();
     await new Promise((resolve) => setTimeout(resolve, 100));
   });
@@ -600,7 +600,7 @@ test('does not integrate branches when switching to the target branch fails', as
 test('does not cherry-pick into a different repository after switching tabs during checkout', async ({ page }) => {
   await installBackend(page, { hold: true });
   await page.evaluate(() => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     const first = git.repository();
     git.repositories.set([...git.repositories(), {
       ...structuredClone(first), id: 'other-repository', name: 'Other repository',
@@ -615,10 +615,10 @@ test('does not cherry-pick into a different repository after switching tabs duri
   await page.getByRole('alertdialog').getByRole('button', { name: 'Cherry-pick onto feature/partial-staging' }).click();
   await expect.poll(() => page.evaluate(() => typeof window.__completeBranchMutation)).toBe('function');
   await page.evaluate(() => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.activeRepositoryId.set('other-repository');
+    window.ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId.set('other-repository');
     window.__completeBranchMutation();
   });
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   expect(await page.evaluate(() => window.__otherCalls)).not.toContain('cherry_pick_commits');
 });
 
@@ -676,7 +676,7 @@ test('keeps a failed recovery branch draft with its original error for retry', a
   await form.getByRole('button', { name: /Create at/ }).click();
   await expect.poll(() => page.evaluate(() => typeof window.__completeBranchRecovery)).toBe('function');
   await page.evaluate(() => {
-    window.ng.getComponent(document.querySelector('gc-root')).git.error.set(null);
+    window.ng.getComponent(document.querySelector('gk-app')).git.error.set(null);
     window.__completeBranchRecovery();
   });
   await expect(form.getByRole('alert')).toContainText('Branch name is invalid');
@@ -764,7 +764,7 @@ test('does not steal focus after a branch options checkout when the user has mov
   const search = page.getByRole('searchbox', { name: 'Search loaded commits by message, SHA, or author' });
   await search.focus();
   await page.evaluate(() => window.__completeBranchMutation());
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect(search).toBeFocused();
 });
@@ -777,7 +777,7 @@ test('does not steal focus after a context checkout when the user has moved else
   const search = page.getByRole('searchbox', { name: 'Search loaded commits by message, SHA, or author' });
   await search.focus();
   await page.evaluate(() => window.__completeBranchMutation());
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect(search).toBeFocused();
 });
@@ -791,7 +791,7 @@ test('does not steal focus after checkout when the user has moved elsewhere', as
   const search = page.getByRole('searchbox', { name: 'Search loaded commits by message, SHA, or author' });
   await search.focus();
   await page.evaluate(() => window.__completeBranchMutation());
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.busy())).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect(search).toBeFocused();
 });
@@ -999,7 +999,7 @@ test('does not close a new branch draft after a repository switch ends a resize'
   await splitter.dispatchEvent('pointerdown', { pointerId: 20, isPrimary: true, button: 0, clientX: 250 });
   await page.locator('body').dispatchEvent('pointermove', { pointerId: 20, clientX: 275 });
   await page.evaluate(() => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     git.repositories.update((repositories) => [
       ...repositories,
@@ -1062,7 +1062,7 @@ test('double-clicking a single graph branch checks it out without checking out o
   await branch.dblclick();
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
     .toEqual([{ command: 'checkout_branch', name: 'feature/partial-staging' }]);
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.repository().status.branch))
     .toBe('feature/partial-staging');
 });
 
@@ -1074,7 +1074,7 @@ test('Shift+Enter checks out a focused graph branch while Enter only views its t
   await pill.press('Shift+Enter');
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
     .toEqual([{ command: 'checkout_branch', name: 'feature/partial-staging' }]);
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.repository().status.branch))
     .toBe('feature/partial-staging');
   await expect(pill).not.toHaveAttribute('aria-keyshortcuts', 'Shift+Enter');
 });
@@ -1086,7 +1086,7 @@ test('Shift+Enter ignores a repeating key or a branch rendered for a retired che
   await pill.dispatchEvent('keydown', { key: 'Enter', shiftKey: true, repeat: true });
   expect(await page.evaluate(() => window.__branchCalls)).toEqual([]);
   await pill.evaluate(element => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const other = { ...structuredClone(git.repository()), id: 'new-keyboard-checkout', path: '/owned/new-keyboard-checkout' };
     git.repositories.update((repositories: any[]) => [...repositories, other]);
     git.activeRepositoryId.set(other.id);
@@ -1103,7 +1103,7 @@ test('double-clicking a collapsed graph reference checks out its non-current loc
   await releaseStack.locator('.reference-stack-trigger').dblclick();
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
     .toEqual([{ command: 'checkout_branch', name: 'release' }]);
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.repository().status.branch))
     .toBe('release');
   await expect(page.locator('.commit-ref-stack.pointer-expanded')).toHaveCount(0);
 
@@ -1148,14 +1148,14 @@ test('requires a remote selection before checking out a group with multiple remo
   await stack.getByRole('menuitem', { name: 'Remote branch upstream/main' }).dblclick();
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
     .toEqual([{ command: 'sync_checkout_remote_branch', name: 'upstream/main' }]);
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.error()))
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.error()))
     .toBeNull();
 });
 
 for (const activation of ['dblclick', 'keyboard'] as const) {
   test(`updates an existing branch from a remote hidden in a mixed graph chip using ${activation}`, async ({ page }) => {
     await page.evaluate(() => {
-      const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+      const git = window.ng.getComponent(document.querySelector('gk-app')).git;
       const repository = git.repository();
       const main = repository.branches.find(branch => !branch.remote && branch.name === 'main')!;
       const remote = repository.branches.find(branch => branch.remote && branch.name === 'origin/main')!;
@@ -1185,7 +1185,7 @@ for (const activation of ['dblclick', 'keyboard'] as const) {
     }
     await expect.poll(() => page.evaluate(() => window.__branchCalls))
       .toEqual([{ command: 'sync_checkout_remote_branch', name: 'origin/main' }]);
-    await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.repository().status.branch))
+    await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.repository().status.branch))
       .toBe('main');
   });
 }
@@ -1200,7 +1200,7 @@ for (const [outcome, message] of [
     await page.locator('#reference-section-local').getByLabel('Remote branch origin/main', { exact: true })
       .click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Fetch and check out local branch' }).click();
-    await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.activity()))
+    await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.activity()))
       .toContain(message);
   });
 }
@@ -1213,7 +1213,7 @@ test('checks out an unambiguous remote graph reference as a local tracking branc
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
     .toEqual([{ command: 'sync_checkout_remote_branch', name: 'origin/docs' }]);
   await expect.poll(() => page.evaluate(() => {
-    const repository = window.ng.getComponent(document.querySelector('gc-root')).git.repository();
+    const repository = window.ng.getComponent(document.querySelector('gk-app')).git.repository();
     const local = repository.branches.find((branch) => !branch.remote && branch.name === 'docs');
     const remote = repository.branches.find((branch) => branch.remote && branch.name === 'origin/docs');
     return [repository.status.branch, local?.current, local?.upstream, repository.headOid === remote?.oid];
@@ -1230,7 +1230,7 @@ test('creates a tracking branch for the explicitly selected remote location', as
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
     .toEqual([{ command: 'sync_checkout_remote_branch', name: 'upstream/docs' }]);
   await expect.poll(() => page.evaluate(() => {
-    const repository = window.ng.getComponent(document.querySelector('gc-root')).git.repository();
+    const repository = window.ng.getComponent(document.querySelector('gk-app')).git.repository();
     const local = repository.branches.find((branch) => !branch.remote && branch.name === 'docs');
     const remote = repository.branches.find((branch) => branch.remote && branch.name === 'upstream/docs');
     return [repository.status.branch, local?.current, local?.upstream, repository.headOid === remote?.oid];
@@ -1239,7 +1239,7 @@ test('creates a tracking branch for the explicitly selected remote location', as
 
 test('fetches and updates an existing local branch from the selected remote', async ({ page }) => {
   await page.evaluate(() => {
-    const git = window.ng.getComponent(document.querySelector('gc-root')).git;
+    const git = window.ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
     const oid = repository.branches.find((branch) => branch.remote && branch.name === 'origin/main')!.oid;
     git.repositories.update((repositories) => repositories.map((candidate) => candidate.id !== repository.id ? candidate : {
@@ -1254,17 +1254,17 @@ test('fetches and updates an existing local branch from the selected remote', as
     .locator('.reference-stack-trigger').dblclick();
   await expect.poll(() => page.evaluate(() => window.__branchCalls))
     .toEqual([{ command: 'sync_checkout_remote_branch', name: 'origin/main' }]);
-  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gc-root')).git.error()))
+  await expect.poll(() => page.evaluate(() => window.ng.getComponent(document.querySelector('gk-app')).git.error()))
     .toBeNull();
   await expect.poll(() => page.evaluate(() => {
-    const repository = window.ng.getComponent(document.querySelector('gc-root')).git.repository();
+    const repository = window.ng.getComponent(document.querySelector('gk-app')).git.repository();
     return [repository.status.branch, repository.headOid === repository.branches.find(branch => branch.name === 'origin/main')?.oid];
   })).toEqual(['main', true]);
 });
 
 test('an exact branch is reachable beyond the row cap and partial Enter does not guess a checkout', async ({ page }) => {
   await page.evaluate(() => {
-    const { git } = window.ng.getComponent(document.querySelector('gc-root'));
+    const { git } = window.ng.getComponent(document.querySelector('gk-app'));
     const source = git.repository();
     const base = source.branches.find(branch => branch.current)!;
     const decoys = Array.from({ length: 90 }, (_, i): Branch => ({
@@ -1351,7 +1351,7 @@ test('a branch row cannot switch the new repository before the old picker is rem
   await picker.getByRole('searchbox').fill('refs/heads/release');
   const row = picker.getByRole('button', { name: /^release Local branch/ });
   await row.evaluate(button => {
-    const { git } = window.ng.getComponent(document.querySelector('gc-root'));
+    const { git } = window.ng.getComponent(document.querySelector('gk-app'));
     const next = { ...git.repository(), id: 'other-branch-picker-visit', path: '/owned/other-picker-visit' };
     git.repositories.update(repos => [...repos, next]);
     git.activeRepositoryId.set(next.id);

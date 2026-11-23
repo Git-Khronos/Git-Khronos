@@ -523,6 +523,31 @@ pub fn preserve_operation(path: &Path, label: &str) -> Result<OperationRecovery,
     Ok(record)
 }
 
+/// Captures the complete tracked checkout before a history rewrite. If Git
+/// refuses without changing that state, retire the unused capture; if the
+/// result is partial or uncertain, keep it available in Recovery History.
+pub(crate) fn with_preserved_operation<T>(
+    path: &Path,
+    label: &str,
+    operation: impl FnOnce() -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    require_idle(path)?;
+    let state = current_state(path)?;
+    let record = preserve_state(path, label, &state)?;
+    if current_state(path)? != state {
+        return Err(stale_reset());
+    }
+    match operation() {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            if current_state(path).is_ok_and(|current| current == state) {
+                let _ = delete_operation_recovery(path, &record.id);
+            }
+            Err(error)
+        }
+    }
+}
+
 /// Protects an existing commit (and optionally a stash-shaped snapshot whose
 /// first parent is that commit) before an operation removes its last reference.
 pub(crate) fn preserve_commits(

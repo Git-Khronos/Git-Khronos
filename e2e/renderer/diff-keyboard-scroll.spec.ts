@@ -11,7 +11,7 @@ async function openSeparatedChanges(page: Page, options: {width?: number; fontSi
   await page.goto('/?compare-commits&diff-viewer=split');
   await expect(page.getByRole('region', {name: 'Before and after file changes'})).toBeVisible();
   await page.evaluate(wordWrap => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const patch = 'diff --git a/large.txt b/large.txt\n--- a/large.txt\n+++ b/large.txt\n'
       + '@@ -1,140 +1,140 @@\n-old opening\n+new opening\n'
       + Array.from({length: 139}, (_, i) => ` context line ${i + 2}${wordWrap ? ' long readable source content'.repeat(8) : ''}\n`).join('')
@@ -115,7 +115,7 @@ for (const options of [
 test('an explicit change request during layout redraw wins the older viewport restoration', async ({page}) => {
   await openSeparatedChanges(page);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.setDiffViewMode('hunk');
     app.jumpToDiffHunk(0);
   });
@@ -133,7 +133,7 @@ test('manual wheel scrolling releases wrapped change anchoring', async ({page}) 
   await expect.poll(() => source.evaluate(element => element.scrollTop)).toBeLessThan(before - 50);
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   expect(await source.evaluate(element => element.scrollTop)).toBeLessThan(before - 50);
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).stopDiffViewportTracking)).toBeNull();
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).stopDiffViewportTracking)).toBeNull();
 });
 
 test('wrapped change anchoring stays idle at the beginning of the file', async ({page}) => {
@@ -152,7 +152,7 @@ test('wrapped change anchoring stays idle at the beginning of the file', async (
   await openSeparatedChanges(page, {wordWrap: true});
   await page.evaluate(() => {
     (window as any).__diffResizeCallbacks = 0;
-    (window as any).ng.getComponent(document.querySelector('gc-root')).jumpToDiffHunk(0);
+    (window as any).ng.getComponent(document.querySelector('gk-app')).jumpToDiffHunk(0);
   });
   await expect(page.locator('.diff-primary-view [data-diff-hunk="0"]')).toBeInViewport();
   await page.evaluate(() => new Promise<void>(resolve => {
@@ -162,13 +162,13 @@ test('wrapped change anchoring stays idle at the beginning of the file', async (
   }));
   expect(await page.evaluate(() => (window as any).__diffResizeCallbacks)).toBeLessThan(6);
   await page.getByRole('button', {name: 'Close diff', exact: true}).click();
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).stopDiffViewportTracking)).toBeNull();
+  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).stopDiffViewportTracking)).toBeNull();
 });
 
 test('a layout callback cannot restore the old scroll position after closing and reopening the viewer', async ({page}) => {
   await openSeparatedChanges(page);
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.setDiffViewMode('hunk');
     app.closeDiffViewer();
     app.openDiffViewer();
@@ -183,7 +183,7 @@ test('F6 focuses the scrollable split source and arrows scroll without selecting
   await page.goto('/?compare-commits&diff-viewer=split');
   await expect(page.getByRole('region', {name: 'Before and after file changes'})).toBeVisible();
   const selected = await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const patch = 'diff --git a/large.txt b/large.txt\n--- a/large.txt\n+++ b/large.txt\n@@ -0,0 +1,200 @@\n'
       + Array.from({length: 200}, (_, i) => `+source line ${i + 1}\n`).join('');
     app.git.comparisonFileDiff.update((diff: any) => ({...diff, patch}));
@@ -195,7 +195,7 @@ test('F6 focuses the scrollable split source and arrows scroll without selecting
   await expect(source).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect.poll(() => source.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).selectedCommit())).toBe(selected);
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).selectedCommit())).toBe(selected);
 });
 
 test('diff change navigation respects reduced-motion preferences', async ({page}) => {

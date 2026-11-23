@@ -30,53 +30,53 @@ export class RepositoryFormDrafts {
 
 /** Loaded on demand so repository management stays out of the startup bundle. */
 @Component({
-  selector: 'gc-repository-dialog',
+  selector: 'gk-repository-dialog',
   imports: [RepositoryFormStylesComponent, FormsModule, IconComponent, HostedRepositoryBrowserComponent, GitLabProjectsComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
   styleUrl: './repository-dialog.component.scss',
   template: `
-  <gc-repository-form-styles />
+  <gk-repository-form-styles />
   <div class="repository-backdrop" (click)="close()">
     <section #dialog class="repository-dialog" role="dialog" aria-modal="true" aria-label="Repository management" (click)="$event.stopPropagation()" (keydown)="trapFocus($event)">
       <header class="repository-dialog-header">
         <img class="brand-mark mini" src="assets/icon.svg" width="29" height="29" alt="" /><div><strong>Repository Management</strong><small>Open, clone, or initialize a repository</small></div>
-        <button type="button" aria-label="Close repository management" (click)="close()"><gc-icon name="x" [size]="14" /></button>
+        <button type="button" aria-label="Close repository management" (click)="close()"><gk-icon name="x" [size]="14" /></button>
       </header>
       @if (creationNotice(); as notice) { <p class="form-readiness" role="status">{{ notice }}</p> }
       <nav class="repository-dialog-tabs" role="tablist" aria-label="Repository actions" (keydown)="handleTabKey($event)">
-        @if (!cloneOnly()) { <button id="repository-tab-manager" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'manager'" [attr.tabindex]="mode() === 'manager' ? 0 : -1" [class.active]="mode() === 'manager'" (click)="setMode('manager')"><gc-icon name="folder-git" [size]="13" />Browse</button> }
-        <button id="repository-tab-clone" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'clone'" [attr.tabindex]="mode() === 'clone' ? 0 : -1" [class.active]="mode() === 'clone'" (click)="setMode('clone')"><gc-icon name="copy" [size]="13" />Clone</button>
-        @if (!cloneOnly()) { <button id="repository-tab-init" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'init'" [attr.tabindex]="mode() === 'init' ? 0 : -1" [class.active]="mode() === 'init'" (click)="setMode('init')"><gc-icon name="repo" [size]="13" />Initialize</button> }
+        @if (!cloneOnly()) { <button id="repository-tab-manager" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'manager'" [attr.tabindex]="mode() === 'manager' ? 0 : -1" [class.active]="mode() === 'manager'" (click)="setMode('manager')"><gk-icon name="folder-git" [size]="13" />Browse</button> }
+        <button id="repository-tab-clone" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'clone'" [attr.tabindex]="mode() === 'clone' ? 0 : -1" [class.active]="mode() === 'clone'" (click)="setMode('clone')"><gk-icon name="copy" [size]="13" />Clone</button>
+        @if (!cloneOnly()) { <button id="repository-tab-init" type="button" role="tab" aria-controls="repository-dialog-panel" [attr.aria-selected]="mode() === 'init'" [attr.tabindex]="mode() === 'init' ? 0 : -1" [class.active]="mode() === 'init'" (click)="setMode('init')"><gk-icon name="repo" [size]="13" />Initialize</button> }
       </nav>
       @if (mode() === 'manager') {
         <div id="repository-dialog-panel" class="repository-manager-body" role="tabpanel" aria-labelledby="repository-tab-manager">
           @if (git.browserPreview()) {
-            <div class="browser-preview-notice"><gc-icon name="terminal" [size]="16" /><span><strong>Sample-data preview</strong><small>Local repositories and Git commands are available in the desktop app. Run <code>task dev</code> to use them.</small></span></div>
+            <div class="browser-preview-notice"><gk-icon name="terminal" [size]="16" /><span><strong>Sample-data preview</strong><small>Local repositories and Git commands are available in the desktop app. Run <code>task dev</code> to use them.</small></span></div>
           }
-          <button class="repository-action-card" type="button" [disabled]="git.browserPreview()" (click)="requestExistingRepository('picker')"><span><gc-icon name="folder-git" [size]="22" /></span><div><strong>Open a repository</strong><small>Browse to an existing local Git working tree</small></div>@if (git.browserPreview()) { <b>Desktop only</b> } @else { <i class="repository-action-disclosure" aria-hidden="true"><gc-icon name="chevron-right" [size]="13" /></i> }</button>
-          <button class="repository-action-card" type="button" (click)="openMode('clone')"><span><gc-icon name="copy" [size]="22" /></span><div><strong>Clone a repository</strong><small>Download a remote repository to this machine</small></div><i class="repository-action-disclosure" aria-hidden="true"><gc-icon name="chevron-right" [size]="13" /></i></button>
-          <button class="repository-action-card" type="button" (click)="openMode('init')"><span><gc-icon name="repo" [size]="22" /></span><div><strong>Initialize a repository</strong><small>Create a new local Git working tree</small></div><i class="repository-action-disclosure" aria-hidden="true"><gc-icon name="chevron-right" [size]="13" /></i></button>
+          <button class="repository-action-card" type="button" [disabled]="git.browserPreview()" (click)="requestExistingRepository('picker')"><span><gk-icon name="folder-git" [size]="22" /></span><div><strong>Open a repository</strong><small>Browse to an existing local Git working tree</small></div>@if (git.browserPreview()) { <b>Desktop only</b> } @else { <i class="repository-action-disclosure" aria-hidden="true"><gk-icon name="chevron-right" [size]="13" /></i> }</button>
+          <button class="repository-action-card" type="button" (click)="openMode('clone')"><span><gk-icon name="copy" [size]="22" /></span><div><strong>Clone a repository</strong><small>Download a remote repository to this machine</small></div><i class="repository-action-disclosure" aria-hidden="true"><gk-icon name="chevron-right" [size]="13" /></i></button>
+          <button class="repository-action-card" type="button" (click)="openMode('init')"><span><gk-icon name="repo" [size]="22" /></span><div><strong>Initialize a repository</strong><small>Create a new local Git working tree</small></div><i class="repository-action-disclosure" aria-hidden="true"><gk-icon name="chevron-right" [size]="13" /></i></button>
           @if (repositoryHistoryCount() >= 3) {
             <div class="manager-repository-filter" role="search" aria-label="Repository history">
-              <label><gc-icon name="search" [size]="13" /><input #managerRepositoryFilter type="search" aria-label="Filter managed repositories" placeholder="Filter repositories by name or path" [value]="repositoryQuery()" (input)="repositoryQuery.set(managerRepositoryFilter.value)" (keydown.escape)="$event.stopPropagation(); clearRepositoryFilter()" />@if (repositoryQuery()) { <button type="button" aria-label="Clear repository filter" title="Clear repository filter (Esc)" (click)="clearRepositoryFilter()"><gc-icon name="x" [size]="11" /></button> }</label>
+              <label><gk-icon name="search" [size]="13" /><input #managerRepositoryFilter type="search" aria-label="Filter managed repositories" placeholder="Filter repositories by name or path" [value]="repositoryQuery()" (input)="repositoryQuery.set(managerRepositoryFilter.value)" (keydown.escape)="$event.stopPropagation(); clearRepositoryFilter()" />@if (repositoryQuery()) { <button type="button" aria-label="Clear repository filter" title="Clear repository filter (Esc)" (click)="clearRepositoryFilter()"><gk-icon name="x" [size]="11" /></button> }</label>
               <small data-manager-filter-status role="status" aria-live="polite">{{ visibleRepositoryCount() }} of {{ repositoryHistoryCount() }}</small>
             </div>
           }
           @if (repositoryQuery() && !visibleRepositoryCount()) {
-            <div class="manager-repository-empty" role="region" aria-label="No matching repositories"><gc-icon name="search" [size]="16" /><span><strong>No matching repositories</strong><small>Try part of a repository name or folder path.</small></span><button type="button" (click)="clearRepositoryFilter()">Clear filter</button></div>
+            <div class="manager-repository-empty" role="region" aria-label="No matching repositories"><gk-icon name="search" [size]="16" /><span><strong>No matching repositories</strong><small>Try part of a repository name or folder path.</small></span><button type="button" (click)="clearRepositoryFilter()">Clear filter</button></div>
           }
           @if (filteredFavoritePaths().length) {
-            <div class="manager-repositories manager-favorites"><h3>Favorites</h3>@for (path of filteredFavoritePaths(); track path) { @let index = git.favoritePaths().indexOf(path); <div class="manager-repository-row"><button class="manager-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="requestExistingRepository('favorite', path)"><gc-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span><kbd>{{ index < 9 ? favoriteShortcut() + ' ' + (index + 1) : '' }}</kbd></button><button class="manager-favorite-toggle active" type="button" title="Remove {{ git.pathLabel(path) }} from favorites" [attr.aria-label]="'Remove ' + git.pathLabel(path) + ' from favorites'" aria-pressed="true" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="13" /></button></div> }</div>
+            <div class="manager-repositories manager-favorites"><h3>Favorites</h3>@for (path of filteredFavoritePaths(); track path) { @let index = git.favoritePaths().indexOf(path); <div class="manager-repository-row"><button class="manager-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="requestExistingRepository('favorite', path)"><gk-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span><kbd>{{ index < 9 ? favoriteShortcut() + ' ' + (index + 1) : '' }}</kbd></button><button class="manager-favorite-toggle active" type="button" title="Remove {{ git.pathLabel(path) }} from favorites" [attr.aria-label]="'Remove ' + git.pathLabel(path) + ' from favorites'" aria-pressed="true" (click)="git.toggleFavoritePath(path)"><gk-icon name="star" [size]="13" /></button></div> }</div>
           }
           @if (filteredRecentPaths().length) {
-            <div class="manager-repositories manager-recents"><h3>Recently opened</h3>@for (path of filteredRecentPaths(); track path) { <div class="manager-repository-row"><button class="manager-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="requestExistingRepository('recent', path)"><gc-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span></button><button class="manager-favorite-toggle" type="button" title="Add {{ git.pathLabel(path) }} to favorites" [attr.aria-label]="'Add ' + git.pathLabel(path) + ' to favorites'" aria-pressed="false" (click)="git.toggleFavoritePath(path)"><gc-icon name="star" [size]="13" /></button></div> }</div>
+            <div class="manager-repositories manager-recents"><h3>Recently opened</h3>@for (path of filteredRecentPaths(); track path) { <div class="manager-repository-row"><button class="manager-repository-main" type="button" [title]="path" [attr.aria-label]="'Open ' + git.pathLabel(path) + ' at ' + path" (click)="requestExistingRepository('recent', path)"><gk-icon name="folder-git" [size]="13" /><span><strong>{{ git.pathLabel(path) }}</strong><small>{{ path }}</small></span></button><button class="manager-favorite-toggle" type="button" title="Add {{ git.pathLabel(path) }} to favorites" [attr.aria-label]="'Add ' + git.pathLabel(path) + ' to favorites'" aria-pressed="false" (click)="git.toggleFavoritePath(path)"><gk-icon name="star" [size]="13" /></button></div> }</div>
           }
         </div>
       } @else if (mode() === 'clone') {
         <form id="repository-dialog-panel" class="repository-form" role="tabpanel" aria-labelledby="repository-tab-clone" (submit)="$event.preventDefault(); submitClone()">
           <div class="repository-form-body">
-            <div class="form-intro"><span><gc-icon name="copy" [size]="21" /></span><div><h2>Clone a Repository</h2><p>Enter a Git URL or a path to another local repository.</p></div></div>
+            <div class="form-intro"><span><gk-icon name="copy" [size]="21" /></span><div><h2>Clone a Repository</h2><p>Enter a Git URL or a path to another local repository.</p></div></div>
             @if (!cloneOnly()) {
               <div class="provider-catalogues" role="group" aria-label="Hosted repository catalogues">
                 <button type="button" [disabled]="git.busy()" [attr.aria-expanded]="hostedMode()" (click)="toggleHostedMode()">{{ hostedMode() ? 'Enter a repository URL instead' : 'Browse repositories on GitHub' }}</button>
@@ -85,7 +85,7 @@ export class RepositoryFormDrafts {
             }
             @if (gitlabMode()) {
                 @defer (on immediate) {
-                  <gc-gitlab-projects #gitlabBrowser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" />
+                  <gk-gitlab-projects #gitlabBrowser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" />
                 } @placeholder {
                   <div data-gitlab-loader role="region" aria-label="Opening GitLab projects"><p role="status">Opening GitLab projects…</p><button type="button" (click)="closeGitlabMode()">Cancel opening GitLab projects</button></div>
                 } @loading {
@@ -93,12 +93,12 @@ export class RepositoryFormDrafts {
                 } @error {
                   <div role="region" aria-label="GitLab projects unavailable"><p role="alert">GitLab browsing could not open. Continue with a repository URL, or save your work and restart the application before trying GitLab browsing again.</p><button type="button" (click)="closeGitlabMode()">Return to repository URL</button></div>
                 }
-            } @else if (hostedMode()) { @for (generation of hostedViews(); track generation) { <gc-hosted-repository-browser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" /> } } @else {
+            } @else if (hostedMode()) { @for (generation of hostedViews(); track generation) { <gk-hosted-repository-browser [initialParentPath]="form.cloneParentPath()" (opening)="opening.emit()" (opened)="opened.emit()" /> } } @else {
             <label>Repository URL<input name="cloneRemote" autocomplete="off" placeholder="https://host/owner/repository.git" [ngModel]="form.cloneRemote()" (ngModelChange)="updateCloneRemote($event)" /></label>
             <label>Where to clone<div class="path-picker"><input name="cloneParent" readonly placeholder="Choose a destination folder" [ngModel]="form.cloneParentPath()" /><button type="button" (click)="chooseCloneParent()">Browse</button></div></label>
             <label>Folder name<input name="cloneFolder" autocomplete="off" placeholder="repository" [ngModel]="form.cloneFolder()" (ngModelChange)="form.cloneFolder.set($event)" /></label>
             @if (cloneDestination()) {
-              <div class="repository-destination"><gc-icon name="folder-git" [size]="14" /><span><small>Destination</small><code>{{ cloneDestination() }}</code></span></div>
+              <div class="repository-destination"><gk-icon name="folder-git" [size]="14" /><span><small>Destination</small><code>{{ cloneDestination() }}</code></span></div>
             }
             <fieldset class="repository-options">
               <legend>Clone options</legend>
@@ -115,11 +115,11 @@ export class RepositoryFormDrafts {
       } @else {
         <form id="repository-dialog-panel" class="repository-form" role="tabpanel" aria-labelledby="repository-tab-init" (submit)="$event.preventDefault(); submitInit()">
           <div class="repository-form-body">
-            <div class="form-intro"><span><gc-icon name="repo" [size]="21" /></span><div><h2>Initialize a Repository</h2><p>Create a new local repository and open it immediately.</p></div></div>
+            <div class="form-intro"><span><gk-icon name="repo" [size]="21" /></span><div><h2>Initialize a Repository</h2><p>Create a new local repository and open it immediately.</p></div></div>
             <label>Location<div class="path-picker"><input name="initParent" readonly placeholder="Choose a parent folder" [ngModel]="form.initParentPath()" /><button type="button" (click)="chooseInitParent()">Browse</button></div></label>
             <label>Repository name<input name="initFolder" autocomplete="off" placeholder="my-project" [ngModel]="form.initFolder()" (ngModelChange)="form.initFolder.set($event)" /></label>
             @if (initDestination()) {
-              <div class="repository-destination"><gc-icon name="folder-git" [size]="14" /><span><small>Destination</small><code>{{ initDestination() }}</code></span></div>
+              <div class="repository-destination"><gk-icon name="folder-git" [size]="14" /><span><small>Destination</small><code>{{ initDestination() }}</code></span></div>
             }
             <label>Initial branch<input name="initBranch" autocomplete="off" placeholder="main" [ngModel]="form.initBranch()" (ngModelChange)="form.initBranch.set($event)" /></label>
             <label class="option-row"><input type="checkbox" name="initReadme" [ngModel]="form.initReadme()" (ngModelChange)="form.initReadme.set($event)" /><span><strong>Add README.md</strong><small>Create a starter README in the working tree</small></span></label>
@@ -236,7 +236,7 @@ export class RepositoryDialogComponent {
   private focusMode(mode: RepositoryDialogMode): void {
     const dialog = this.dialog()?.nativeElement;
     const target = mode === 'clone'
-      ? dialog?.querySelector<HTMLElement>('input[name="cloneRemote"], gc-hosted-repository-browser button:not(:disabled), gc-gitlab-projects input:not(:disabled), [data-gitlab-loader] button:not(:disabled)')
+      ? dialog?.querySelector<HTMLElement>('input[name="cloneRemote"], gk-hosted-repository-browser button:not(:disabled), gk-gitlab-projects input:not(:disabled), [data-gitlab-loader] button:not(:disabled)')
       : mode === 'init'
         ? dialog?.querySelector<HTMLElement>('.path-picker button')
         : dialog?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');

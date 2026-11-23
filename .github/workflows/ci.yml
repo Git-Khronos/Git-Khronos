@@ -193,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb libxtst6 git-lfs openssh-client openssh-server fakeroot desktop-file-utils libglib2.0-bin openssl libssl-dev pkg-config dbus
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb libxtst6 git-lfs openssh-client openssh-server gnupg gpgsm fakeroot desktop-file-utils libglib2.0-bin openssl libssl-dev pkg-config dbus
           for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
             command -v "$tool"
           done
@@ -244,6 +244,24 @@ jobs:
           retention-days: 14
       - name: Run packaged WebKitGTK acceptance
         run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static
+      - name: Run focused packaged signing and tag-navigation acceptance
+        run: |
+          pnpm nx run desktop:native-signed-commit --output-style=static
+          pnpm nx run desktop:native-empty-commit --output-style=static
+          pnpm nx run desktop:native-merge-preview --output-style=static
+          pnpm nx run desktop:native-signed-tag --output-style=static
+          pnpm nx run desktop:native-lfs-lock-actions --output-style=static
+          pnpm nx run desktop:native-tag-preview --output-style=static
+          pnpm nx run desktop:native-file-history --output-style=static
+          pnpm nx run desktop:native-conflict-navigation --output-style=static
+          pnpm nx run desktop:native-file-tools --output-style=static
+          pnpm nx run desktop:native-working-tree-recaps --output-style=static
+          pnpm nx run desktop:native-integrity-ui --output-style=static
+      - name: Run focused packaged GitLab fork navigation acceptance
+        run: |
+          package=$(task --silent package:deb:path)
+          pnpm nx exec -p desktop --excludeTaskDependencies -- \
+            python3 "$PWD/tools/native_acceptance.py" --suite gitlab-fork-ui --headless --package "$package"
       - name: Run packaged GitLab catalogue acceptance
         run: |
           package=$(task --silent package:deb:path)

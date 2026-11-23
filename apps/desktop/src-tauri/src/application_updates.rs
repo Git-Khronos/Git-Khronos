@@ -575,7 +575,10 @@ fn admit_install(
         // still leaves a receipt for the next process to inspect.
         let retirement = model::load_preferences(&runtime.store).and_then(|observed| {
             if observed != preferences {
-                return Err("The prepared installation receipt changed on disk before it could be retired.".into());
+                return Err(
+                    "The prepared installation receipt changed on disk before it could be retired."
+                        .into(),
+                );
             }
             persist(&runtime.store, &runtime.model.preferences)
         });

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { lazyChunkForExport, requestIsChunk } from './lazy-chunk-routing';
 
 async function holdInspector(page: Page, fail = false) {
   let release!: () => void;
@@ -6,10 +7,12 @@ async function holdInspector(page: Page, fail = false) {
   let finished!: () => void;
   const done = new Promise<void>(resolve => { finished = resolve; });
   let requests = 0;
+  let inspectorChunk: string | null = null;
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
     const body = await response.text();
-    if (!body.includes('RevisionInspectorComponent')) {
+    inspectorChunk = lazyChunkForExport(body, 'RevisionInspectorComponent') ?? inspectorChunk;
+    if (!requestIsChunk(route.request().url(), inspectorChunk)) {
       await route.fulfill({ response, body });
       return;
     }
@@ -60,7 +63,7 @@ test('a late revision inspector cannot change the working directory selection or
     await held.done;
     await expect(draft).toHaveValue('Leave my draft in place');
     await expect(draft).toBeFocused();
-    await expect(panel.locator('gc-revision-inspector')).toHaveCount(0);
+    await expect(panel.locator('gk-revision-inspector')).toHaveCount(0);
   } finally { held.release(); }
 });
 

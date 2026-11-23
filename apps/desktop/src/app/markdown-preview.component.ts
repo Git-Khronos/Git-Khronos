@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, effect, input, signal, untracked } 
 import type { MarkdownPreview } from './markdown-preview';
 
 @Component({
-  selector: 'gc-markdown-preview',
+  selector: 'gk-markdown-preview',
   imports: [NgTemplateOutlet],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `

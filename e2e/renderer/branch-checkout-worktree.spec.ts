@@ -4,7 +4,7 @@ async function setup(page: Page, sourceRegistrationPath?: string) {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
   return page.evaluate(sourceRegistrationPath => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const source = git.repository();
     const branch = source.branches.find((entry: any) => entry.name === 'feature/partial-staging');
@@ -79,7 +79,7 @@ async function loseCachedOwner(page: Page, failureKind: string, failRefresh = fa
     const fixture = (window as any).__checkoutWorktree;
     fixture.checkoutFailure = failureKind;
     fixture.failRefresh = failRefresh;
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((tabs: any[]) => tabs.map(tab => ({ ...tab,
       worktrees: tab.worktrees.filter((entry: any) => entry.current) })));
   }, { failureKind, failRefresh });
@@ -126,7 +126,7 @@ test('a late checkout refusal does not open a review in a different repository',
   await page.locator('.commit-row .branch-column .ref-pill.local', { hasText: fixture.branch }).dblclick();
   await expect.poll(() => page.evaluate(() => !!(window as any).__checkoutWorktree.finish)).toBe(true);
   const activity = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const other = { ...git.repository(), id: 'another-repository', path: '/workspace/unrelated' };
     git.repositories.update((tabs: any[]) => [...tabs, other]);
     git.activeRepositoryId.set(other.id);
@@ -167,7 +167,7 @@ test('a checkout review closes when another workspace opens the same checkout', 
   const dialog = await requestCheckout(page, fixture.branch);
   await expect(dialog).toBeVisible();
   const scope = await page.evaluate(async () => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repo = git.repository();
     const workspace = { ...git.activeWorkspace(), id: 'same-checkout-workspace', name: 'Same checkout view',
       repositoryPaths: [repo.path], activeRepositoryPath: repo.path };
@@ -189,7 +189,7 @@ test('a late checkout refusal cannot reopen a review after leaving and returning
   await page.locator('.commit-row .branch-column .ref-pill.local', { hasText: fixture.branch }).dblclick();
   await expect.poll(() => page.evaluate(() => !!(window as any).__checkoutWorktree.finish)).toBe(true);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const source = git.repository();
     const other = { ...source, id: 'other-checkout-visit', path: '/fixture/other-checkout-visit' };
     git.repositories.update((repositories: any[]) => [...repositories, other]);
@@ -205,7 +205,7 @@ test('a late checkout refusal cannot reopen a review after leaving and returning
 test('occupied branch requires explicit navigation and sends no checkout command', async ({ page }) => {
   const fixture = await setup(page);
   await page.evaluate(() => {
-    (window as any).ng.getComponent(document.querySelector('gc-root')).commitMessage.set('Keep my source draft');
+    (window as any).ng.getComponent(document.querySelector('gk-app')).commitMessage.set('Keep my source draft');
   });
   const dialog = await requestCheckout(page, fixture.branch);
   await expect(dialog).toContainText(fixture.sourcePath);
@@ -228,7 +228,7 @@ test('occupied branch requires explicit navigation and sends no checkout command
   expect(calls.findIndex((entry: any) => entry.command === 'refresh_repository'))
     .toBeLessThan(calls.findIndex((entry: any) => entry.command === 'open_repository'));
   expect(await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return app.commitDrafts.get((window as any).__checkoutWorktree.sourceId)?.summary;
   })).toBe('Keep my source draft');
 });
@@ -236,7 +236,7 @@ test('occupied branch requires explicit navigation and sends no checkout command
 test('available local branches still use one ordinary native checkout', async ({ page }) => {
   const fixture = await setup(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((tabs: any[]) => tabs.map(tab => ({ ...tab,
       worktrees: tab.worktrees.filter((entry: any) => entry.current) })));
   });
@@ -269,7 +269,7 @@ test('keyboard branch-picker activation reviews occupancy and returns to its ope
 test('duplicate repository names include distinguishing paths in their tab names', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const source = git.repository();
     git.repositories.set([
       { ...source, path: '/workspace/one/project', name: 'project',
@@ -311,7 +311,7 @@ test('compact checkout review keeps long paths and actions within its bounds', a
   const fixture = await setup(page);
   await page.setViewportSize({ width: 360, height: 640 });
   await page.evaluate(branch => {
-    void (window as any).ng.getComponent(document.querySelector('gc-root')).checkoutBranch(branch);
+    void (window as any).ng.getComponent(document.querySelector('gk-app')).checkoutBranch(branch);
   }, fixture.branch);
   const dialog = page.getByRole('dialog', { name: 'Branch is open in another checkout' });
   await expect(dialog).toBeVisible();
@@ -339,7 +339,7 @@ for (const mode of ['hold', 'fail'] as const) {
       else await route.fulfill({ response, body: source });
     });
     await page.evaluate(branch => {
-      void (window as any).ng.getComponent(document.querySelector('gc-root')).checkoutBranch(branch);
+      void (window as any).ng.getComponent(document.querySelector('gk-app')).checkoutBranch(branch);
     }, fixture.branch);
     const loading = page.getByRole('dialog', { name: 'Loading checkout review' });
     await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
@@ -369,7 +369,7 @@ test('late refresh cannot navigate after the source repository changes', async (
   await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
   await expect(dialog.getByRole('button', { name: 'Open existing checkout' })).toBeDisabled();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const other = { ...git.repository(), id: 'another-repository', path: '/workspace/unrelated' };
     git.repositories.update((tabs: any[]) => [...tabs, other]);
@@ -389,7 +389,7 @@ test('leaving and returning to a checkout discards the old review refresh and it
   await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__checkoutWorktree.finish)).toBe('function');
   const before = await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const source = git.repository();
     const fixture = (window as any).__checkoutWorktree;
     const other = { ...source, id: 'other-review-visit', path: '/owned/other-review-visit' };
@@ -404,7 +404,7 @@ test('leaving and returning to a checkout discards the old review refresh and it
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
   expect(await page.evaluate(({ before, ownerPath }) => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const fixture = (window as any).__checkoutWorktree;
     return {
       owner: git.repository().worktrees.find((tree: any) => tree.path === ownerPath)?.branch,
@@ -473,7 +473,7 @@ for (const change of ['branch', 'path', 'registration']) {
     await expect(page.locator('.error-toast')).toHaveCount(0);
     await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
     const state = await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const fixture = (window as any).__checkoutWorktree;
       return { writes: fixture.calls.filter((entry: any) => entry.command === 'checkout_branch'),
         opened: git.repositories().some((repository: any) => repository.id === fixture.sourceId + '-owner') };
@@ -502,7 +502,7 @@ for (const lateReply of ['success', 'failure'] as const) {
     await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
     await expect(page.locator('.error-toast')).toHaveCount(0);
     expect(await page.evaluate(() => {
-      const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
       const fixture = (window as any).__checkoutWorktree;
       return git.repositories().some((repository: any) => repository.id === fixture.sourceId + '-owner');
     })).toBe(false);
@@ -516,7 +516,7 @@ test('an open reply cannot navigate after leaving and returning to the same chec
   await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as any).__checkoutWorktree.finishOpen)).toBe('function');
   await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const source = git.repository();
     git.repositories.update((tabs: any[]) => [...tabs, { ...source, id: 'different-visit', path: '/owned/different-visit' }]);
     git.activateRepository('different-visit');
@@ -526,7 +526,7 @@ test('an open reply cannot navigate after leaving and returning to the same chec
   await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
   await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
   expect(await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const fixture = (window as any).__checkoutWorktree;
     return git.repositories().some((repository: any) => repository.id === fixture.sourceId + '-owner');
   })).toBe(false);

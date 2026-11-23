@@ -47,7 +47,7 @@ async function reviewed(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/'); await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(first => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root')), git = app.git;
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app')), git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
     git.chooseDirectory = async () => '/owned/clones';
     app.commitMessage.set('Owned retained clone commit draft');
@@ -128,7 +128,7 @@ test('selected GitLab clone reviews separate authorities and executes only its n
   expect(executed[0].args.request.contextId).toBe((await calls(page, 'prepare_gitlab_clone'))[0].args.request.contextId);
   expect(await page.evaluate(() => JSON.stringify((window as any).__gitlabClone.calls.filter((c: any) => c.command !== 'connect_gitlab_account')))).not.toContain(API_TOKEN);
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain(API_TOKEN);
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).git.repository().id)).toBe('owned-gitlab-clone');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository().id)).toBe('owned-gitlab-clone');
 });
 
 test('SSH, literal branch, depth and recursive submodule options are explicitly reviewed', async ({ page }) => {
@@ -156,7 +156,7 @@ test('option changes discard the review and Enter never submits a manual or revi
   await clone(page).getByRole('button', { name: 'Return to GitLab projects', exact: true }).click();
   await dialog(page).getByRole('button', { name: 'Return to repository URL', exact: true }).click();
   await expect(dialog(page).getByLabel('Repository URL', { exact: true })).toHaveValue('https://owned.example.test/manual.git');
-  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gc-root')).commitMessage())).toBe('Owned retained clone commit draft');
+  expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).commitMessage())).toBe('Owned retained clone commit draft');
 });
 
 test('cancelled preparation discards a late preview without replaying the read', async ({ page }) => {
@@ -259,7 +259,7 @@ test('closing during GitLab execution keeps a confirmed clone discoverable witho
   await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
   await expect(page.locator('.status-repository-path')).toHaveText(original);
   expect(await page.evaluate(() => {
-    const git = (window as any).ng.getComponent(document.querySelector('gc-root')).git;
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     return git.recentPaths().includes('/owned/clones/owned');
   })).toBe(true);
   expect(await calls(page, 'execute_gitlab_clone')).toHaveLength(1);
@@ -267,7 +267,7 @@ test('closing during GitLab execution keeps a confirmed clone discoverable witho
 
 for (const theme of ['khronos', 'midnight']) test(`${theme} GitLab clone review fits a compact keyboard workflow`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 560 });
-  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gc-root')).setAppTheme(theme), theme);
+  await page.evaluate(theme => (window as any).ng.getComponent(document.querySelector('gk-app')).setAppTheme(theme), theme);
   await reviewed(page);
   await review(page).getByRole('button', { name: 'Discard GitLab clone review', exact: true }).focus();
   await page.keyboard.press('Tab');

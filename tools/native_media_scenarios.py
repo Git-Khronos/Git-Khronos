@@ -74,7 +74,7 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
         return base64.b64decode(side['dataUrl'].split(',', 1)[1], validate=True)
 
     def wait_pressed(text):
-        driver.wait('return [...document.querySelectorAll(\'gc-file-media button[aria-pressed="true"]\')].some('
+        driver.wait('return [...document.querySelectorAll(\'gk-file-media button[aria-pressed="true"]\')].some('
                     'button => button.textContent.trim() === ' + json.dumps(text) + ')')
 
     try:
@@ -114,18 +114,18 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
             click_file(selector)
             open_content()
             driver.wait('''return (() => {
-              const article = document.querySelector('gc-file-media article[aria-label="After content"]');
+              const article = document.querySelector('gk-file-media article[aria-label="After content"]');
               const image = article?.querySelector('img');
               return image?.complete && image.naturalWidth === ''' + str(width) + ''' && image.naturalHeight === ''' + str(height) + ''';
             })()''')
-            assert driver.script("return document.querySelector('gc-file-media').textContent.includes(arguments[0])", mime)
-            assert not driver.script("return !!document.querySelector('gc-file-media [role=alert]')")
-            driver.click_text('gc-file-media button', 'Actual size')
+            assert driver.script("return document.querySelector('gk-file-media').textContent.includes(arguments[0])", mime)
+            assert not driver.script("return !!document.querySelector('gk-file-media [role=alert]')")
+            driver.click_text('gk-file-media button', 'Actual size')
             wait_pressed('Actual size')
-            driver.click_text('gc-file-media button', 'After only')
+            driver.click_text('gk-file-media button', 'After only')
             wait_pressed('After only')
-            driver.wait("""return document.querySelectorAll('gc-file-media article').length === 1
-              && !!document.querySelector('gc-file-media article[aria-label="After content"]')""")
+            driver.wait("""return document.querySelectorAll('gk-file-media article').length === 1
+              && !!document.querySelector('gk-file-media article[aria-label="After content"]')""")
             driver.screenshot(Path(report['artifactsDirectory']) / ('media-native-' + name + '.png'))
             driver.click('[aria-label="Close diff"]')
             driver.wait("return !document.querySelector('[aria-label=\"Diff viewer\"]')")
@@ -134,8 +134,8 @@ def file_media_comparisons(driver, fixtures, original_repository, report):
         selector = '[aria-label="View changes in malformed-image"]'
         click_file(selector)
         open_content()
-        driver.wait("return document.querySelector('gc-file-media')?.textContent.includes('Image decoding failed')")
-        assert driver.script("return document.querySelectorAll('gc-file-media img').length") == 0
+        driver.wait("return document.querySelector('gk-file-media')?.textContent.includes('Image decoding failed')")
+        assert driver.script("return document.querySelectorAll('gk-file-media img').length") == 0
         driver.screenshot(Path(report['artifactsDirectory']) / 'media-native-decode-failure.png')
         driver.click('[aria-label="Close diff"]')
         report['scenarios'].append('native-ui-media-valid-header-truncated-body-reports-actual-webkit-decode-failure')
@@ -182,12 +182,12 @@ def direct_file_content(driver, fixtures, source, report):
 
     def preview(selector):
         driver.context_click(selector)
-        driver.click_scrolled_text('gc-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
-        driver.wait("return !!document.querySelector('gc-file-content-dialog [role=dialog]')")
+        driver.click_scrolled_text('gk-file-action-menu [role=menuitem]', 'Preview file content', wait_for_ready=True)
+        driver.wait("return !!document.querySelector('gk-file-content-dialog [role=dialog]')")
 
     def decoded():
         driver.wait("""return (() => {
-          const image = document.querySelector('gc-file-content-dialog article[aria-label="After content"] img');
+          const image = document.querySelector('gk-file-content-dialog article[aria-label="After content"] img');
           return image?.complete && image.naturalWidth === 3 && image.naturalHeight === 2;
         })()""")
 
@@ -198,7 +198,7 @@ def direct_file_content(driver, fixtures, source, report):
     decoded()
     assert not driver.script("return !!document.querySelector('.diff-workspace')")
     driver.key('\ue00c')
-    driver.wait("return !document.querySelector('gc-file-content-dialog')")
+    driver.wait("return !document.querySelector('gk-file-content-dialog')")
     report['scenarios'].append('native-ui-direct-unstaged-content-real-webkit-decode-and-escape')
 
     # Stage only through the owned Git fixture; the app's menu must choose HEAD/index.
@@ -207,7 +207,7 @@ def direct_file_content(driver, fixtures, source, report):
     driver.click('.wip-nav')
     preview('[aria-label="View staged changes in ' + path + '"]')
     decoded()
-    assert driver.script("return document.querySelector('gc-file-content-dialog').textContent.includes('HEAD → index')")
+    assert driver.script("return document.querySelector('gk-file-content-dialog').textContent.includes('HEAD → index')")
     driver.click('[aria-label="Close file content"]')
     report['scenarios'].append('native-ui-direct-staged-content-selects-head-and-index')
     fixtures.git(repository, 'reset', '-q', 'HEAD', '--', path)
@@ -234,7 +234,7 @@ def direct_file_content(driver, fixtures, source, report):
     try:
         preview(selector)
         decoded()
-        driver.wait("return document.querySelector('gc-file-content-dialog article[aria-label=\"Before content\"]')?.textContent.toLowerCase().includes('unavailable')")
+        driver.wait("return document.querySelector('gk-file-content-dialog article[aria-label=\"Before content\"]')?.textContent.toLowerCase().includes('unavailable')")
         assert not marker.exists(), 'Direct preview started an implicit fetch'
         assert not loose.exists(), 'Direct preview materialized the missing blob'
         assert (repository / '.git/index').read_bytes() == index

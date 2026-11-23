@@ -3,7 +3,7 @@ import type { DiscardRecovery } from '@git-khronos/contracts';
 import { displayRecoveryPath, savedDiscardLabel } from './discard-recovery-display';
 
 @Component({
-  selector: 'gc-saved-discard-list',
+  selector: 'gk-saved-discard-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="saved-discard-list">

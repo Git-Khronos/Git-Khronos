@@ -43,7 +43,7 @@ for (const fail of [false, true]) {
     await expect(menu).toHaveCount(0);
     await expect(opener).toBeFocused();
     release();
-    await expect(page.locator('gc-graph-action-menu')).toHaveCount(0);
+    await expect(page.locator('gk-graph-action-menu')).toHaveCount(0);
     expect(await page.evaluate(() => (window as any).__graphActionCalls)).toEqual([]);
   });
 }
@@ -77,7 +77,7 @@ test('late graph action code renders only the replacement target', async ({ page
   await expect(page.getByRole('status').filter({ hasText: 'Loading actions…' })).toBeVisible();
   // A request can be replaced while its code is still in flight.
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     app.actionOverlays.open({ kind: 'context', value: {
       kind: 'tag', repositoryId: app.git.activeRepositoryId(), oid: app.git.repository().tags[0].oid,
       oids: [app.git.repository().tags[0].oid], label: 'replacement-tag', x: 900, y: 800,
@@ -97,7 +97,7 @@ test('late graph action code cannot resurrect a retired repository menu', async 
   await opener.press('Enter');
   await expect(page.getByRole('menuitem', { name: 'Cancel', exact: true })).toBeFocused();
   await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const repository = app.git.repository();
     const other = { ...repository, id: 'retired-menu-repository', path: '/workspace/retired-menu-repository' };
     app.git.repositories.update((repositories: any[]) => [...repositories, other]);
@@ -105,5 +105,5 @@ test('late graph action code cannot resurrect a retired repository menu', async 
   });
   await expect(page.locator('.graph-action-menu')).toHaveCount(0);
   release();
-  await expect(page.locator('gc-graph-action-menu')).toHaveCount(0);
+  await expect(page.locator('gk-graph-action-menu')).toHaveCount(0);
 });

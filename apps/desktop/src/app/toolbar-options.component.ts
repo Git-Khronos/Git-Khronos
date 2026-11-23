@@ -39,7 +39,7 @@ export type ToolbarOptionsAction =
 
 /** Stateless menu presentation; the app retains checkout ownership and Git dispatch. */
 @Component({
-  selector: 'div[gcToolbarOptions]',
+  selector: 'div[gkToolbarOptions]',
   imports: [IconComponent],
   templateUrl: './toolbar-options.component.html',
   styleUrl: './toolbar-options.component.scss',

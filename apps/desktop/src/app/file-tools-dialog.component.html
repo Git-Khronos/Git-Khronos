@@ -2,7 +2,7 @@
   <section class="tools-dialog" role="dialog" aria-modal="true" aria-labelledby="file-tools-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
     <header><div><p>Configured programs</p><h2 #heading id="file-tools-title" tabindex="-1">External file tools</h2></div><button type="button" aria-label="Close external file tools" (click)="close()">Close</button></header>
     <main>
-      @if (git.backgroundOperationWarnings().length) { <gc-background-operation-warnings /> }
+      @if (git.backgroundOperationWarnings().length) { <gk-background-operation-warnings /> }
       <p class="scope">Programs start only after you review a launch. Closing this panel retains sessions and private copies; it does not stop a launched program.</p>
       @if (git.browserPreview()) { <p role="status">External programs are available in the desktop app.</p> }
       @if (busy()) {

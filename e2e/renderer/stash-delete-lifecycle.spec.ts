@@ -4,7 +4,7 @@ async function prepare(page: Page, open = true) {
   await page.goto('/');
   await expect(page.locator('.commit-row').first()).toBeVisible();
   await page.evaluate(() => {
-    const root = (window as any).ng.getComponent(document.querySelector('gc-root'));
+    const root = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = root.git;
     const stash = { reference: 'stash@{0}', oid: 'a'.repeat(40), message: 'Owned saved changes' };
     const repository = { ...git.repository(), stashes: [stash] };

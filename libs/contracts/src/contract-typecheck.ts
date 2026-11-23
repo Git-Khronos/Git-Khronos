@@ -49,6 +49,7 @@ function typeAssertions(prompt: GitAuthenticationPrompt, settings: BranchWorkflo
   // @ts-expect-error later file inspection must not resolve a moved selector
   void ipc.inspect_stash_file({ repoId: 'fixture', reference: 'stash@{0}', path: 'fixture.txt' });
   void ipc.drop_stash({ repoId: 'fixture', reference: 'stash@{0}', expectedOid: 'a'.repeat(40) });
+  void ipc.clear_stashes({ repoId: 'fixture', expectedOids: ['a'.repeat(40)] });
   void ipc.apply_stash({ repoId: 'fixture', reference: 'stash@{0}', expectedOid: 'a'.repeat(40) });
   void ipc.apply_stashed_file({ repoId: 'fixture', reference: 'stash@{0}', expectedOid: 'a'.repeat(40), path: 'fixture.txt', previousPath: null });
   // @ts-expect-error a selected-file restore must identify the reviewed stash object

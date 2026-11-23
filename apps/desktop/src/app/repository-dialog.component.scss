@@ -1,9 +1,9 @@
-:where(gc-repository-dialog) {
+:where(gk-repository-dialog) {
   .repository-dialog-tabs { z-index: 2; height: 38px; display: flex; flex: 0 0 38px; gap: 3px; align-items: end; padding: 0 15px; border-bottom: 1px solid #343449; background: #191925; box-shadow: 0 5px 12px #0004; }
   .repository-dialog-tabs button { height: 31px; display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 0; border-bottom: 2px solid transparent; border-radius: 3px 3px 0 0; background: transparent; color: #858499; font-size: var(--font-size-body); font-weight: 700; transition: none; }
   .repository-dialog-tabs button:hover { background: #272638; color: white; }
   .repository-dialog-tabs button.active { border-bottom-color: var(--accent); background: #242437; color: white; }
-  .repository-dialog-tabs button.active gc-icon { color: var(--accent); }
+  .repository-dialog-tabs button.active gk-icon { color: var(--accent); }
   .repository-manager-body { min-height: 0; display: grid; gap: 8px; overflow: auto; padding: 20px; }
   .browser-preview-notice { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #494766; border-radius: 5px; background: #28273b; color: #b3a8ff; }
   .browser-preview-notice > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
@@ -30,7 +30,7 @@
   .manager-repository-filter button:hover, .manager-repository-filter button:focus-visible { background: #302f47; color: white; }
   .manager-repository-filter > small { flex: none; color: #77768b; font-size: var(--font-size-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .manager-repository-empty { min-height: 58px; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px; border: 1px dashed #414057; border-radius: 5px; color: #77768b; }
-  .manager-repository-empty > gc-icon { color: var(--accent); }
+  .manager-repository-empty > gk-icon { color: var(--accent); }
   .manager-repository-empty > span { min-width: 0; display: grid; gap: 2px; }
   .manager-repository-empty strong { color: #c9c8d6; font-size: var(--font-size-body); }
   .manager-repository-empty small { font-size: var(--font-size-caption); }
@@ -42,8 +42,8 @@
   .manager-repository-row:hover { background: #29283d; }
   .manager-repository-main { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 6px; min-width: 0; padding: 7px; border: 0; background: transparent; color: #aaa9bb; text-align: left; }
   .manager-repository-row:hover .manager-repository-main { color: white; }
-  .manager-repository-main > gc-icon { color: var(--accent); }
-  .manager-favorites .manager-repository-main > gc-icon { color: #e2b45f; fill: rgb(226 180 95 / 18%); }
+  .manager-repository-main > gk-icon { color: var(--accent); }
+  .manager-favorites .manager-repository-main > gk-icon { color: #e2b45f; fill: rgb(226 180 95 / 18%); }
   .manager-repository-main > span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
   .manager-repository-main strong, .manager-repository-main small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .manager-repository-main strong { font-size: var(--font-size-body); }.manager-repository-main small { color: #737286; font-size: var(--font-size-caption); }

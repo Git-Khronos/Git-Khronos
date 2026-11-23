@@ -80,7 +80,7 @@
 .commit-quick-actions button:hover:not(:disabled) { border-color: var(--muted); background: var(--inspector-control-hover); color: white; }
 .commit-quick-actions button:disabled { opacity: .45; }
 .commit-quick-actions button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commit-quick-actions button gc-icon { flex: 0 0 auto; color: var(--accent); }
+.commit-quick-actions button gk-icon { flex: 0 0 auto; color: var(--accent); }
 
 .commit-overview { margin: 10px 14px 14px; overflow: hidden; border: 1px solid var(--inspector-card-border); border-radius: 5px; background: var(--inspector-card); }
 .commit-overview > h2 { margin: 0; padding: 13px; font-size: 18px; font-weight: 600; line-height: 1.35; text-wrap: pretty; }
