@@ -4,7 +4,8 @@ const path = 'apps/desktop/src/app/app.component.html';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  // WebKit can spend several seconds bootstrapping the renderer under load.
+  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
 });
 
 test('collapsing Staged Files docks its header and expands the virtualized Unstaged Files list', { tag: '@daily-driver-smoke' }, async ({ page }) => {

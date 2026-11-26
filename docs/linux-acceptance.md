@@ -3297,13 +3297,18 @@ in WebKit:
 ```sh
 pnpm nx run desktop:e2e:working-files -- --list
 pnpm exec node tools/check-renderer-browser.mjs webkit &&
-  GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run desktop:e2e:working-files -- --project=webkit --workers=4
+  GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run desktop:e2e:working-files -- --project=webkit --workers=2
 ```
 
 The preflight checks that the installed WebKit revision matches Playwright and
 launches successfully, before starting the Angular server or running tests.
 After a Playwright upgrade, run `pnpm exec playwright install webkit` if the
 preflight reports a missing browser.
+
+If a local profile fails, append `--last-failed` to the same command to run
+only the failed cases. Playwright reads the failure list from the previous
+run's output directory; reuse that directory and avoid running another suite
+into it first. This does not replace a clean full-profile run.
 
 Use `-- --grep='test title'` to narrow further. Profiles group renderer specs,
 not all dependencies of a code change.

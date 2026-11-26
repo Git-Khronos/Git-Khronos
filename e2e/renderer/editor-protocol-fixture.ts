@@ -5,7 +5,7 @@ import { expect, type Page } from '@playwright/test';
 export async function prepareEditor(page: Page, mode = 'ready', openPreview = true) {
   await page.goto('/');
   // The editor uses the selected repository, not asynchronously loaded history.
-  await expect(page.getByRole('button', { name: /^Unstaged Files/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Unstaged Files/ })).toBeVisible({ timeout: 15_000 });
   await page.evaluate(({ mode, openPreview }) => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git, repo = git.repository();
