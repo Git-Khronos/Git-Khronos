@@ -3385,6 +3385,14 @@ The same archive passed all 332 full extracted-package native scenarios
 full Chromium suite, so its 970.3-second elapsed time is not comparable to
 the standalone native checkpoint.
 
+The same archive was then installed inside a disposable, network-isolated
+Ubuntu 26.04 container. The installed executable and desktop entry passed
+smoke (19 scenarios), submodule initialization (2), submodule update (4),
+and discard-limit (4). The four reports in
+`target/local-review/installed-c76209d/reports/` match the archive SHA-256
+above. This did not change the host installation or qualify the WSLg pinned
+shortcut or a production signature.
+
 Local Ubuntu 26.04 checkpoint: the archive built from `ef415ca` with SHA-256
 `48692296e3ef2d05654eee55b7b4c98fa5ea297ab3199e249ce60cfa7a41466e`
 passed extracted-package GitLab fork/catalogue (11 scenarios), working-tree
