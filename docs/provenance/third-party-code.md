@@ -573,17 +573,18 @@ was copied and no additional package was introduced by this direct relation.
 
 ## Bounded Markdown interpretation
 
-Dependency: `marked` 18.1.2, pinned through pnpm.
+Dependency: `marked` 18.3.0, pinned through pnpm.
 Source: https://github.com/markedjs/marked
 Public API: https://marked.js.org/using_pro#lexer
 License metadata: MIT. The package's complete `LICENSE` also contains the
 Markdown BSD-style notice; preserve the complete file in binary attribution.
-The full installed notice was reviewed against https://marked.js.org/license.
+The full installed notice was reviewed against https://marked.js.org/license
+and was unchanged by the upgrade from 18.1.2 to 18.3.0.
 Only the public lexer is consumed; no parser source or renderer was copied.
 An original bounded tree and Angular text interpolation render inert content.
 No external asset is embedded or fetched. The lexer runs in a terminable worker.
 The upstream advisory GHSA-6v9c-7cg6-27q7 identifies 18.0.0/18.0.1 as affected
-and 18.0.2 as patched; the selected 18.1.2 is newer. This is not a claim that
+and 18.0.2 as patched; the selected 18.3.0 is newer. This is not a claim that
 all inputs or future advisories are covered. Distribution notice inclusion
 remains an exact-package acceptance requirement.
 

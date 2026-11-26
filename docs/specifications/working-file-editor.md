@@ -105,7 +105,7 @@ An earlier candidate exceeded that cap by 280 bytes; no budget was raised.
 
 ## Bounded Markdown draft preview
 
-The public `marked` 18.1.2 lexer runs in a separate terminable worker. Input is
+The public `marked` lexer runs in a separate terminable worker. Input is
 limited to 128 KiB of UTF-8 text, the resulting tree to 6,000 nodes and 24 levels,
 and worker execution to two seconds. Teardown or newer input terminates the old
 worker; no synchronous main-thread parser fallback is used.
