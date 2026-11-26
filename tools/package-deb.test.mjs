@@ -10,11 +10,45 @@ import { gzipSync } from 'node:zlib';
 import { checkPackage, verifyGlibcBaseline } from './check-linux-abi.mjs';
 import { checkEvidence } from './check-debian-update-evidence.mjs';
 import { checkInstalledDeb, findReplacedProcesses } from './check-installed-deb.mjs';
+import { pruneIsolatedLinuxPackageCache, requireLinuxPackageSpace } from './finish-linux-package-cache.mjs';
 import { checkLinuxPackageWatcher } from './check-linux-package-watcher.mjs';
 import { reportInstalledAcceptance } from './report-installed-acceptance.mjs';
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
+test('isolated build cleanup keeps Debian and AppImage bundles, evidence, and shared caches', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'gk-isolated-cache-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const root = join(directory, 'target/local-review/run/work/source');
+  const release = join(root, 'target/release');
+  const outside = join(directory, 'shared');
+  await mkdir(join(release, 'deps'), { recursive: true });
+  await mkdir(join(release, 'bundle/deb'), { recursive: true });
+  await mkdir(outside);
+  await symlink(outside, join(release, 'build'), 'dir');
+  const packageFile = join(release, 'bundle/deb/candidate.deb');
+  await writeFile(packageFile, 'retained');
+  await writeFile(join(outside, 'keep'), 'shared');
+  assert.equal(pruneIsolatedLinuxPackageCache(root, outside), 0);
+  assert.ok(await stat(join(release, 'deps')));
+  assert.equal(pruneIsolatedLinuxPackageCache(root), 1);
+  await assert.rejects(stat(join(release, 'deps')), { code: 'ENOENT' });
+  assert.equal(await readFile(packageFile, 'utf8'), 'retained');
+  assert.equal(await readFile(join(outside, 'keep'), 'utf8'), 'shared');
+});
+
+test('local package preflight refuses insufficient build space before allocating anything', () => {
+  const ci = process.env.CI;
+  try {
+    delete process.env.CI;
+    const stats = gib => () => ({ bsize: 1024n ** 3n, bavail: BigInt(gib) });
+    assert.throws(() => requireLinuxPackageSpace(repositoryRoot, null, stats(11)), /need at least 12 GiB/);
+    assert.doesNotThrow(() => requireLinuxPackageSpace(repositoryRoot, null, stats(12)));
+  } finally {
+    if (ci === undefined) delete process.env.CI;
+    else process.env.CI = ci;
+  }
+});
 test('launcher probe help describes archive verification without starting a desktop', () => {
   const script = join(repositoryRoot, 'tools', 'check-installed-x11-launch.sh');
   for (const flag of ['--help', '-h']) {
@@ -612,9 +646,11 @@ async function requireHookFreeDpkg() {
   }
 }
 
-async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), 'git-khronos-incremental-deb-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+async function fixture(t, { isolated = false } = {}) {
+  const directory = await mkdtemp(join(tmpdir(), 'git-khronos-incremental-deb-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const root = isolated ? join(directory, 'target/local-review/fixture/work/source') : directory;
+  await mkdir(join(root, 'tools'), { recursive: true });
   const put = async (path, content = 'fixture') => {
     await mkdir(dirname(join(root, path)), { recursive: true });
     await writeFile(join(root, path), content);
@@ -629,6 +665,7 @@ if (process.env.FAIL_ABI) process.exit(1);
 `);
   await copyFile(join(repositoryRoot, 'tools/package-build-receipt.mjs'), join(root, 'tools/package-build-receipt.mjs'));
   await copyFile(join(repositoryRoot, 'tools/build-linux-package.sh'), join(root, 'tools/build-linux-package.sh'));
+  await copyFile(join(repositoryRoot, 'tools/finish-linux-package-cache.mjs'), join(root, 'tools/finish-linux-package-cache.mjs'));
   await copyFile(join(repositoryRoot, 'tools/check-linux-appimage.mjs'), join(root, 'tools/check-linux-appimage.mjs'));
   await copyFile(join(repositoryRoot, 'tools/check-linux-package-watcher.mjs'), join(root, 'tools/check-linux-package-watcher.mjs'));
   await copyFile(join(repositoryRoot, 'tools/cli-entry.mjs'), join(root, 'tools/cli-entry.mjs'));
@@ -733,7 +770,7 @@ test -z "$FAIL_VERIFY"
   const run = (args = ['package:deb'], extraEnv = {}) => spawnSync('task', args, {
     cwd: root,
     encoding: 'utf8',
-    env: { ...process.env, CARGO_TARGET_DIR: '', ...extraEnv, PATH: `${join(root, 'bin')}:${process.env.PATH}` },
+    env: { ...process.env, CI: 'true', CARGO_TARGET_DIR: '', ...extraEnv, PATH: `${join(root, 'bin')}:${process.env.PATH}` },
   });
   const ok = (args, env) => {
     const result = run(args, env);
@@ -751,6 +788,21 @@ test('installed status forwards a single selected archive without a build or ins
   f.ok(['install:linux:status', '--', archive]);
   assert.notEqual(f.run(['install:linux:status', '--', archive, 'another.deb']).status, 0);
   assert.deepEqual(await f.calls(), ['installed-status latest', 'installed-status ' + archive]);
+});
+
+test('package wrapper prunes isolated Rust internals on success and ordinary failure', async t => {
+  const f = await fixture(t, { isolated: true });
+  const cache = 'target/release/deps/generated.o';
+  const keep = 'target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb';
+  await f.put(cache);
+  f.ok();
+  await assert.rejects(stat(join(f.root, cache)), { code: 'ENOENT' });
+  assert.equal(await readFile(join(f.root, keep), 'utf8'), 'built');
+  await f.put(cache);
+  const failed = f.run(['--force', 'package:deb'], { FAIL_BUILD: '1' });
+  assert.notEqual(failed.status, 0);
+  await assert.rejects(stat(join(f.root, cache)), { code: 'ENOENT' });
+  assert.equal(await readFile(join(f.root, keep), 'utf8'), 'built');
 });
 
 test('unchanged packaging skips Tauri but still verifies, including the deb alias', async (t) => {

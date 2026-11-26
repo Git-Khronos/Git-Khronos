@@ -3264,6 +3264,13 @@ To reclaim the main checkout's regenerable Rust debug output, stop active
 builds and run `task clean:debug`; release bundles and reports are retained.
 Avoid the broader `task clean` when keeping packages or local evidence.
 
+Local Linux packaging refuses to start with less than 12 GiB available on the
+Cargo output filesystem. The packager removes Rust intermediate caches from
+its known isolated qualification layouts on completion or ordinary failure;
+a normal checkout or explicitly configured shared Cargo target is left alone.
+Package files, verification receipts and reports are kept. An abrupt host stop
+can still leave temporary caches behind.
+
 For Jammy qualification, archive the verified package, its checksum, source
 identity, logs, and reports—not the per-run Cargo target, package registry,
 pnpm store, or renderer caches. Reuse a shared cache outside the evidence
@@ -4362,3 +4369,13 @@ editor without changing the checkout, and that the next review can apply
 the same selection. All seven sparse-checkout scenarios passed in 11.3
 seconds on Ubuntu 26.04 under WSL2. The older package from `d298a29`
 failed the new check because it did not offer **Back to Edit**.
+
+### Updated toolchain packaged checks
+
+The local Ubuntu 26.04 Debian build from `ad35e6f` used Node 26.13.1,
+pnpm 12.23.0, Tauri 2.12.7 and dialog plugin 2.8.4. Its archive SHA-256 is
+`83e8c6616005a58bf8f9b42a4ebca7839c30abd694c73367850297151efef628`.
+All 56 focused packaged scenarios passed: smoke (19), worktrees (29),
+sparse checkout (7), and bulk workspace relocation (1). The relocation
+case selected and canceled actual native folder choosers on private Xvfb.
+This is extracted-archive evidence, not an installed release qualification.

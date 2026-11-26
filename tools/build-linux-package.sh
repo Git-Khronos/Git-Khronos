@@ -32,6 +32,12 @@ if ! flock --exclusive --nonblock 9; then
   exit 1
 fi
 
+node tools/finish-linux-package-cache.mjs --preflight
+
+# Run under the same workspace lock, on both success and ordinary failure.
+# Retain the package and its evidence, not the isolated job's Rust objects.
+trap 'status=$?; trap - EXIT; node tools/finish-linux-package-cache.mjs || { ((status != 0)) || status=1; }; exit "$status"' EXIT
+
 node tools/check-linux-package-watcher.mjs apps/desktop/src-tauri/Cargo.toml
 if [[ "$bundle" == deb ]]; then
   node tools/package-build-receipt.mjs begin "$checksum"
