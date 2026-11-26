@@ -3381,6 +3381,12 @@ not switch branches, repair the checkout, or prune the registration.
 Reports: `test-results/native/worktrees-1795716532937286489`,
 `test-results/native/discard-subset-1795716574626834281`, and
 `test-results/native/discard-large-1795716589389053973`.
+The same archive passed all 332 full extracted-package native scenarios in
+414.2 seconds (`test-results/native/full-1795717017902806780`), after the
+missing-checkout regression switched to real keyboard input in `d2fca45`.
+The earlier full attempt (`full-1795716630778928124`) stopped when the owned
+pointer guard refused the test's right-click. Existing native mouse coverage
+remains in the passing run.
 
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
