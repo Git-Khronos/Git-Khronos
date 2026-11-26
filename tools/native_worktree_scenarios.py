@@ -72,6 +72,41 @@ def worktree_recovery_before_removal(driver, fixtures, report):
     report['scenarios'].append('native-worktree-and-branch-removal-requires-recovery-before-removing-checkout')
 
 
+def worktree_lock_menu(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('worktree-lock-menu', commits=2)
+    linked = fixtures.root / 'owned-lock-checkout'
+    fixtures.git(repository, 'worktree', 'add', '-b', 'owned-lock-branch', str(linked))
+    open_ui(driver, repository)
+    toggle = '#reference-section-worktrees .heading-toggle'
+    driver.wait(f"return !!document.querySelector({json.dumps(toggle)})")
+    if driver.script("return document.querySelector(arguments[0]).getAttribute('aria-expanded') === 'false'", toggle):
+        driver.click_visible(toggle)
+    opener = '[aria-label="Worktree actions for owned-lock-branch"]'
+    driver.click_visible(opener)
+    driver.click_navigation('button[role="menuitem"]', 'Lock this worktree…', wait_for_ready=True)
+    driver.wait("return document.activeElement?.id === 'worktree-lock-reason'")
+    driver.key('p', modifiers=("\ue009",))
+    assert driver.script("return !document.querySelector('gk-command-palette')")
+    reason = 'Keep this portable checkout'
+    driver.script("""const input = document.getElementById('worktree-lock-reason');
+        input.value = arguments[0]; input.dispatchEvent(new Event('input', {bubbles: true}));""", reason)
+    driver.click_visible('gk-worktree-lock-dialog button[type="submit"]')
+    driver.wait("return !document.querySelector('gk-worktree-lock-dialog')")
+    assert f'locked {reason}' in fixtures.git(repository, 'worktree', 'list', '--porcelain')
+    driver.click_visible(opener)
+    driver.wait("""return [...document.querySelectorAll('button[role="menuitem"]')]
+        .filter(button => ['Remove this worktree', 'Remove worktree and delete branch'].includes(button.textContent.trim()))
+        .filter(button => button.disabled).length === 2;""")
+    driver.click_visible('button[role="menuitem"]', 'Unlock this worktree')
+    driver.wait("""return !document.querySelector('button[role="menuitem"][disabled]')
+        && !document.querySelector('.worktree-list-main[aria-label*="locked:"]');""")
+    assert 'locked ' not in fixtures.git(repository, 'worktree', 'list', '--porcelain')
+    assert (linked / 'fixture.txt').is_file()
+    report['scenarios'].append('native-worktree-lock-menu-reviews-reason-and-blocks-removal')
+
+
 def occupied_branch_navigation(driver, fixtures, report):
     from native_acceptance import open_ui
 

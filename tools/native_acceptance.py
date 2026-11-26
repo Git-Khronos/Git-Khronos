@@ -2056,6 +2056,8 @@ def main():
                 from native_worktree_scenarios import occupied_branch_navigation, worktree_recovery_before_removal
                 worktree_recovery_before_removal(driver, fixtures, report)
                 occupied_branch_navigation(driver, fixtures, report)
+                from native_worktree_scenarios import worktree_lock_menu
+                worktree_lock_menu(driver, fixtures, report)
             if args.suite in ("full", "environment", "setup-keyboard"):
                 progress.enter_phase("setup-keyboard")
                 from native_setup_keyboard_scenarios import setup_keyboard_isolation
