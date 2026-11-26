@@ -3045,6 +3045,11 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
     'Manage submodules · Review state, sync, check out, deinitialize, or remove',
   );
 
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (value: string) => { document.body.dataset.copiedSubmodulePath = value; },
+    } });
+  });
   const submoduleActions = page.locator('.submodule-actions').first();
   await expect(submoduleActions).toHaveAttribute('aria-haspopup', 'menu');
   await submoduleActions.focus();
@@ -3057,6 +3062,11 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
   await expect(menu.getByRole('menuitem', { name: 'Copy submodule path' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(menu).toBeHidden();
+  const expectedSubmodulePath = await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    return app.git.repository().submodules[0].path;
+  });
+  await expect(page.locator('body')).toHaveAttribute('data-copied-submodule-path', expectedSubmodulePath);
   await expect(submoduleActions).toBeFocused();
 });
 

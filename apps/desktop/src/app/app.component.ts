@@ -7393,7 +7393,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (action === 'copy-path' || (action === 'copy-url' && view.kind === 'submodule')) {
       const value = action === 'copy-url' && view.kind === 'submodule' ? view.item.url : view.item.path;
       this.dismissSidebarActionMenu(true);
-      void this.copyContextValue(value);
+      void this.copyText(value);
       return;
     }
     if (view.kind === 'worktree') {
