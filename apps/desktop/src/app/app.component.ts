@@ -7442,8 +7442,8 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async setWorktreeLocked(worktree: Worktree): Promise<void> {
-    this.actionOverlays.close('worktree');
-    await this.git.setWorktreeLocked(worktree.path, !worktree.locked);
+    this.dismissSidebarActionMenu(true);
+    await this.git.setWorktreeLocked(worktree.path, false);
   }
 
   protected requestWorktreeRemoval(worktree: Worktree, deleteBranch: boolean): void {

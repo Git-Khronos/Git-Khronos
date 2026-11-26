@@ -76,6 +76,7 @@ test('locks and unlocks a linked worktree through its contextual menu', async ({
     return app.git.repository().worktrees.find((item: any) => item.branch === 'feature/partial-staging').locked;
   })).toBe(false);
   await expect(worktree).not.toHaveAttribute('aria-label', /locked:/);
+  await expect(opener).toBeFocused();
   expect(await page.evaluate((expectedPath) => (window as any).__worktreeMove.calls.filter(
     (entry: any) => entry.command === 'set_worktree_locked' && entry.args.path === expectedPath), path)).toEqual([
     { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: true, reason: 'portable disk backup' } },
