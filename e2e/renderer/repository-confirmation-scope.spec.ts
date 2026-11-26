@@ -19,7 +19,7 @@ async function calls(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -163,6 +163,26 @@ for (const switchRepository of [false, true]) {
     await expect(editor).toBeFocused();
     await expect(editor).toHaveValue('replacement-only');
     expect(await calls(page)).toEqual([]);
+  });
+}
+
+for (const [review, action] of [
+  ['sparse-set', 'Apply Selection'], ['sparse-set', 'Back to Edit'], ['sparse-disable', 'Restore All Files'],
+] as const) {
+  test(`returning to a checkout cannot reuse the previous sparse review: ${action}`, async ({ page }) => {
+    const modal = await open(page, review);
+    await modal.getByRole('button', { name: action }).evaluate((outgoing: HTMLButtonElement) => {
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
+      const original = git.repository();
+      const next = { ...original, id: 'other', path: '/owned/other' };
+      git.repositories.update((items: any[]) => [...items, next]);
+      git.activateRepository(next.id);
+      git.activateRepository(original.id);
+      outgoing.click();
+    });
+    expect(await calls(page)).toEqual([]);
+    await expect(modal).toBeHidden();
+    await expect(page.getByRole('dialog', { name: 'Preferences' })).toHaveCount(0);
   });
 }
 

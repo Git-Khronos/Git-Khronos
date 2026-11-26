@@ -330,6 +330,7 @@ interface DeferredGitActionLease {
 }
 
 interface SparseCheckoutReview extends RepositoryReviewScope {
+  readonly checkoutVisit: string;
   readonly action: 'set' | 'disable';
   readonly paths: string[];
   readonly sparseIndex: boolean;
@@ -1452,7 +1453,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (submodule && !this.ownsRepositoryScope(submodule)) untracked(() => this.closeSubmoduleDialog(false));
     if (remote && !this.ownsRepositoryScope(remote)) untracked(() => this.closeRemoteDialog(false));
     if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
-    if (sparseReview && !this.ownsRepositoryScope(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
+    if (sparseReview && !this.ownsSparseCheckoutReview(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
     if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
     if (fetch && !this.ownsFetchOptions(fetch)) untracked(() => this.closeFetchOptions(fetch, false));
     if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
@@ -6530,7 +6531,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const paths = this.sparseCheckoutPaths().split(/\r?\n/).map(value => value.trim()).filter(Boolean);
     const sparseIndex = this.sparseCheckoutIndex();
     this.closePreferences(false);
-    this.pendingSparseCheckoutReview.set({ ...owner, returnFocus: opener, action: 'set', paths, sparseIndex });
+    this.pendingSparseCheckoutReview.set({ ...owner, checkoutVisit: this.git.activeRepositoryReadScope(),
+      returnFocus: opener, action: 'set', paths, sparseIndex });
   }
 
   protected requestSparseCheckoutDisable(returnFocus?: HTMLElement | null): void {
@@ -6539,18 +6541,23 @@ export class AppComponent implements OnInit, OnDestroy {
     const opener = this.captureSecondaryConfirmationOpener(returnFocus);
     this.toolbarOverlays.close('sparseCheckout');
     this.closePreferences(false);
-    this.pendingSparseCheckoutReview.set({ ...owner, returnFocus: opener, action: 'disable', paths: [], sparseIndex: false });
+    this.pendingSparseCheckoutReview.set({ ...owner, checkoutVisit: this.git.activeRepositoryReadScope(),
+      returnFocus: opener, action: 'disable', paths: [], sparseIndex: false });
+  }
+
+  private ownsSparseCheckoutReview(review: SparseCheckoutReview): boolean {
+    return this.git.activeRepositoryReadScope() === review.checkoutVisit;
   }
 
   protected closeSparseCheckoutConfirmation(restoreFocus = true, expected = this.pendingSparseCheckoutReview()): void {
     if (this.pendingSparseCheckoutReview() !== expected) return;
     this.pendingSparseCheckoutReview.set(null);
-    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
+    if (restoreFocus && expected && this.ownsSparseCheckoutReview(expected)) this.restoreRepositoryReviewFocus(expected);
   }
 
   protected editReviewedSparseCheckout(expected: SparseCheckoutReview | null): void {
     if (!expected || expected.action !== 'set' || this.pendingSparseCheckoutReview() !== expected
-      || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+      || !this.ownsSparseCheckoutReview(expected) || this.git.busy()) return;
     this.closeSparseCheckoutConfirmation(false, expected);
     this.openPreferences('git', expected.returnFocus, true);
     this.sparseCheckoutPaths.set(expected.paths.join('\n'));
@@ -6559,10 +6566,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmSparseCheckoutAction(expected = this.pendingSparseCheckoutReview()): Promise<void> {
     const review = this.pendingSparseCheckoutReview();
-    if (!review || review !== expected || !this.ownsRepositoryScope(review) || this.git.busy()) return;
+    if (!review || review !== expected || !this.ownsSparseCheckoutReview(review) || this.git.busy()) return;
     if (review.action === 'disable') await this.git.disableSparseCheckout();
     else await this.git.setSparseCheckout([...review.paths], review.sparseIndex);
-    if (this.pendingSparseCheckoutReview() !== review || !this.ownsRepositoryScope(review)) return;
+    if (this.pendingSparseCheckoutReview() !== review || !this.ownsSparseCheckoutReview(review)) return;
     this.closeSparseCheckoutConfirmation(true, review);
     if (review.action === 'set' && !this.git.error()) this.loadSparseCheckoutDraft();
   }
