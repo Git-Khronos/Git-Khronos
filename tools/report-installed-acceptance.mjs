@@ -21,6 +21,7 @@ const GITLAB_SCENARIOS = [
   'native-gitlab-fork-lost-reply-private-outcome-survives-real-process-restart-without-credential-or-post-replay',
   'native-webdriver-explicit-stale-refusal-clicks-only-the-owned-replacement',
   'native-webdriver-initial-navigation-ignores-disabled-duplicate',
+  'native-webdriver-navigation-without-paint-frames-clicks-once',
 ];
 
 // Keep the local checklist aligned with linux-package-acceptance.yml. It

@@ -627,13 +627,14 @@ test('the installed commit gate requires responsiveness for all three editing pa
   }
 });
 
-test('GitLab evidence must cover fork restart and both initial and stale navigation', () => {
+test('GitLab evidence must cover fork restart and initial, stale and frameless navigation', () => {
   const fixtures = matrixFixtures();
   const forkRestart = 'native-gitlab-fork-lost-reply-private-outcome-survives-real-process-restart-without-credential-or-post-replay';
   const staleNavigation = 'native-webdriver-explicit-stale-refusal-clicks-only-the-owned-replacement';
   const initialNavigation = 'native-webdriver-initial-navigation-ignores-disabled-duplicate';
   for (const gitlab of fixtures.filter(report => report.suite === 'gitlab')) {
-    const required = [forkRestart, staleNavigation, initialNavigation];
+    const required = [forkRestart, staleNavigation, initialNavigation,
+      'native-webdriver-navigation-without-paint-frames-clicks-once'];
     if (gitlab.linuxDistribution.id === 'ubuntu' && gitlab.linuxDistribution.versionId === '26.04') {
       required.push('native-webdriver-waits-for-delayed-navigation-and-clicks-once');
     }

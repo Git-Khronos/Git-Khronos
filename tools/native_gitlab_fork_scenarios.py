@@ -76,8 +76,16 @@ def prove_stale_navigation_replacement(driver, report):
                 execute("document.querySelector(arguments[0] + ':last-child').disabled = false", selector)
             return result
 
-        with patch.object(driver, 'script', side_effect=reveal_after_first_poll):
-            driver.click_navigation(selector, text, scroll=True, wait_for_ready=True)
+        # Model a live WebKit page whose compositor is not delivering frames.
+        execute("""const probe = document.querySelector('#owned-stale-navigation-probe');
+          probe.originalAnimationFrame = window.requestAnimationFrame;
+          window.requestAnimationFrame = () => 0;""")
+        try:
+            with patch.object(driver, 'script', side_effect=reveal_after_first_poll):
+                driver.click_navigation(selector, text, scroll=True, wait_for_ready=True)
+        finally:
+            execute("""window.requestAnimationFrame =
+                document.querySelector('#owned-stale-navigation-probe').originalAnimationFrame;""")
         assert readiness_polls == [0, 1], readiness_polls
         assert execute("""const data = document.querySelector('#owned-stale-navigation-probe').dataset;
           return [data.clicks, data.disabledClicks];""") == ['3', '0']
@@ -86,6 +94,7 @@ def prove_stale_navigation_replacement(driver, report):
     report['scenarios'].append('native-webdriver-explicit-stale-refusal-clicks-only-the-owned-replacement')
     report['scenarios'].append('native-webdriver-initial-navigation-ignores-disabled-duplicate')
     report['scenarios'].append('native-webdriver-waits-for-delayed-navigation-and-clicks-once')
+    report['scenarios'].append('native-webdriver-navigation-without-paint-frames-clicks-once')
 
 
 def gitlab_reviewed_forks(driver, fixtures, repository, report):

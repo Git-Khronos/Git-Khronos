@@ -562,12 +562,25 @@ class Driver:
                 && !element.closest('[inert]') && getComputedStyle(element).visibility==='visible'
                 && !!hit && element.contains(hit)};
           };
-          requestAnimationFrame(()=>requestAnimationFrame(()=>{
+          // A compositor can stop ticking frames on a live headless page.
+          // The fallback checks the same hit target; it never dispatches a click.
+          const afterPaint=(callback)=>{
+            let finished=false;
+            const finish=()=>{
+              if(finished) return;
+              finished=true;
+              clearTimeout(fallback);
+              callback();
+            };
+            const fallback=setTimeout(finish,500);
+            requestAnimationFrame(()=>requestAnimationFrame(finish));
+          };
+          afterPaint(()=>{
             const before=bounds();element.scrollIntoView({block:'center',inline:'nearest'});
-            requestAnimationFrame(()=>requestAnimationFrame(()=>{
+            afterPaint(()=>{
               const after=bounds();done({before,after,interactable:after.hitTarget});
-            }));
-          }));
+            });
+          });
         """, "args": [element]}, **self._navigation_request_budget(deadline))
         if not isinstance(geometry, dict) or geometry.get("interactable") is not True:
             raise RuntimeError("The control is not interactable after ordinary scrolling: " + json.dumps(geometry))
