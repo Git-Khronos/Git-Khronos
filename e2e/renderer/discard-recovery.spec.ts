@@ -1030,7 +1030,7 @@ for (const selected of [false, true]) {
       return;
     }
     await expect(dialog).toContainText(selected ? path : 'unloaded/file.bin');
-    await expect(dialog).toContainText('subdirectory paths cannot be changed safely');
+    await expect(dialog).toContainText('The paths below cannot be discarded with recovery');
     await expect(dialog).toContainText('No files will be discarded');
     if (!selected) {
       await expect(dialog).toContainText('tracked-root.txt');
@@ -1069,7 +1069,7 @@ test('offers a fresh root-file preview after blocking a mixed discard request', 
           fixture.previews++;
           if (fixture.previews === 1) return Promise.resolve({
             token: 'blocked-token', paths: ['initial-root.txt'], skippedPaths: [],
-            blockedPaths: ['initial-nested/file.txt'], oversizedPaths: ['initial-nested/file.txt'], untracked: 0,
+            blockedPaths: ['oversized-root.txt'], oversizedPaths: ['oversized-root.txt'], untracked: 0,
           });
           if (fixture.previews === 2) return Promise.resolve({
             token: 'refreshed-token', paths: ['root-a.txt', 'root-b.txt'], skippedPaths: ['conflicted.txt'],
@@ -1108,8 +1108,8 @@ test('offers a fresh root-file preview after blocking a mixed discard request', 
   expect(await page.evaluate(() => (window as any).__discardChoiceTest.previews)).toBe(1);
   await expect.poll(() => typeof releaseReview).toBe('function');
   releaseReview?.();
-  await expect(dialog).toContainText('initial-nested/file.txt');
-  await expect(dialog.locator('.discard-preview-paths li').filter({ hasText: 'initial-nested/file.txt' }))
+  await expect(dialog).toContainText('oversized-root.txt');
+  await expect(dialog.locator('.discard-preview-paths li').filter({ hasText: 'oversized-root.txt' }))
     .toContainText('Too large to save for recovery');
   await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
   await chooseRoot.click();
