@@ -3456,6 +3456,14 @@ fixes. Local logs: `target/local-review/full-renderer-87cfe17.log` and
 `target/local-review/full-renderer-87cfe17-failed-retest.log`. This was not a
 clean full Chromium pass on the later revision.
 
+The next full Chromium run started on `306a483` and reported 2,842 of 2,844
+passing in 49.4 minutes. The stale force-push test was reaching for its button
+before the deferred review was ready; the sparse-checkout test found a
+duplicated menu class. Both exact cases passed in 24.2 seconds after
+`b120f61` and `705f537`, respectively. Logs: `full-renderer-306a483.log`
+and `full-renderer-306a483-failed-retest.log` under `target/local-review/`.
+Keep these separate from a clean full result on the fixed source.
+
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
