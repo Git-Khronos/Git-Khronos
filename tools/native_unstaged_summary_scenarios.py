@@ -47,9 +47,16 @@ def unstaged_summary_workflow(driver, fixtures, report):
     # Sample both palettes from the same ready element within the poll.
     colors = driver.wait("""const root = document.documentElement;
       const previous = root.getAttribute('data-theme');
-      const excluded = document.querySelector('.unstaged-section gk-working-tree-summary .summary em');
-      if (excluded?.textContent.trim() !== '1 excluded') return null;
-      const color = () => getComputedStyle(excluded).color;
+      const summary = document.querySelector('.unstaged-section gk-working-tree-summary .summary');
+      const excluded = summary?.querySelector('em');
+      const additions = summary?.querySelector('span');
+      const deletions = summary?.querySelector('i');
+      if (excluded?.textContent.trim() !== '1 excluded' || !additions || !deletions) return null;
+      const color = () => ({
+        excluded: getComputedStyle(excluded).color,
+        additions: getComputedStyle(additions).color,
+        deletions: getComputedStyle(deletions).color,
+      });
       try {
         root.removeAttribute('data-theme');
         const standard = color();
@@ -59,9 +66,15 @@ def unstaged_summary_workflow(driver, fixtures, report):
         if (previous === null) root.removeAttribute('data-theme');
         else root.setAttribute('data-theme', previous);
       }""")
-    assert colors == {'standard': 'rgb(146, 145, 165)', 'midnight': 'rgb(154, 168, 187)'}, colors
+    assert colors == {
+        'standard': {'excluded': 'rgb(146, 145, 165)', 'additions': 'rgb(84, 214, 173)',
+                     'deletions': 'rgb(255, 107, 131)'},
+        'midnight': {'excluded': 'rgb(154, 168, 187)', 'additions': 'rgb(105, 221, 183)',
+                     'deletions': 'rgb(255, 120, 144)'},
+    }, colors
     assert checkout_footprint(fixtures, repository, files) == before
-    report['unstagedLineSummary']['excludedColors'] = colors
+    report['unstagedLineSummary']['excludedColors'] = {theme: row['excluded'] for theme, row in colors.items()}
+    report['unstagedLineSummary']['recapColors'] = colors
     report['scenarios'].append('native-unstaged-excluded-label-follows-both-theme-palettes')
 
     try:

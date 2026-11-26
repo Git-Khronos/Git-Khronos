@@ -4280,3 +4280,15 @@ unstaged edit.
 Both scenarios passed in 4.6 seconds on Ubuntu 26.04 under WSL2 using the
 Debian archive built from `99016b7` (SHA-256
 `a32d8bcb6b1419456acd24a7b1371980b098a4a83838a278c9a3dcda40cc5790`).
+
+### Narrow working-tree header qualification
+
+The package built from `6920036` (Debian SHA-256
+`1b362e73afa2ab0b09f191a6e578f1dccdf18cd331ff4eb8b6d0c71d925a1e86`)
+passed all 28 `desktop:native-working-tree-recaps` scenarios in 21.8 seconds
+on Ubuntu 26.04 under WSL2. These cover the compact header bounds, the available
+bulk actions, and both theme palettes for the actual Git line counts. The new
+palette assertion failed as expected against the previous package from
+`99016b7`, whose numeric colors did not change with the theme.
+The 94-case Chromium recap, virtualization and discard run passed; the two
+targeted compact-header and palette cases also passed on WebKit.
