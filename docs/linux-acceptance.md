@@ -3389,6 +3389,16 @@ The earlier full attempt (`full-1795716630778928124`) stopped when the owned
 pointer guard refused the test's right-click. Existing native mouse coverage
 remains in the passing run.
 
+The all-blocked discard rebuild from `a7f3126`, SHA-256
+`0f2402d5c9955844d3228c55060b27976b5a8092e00a69154f57991863398046`,
+passed discard-limit (4 scenarios), discard subset (7), large discard (4),
+and working-tree recaps (28) after extraction on Ubuntu 26.04. The limit lane
+checks that bulk review lists both oversized paths and can recheck without
+writing, while the single-file path still reports its size-specific refusal.
+Reports under `test-results/native/`: `discard-limit-1795718233879180603`,
+`discard-subset-1795718253665442799`, `discard-large-1795718266387403960`,
+and `working-tree-recaps-1795718289364085349`.
+
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
