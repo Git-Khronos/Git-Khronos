@@ -613,10 +613,11 @@
 
 .workspace-control:has(.incoming-link-inbox) { display: flex; align-items: center; gap: 4px; }
 
-:is(.unstaged-section, .staged-section) > .file-section-title { height: auto; min-height: 33px; gap: 8px; }
+:is(.unstaged-section, .staged-section) > .file-section-title { height: auto; min-height: 33px; flex-wrap: wrap; gap: 0 8px; }
+.file-section-actions { display: inline-flex; align-items: center; gap: 8px; margin-inline-start: auto; white-space: nowrap; }
 .file-section-title button.discard-all-unstaged { display: inline-grid; place-items: center; min-width: 26px; min-height: 26px; color: var(--danger); }
 .file-section-title button.discard-all-unstaged:disabled { opacity: 0.45; }
-.file-section-heading { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+.file-section-heading { flex: 1 0 min(100%, 10rem); min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
 .collapsed-file-matches { color: var(--muted); white-space: nowrap; }
 
 .branch-drop-load-error { position: fixed; z-index: 34; right: 12px; bottom: calc(var(--statusbar-height) + 8px); max-width: min(360px, calc(100vw - 24px)); padding: 8px; border: 1px solid var(--overlay-border); border-radius: 4px; background: var(--overlay-surface); color: var(--overlay-text); }

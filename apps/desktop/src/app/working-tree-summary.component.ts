@@ -45,10 +45,10 @@ function sameSnapshot(first: Request, next: Request): boolean {
     }
   `,
   styles: [`
-    :host { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; text-transform: none; }
-    .summary { display: inline-flex; align-items: center; gap: 5px; font: 12px "SFMono-Regular", Consolas, monospace; font-variant-numeric: tabular-nums; }
-    .summary span { color: #62d7a6; }
-    .summary i { color: #ef849b; font-style: normal; }
+    :host { display: inline-flex; flex-wrap: wrap; min-inline-size: 0; max-inline-size: 100%; align-items: center; gap: 4px; text-transform: none; }
+    .summary { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 5px; font: var(--font-size-caption) var(--font-mono); font-variant-numeric: tabular-nums; }
+    .summary span { color: var(--accent); }
+    .summary i { color: var(--danger); font-style: normal; }
     .summary em, .pending { color: var(--muted); font-size: 11px; font-style: normal; font-weight: 400; }
     .retry { min-block-size: 24px; padding-inline: 4px; border: 0; background: transparent;
       color: var(--accent); font: inherit; font-size: 11px; text-decoration: underline; }

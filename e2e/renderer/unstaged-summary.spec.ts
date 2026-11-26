@@ -32,8 +32,14 @@ test('unstaged header shows additions and deletions with binary/partial disclosu
   await expect(recap).toContainText('2 excluded'); await expect(recap).toContainText('(partial)');
   const excluded = recap.getByText('2 excluded', { exact: true });
   await expect(excluded).toHaveCSS('color', 'rgb(146, 145, 165)');
+  const additions = recap.getByText('+17', { exact: true });
+  const deletions = recap.getByText('−8', { exact: true });
+  await expect(additions).toHaveCSS('color', 'rgb(84, 214, 173)');
+  await expect(deletions).toHaveCSS('color', 'rgb(255, 107, 131)');
   await page.evaluate(() => { document.documentElement.dataset.theme = 'midnight'; });
   await expect(excluded).toHaveCSS('color', 'rgb(154, 168, 187)');
+  await expect(additions).toHaveCSS('color', 'rgb(105, 221, 183)');
+  await expect(deletions).toHaveCSS('color', 'rgb(255, 120, 144)');
   await expect(recap.getByText('(partial)', { exact: true })).toHaveCSS('color', 'rgb(154, 168, 187)');
   await expect(recap.locator('[aria-label]')).toHaveAttribute('aria-label', /17 additions and 8 deletions.*2 binary or uncounted.*partial totals/);
   await page.getByRole('button', { name: /^Unstaged Files/ }).click();
@@ -42,13 +48,14 @@ test('unstaged header shows additions and deletions with binary/partial disclosu
   await expect(page.getByRole('button', { name: 'Stage all changes', exact: true })).toBeEnabled();
 });
 
-test('large unstaged line totals fit beside bulk actions in a compact window', async ({ page }) => {
+test('large unstaged line totals wrap without overlapping bulk actions in a compact window', async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 720 });
+  await page.locator('.unstaged-section').evaluate(element => { element.style.width = '250px'; });
   await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
-    staged: null, unstaged: { additions: 1234567, deletions: 7654321, uncountedFiles: 123, partial: true },
+    staged: null, unstaged: { additions: 123456789012, deletions: 765432109876, uncountedFiles: 123, partial: true },
   }));
   const section = page.locator('.unstaged-section .file-section-title');
-  const recap = section.getByRole('img', { name: /1234567 additions and 7654321 deletions/ });
+  const recap = section.getByRole('img', { name: /123456789012 additions and 765432109876 deletions/ });
   const stage = section.getByRole('button', { name: 'Stage all changes', exact: true });
   const discard = section.getByRole('button', { name: 'Discard all unstaged changes', exact: true });
   await expect(recap).toContainText('123 excluded');
@@ -60,7 +67,15 @@ test('large unstaged line totals fit beside bulk actions in a compact window', a
   expect(header && totals && stageButton && discardButton).toBeTruthy();
   expect(stageButton!.x + stageButton!.width).toBeLessThanOrEqual(discardButton!.x + 1);
   expect(discardButton!.x + discardButton!.width).toBeLessThanOrEqual(header!.x + header!.width + 1);
-  expect(totals!.x + totals!.width).toBeLessThanOrEqual(stageButton!.x + 1);
+  expect(totals!.x + totals!.width).toBeLessThanOrEqual(header!.x + header!.width + 1);
+  for (const action of [stageButton!, discardButton!]) {
+    const overlaps = totals!.x + totals!.width > action.x + 1 && action.x + action.width > totals!.x + 1
+      && totals!.y + totals!.height > action.y + 1 && action.y + action.height > totals!.y + 1;
+    expect(overlaps).toBe(false);
+  }
+  const additions = await recap.getByText('+123456789012', { exact: true }).boundingBox();
+  const partial = await recap.getByText('(partial)', { exact: true }).boundingBox();
+  expect(partial!.y).toBeGreaterThan(additions!.y + additions!.height / 2);
 });
 
 test('a busy checkout retains measured totals until it can recount', async ({ page }) => {
