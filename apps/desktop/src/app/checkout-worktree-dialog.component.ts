@@ -29,11 +29,13 @@ export interface CheckoutWorktreeRequest {
           <p role="alert">The registered checkout is missing. Review its registration from Worktrees. No repair or pruning has been performed.</p>
         }
         @if (error(); as message) { <p role="alert" tabindex="-1">{{ message }}</p> }
+        @if (copyStatus(); as message) { <p role="status">{{ message }}</p> }
         @if (phase() !== 'idle') {
           <p role="status">{{ phase() === 'checking' ? 'Checking branch ownership…' : 'Opening existing checkout…' }}</p>
         }
         <footer>
           <button type="button" (click)="close()">{{ error() ? 'Close' : 'Cancel' }}</button>
+          <button type="button" (click)="copyOwningPath()">Copy owning path</button>
           <button type="button" [disabled]="phase() !== 'idle' || git.busy() || request().prunable || !!error()" (click)="confirm()">Open existing checkout</button>
         </footer>
       </section>
@@ -56,11 +58,14 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   readonly request = input.required<CheckoutWorktreeRequest>();
   readonly closed = output<void>();
   readonly openOwner = input.required<(request: CheckoutWorktreeRequest) => Promise<OpenRepositoryResult>>();
+  readonly copyText = input.required<(text: string) => Promise<boolean>>();
   readonly phase = signal<'idle' | 'checking' | 'opening'>('idle');
   readonly error = signal<string | null>(null);
+  readonly copyStatus = signal<string | null>(null);
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private destroyed = false;
   private closing = false;
+  private copyAttempt = 0;
 
   constructor() {
     afterNextRender(() => this.focusCancel());
@@ -72,6 +77,17 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
     if (this.closing) return;
     this.closing = true;
     this.closed.emit();
+  }
+
+  async copyOwningPath(): Promise<void> {
+    const request = this.request();
+    if (!this.owns(request)) return;
+    const attempt = ++this.copyAttempt;
+    this.copyStatus.set(null);
+    const copied = await this.copyText()(request.worktreePath);
+    if (this.owns(request) && attempt === this.copyAttempt) {
+      this.copyStatus.set(copied ? 'Owning checkout path copied.' : 'Could not copy the path. Select it above to copy it manually.');
+    }
   }
 
   async confirm(): Promise<void> {

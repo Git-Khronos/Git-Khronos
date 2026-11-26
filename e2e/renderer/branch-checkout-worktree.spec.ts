@@ -100,6 +100,22 @@ test('graph double click recovers when another checkout took the branch after th
     .filter((entry: any) => ['checkout_branch', 'refresh_repository', 'open_repository'].includes(entry.command))
     .map((entry: any) => entry.command));
   expect(await calls()).toEqual(['checkout_branch', 'refresh_repository']);
+  await page.evaluate(() => {
+    let firstAttempt = true;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (text: string) => {
+        if (firstAttempt) { firstAttempt = false; throw new Error('Clipboard denied'); }
+        (window as any).__copiedWorktreePath = text;
+      },
+    } });
+  });
+  const copy = dialog.getByRole('button', { name: 'Copy owning path' });
+  await copy.click();
+  await expect(dialog.getByRole('status')).toHaveText('Could not copy the path. Select it above to copy it manually.');
+  await copy.click();
+  await expect(dialog.getByRole('status')).toHaveText('Owning checkout path copied.');
+  expect(await page.evaluate(() => (window as any).__copiedWorktreePath)).toBe(fixture.ownerPath);
+  expect(await calls()).toEqual(['checkout_branch', 'refresh_repository']);
   await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
   await expect(page.locator('.status-repository-path')).toHaveText(fixture.ownerPath);
   expect(await calls()).toEqual(['checkout_branch', 'refresh_repository', 'refresh_repository', 'open_repository']);

@@ -2223,6 +2223,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.restoreDialogFocus(target?.isConnected ? target : this.toolbarBranchToggle()?.nativeElement ?? null);
   }
 
+  protected readonly copyCheckoutWorktreePath = (path: string): Promise<boolean> => this.copyText(path);
+
   protected readonly openCheckoutWorktree = async (request: CheckoutWorktreeRequest): Promise<OpenRepositoryResult> => {
     const current = () => this.checkoutWorktreeRequest() === request
       && request.scope === this.git.activeRepositoryReadScope();
