@@ -58,7 +58,7 @@
     } @else if (action.kind === 'forget-discard') {
       <p>Permanently remove this recovery capture. Working files are unchanged, but this capture can no longer recover discarded data.</p>
     } @else if (action.kind === 'discard') {
-      <p>{{ action.untracked ? 'Delete this untracked file from disk. If the path is supported, a recovery patch is saved first and can be restored with Undo.' : 'Replace the working copy with the staged version. If the path is supported, a recovery patch is saved first and can be restored with Undo.' }}</p>
+      <p>{{ action.untracked ? 'Delete this untracked file from disk.' : 'Replace the working copy with the staged version.' }} A recovery capture must be saved before discarding. Use Undo or Recovery History to restore it.</p>
     } @else if (action.kind === 'discard-hunk') {
       <p>Discard only the selected hunk from the working copy. Other staged and unstaged changes remain intact, and Undo can restore it.</p>
     } @else if (action.kind === 'discard-lines') {
@@ -77,7 +77,7 @@
         <p>The rule may also ignore other untracked files in this directory and its subdirectories.{{ action.untracked ? '' : ' Other tracked files stay tracked.' }}</p>
       }
     }
-    @if ((action.kind === 'discard' || action.kind === 'discard-hunk' || action.kind === 'discard-lines') && action.path.includes('/')) {
+    @if ((action.kind === 'discard-hunk' || action.kind === 'discard-lines') && action.path.includes('/')) {
       <p>This action currently supports only files directly in the repository root. Files in subdirectories are refused because their parent directories could move outside the worktree during the operation.</p>
     }
     @if (action.recovery; as recovery) {

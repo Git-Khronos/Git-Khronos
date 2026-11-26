@@ -450,9 +450,9 @@ test('sample discard previews include nested tracked edits and deletions', async
   });
 });
 
-test('single-file discard confirms only the prepared native token', async ({ page }) => {
-  const discard = page.locator('#unstaged-files-list button.row-discard').first();
-  const selectedPath = (await discard.getAttribute('aria-label'))!.replace(/^Discard changes in /, '');
+test('single nested-file discard confirms only the prepared native token', async ({ page }) => {
+  const selectedPath = path;
+  const discard = page.getByRole('button', { name: `Discard changes in ${selectedPath}`, exact: true });
   const repositoryId = await page.evaluate(file => {
     const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     const repository = git.repository();
@@ -475,6 +475,8 @@ test('single-file discard confirms only the prepared native token', async ({ pag
   }, selectedPath);
   await discard.click();
   const confirmation = page.getByRole('alertdialog');
+  await expect(confirmation.getByText(/Use Undo or Recovery History/)).toBeVisible();
+  await expect(confirmation.getByText(/only files directly in the repository root/)).toHaveCount(0);
   const confirm = confirmation.getByRole('button', { name: 'Discard changes', exact: true });
   await expect(confirm).toBeEnabled();
   const calls = () => page.evaluate(() => (window as any).__singleDiscard.calls
