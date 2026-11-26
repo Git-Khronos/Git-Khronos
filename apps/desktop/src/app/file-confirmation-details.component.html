@@ -43,7 +43,13 @@
   } @else {
     @if (action.kind === 'discard-bulk' && action.preview; as preview) {
       @if (preview.blockedPaths.length) {
-        <p>No files were discarded. The paths below cannot be discarded with recovery. To continue, choose eligible files for a fresh preview.</p>
+        <p>No files were discarded. The paths below cannot be discarded with recovery.
+          @if (preview.paths.length) {
+            To continue, choose eligible files for a fresh preview.
+          } @else {
+            No files are currently eligible. Recheck eligibility after resolving the blockers, or cancel.
+          }
+        </p>
         <ul class="discard-preview-paths">@for (path of preview.blockedPaths; track path) { <li>{{ path }}@if (oversizedPaths().has(path)) { <span> · Too large to save for recovery</span> }</li> }</ul>
       } @else {
         <p>Restore tracked files to their staged contents and delete {{ preview.untracked }} untracked files. Staged contents and ignored files remain untouched. A recovery capture is saved before discarding and remains available after restart.</p>

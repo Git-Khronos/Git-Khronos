@@ -2067,7 +2067,7 @@
             @if (action.kind === 'discard-bulk' && (action.preview?.blockedPaths?.length ?? 0) > 0) {
               <button type="button" data-choose-root-files (click)="chooseEligibleFilesFromBlockedDiscard(action)"
                 [disabled]="!currentReview || git.busy() || blockedDiscardChoiceLoading() || fileConfirmationDetailsReady() !== action">
-                {{ blockedDiscardChoiceLoading() ? 'Refreshing file list…' : 'Choose eligible files…' }}
+                {{ blockedDiscardChoiceLoading() ? 'Refreshing file list…' : action.preview?.paths?.length ? 'Choose eligible files…' : 'Recheck eligibility' }}
               </button>
             }
             <button class="confirm-action" [class.danger]="!ignoreRuleOnly && action.kind !== 'restore-commit' && action.kind !== 'recover-discard'" type="button" [disabled]="!currentReview || git.busy() || fileConfirmationDetailsReady() !== action || (action.kind === 'discard-bulk' && (action.preview?.blockedPaths.length ?? 0) > 0)" (click)="confirmFileAction(action)">{{ action.kind === 'discard-bulk' ? 'Discard captured changes' : action.kind === 'recover-discard' ? (action.recovery?.restored ? 'Discard again' : 'Recover changes') : action.kind === 'forget-discard' ? 'Remove capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore and stage ' + ((action.paths?.length ?? 1) === 1 ? 'file' : (action.paths?.length ?? 1) + ' files') : ignoreLabel }}</button>

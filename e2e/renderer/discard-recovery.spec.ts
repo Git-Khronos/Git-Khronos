@@ -1206,6 +1206,12 @@ test('returns to the blocked review without retaining root selections', async ({
   await expect(dialog).toContainText('Go back to recheck eligibility, or cancel');
   await expect(dialog.getByRole('button', { name: 'Preview selected files' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await dialog.getByRole('button', { name: 'Back to blocked review' }).click();
+  const recheck = dialog.getByRole('button', { name: 'Recheck eligibility' });
+  await expect(recheck).toBeFocused();
+  await expect(dialog).toContainText('Recheck eligibility after resolving the blockers');
+  await recheck.click();
+  await expect(dialog.getByRole('button', { name: 'Back to blocked review' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(options).toBeFocused();
   const result = await page.evaluate(() => (window as any).__discardChoiceTest);
