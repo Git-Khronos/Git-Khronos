@@ -733,21 +733,21 @@ code, kbd { font-family: var(--font-mono); }
   overflow-wrap: anywhere;
   white-space: normal;
 }
-.toolbar-menu > button { width: 100%; display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 5px; padding: 7px 8px; border-radius: 3px; background: transparent; color: var(--overlay-text); text-align: left; }
-.toolbar-menu > button:has(> kbd) { grid-template-columns: 22px minmax(0, 1fr) auto; }
-.toolbar-menu > button > kbd { justify-self: end; padding: 1px 4px; border: 1px solid var(--overlay-control-border); border-radius: 3px; color: var(--overlay-muted); font-size: 10px; line-height: 1.2; white-space: nowrap; }
-.toolbar-menu > button.toolbar-remote-overflow { grid-template-columns: 22px minmax(0, 1fr) 16px; }
-.toolbar-menu > button.toolbar-remote-overflow .menu-item-check { justify-self: end; }
-.toolbar-menu > button:hover, .toolbar-menu > button.current { background: var(--overlay-hover); color: white; }
+:is(.toolbar-menu, .toolbar-menu-items) > button { width: 100%; display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: center; gap: 5px; padding: 7px 8px; border-radius: 3px; background: transparent; color: var(--overlay-text); text-align: left; }
+:is(.toolbar-menu, .toolbar-menu-items) > button:has(> kbd) { grid-template-columns: 22px minmax(0, 1fr) auto; }
+:is(.toolbar-menu, .toolbar-menu-items) > button > kbd { justify-self: end; padding: 1px 4px; border: 1px solid var(--overlay-control-border); border-radius: 3px; color: var(--overlay-muted); font-size: 10px; line-height: 1.2; white-space: nowrap; }
+:is(.toolbar-menu, .toolbar-menu-items) > button.toolbar-remote-overflow { grid-template-columns: 22px minmax(0, 1fr) 16px; }
+:is(.toolbar-menu, .toolbar-menu-items) > button.toolbar-remote-overflow .menu-item-check { justify-self: end; }
+:is(.toolbar-menu, .toolbar-menu-items) > button:hover, :is(.toolbar-menu, .toolbar-menu-items) > button.current { background: var(--overlay-hover); color: white; }
 .toolbar-menu button:focus { outline: 2px solid color-mix(in srgb, var(--purple) 72%, white); outline-offset: -3px; background: var(--overlay-hover); color: white; }
-.toolbar-menu > button:hover small, .toolbar-menu > button.current small, .toolbar-menu button:focus small { color: var(--overlay-list-text); }
-.toolbar-menu > button > gk-icon { color: var(--accent); }
-.toolbar-menu > button > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.toolbar-menu > button > span > strong { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+:is(.toolbar-menu, .toolbar-menu-items) > button:hover small, :is(.toolbar-menu, .toolbar-menu-items) > button.current small, .toolbar-menu button:focus small { color: var(--overlay-list-text); }
+:is(.toolbar-menu, .toolbar-menu-items) > button > gk-icon { color: var(--accent); }
+:is(.toolbar-menu, .toolbar-menu-items) > button > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+:is(.toolbar-menu, .toolbar-menu-items) > button > span > strong { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
 .toolbar-menu strong { overflow: hidden; font-size: var(--font-size-body); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .toolbar-menu small { color: var(--overlay-muted); font-size: var(--font-size-caption); line-height: 1.4; }
 .toolbar-menu-note { margin: 5px 3px 0; padding: 7px 8px; border-top: 1px solid var(--overlay-divider); color: var(--overlay-muted); font-size: var(--font-size-body); line-height: 1.4; }
-.toolbar-menu > button.danger-item > gk-icon, .toolbar-menu > button.danger-item strong { color: #ee879d; }
+:is(.toolbar-menu, .toolbar-menu-items) > button.danger-item > gk-icon, :is(.toolbar-menu, .toolbar-menu-items) > button.danger-item strong { color: #ee879d; }
 .lfs-menu, .sparse-menu { left: auto; right: 0; }
 .menu-caption { padding: 5px 8px 3px 35px; color: var(--overlay-muted-low); font-size: 12px; font-weight: 700; text-transform: uppercase; }
 .compact-menu-caption { margin: 3px 3px 1px; padding: 5px 8px 2px 31px; border-top: 1px solid var(--overlay-divider); font-size: 10px; letter-spacing: .05em; }

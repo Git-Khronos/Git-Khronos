@@ -1,30 +1,32 @@
 <ng-template #toolbarOptionsMenu>
   @if (toolbarOptionsView(); as menu) {
-    @defer (on immediate) {
-      <div gkToolbarOptions [id]="menu.id" [class]="'toolbar-menu ' + menu.className" role="menu"
-        [attr.aria-label]="menu.label" [attr.aria-describedby]="menu.kind === 'pull' && menu.hasSubmodules ? 'pull-submodule-scope' : null"
-        [view]="menu" (activate)="runToolbarOptionsAction(menu, $event)" (ready)="toolbarOptionsReady(menu, $event)"
-        (keydown)="handleToolbarActionMenuKeydown($event)"></div>
-    } @placeholder {
-      <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ $implicit: menu, failed: false }" />
-    } @loading {
-      <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ $implicit: menu, failed: false }" />
-    } @error {
-      <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ $implicit: menu, failed: true }" />
-    }
+    <div [id]="menu.id" [class]="'toolbar-menu ' + menu.className" role="menu"
+      [attr.aria-label]="menu.label" [attr.aria-describedby]="menu.kind === 'pull' && menu.hasSubmodules ? 'pull-submodule-scope' : null"
+      (keydown)="handleToolbarActionMenuKeydown($event)">
+      @defer (on immediate) {
+        <div gkToolbarOptions [class]="menu.className + ' toolbar-menu-items'"
+          [view]="menu" (activate)="runToolbarOptionsAction(menu, $event)" (ready)="toolbarOptionsReady(menu, $event)"></div>
+      } @placeholder {
+        <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ failed: false }" />
+      } @loading {
+        <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ failed: false }" />
+      } @error {
+        <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ failed: true }" />
+      }
+      @if (menu.kind === 'pull' && menu.hasSubmodules) {
+        <p id="pull-submodule-scope" class="toolbar-menu-note">Pull does not update submodule checkouts. Use Submodules to update them separately.</p>
+      }
+    </div>
   }
 </ng-template>
 
-<ng-template #toolbarOptionsFallback let-menu let-failed="failed">
-  <div [id]="menu.id" [class]="'toolbar-menu ' + menu.className" role="menu"
-    [attr.aria-label]="menu.label" (keydown)="handleToolbarActionMenuKeydown($event)">
-    @if (failed) {
-      <p class="toolbar-menu-note" role="alert">Toolbar options could not load. Restart Git Khronos before retrying.</p>
-    } @else {
-      <p class="toolbar-menu-note" role="status">Loading toolbar options…</p>
-    }
-    <button #toolbarOptionsFallbackControl type="button" role="menuitem" (click)="dismissToolbarOptions()">{{ failed ? 'Close' : 'Cancel' }}</button>
-  </div>
+<ng-template #toolbarOptionsFallback let-failed="failed">
+  @if (failed) {
+    <p class="toolbar-menu-note" role="alert">Toolbar options could not load. Restart Git Khronos before retrying.</p>
+  } @else {
+    <p class="toolbar-menu-note" role="status">Loading toolbar options…</p>
+  }
+  <button #toolbarOptionsFallbackControl type="button" role="menuitem" (click)="dismissToolbarOptions()">{{ failed ? 'Close' : 'Cancel' }}</button>
 </ng-template>
 
 <ng-template #fileChangeRecap let-stats>

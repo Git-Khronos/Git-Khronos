@@ -1092,7 +1092,7 @@ def toolbar_menu_focus_gap(driver, report):
             driver.script("document.activeElement.setAttribute('data-native-toolbar-tab-target', '')")
             try:
                 driver.click_visible(toggle)
-                driver.wait("""return document.querySelector('#pull-options-menu[gkToolbarOptions]')
+                driver.wait("""return document.querySelector('#pull-options-menu [gkToolbarOptions]')
                     ?.contains(document.activeElement);""")
                 # Model a focused fallback being removed just before the next key.
                 driver.script("document.activeElement.blur()")

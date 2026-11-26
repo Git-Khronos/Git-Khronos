@@ -29,9 +29,6 @@
           [attr.aria-checked]="selected" (click)="activate.emit({ kind: 'defaultPull', strategy: choice.id })"><gk-icon name="star" [size]="12" /></button>
       </div>
     }
-    @if (menu.hasSubmodules) {
-      <p id="pull-submodule-scope" class="toolbar-menu-note">Pull does not update submodule checkouts. Use Submodules to update them separately.</p>
-    }
   }
   @case ('push') {
     <header class="toolbar-menu-context">
