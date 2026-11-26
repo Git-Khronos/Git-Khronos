@@ -94,7 +94,9 @@ function rendererProgress(directory) {
       ...(integer(record.testPhaseElapsedMs) ? { testPhaseElapsedMs: record.testPhaseElapsedMs } : {}),
       ...(integer(record.totalAttemptDurationMs) ? { totalAttemptDurationMs: record.totalAttemptDurationMs } : {}),
       ...(validActive ? { activeAttempts: record.activeAttempts,
-        oldestActiveAttempts: active.map(({ spec, startedAt }) => ({ spec, startedAt })) } : {}),
+        oldestActiveAttempts: active.map(({ spec, startedAt, line }) => ({
+          spec, startedAt, ...(integer(line) && line > 0 ? { line } : {}),
+        })) } : {}),
       ...(validTimings ? { slowestSpecsByAttemptTime: timings.map(item => ({
         spec: item.spec, durationMs: item.durationMs,
         ...(validTimingDetail(item) ? { timedAttempts: item.timedAttempts, maxAttemptMs: item.maxAttemptMs,

@@ -3157,8 +3157,8 @@ directory with `--workers=1` after the build ends. Increasing
 not individual test timeouts.
 Use `activeAttempts` and `oldestActiveAttempts` to tell what is still running
 before the next test result arrives. The latter lists up to five spec
-basenames with attempt start times; it does not include test titles or
-absolute paths.
+basenames with attempt start times and source line numbers when available;
+it does not include test titles or absolute paths.
 These are observations, not a percentage of release readiness or a
 prediction of the end time. If the runner stops without a result, status
 keeps its last valid snapshot for diagnosis; any active attempts shown

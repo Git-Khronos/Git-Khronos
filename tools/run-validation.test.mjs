@@ -291,8 +291,12 @@ test('renderer progress updates retry outcomes without deciding the validation r
   const active = readStatus(root).rendererProgress;
   assert.equal(active.activeAttempts, 1);
   assert.equal(active.oldestActiveAttempts[0].spec, 'first.spec.ts');
+  assert.equal(active.oldestActiveAttempts[0].line, 42);
   assert.ok(Number.isFinite(Date.parse(active.oldestActiveAttempts[0].startedAt)));
   assert.equal(active.testsReported, 0, 'an ongoing test must not count as completed');
+  reporter.onTestBegin(second);
+  reporter.publish(null);
+  assert.equal(readStatus(root).rendererProgress.oldestActiveAttempts[1].line, undefined);
   reporter.onTestEnd(first, { status: 'failed', duration: 300 });
   reporter.onTestBegin(first);
   reporter.onTestEnd(first, { status: 'passed', duration: 200 });

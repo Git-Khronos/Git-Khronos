@@ -28,7 +28,11 @@ class RendererProgress {
 
   onTestBegin(test) {
     if (this.total === null || typeof test.location?.file !== 'string') return;
-    this.active.set(test.id, { spec: basename(test.location.file), startedAt: new Date().toISOString() });
+    const line = test.location.line;
+    this.active.set(test.id, {
+      spec: basename(test.location.file), startedAt: new Date().toISOString(),
+      ...(Number.isSafeInteger(line) && line > 0 ? { line } : {}),
+    });
     this.schedulePublish();
   }
 
