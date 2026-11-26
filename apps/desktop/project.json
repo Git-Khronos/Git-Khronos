@@ -149,6 +149,16 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite worktrees --headless" }
     },
+    "native-submodule-initialize": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite submodule-initialize --headless" }
+    },
+    "native-submodule-update": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite submodule-update --headless" }
+    },
     "native-discard-subset": {
       "executor": "nx:run-commands",
       "cache": false,

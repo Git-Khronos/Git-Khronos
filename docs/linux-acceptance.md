@@ -3364,6 +3364,14 @@ pass its archive explicitly and match the report's `packageSha256` against the
 candidate digest. A failing or passing run against an older archive does not
 establish the behavior of the current source.
 
+When changing submodule setup or update, choose the corresponding focused
+native target. These tests manage disposable repositories and local remotes:
+
+```sh
+pnpm nx run desktop:native-submodule-initialize --output-style=stream -- --package "$archive"
+pnpm nx run desktop:native-submodule-update --output-style=stream -- --package "$archive"
+```
+
 Local Ubuntu 26.04 checkpoint: the archive built from `ef415ca` with SHA-256
 `48692296e3ef2d05654eee55b7b4c98fa5ea297ab3199e249ce60cfa7a41466e`
 passed extracted-package GitLab fork/catalogue (11 scenarios), working-tree
