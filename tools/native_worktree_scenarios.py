@@ -135,7 +135,7 @@ def occupied_branch_navigation(driver, fixtures, report):
     before = footprints()
     review = 'gk-checkout-worktree-dialog [role=dialog]'
 
-    def open_review(from_graph=False, *, active=source, target=owner, ref=branch):
+    def open_review(from_graph=False, *, active=source, target=owner, ref=branch, from_keyboard=False):
         if from_graph:
             graph_branch = '.commit-row .branch-column button[aria-label="Graph reference ' + ref + ', local branch"]'
             element = driver.wait(f"""const button = document.querySelector({json.dumps(graph_branch)});
@@ -161,6 +161,13 @@ def occupied_branch_navigation(driver, fixtures, report):
                     {'type': 'pointerDown', 'button': 0}, {'type': 'pointerUp', 'button': 0},
                 ],
             }]})
+        elif from_keyboard:
+            selector = '.branch-item[aria-label="Local branch ' + ref + '"]'
+            driver.wait(f"""const button = document.querySelector({json.dumps(selector)});
+              if (!button?.getClientRects().length || button.disabled) return false;
+              button.focus();
+              return document.activeElement === button;""")
+            driver.key('\ue007', modifiers=('\ue008',))  # Shift+Enter
         else:
             driver.context_click('.branch-item[aria-label="Local branch ' + ref + '"]')
             # Checkout can be a write when a branch is free: never replay this click.
@@ -248,7 +255,7 @@ def occupied_branch_navigation(driver, fixtures, report):
     # A registered checkout can disappear while the ownership dialog is open.
     # Review the now-unavailable registration without pruning or repairing it.
     open_ui(driver, source)
-    open_review(ref='owned/reassigned-topic')
+    open_review(ref='owned/reassigned-topic', from_keyboard=True)
     parked_owner = owner.with_name(owner.name + '-parked')
     owner.rename(parked_owner)
     registration = 'gk-worktree-registration-dialog [role=dialog]'
