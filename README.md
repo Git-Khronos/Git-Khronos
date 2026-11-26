@@ -118,7 +118,7 @@ instead, then quit and reopen Git Khronos.
 
 ### Requirements
 
-- Node.js 24.15+ or 26, with pnpm 12.14.0 (the version pinned by this checkout).
+- Node.js 24.15+ or 26, with pnpm 12.23.0 (the version pinned by this checkout).
 - Rust 1.99.0, pinned by `rust-toolchain.toml`.
 - Git 2.39 or newer. Older Git lacks options required by the native suite.
 - The [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your
