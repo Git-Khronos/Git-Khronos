@@ -80,6 +80,28 @@ test('locks and unlocks a linked worktree through its contextual menu', async ({
   ]);
 });
 
+test('canceling or escaping the worktree lock review leaves Git unchanged and restores focus', async ({ page }) => {
+  await setup(page);
+  const opener = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
+
+  await opener.click();
+  await page.getByRole('menuitem', { name: 'Lock this worktree…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Lock linked worktree' });
+  await dialog.getByRole('textbox', { name: 'Reason (optional)' }).fill('temporary backup');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+
+  await opener.click();
+  await page.getByRole('menuitem', { name: 'Lock this worktree…', exact: true }).click();
+  const reopened = page.getByRole('dialog', { name: 'Lock linked worktree' });
+  await reopened.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(reopened).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__worktreeMove.calls.filter(
+    (entry: any) => entry.command === 'set_worktree_locked'))).toEqual([]);
+});
+
 test('worktree move reviews destination and sends selected HEAD and branch without force', async ({ page }) => {
   await setup(page);
   await openMove(page);
