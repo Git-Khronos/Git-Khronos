@@ -2206,12 +2206,12 @@ export class AppComponent implements OnInit, OnDestroy {
     if (opened.status === 'success') {
       if (this.checkoutWorktreeRequest() === request) this.checkoutWorktreeRequest.set(null);
       const destinationScope = this.git.activeRepositoryReadScope();
-      requestAnimationFrame(() => {
+      afterNextRender(() => {
         if (this.git.activeRepositoryId() !== opened.repositoryId
           || this.git.activeRepositoryReadScope() !== destinationScope) return;
         if (this.canRestoreFocusFrom(null)) this.focusRepositoryTab(opened.repositoryId);
         else this.revealRepositoryTab(opened.repositoryId);
-      });
+      }, { injector: this.injector });
     }
     return opened;
   };

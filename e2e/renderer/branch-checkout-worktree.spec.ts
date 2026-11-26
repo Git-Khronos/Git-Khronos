@@ -220,10 +220,20 @@ test('occupied branch requires explicit navigation and sends no checkout command
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
   expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls.filter((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)).length)).toBe(0);
-  await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.locator('.status-repository-path')).toHaveText(fixture.ownerPath);
-  await expect(page.locator('.repo-tab-main[aria-selected="true"]')).toBeFocused();
+  const open = dialog.getByRole('button', { name: 'Open existing checkout' });
+  await open.focus();
+  await page.evaluate(() => {
+    (window as any).__checkoutWorktree.requestAnimationFrame = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => 0;
+  });
+  try {
+    await open.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.status-repository-path')).toHaveText(fixture.ownerPath);
+    await expect(page.locator('.repo-tab-main[aria-selected="true"]')).toBeFocused();
+  } finally {
+    await page.evaluate(() => { window.requestAnimationFrame = (window as any).__checkoutWorktree.requestAnimationFrame; });
+  }
   const calls = await page.evaluate(() => (window as any).__checkoutWorktree.calls);
   expect(calls.filter((entry: any) => entry.command === 'checkout_branch')).toEqual([]);
   expect(calls.filter((entry: any) => entry.command === 'open_repository')).toEqual([
