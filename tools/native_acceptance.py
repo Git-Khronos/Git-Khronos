@@ -14,6 +14,7 @@ from pathlib import Path
 import platform
 import pwd
 import select
+import secrets
 import signal
 import shlex
 import shutil
@@ -51,6 +52,14 @@ def expected_debian_package():
     if not isinstance(version, str) or not version:
         raise ValueError("The Tauri package version must be a nonempty string")
     return version, f"Git-Khronos_{version}_amd64.deb"
+
+
+def default_debian_archive(filename):
+    # Match the package manager helper: relative Cargo targets are relative
+    # to the caller, while the default target follows the workspace.
+    configured = os.environ.get("CARGO_TARGET_DIR")
+    target = Path.cwd() / configured if configured else ROOT / "target"
+    return target / "release/bundle/deb" / filename
 
 
 def verified_installed_file(packaged, installed, label):
@@ -106,6 +115,44 @@ def stop_owned_process_group(process, timeout=10):
     else:
         raise TimeoutError("Owned acceptance descendants did not stop; fixtures must be retained")
     process.wait(timeout=timeout)
+
+
+def start_abstract_xvfb(fixtures, children, log, socket_directory):
+    """Start on a private, authenticated high display without filesystem X11 sockets."""
+    # WSLg owns the filesystem socket directory. Allocate a
+    # high display using only Linux's abstract local socket;
+    # never compete with the workstation's low displays.
+    if not shutil.which("xauth"):
+        raise RuntimeError("Headless Xvfb on a read-only X11 socket mount requires xauth")
+    authority = fixtures.root / "xvfb-authority"
+    display = None
+    for candidate in range(100, 200):
+        if Path(f"/tmp/.X{candidate}-lock").exists() or (socket_directory / f"X{candidate}").exists():
+            continue
+        authority.unlink(missing_ok=True)
+        authority.touch(mode=0o600)
+        cookie = secrets.token_hex(16)
+        subprocess.run(["xauth", "-q", "-f", str(authority)],
+                       input=f"add :{candidate} MIT-MAGIC-COOKIE-1 {cookie}\n",
+                       text=True, env=fixtures.env, stdout=log, stderr=log,
+                       timeout=5, check=True)
+        attempt = subprocess.Popen(
+            ["Xvfb", f":{candidate}", "-displayfd", "1", "-noreset", "-screen", "0",
+             "1920x1080x24", "-nolisten", "tcp", "-nolisten", "unix", "-auth", str(authority)],
+            env=fixtures.env, stdout=subprocess.PIPE, stderr=log, start_new_session=True,
+        )
+        children.append(attempt)
+        if not select.select([attempt.stdout], [], [], 15)[0]:
+            raise TimeoutError("Xvfb did not allocate a private abstract display")
+        number = attempt.stdout.readline().decode().strip()
+        if number == str(candidate) and attempt.poll() is None:
+            display = attempt
+            break
+        if attempt.poll() is None:
+            raise RuntimeError("Xvfb reported an unexpected private display")
+    if display is None:
+        raise RuntimeError("Xvfb could not allocate a private abstract display; see driver.log")
+    return str(candidate), display, str(authority)
 
 
 def start_private_dbus(fixtures, children, log):
@@ -173,6 +220,25 @@ def probe_signing_toolchain(fixtures, report, required, report_key):
         raise RuntimeError(
             "signing acceptance requires these executables in PATH: " + ", ".join(missing)
         )
+
+
+def probe_lfs_count_toolchain(fixtures, report):
+    """Require the actual JSON capability, rather than assuming a version."""
+    repository = fixtures.repository("lfs-count-toolchain-preflight", commits=1)
+    probe = {"passed": False}
+    report["lfsCountToolchainPreflight"] = probe
+    try:
+        probe["version"] = fixtures.git(repository, "lfs", "version")
+        data = json.loads(fixtures.git(repository, "lfs", "ls-files", "--json"))
+        if not isinstance(data, dict) or "files" not in data or (
+            data["files"] is not None and not isinstance(data["files"], list)
+        ):
+            raise ValueError("Unexpected Git LFS JSON inventory.")
+    except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as error:
+        probe["diagnostic"] = str(error)
+        raise RuntimeError("These scenarios require Git LFS with 'ls-files --json' on PATH. "
+                           "Use a JSON-capable Git LFS build; see docs/linux-acceptance.md.") from error
+    probe["passed"] = True
 
 
 def probe_signed_tag_toolchain(fixtures, report):
@@ -341,6 +407,7 @@ class Driver:
         end = time.monotonic() + timeout
         unavailable = 0
         last_refusal = None
+        quick_polls = iter((0.025, 0.025, 0.05))
         while (remaining := end - time.monotonic()) > 0:
             value = None
             try:
@@ -361,7 +428,10 @@ class Driver:
                 break
             if value:
                 return value
-            time.sleep(min(0.1, remaining))
+            # Normal UI changes often settle within one paint. Probe quickly
+            # at first, but keep the existing cadence for slow work or errors.
+            delay = next(quick_polls, 0.1) if last_refusal is None else 0.1
+            time.sleep(min(delay, remaining))
         note = f" (WebKit could not parse {unavailable} script results)" if unavailable else ""
         raise TimeoutError(f"UI condition did not become true{note}: {script}") from last_refusal
 
@@ -401,35 +471,69 @@ class Driver:
 
     def click(self, selector):
         element = self.request("POST", self.path("element"), {"using": "css selector", "value": selector})
-        identifier = element["element-6066-11e4-a52e-4f735466cecf"]
-        self.request("POST", self.path(f"element/{identifier}/click"), {})
+        self._click_element(element)
 
-    def click_navigation(self, selector, text=None, *, scroll=False, timeout=3):
+    @staticmethod
+    def _navigation_request_budget(deadline):
+        if deadline is None:
+            return {}
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("Navigation deadline expired before WebDriver dispatch")
+        return {"timeout": min(90, remaining)}
+
+    def _click_element(self, element, *, deadline=None):
+        identifier = element["element-6066-11e4-a52e-4f735466cecf"]
+        self.request("POST", self.path(f"element/{identifier}/click"), {},
+                     **self._navigation_request_budget(deadline))
+
+    def click_navigation(self, selector, text=None, *, scroll=False, wait_for_ready=False, timeout=3):
         """Reacquire navigation controls only after an explicit stale refusal.
 
         Ordinary click helpers and all write/review/submit callers keep their
-        no-replay behavior. A missing, ambiguous, obscured control or any lost
-        reply remains a failure, not a reason to dispatch another click.
+        no-replay behavior. A caller may wait for the first control after a
+        view transition. Only a stale refusal permits retrying a click.
         """
         deadline = time.monotonic() + timeout
+        # A transition may already have left a disabled copy in the DOM
+        # before the first lookup. Apply the same eligibility rule on both
+        # sides of an explicit stale refusal.
+        eligible = f':is({selector}):not(:disabled, [aria-disabled="true"], [inert], [inert] *)'
+        def ready_control(remaining, description):
+            elements = self.wait(f"""return [...document.querySelectorAll({json.dumps(eligible)})]
+              .filter(element => element.getClientRects().length
+                && getComputedStyle(element).visibility === 'visible'
+                && ({json.dumps(text)} === null || element.textContent.trim() === {json.dumps(text)}));""",
+                                 timeout=remaining)
+            if len(elements) != 1:
+                raise ValueError(f"Expected one {description} navigation control for {selector!r}, found {len(elements)}")
+            return elements[0]
+
+        replacement = ready_control(timeout, "ready") if wait_for_ready else None
         while True:
             try:
+                if replacement is not None:
+                    # Only the explicit readiness path promises an end-to-end
+                    # budget; older callers still use the standard click timeout.
+                    budget = {"deadline": deadline} if wait_for_ready else {}
+                    click = self._click_scrolled_element if scroll else self._click_element
+                    return click(replacement, **budget)
                 if text is None:
-                    return self.click(selector)
+                    return self.click(eligible)
                 if scroll:
-                    return self.click_scrolled_text(selector, text)
-                return self.click_text(selector, text)
+                    return self.click_scrolled_text(eligible, text)
+                return self.click_text(eligible, text)
             except RuntimeError as error:
-                if not stale_element_refusal(error) or time.monotonic() >= deadline:
+                remaining = deadline - time.monotonic()
+                if not stale_element_refusal(error) or remaining <= 0:
                     raise
-            time.sleep(0.1)
+                replacement = ready_control(remaining, "replacement")
 
     def click_text(self, selector, text):
         elements = self.script("return [...document.querySelectorAll(arguments[0])].filter(element => element.getClientRects().length && getComputedStyle(element).visibility === 'visible' && element.textContent.trim() === arguments[1]);", selector, text)
         if len(elements) != 1:
             raise ValueError(f"Expected one {selector!r} with text {text!r}, found {len(elements)}")
-        identifier = elements[0]["element-6066-11e4-a52e-4f735466cecf"]
-        self.request("POST", self.path(f"element/{identifier}/click"), {})
+        self._click_element(elements[0])
 
     def click_scrolled_text(self, selector, text, *, wait_for_ready=False):
         """Scroll normally, verify the painted hit target, then click exactly once."""
@@ -444,7 +548,9 @@ class Driver:
             elements = self.script(f"return ({lookup})(arguments[0], arguments[1]);", selector, text)
         if len(elements) != 1:
             raise ValueError(f"Expected one enabled {selector!r} with text {text!r}, found {len(elements)}")
-        element = elements[0]
+        return self._click_scrolled_element(elements[0])
+
+    def _click_scrolled_element(self, element, *, deadline=None):
         geometry = self.request("POST", self.path("execute/async"), {"script": """
           const element=arguments[0], done=arguments[arguments.length-1];
           const bounds=()=>{
@@ -462,12 +568,11 @@ class Driver:
               const after=bounds();done({before,after,interactable:after.hitTarget});
             }));
           }));
-        """, "args": [element]})
+        """, "args": [element]}, **self._navigation_request_budget(deadline))
         if not isinstance(geometry, dict) or geometry.get("interactable") is not True:
             raise RuntimeError("The control is not interactable after ordinary scrolling: " + json.dumps(geometry))
-        identifier = element["element-6066-11e4-a52e-4f735466cecf"]
         # A failed/lost click reply is an uncertain action, never a reason to replay.
-        self.request("POST", self.path(f"element/{identifier}/click"), {})
+        self._click_element(element, deadline=deadline)
         return geometry
 
     def click_visible(self, selector, text=None):
@@ -569,10 +674,13 @@ class Driver:
               }
             """)
 
-    def key(self, value):
+    def key(self, value, *, modifiers=()):
+        presses = [{"type": "keyDown", "value": modifier} for modifier in modifiers]
+        releases = [{"type": "keyUp", "value": modifier} for modifier in reversed(modifiers)]
+        # A chord can mutate Git; dispatch it once with no replay.
         self.request("POST", self.path("actions"), {"actions": [{
             "type": "key", "id": "native-keyboard",
-            "actions": [{"type": "keyDown", "value": value}, {"type": "keyUp", "value": value}],
+            "actions": [*presses, {"type": "keyDown", "value": value}, {"type": "keyUp", "value": value}, *releases],
         }]})
 
     def screenshot(self, path):
@@ -1110,6 +1218,11 @@ def repository_file_discard_recovery(driver, fixtures, repository, repo_id, repo
     driver.wait("return !!document.querySelector('[role=alertdialog] .confirm-action:not(:disabled)')")
     driver.click_text('[role=alertdialog] button', "Remove capture")
     driver.wait("return !document.querySelector('[role=alertdialog]')")
+    # The confirmation can close while the native removal is still pending.
+    deadline = time.monotonic() + 15
+    while capture.exists() and time.monotonic() < deadline:
+        time.sleep(.05)
+    assert not capture.exists(), "The reviewed discard capture was not removed"
     assert not driver.invoke("load_discard_recoveries", repoId=repo_id)
     assert file.read_bytes() == contents
     assert nested.read_bytes() == contents
@@ -1182,6 +1295,9 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
 
 
 def performance(driver, fixtures, report):
+    from native_worktree_scenarios import checkout_footprint
+    from native_working_tree_recaps import wait_for_line_recaps
+
     report["performance"] = []
     for count in (20_000, 100_000):
         repository = fixtures.repository(f"history-{count}", count)
@@ -1189,9 +1305,16 @@ def performance(driver, fixtures, report):
             fixtures.git(repository, "branch", f"fixture-{index:02d}", f"HEAD~{index}")
         for index in range(36):
             fixtures.git(repository, "worktree", "add", "--detach", "-q", str(fixtures.root / f"linked-{count}-{index}"), f"HEAD~{index}")
+        dirty_files = ("fixture.txt", "perf-staged.txt")
+        (repository / "perf-staged.txt").write_text("staged change\n")
+        fixtures.git(repository, "add", "--", "perf-staged.txt")
+        (repository / "fixture.txt").write_text("replacement line\nsecond line\n")
+        before = checkout_footprint(fixtures, repository, dirty_files)
         start = time.monotonic()
         repo_id = open_ui(driver, repository)
         loaded_ms = (time.monotonic() - start) * 1000
+        wait_for_line_recaps(driver, (2, 1), (1, 0), changed_files=2)
+        status_ready_ms = (time.monotonic() - start) * 1000
         driver.script("window.__nativeHeartbeat = {last: performance.now(), max: 0}; window.__nativeTimer = setInterval(() => { const h = window.__nativeHeartbeat; const now = performance.now(); h.max = Math.max(h.max, now - h.last); h.last = now; }, 50);")
         probes = []
         for offset in (400, 1600, 3200, 0, 2000, 0):
@@ -1204,25 +1327,33 @@ def performance(driver, fixtures, report):
         driver.invoke("load_more_commits", repoId=repo_id)
         maximum = driver.script("clearInterval(window.__nativeTimer); return window.__nativeHeartbeat.max")
         assert maximum < 2000, f"UI heartbeat stalled {maximum}ms"
+        assert checkout_footprint(fixtures, repository, dirty_files) == before
         report["performance"].append({"commits": count, "branches": 64, "linkedWorktrees": 36,
-                                      "openMs": loaded_ms, "maxHeartbeatGapMs": maximum,
+                                      "openMs": loaded_ms, "workingTreeReadyMs": status_ready_ms,
+                                      "maxHeartbeatGapMs": maximum,
                                       "maxRenderedRows": max(probe["rows"] for probe in probes)})
     report["scenarios"].append("large-history-responsiveness")
+    report["scenarios"].append("large-history-working-tree-recaps-ready-without-writes")
 
 
 def main():
+    if not __debug__:
+        print("Native acceptance requires Python assertions. Remove -O and unset PYTHONOPTIMIZE.",
+              file=sys.stderr)
+        return 2
     suites = (
-        "smoke", "full", "environment", "performance", "recovery", "integrity-ui", "gitlab", "gitlab-fork-ui", "file-tools",
-        "worktrees", "setup-keyboard", "remote-reviews", "incoming-links", "application-updates", "application-update-consent",
-        "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close",
+        "smoke", "full", "environment", "performance", "recovery", "integrity-ui", "gitlab", "gitlab-connect", "gitlab-connect-after-smoke",
+        "gitlab-connect-refused", "gitlab-fork-ui", "file-tools", "configured-tools",
+        "worktrees", "setup-keyboard", "remote-reviews", "transport-error-guidance", "incoming-links", "application-updates", "application-update-consent",
+        "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close", "working-file-editor",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
-        "workspace-pull-upstreams", "pull-submodule-scope", "merge-preview",
-        "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "discard-subset", "submodule-initialize", "submodule-update",
-        "stash-selection", "stash-clear", "autosquash-amend", "signed-tag", "signed-commit", "empty-commit", "lfs-lock-actions", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection", "diff-rendering",
+        "workspace-pull-upstreams", "pull-submodule-scope", "merge-preview", "reference-hover", "reference-copy",
+        "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "merge-rebase-review", "discard-subset", "discard-busy", "discard-deletion", "discard-stale-review", "discard-large", "discard-limit", "submodule-initialize", "submodule-update",
+        "stash-review", "stash-selection", "stash-clear", "autosquash-amend", "signed-tag", "signed-commit", "empty-commit", "lfs-lock-actions", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection", "diff-rendering",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
-        "repository-open-scope", "detached-checkout", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "worktree-reservation",
-        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "comparison-responsiveness", "stash-responsiveness", "file-history",
-        "commit-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
+        "repository-open-scope", "detached-checkout", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "checkout-responsiveness", "worktree-reservation",
+        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "hosted-fork-remote", "comparison-responsiveness", "stash-responsiveness", "file-history", "file-menu-copy",
+        "commit-responsiveness", "history-control-responsiveness", "local-mutation-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
     )
     forced_inherited = ("environment",)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1237,13 +1368,14 @@ def main():
                         help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
     args = parser.parse_args()
+    version, expected_package_name = expected_debian_package()
     if args.describe_runner:
         print(json.dumps({"distribution": linux_distribution(), "suites": suites,
-                          "forcedInheritedGitEnvironment": forced_inherited}))
+                          "forcedInheritedGitEnvironment": forced_inherited,
+                          "expectedPackageName": expected_package_name}))
         return
-    version, expected_package_name = expected_debian_package()
     if args.package is None:
-        args.package = ROOT / "target/release/bundle/deb" / expected_package_name
+        args.package = default_debian_archive(expected_package_name)
     workspace_picker_suite = args.suite in ("workspace-locate", "workspace-bulk-locate", "workspace-locate-nearby")
     owned_picker_suite = workspace_picker_suite or args.suite in (
         "repository-creation-scope", "workspace-clone", "workspace-clone-recipe", "bundle-incremental-export", "commit-source-zip",
@@ -1264,16 +1396,22 @@ def main():
         parser.error("signed-commit requires --headless (private Xvfb)")
     if args.suite == "empty-commit" and not args.headless:
         parser.error("empty-commit requires --headless (private Xvfb)")
-    if args.suite == "file-history" and not args.headless:
-        parser.error("file-history requires --headless (private Xvfb)")
+    if args.suite in ("file-history", "file-menu-copy") and not args.headless:
+        parser.error(f"{args.suite} requires --headless (private Xvfb)")
     if args.suite == "lfs-lock-actions" and not args.headless:
         parser.error("lfs-lock-actions requires --headless (private Xvfb)")
     if args.suite == "application-update-consent" and not (
         args.headless and args.installed and {name for _, name in socket.if_nameindex()} == {"lo"}
     ):
         parser.error("application-update-consent requires --headless --installed in a disposable loopback-only network namespace")
-    output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
-    output.mkdir(parents=True)
+    try:
+        output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
+        output.mkdir(parents=True)
+    except (OSError, RuntimeError) as exc:
+        print(f"Cannot create native acceptance evidence under {args.output}: {exc}. "
+              "Use --output with a directory writable and traversable by the runner user.",
+              file=sys.stderr, flush=True)
+        return 1
     progress = ScenarioProgress(output, args.suite)
     inherited_git_environment = args.suite in forced_inherited or args.inherited_git_environment
     report = {"suite": args.suite, "scenarios": progress, "passed": False,
@@ -1284,7 +1422,20 @@ def main():
     children = []
     driver = None
     temporary_directory = None
+    original_xauthority = os.environ.get("XAUTHORITY")
+    private_xauthority_set = False
     try:
+        try:
+            package = args.package.resolve(strict=True)
+        except FileNotFoundError:
+            raise RuntimeError(
+                f"Debian package not found: {args.package}. "
+                "Run pnpm nx run desktop:package-deb or pass --package with an existing archive."
+            ) from None
+        if not package.is_file():
+            raise RuntimeError(f"Native acceptance needs a regular Debian package file: {package}")
+        if package.name != expected_package_name:
+            raise RuntimeError(f"Native acceptance needs the original archive name {expected_package_name}, got {package.name}.")
         required_tools = ("git", "tauri-driver", "WebKitWebDriver", "dpkg-deb", "dbus-daemon", "dbus-send")
         if args.headless:
             required_tools += ("Xvfb",)
@@ -1296,16 +1447,22 @@ def main():
             if not shutil.which(name):
                 raise RuntimeError(f"Missing {name}. See docs/linux-acceptance.md; no tests were skipped.")
         report["git"] = run("git", "--version")
-        package = args.package.resolve(strict=True)
-        assert package.name == expected_package_name, (package.name, expected_package_name)
-        assert run("dpkg-deb", "-f", str(package), "Package") == "git-khronos"
-        assert run("dpkg-deb", "-f", str(package), "Architecture") == "amd64"
-        actual_version = run("dpkg-deb", "-f", str(package), "Version")
+        temporary_directory = tempfile.TemporaryDirectory(prefix="git-khronos-native-")
+        # A subsequent package build can replace the original path while this
+        # run is starting. Inspect, hash and extract one private archive.
+        staged_package = Path(temporary_directory.name) / expected_package_name
+        with os.fdopen(os.open(package, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as source:
+            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                raise RuntimeError(f"Native acceptance needs a regular Debian package file: {package}")
+            with staged_package.open("xb") as staged:
+                shutil.copyfileobj(source, staged)
+        assert run("dpkg-deb", "-f", str(staged_package), "Package") == "git-khronos"
+        assert run("dpkg-deb", "-f", str(staged_package), "Architecture") == "amd64"
+        actual_version = run("dpkg-deb", "-f", str(staged_package), "Version")
         assert actual_version == version, (actual_version, version)
         report["package"] = str(package)
-        with package.open("rb") as package_data:
+        with staged_package.open("rb") as package_data:
             report["packageSha256"] = hashlib.file_digest(package_data, "sha256").hexdigest()
-        temporary_directory = tempfile.TemporaryDirectory(prefix="git-khronos-native-")
         fixtures = Fixtures(temporary_directory.name)
         outside = None
         if inherited_git_environment:
@@ -1320,7 +1477,8 @@ def main():
             outside_head = fixtures.git(outside, "rev-parse", "HEAD")
             outside_config = (outside / ".git/config").read_bytes()
         extracted = fixtures.root / "package"
-        run("dpkg-deb", "-x", str(package), str(extracted))
+        run("dpkg-deb", "-x", str(staged_package), str(extracted))
+        staged_package.unlink()
         executable = extracted / "usr/bin/git-khronos"
         with executable.open("rb") as executable_data:
             report["executableSha256"] = hashlib.file_digest(executable_data, "sha256").hexdigest()
@@ -1350,6 +1508,11 @@ def main():
                       for line in dynamic.splitlines() if "Shared library: [" in line]
             assert {"libssl.so.3", "libcrypto.so.3"} <= set(needed), needed
             report["nativeTlsPackage"] = {"depends": dependencies, "neededLibraries": needed}
+        if args.suite == "gitlab":
+            from native_gitlab_ssh_fixture import resolve_sshd
+            resolve_sshd()
+        if args.suite in ("full", "environment", "lfs-counts"):
+            probe_lfs_count_toolchain(fixtures, report)
         progress.enter_phase("native-session-start")
         fixtures.env["TAURI_WEBVIEW_AUTOMATION"] = "true"
         with (output / "driver.log").open("w") as log:
@@ -1358,37 +1521,47 @@ def main():
             if args.headless:
                 # Keep the private display alive between owned app processes;
                 # otherwise the last client disconnect can race GTK restart.
-                display = subprocess.Popen(["Xvfb", "-displayfd", "1", "-noreset", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
-                                           env=fixtures.env, stdout=subprocess.PIPE, stderr=log, start_new_session=True)
-                children.append(display)
-                if not select.select([display.stdout], [], [], 15)[0]:
-                    raise TimeoutError("Xvfb did not allocate a display")
-                number = display.stdout.readline().decode().strip()
-                if not number.isdecimal():
-                    # Some WSL/container hosts have a pre-existing X0 socket
-                    # and a non-sticky /tmp/.X11-unix directory. In that
-                    # configuration Xvfb -displayfd can exit without trying
-                    # other displays, even though an explicit free display
-                    # works. Fall back to an unused high display, without
-                    # touching shared X11 sockets or lock files.
-                    display = None
-                    for candidate in range(90, 190):
-                        if Path(f"/tmp/.X{candidate}-lock").exists() or Path(f"/tmp/.X11-unix/X{candidate}").exists():
-                            continue
-                        attempt = subprocess.Popen(
-                            ["Xvfb", f":{candidate}", "-noreset", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
-                            env=fixtures.env, stdout=subprocess.DEVNULL, stderr=log,
-                            start_new_session=True,
-                        )
-                        time.sleep(0.15)
-                        if attempt.poll() is None:
-                            display = attempt
-                            number = str(candidate)
-                            children.append(display)
-                            break
-                        attempt.wait()
-                    if display is None:
-                        raise RuntimeError("Xvfb failed; see driver.log")
+                socket_directory = Path("/tmp/.X11-unix")
+                abstract_only = socket_directory.is_dir() and bool(os.statvfs(socket_directory).f_flag & os.ST_RDONLY)
+                if abstract_only:
+                    number, display, authority = start_abstract_xvfb(fixtures, children, log, socket_directory)
+                    fixtures.env["XAUTHORITY"] = authority
+                    # In-process Xlib is used by the owned picker and pointer
+                    # probes. Restore the caller's value during cleanup.
+                    os.environ["XAUTHORITY"] = authority
+                    private_xauthority_set = True
+                else:
+                    display = subprocess.Popen(["Xvfb", "-displayfd", "1", "-noreset", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
+                                               env=fixtures.env, stdout=subprocess.PIPE, stderr=log, start_new_session=True)
+                    children.append(display)
+                    if not select.select([display.stdout], [], [], 15)[0]:
+                        raise TimeoutError("Xvfb did not allocate a display")
+                    number = display.stdout.readline().decode().strip()
+                    if not number.isdecimal():
+                        # Some WSL/container hosts have a pre-existing X0 socket
+                        # and a non-sticky /tmp/.X11-unix directory. In that
+                        # configuration Xvfb -displayfd can exit without trying
+                        # other displays, even though an explicit free display
+                        # works. Fall back to an unused high display, without
+                        # touching shared X11 sockets or lock files.
+                        display = None
+                        for candidate in range(90, 190):
+                            if Path(f"/tmp/.X{candidate}-lock").exists() or Path(f"/tmp/.X11-unix/X{candidate}").exists():
+                                continue
+                            attempt = subprocess.Popen(
+                                ["Xvfb", f":{candidate}", "-noreset", "-screen", "0", "1920x1080x24", "-nolisten", "tcp"],
+                                env=fixtures.env, stdout=subprocess.DEVNULL, stderr=log,
+                                start_new_session=True,
+                            )
+                            time.sleep(0.15)
+                            if attempt.poll() is None:
+                                display = attempt
+                                number = str(candidate)
+                                children.append(display)
+                                break
+                            attempt.wait()
+                        if display is None:
+                            raise RuntimeError("Xvfb failed; see driver.log")
                 fixtures.env["DISPLAY"] = ":" + number
                 fixtures.env["GDK_BACKEND"] = "x11"
                 owned_display = (fixtures.env["DISPLAY"], display)
@@ -1411,14 +1584,16 @@ def main():
             if args.suite in ("full", "environment"):
                 application_env.update(fixtures.terminal_environment())
                 application_env.update(fixtures.history_environment())
-            if args.suite in ("full", "environment", "hosted-fork-ui"):
+            if args.suite in ("full", "environment", "hosted-fork-ui", "hosted-fork-remote"):
                 application_env.update(fixtures.hosting_environment(application_env.get("PATH")))
-            if args.suite in ("repository-open-scope", "checkout-snapshot", "comparison-responsiveness",
-                              "stash-responsiveness", "commit-responsiveness", "ignore-responsiveness"):
+            if args.suite in ("repository-open-scope", "checkout-snapshot", "checkout-responsiveness", "comparison-responsiveness", "merge-rebase-review",
+                              "stash-responsiveness", "commit-responsiveness", "history-control-responsiveness",
+                              "local-mutation-responsiveness", "ignore-responsiveness", "discard-busy"):
                 application_env.update(fixtures.history_environment())
             if args.suite == "file-history":
                 application_env.update(fixtures.history_environment())
-            if args.suite in ("gitlab", "gitlab-fork-ui", "repository-creation-scope"):
+            if args.suite in ("gitlab", "gitlab-connect", "gitlab-connect-after-smoke", "gitlab-connect-refused",
+                              "gitlab-fork-ui", "repository-creation-scope"):
                 from native_gitlab_scenarios import start_gitlab_fixture
                 application_env.update(start_gitlab_fixture(fixtures, children, log, report))
             if args.suite == "watcher-refresh" or os.environ.get("GIT_KHRONOS_NATIVE_TRACE_WATCHER") == "1":
@@ -1467,6 +1642,12 @@ def main():
                     start_nearby=args.suite == "workspace-locate-nearby",
                 )
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite == "working-file-editor":
+                progress.enter_phase("working-file-editor")
+                from native_editor_scenarios import working_file_editor
+                repository = fixtures.repository()
+                repo_id = open_ui(driver, repository)
+                working_file_editor(driver, fixtures, repository, report)
             elif args.suite == "editor-close":
                 from native_editor_close_scenarios import editor_window_close
                 repository = fixtures.repository()
@@ -1501,20 +1682,50 @@ def main():
                 repository = fixtures.repository()
                 repo_id = open_ui(driver, repository)
                 hosted_fork_requests(driver, fixtures, repository, report)
+            elif args.suite == "hosted-fork-remote":
+                from native_fork_remote_scenarios import hosted_fork_remote_attachment
+                repository = fixtures.repository()
+                repo_id = open_ui(driver, repository)
+                hosted_fork_remote_attachment(driver, fixtures, repository, report)
             elif args.suite == "feature-rebase":
                 from native_feature_rebase_scenarios import feature_rebase_on_configured_development
                 repository, repo_id = feature_rebase_on_configured_development(driver, fixtures, report)
+            elif args.suite == "merge-rebase-review":
+                from native_feature_rebase_scenarios import merge_preserving_rebase_review
+                repository, repo_id = merge_preserving_rebase_review(driver, fixtures, report)
+            elif args.suite == "discard-busy":
+                from native_discard_subset_scenarios import discard_row_during_stage
+                repository, repo_id = discard_row_during_stage(driver, fixtures, report)
             elif args.suite == "discard-subset":
                 from native_discard_subset_scenarios import discard_root_subset
                 repository, repo_id = discard_root_subset(driver, fixtures, report)
+            elif args.suite == "discard-deletion":
+                from native_discard_subset_scenarios import discard_nested_deletion
+                repository, repo_id = discard_nested_deletion(driver, fixtures, report)
+            elif args.suite == "discard-stale-review":
+                from native_discard_subset_scenarios import discard_single_stale_review
+                repository, repo_id = discard_single_stale_review(driver, fixtures, report)
+            elif args.suite == "discard-large":
+                from native_discard_subset_scenarios import discard_large_untracked_batch
+                repository, repo_id = discard_large_untracked_batch(driver, fixtures, report)
+            elif args.suite == "discard-limit":
+                from native_discard_subset_scenarios import discard_file_size_limit
+                repository, repo_id = discard_file_size_limit(driver, fixtures, report)
             elif args.suite == "submodule-initialize":
                 from native_submodule_initialize_scenarios import initialize_one_submodule
                 repository, repo_id = initialize_one_submodule(driver, fixtures, report)
             elif args.suite == "submodule-update":
                 from native_submodule_update_scenarios import update_one_submodule
                 repository, repo_id = update_one_submodule(driver, fixtures, report)
+            elif args.suite == "stash-review":
+                from native_stash_review_scenarios import stash_review_workflows
+                repository, repo_id = stash_review_workflows(driver, fixtures, report)
             elif args.suite == "stash-selection":
-                from native_stash_review_scenarios import stash_apply_collision_scope, stash_selection_scope
+                from native_stash_review_scenarios import (
+                    stash_apply_collision_scope, stash_selection_pagination, stash_selection_scope, stash_untracked_whole_checkout,
+                )
+                stash_untracked_whole_checkout(driver, fixtures, report)
+                stash_selection_pagination(driver, fixtures, report)
                 stash_selection_scope(driver, fixtures, report)
                 stash_apply_collision_scope(driver, fixtures, report)
                 repository, repo_id = stash_apply_collision_scope(
@@ -1545,17 +1756,23 @@ def main():
                 repository, repo_id = lfs_lock_dialog_actions(driver, fixtures, report)
             elif args.suite == "file-history":
                 from native_scenarios import (
-                    blame_read_acceptance, bounded_file_history_reads, commit_preview_output,
+                    blame_parent_follows_rename, blame_read_acceptance, bounded_file_history_reads, commit_preview_output,
                     file_history_tracks_renames,
                 )
                 from native_tracked_file_search_scenarios import (
                     deleted_file_history_from_exact_path, tracked_file_search_during_merge,
                 )
+                progress.enter_phase("commit-preview-output")
                 repository, repo_id = commit_preview_output(driver, fixtures, report)
+                progress.enter_phase("file-history-renames")
                 file_history_tracks_renames(driver, fixtures, report)
-                bounded_file_history_reads(driver, fixtures, report)
-                blame_read_acceptance(driver, fixtures, report)
+                progress.enter_phase("blame-parent-rename")
+                blame_parent_follows_rename(driver, fixtures, report)
+                bounded_file_history_reads(driver, fixtures, report, enter_phase=progress.enter_phase)
+                blame_read_acceptance(driver, fixtures, report, enter_phase=progress.enter_phase)
+                progress.enter_phase("tracked-file-search-during-merge")
                 tracked_file_search_during_merge(driver, fixtures, report)
+                progress.enter_phase("deleted-file-history")
                 repository, repo_id = deleted_file_history_from_exact_path(driver, fixtures, report)
             elif args.suite == "patch-export":
                 from native_patch_export_scenarios import patch_export_scope
@@ -1583,6 +1800,9 @@ def main():
             elif args.suite == "history-depth":
                 from native_deferred_review_scenarios import deferred_review_workflows
                 repository, repo_id = deferred_review_workflows(driver, fixtures, report, history_only=True)
+            elif args.suite == "file-menu-copy":
+                from native_tracked_file_search_scenarios import copy_file_paths_from_native_menus
+                repository, repo_id = copy_file_paths_from_native_menus(driver, fixtures, report)
             elif args.suite == "tracked-file-search":
                 from native_tracked_file_search_scenarios import deleted_file_history_from_exact_path, tracked_file_search_during_merge
                 tracked_file_search_during_merge(driver, fixtures, report)
@@ -1623,6 +1843,9 @@ def main():
             elif args.suite == "checkout-snapshot":
                 from native_checkout_snapshot_scenarios import coherent_checkout_snapshot
                 repository, repo_id = coherent_checkout_snapshot(driver, fixtures, report)
+            elif args.suite == "checkout-responsiveness":
+                from native_comparison_responsiveness_scenarios import checkout_responsiveness
+                repository, repo_id = checkout_responsiveness(driver, fixtures, report)
             elif args.suite == "worktree-reservation":
                 from native_worktree_scenarios import reserved_branch_guidance
                 repository, repo_id = reserved_branch_guidance(driver, fixtures, report)
@@ -1641,6 +1864,12 @@ def main():
             elif args.suite == "commit-responsiveness":
                 from native_comparison_responsiveness_scenarios import commit_responsiveness
                 repository, repo_id = commit_responsiveness(driver, fixtures, report)
+            elif args.suite == "history-control-responsiveness":
+                from native_comparison_responsiveness_scenarios import history_control_responsiveness
+                repository, repo_id = history_control_responsiveness(driver, fixtures, report)
+            elif args.suite == "local-mutation-responsiveness":
+                from native_comparison_responsiveness_scenarios import local_mutation_responsiveness
+                repository, repo_id = local_mutation_responsiveness(driver, fixtures, report)
             elif args.suite == "ignore-responsiveness":
                 from native_comparison_responsiveness_scenarios import ignore_responsiveness
                 repository, repo_id = ignore_responsiveness(driver, fixtures, report)
@@ -1656,6 +1885,38 @@ def main():
             elif args.suite == "conflict-navigation":
                 from native_conflict_navigation_scenarios import conflict_navigation
                 repository, repo_id = conflict_navigation(driver, fixtures, report)
+            elif args.suite == "reference-copy":
+                from native_scenarios import copy_reference_namespaces
+                progress.enter_phase("reference-copy")
+                repository, repo_id = copy_reference_namespaces(driver, fixtures, report)
+            elif args.suite == "reference-hover":
+                from native_scenarios import reference_hover_stability
+                repository = fixtures.repository("reference-hover-home", commits=1)
+                reference_hover_stability(driver, fixtures, repository, report)
+                repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite == "configured-tools":
+                repository = fixtures.repository("configured-tools-home")
+                repo_id = open_ui(driver, repository)
+            elif args.suite == "gitlab-fork-ui":
+                repository = fixtures.repository("gitlab-fork-ui")
+                repo_id = open_ui(driver, repository)
+            elif args.suite == "gitlab-connect":
+                from native_gitlab_scenarios import gitlab_catalogue
+                repository = fixtures.repository("gitlab-connect")
+                repo_id = open_ui(driver, repository)
+                progress.enter_phase("gitlab-connect")
+                gitlab_catalogue(driver, fixtures, repository, report, connect_only=True)
+            elif args.suite == "gitlab-connect-refused":
+                from native_gitlab_scenarios import gitlab_catalogue
+                repository = fixtures.repository("gitlab-connect-refused")
+                repo_id = open_ui(driver, repository)
+                progress.enter_phase("gitlab-connect-refused")
+                # Hold a reserved loopback port without a listener. There is
+                # no server to receive an HTTP request or any credential.
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reserved:
+                    reserved.bind(("127.0.0.1", 0))
+                    origin = f"https://127.0.0.1:{reserved.getsockname()[1]}"
+                    gitlab_catalogue(driver, fixtures, repository, report, refused_origin=origin)
             else:
                 repository, repo_id = smoke(driver, fixtures, report, hold_packed_status=args.suite == "watcher-refresh")
             if outside is not None:
@@ -1665,13 +1926,18 @@ def main():
                     assert expected != fixtures.git(outside, "config", "user." + field)
                     assert view["identity"][field] == expected, (field, view["identity"], expected)
                 report["scenarios"].append("native-inherited-config-file-cannot-shadow-selected-identity")
-            if args.suite == "gitlab":
+            if args.suite in ("gitlab", "gitlab-connect-after-smoke"):
                 progress.enter_phase("gitlab-catalogue")
                 from native_gitlab_scenarios import gitlab_catalogue
-                gitlab_catalogue(driver, fixtures, repository, report)
+                gitlab_catalogue(driver, fixtures, repository, report,
+                                  connect_only=args.suite == "gitlab-connect-after-smoke")
+                if args.suite == "gitlab":
+                    from native_gitlab_fork_scenarios import prove_stale_navigation_replacement
+                    prove_stale_navigation_replacement(driver, report)
             if args.suite == "gitlab-fork-ui":
                 progress.enter_phase("gitlab-fork-ui")
-                from native_gitlab_fork_scenarios import gitlab_reviewed_forks
+                from native_gitlab_fork_scenarios import gitlab_reviewed_forks, prove_stale_navigation_replacement
+                prove_stale_navigation_replacement(driver, report)
                 gitlab_reviewed_forks(driver, fixtures, repository, report)
             if args.suite == "integrity-ui":
                 progress.enter_phase("integrity-ui")
@@ -1685,7 +1951,11 @@ def main():
                 cancelled_integrity_ui(driver, fixtures, report)
             if args.suite == "file-tools":
                 from native_file_tool_scenarios import file_tools
-                file_tools(driver, fixtures, repository, report)
+                file_tools(driver, fixtures, repository, report, enter_phase=progress.enter_phase)
+            if args.suite == "configured-tools":
+                from native_configured_tool_scenarios import configured_tools
+                progress.enter_phase("configured-tools")
+                configured_tools(driver, fixtures, repository, report)
             if args.suite == "merge-preview":
                 from native_scenarios import committed_merge_preview
                 committed_merge_preview(driver, fixtures, repository, report)
@@ -1694,7 +1964,7 @@ def main():
                 file_media_comparisons(driver, fixtures, repository, report)
             if args.suite == "lfs-counts":
                 from native_scenarios import lfs_checkout_counts
-                lfs_checkout_counts(driver, fixtures, report)
+                lfs_checkout_counts(driver, fixtures, report, review_preferences=True)
             if args.suite == "lfs-snapshot-timeout":
                 from native_lfs_snapshot_scenarios import lfs_snapshot_timeout
                 lfs_snapshot_timeout(driver, fixtures, report)
@@ -1705,7 +1975,7 @@ def main():
                 from native_scenarios import full_toolkit
                 progress.enter_phase("full-toolkit")
                 print("Native acceptance: smoke passed; exercising the full toolkit.", file=sys.stderr, flush=True)
-                full_toolkit(driver, fixtures, repository, repo_id, report)
+                full_toolkit(driver, fixtures, repository, repo_id, report, progress.enter_phase)
                 print("Native acceptance: toolkit passed; exercising review and setup workflows.", file=sys.stderr, flush=True)
             if args.suite == "incoming-links":
                 progress.enter_phase("incoming-links")
@@ -1732,6 +2002,14 @@ def main():
                 progress.enter_phase("remote-reviews")
                 from native_remote_review_scenarios import remote_review_workflows
                 remote_review_workflows(driver, fixtures, report)
+            if args.suite == "transport-error-guidance":
+                progress.enter_phase("transport-error-guidance")
+                from native_scenarios import authenticated_push_rejection, local_remote_quoted_targets, local_remote_tls_words
+                baseline = fixtures.repository("transport-guidance-baseline", commits=2)
+                open_ui(driver, baseline)
+                local_remote_quoted_targets(driver, fixtures, baseline, report)
+                local_remote_tls_words(driver, fixtures, baseline, report)
+                authenticated_push_rejection(driver, fixtures, baseline, report)
             progress.enter_phase("final-evidence")
             if outside is not None:
                 assert (outside / ".git/index").read_bytes() == outside_index
@@ -1754,6 +2032,11 @@ def main():
             except Exception:
                 pass
     finally:
+        if private_xauthority_set:
+            if original_xauthority is None:
+                os.environ.pop("XAUTHORITY", None)
+            else:
+                os.environ["XAUTHORITY"] = original_xauthority
         progress.enter_phase("cleanup")
         if driver:
             if driver.native_pointer_deliveries:
@@ -1786,6 +2069,7 @@ def main():
         if not report["passed"]:
             progress.note_failure()
             report["failurePhase"] = progress.failure_phase
+        report["timing"] = progress.report_timing()
         write_native_receipt(output / "report.json", report)
         progress.finish(report["passed"])
     print(json.dumps(report, indent=2), flush=True)

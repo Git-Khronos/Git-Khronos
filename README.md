@@ -108,9 +108,11 @@ signed update manifest in the official GitHub release. The controls alone do
 not mean a signed update is available. If your installed build has no publisher
 key, install a trusted release manually once before using the updater.
 
-On Linux, a verified package may still need approval from the system's
-authorization prompt. If your desktop session cannot provide it, use the
-official installer instead.
+On Linux, Debian and RPM builds need `/usr/bin/pkexec` and a working desktop
+authorization prompt to install an update in-app. If either is missing (for
+example on some WSL installs), you can still check for and verify updates.
+Install the official release package with your system package manager
+instead, then quit and reopen Git Khronos.
 
 ## Build from source
 
@@ -140,6 +142,8 @@ task run
 ```
 
 Useful checks include `task test`, `task test:e2e`, `task check`, and `task ci`.
+For desktop TypeScript unit tests without compiling Rust or opening a browser,
+run `pnpm nx run desktop:renderer-unit-test`.
 
 ### Build a Linux package
 
@@ -152,18 +156,44 @@ task package:deb:path
 
 An experimental, executable AppImage can be built on Ubuntu 22.04 amd64 with
 `task package:appimage`; `task package:appimage:path` prints its path. This
-target always rebuilds and validates one ELF executable artifact. It is not yet
+requires the Ubuntu `file` package in addition to the normal build tools.
+The target always rebuilds and validates one executable amd64 Type 2 header.
+This checks the container format, not whether the bundled app launches. It is not yet
 part of the published release or signed update feed, and has not replaced the
 Debian installed-package acceptance gate.
 
 `task install:linux:dry-run` builds or reuses the verified local package and
 shows APT's plan without installing anything or asking for administrator access.
+Use `task install:linux:dry-run -- "/path/to/package.deb"` to preview a
+specific archive without rebuilding. This previews dependency resolution;
+it does not verify the archive's release signature or provenance.
+
+To actually open a trusted archive without installing it, run
+`task install:linux:preview -- "/path/to/package.deb" "$REVIEWED_SHA256"`
+as your desktop user. Obtain the checksum from a trusted source independently
+of the archive. The preview uses a temporary app profile and a private D-Bus
+session, requires the package's runtime libraries to be installed already, and
+does not isolate Git repositories: open a disposable checkout.
 `task install:linux` (also `task install:system`) installs the package
-system-wide and checks the installed executable and desktop entry.
+system-wide and checks the installed executable and desktop entry. This
+build-and-install command takes no archive argument; it rejects one rather
+than installing a different archive from the one you specified.
 `task install:linux:status` repeats that comparison against the local
 package without building, installing, or needing administrator access.
-It catches older files with the same version number. It does not inspect a
-running process or a pinned shortcut; restart the app after installing.
+To check against a specific installer, including an older or separately
+qualified candidate, use `task install:linux:status -- "/path/to/package.deb"`.
+It catches older files with the same version number. It also warns if a
+desktop entry earlier in the Linux launcher search path (for example in
+`~/.local/share` or `/usr/local/share`) may override the package's launcher,
+or if the first `git-khronos` executable on the current `PATH` differs from
+the package. It also warns if a process owned by the current user still
+has the replaced system executable open. It does not check shell aliases
+or Windows pinned shortcuts; restart the app after installing.
+To install a specific archive you already trust instead of rebuilding from
+the checkout, use the desktop package manager or
+`sudo apt install --reinstall --no-remove /absolute/path/to/package.deb`.
+Verify a release archive against the publisher's checksums or signature first;
+the dry run only previews the APT transaction.
 `task uninstall:system` removes the package while keeping repositories and
 preferences. Ordinary local builds retain their glibc 2.39
 floor and are not portable release packages. The release package target,
@@ -275,6 +305,14 @@ invocation after enabling these checks builds once to establish a baseline in
 deletions, or missing required outputs trigger another build. Use
 `task --force package:deb` to rebuild explicitly, for example after changing the
 installed toolchain or system libraries.
+Explicit Cargo environment overrides such as `RUSTFLAGS` and
+`CARGO_PROFILE_RELEASE_LTO` also invalidate the cached package. The build
+receipt stores a fingerprint of those overrides, not their values.
+When a rebuild is required, the packager reuses downloaded dependencies but
+recompiles the workspace's Rust release artifacts. This prevents a restored
+checkout with older file timestamps from packaging a stale executable. To
+inspect a previously tested archive without that rebuild, pass its path to
+`task install:linux:dry-run` or `task install:linux:status`.
 The AppImage target intentionally does not reuse a prior build: its Jammy
 compatibility baseline and actual executable artifact are checked on every run.
 Linux package builds use `flock` from util-linux. Local and Jammy builds share
@@ -283,6 +321,55 @@ checkout at a time, even with different `CARGO_TARGET_DIR` values. If a build
 reports contention, let the other build finish before retrying.
 
 #### Experimental WSL display defaults on dev
+
+If the window opens and redraws normally, `libEGL`, DRI3, or Mesa/Zink
+warnings alone are not a reason to reinstall or change display settings.
+Both launch paths rendered with these warnings in
+[local WSLg acceptance](docs/linux-acceptance.md#latest-016-local-qualification).
+If only the pinned shortcut fails, compare it with a fresh Start Menu launch
+and with `/usr/bin/git-khronos`. If both fresh launches work, recreate the
+pin rather than changing graphics settings. Use `task install:linux:status`
+to check installed files; it does not verify what a Windows shortcut launches.
+Two local builds can both report `0.1.6` while containing different
+executables. To compare the installed executable and launcher with a specific
+tested archive without rebuilding or installing anything, run:
+
+```sh
+task install:linux:status -- /absolute/path/to/Git-Khronos_0.1.6_amd64.deb
+```
+
+If the files differ and you choose to install that build, quit and relaunch
+Git Khronos afterward. An existing window can still be using the old build.
+To install an already reviewed archive without rebuilding it, preview the
+transaction first and then explicitly reinstall that archive:
+
+```sh
+archive=/absolute/path/to/Git-Khronos_0.1.6_amd64.deb
+task install:linux:dry-run -- "$archive"
+sudo apt-get install --reinstall --no-remove "$archive"
+task install:linux:status -- "$archive"
+```
+
+Use this only for an archive you trust. A dry run checks APT's planned
+changes, not the publisher or archive provenance.
+
+To separate a packaged-app rendering problem from a WSLg or shortcut problem,
+run the optional X11 smoke check from the checkout:
+
+```sh
+bash tools/check-installed-x11-launch.sh /absolute/path/to/Git-Khronos_0.1.6_amd64.deb
+```
+
+The probe needs `Xvfb` and `xauth`. It starts a private X11 display
+without changing WSLg's display socket or launching the Windows pin.
+
+
+Run it as your regular user, not with `sudo`. Use `--help` to list the
+required tools and available modes. The archive argument makes it verify the
+installed executable and desktop entry before looking for drawn content in a
+private X11 session with a temporary profile. It does not reinstall the app
+or change your repositories. A pass does not validate your WSLg display,
+existing app profile, or Windows pin.
 
 If a launch creates a taskbar entry but no visible window, do not diagnose it
 from `libEGL`/DRI3 warnings alone. Check `/mnt/wslg/weston.log` for a shared-memory
@@ -302,7 +389,9 @@ and visible window afterward: a restart is a recovery attempt, not proof of a
 permanent fix. App-local WebKit compositing workarounds address a different
 failure mode and are not a verified repair for this shared-memory error.
 
-The `dev` branch includes WSL-specific changes awaiting real WSLg validation.
+The `dev` branch includes app-local WSL window chrome changes. Local
+WSLg launch checks passed with a temporary profile; the Windows taskbar
+pin and the full title-bar interaction still need manual validation.
 When GTK reports an empty or `menu:close` decoration layout, Git Khronos
 requests minimize, maximize, and close buttons for its own process. Other
 reported layouts are left unchanged. Because the web view zoom cannot reach
@@ -894,6 +983,9 @@ cannot open fall back to the Git CLI. Staging, unstaging, and discarding update
 the change lists immediately, run Git away from the window event loop, and then
 reconcile with a status-only refresh instead of reloading history and
 references. These safeguards keep very large repositories responsive.
+Status scans read change rows and Git diagnostics concurrently. A burst of
+Git warnings does not block the file list from loading, and failed scans still
+report their Git error.
 Closing a repository invalidates pending history pages and their errors; reopening
 the same path cannot receive results from the closed session. Switching tabs
 keeps an open repository's pending page valid.
@@ -911,19 +1003,52 @@ and pre-push background snapshots cannot overwrite the completed push state.
 Graph lane geometry is reused when only decorations move; no follow-up fetch or
 status poll is required to place the remote reference at the pushed commit.
 
-**Working directory options** offers **Discard all unstaged** and an opt-in
-**Select files for discard** mode. A native preview includes files beyond the loaded
+Use **Copy file path** in a working-tree or commit file's context menu to
+copy its exact repository-relative path. This does not open or modify the file.
+
+Collapse **Staged Files** to move its header to the bottom of the file pane
+and give **Unstaged Files** the available height. Reopen **Staged Files** to
+restore the previous split. Collapsing **Unstaged Files** expands the staged
+list instead. The app remembers both choices. Use the command palette's
+**Show Staged Files**, **Show Unstaged Files**, or **Filter Changed Files**
+to jump directly to a list or the filter without changing your commit draft.
+
+The Staged and Unstaged headers show added and deleted lines separately.
+Staged counts compare against the last commit; unstaged counts compare
+against the index and also include untracked text. **Excluded** counts files
+without line totals, such as binary files. A **partial** total is incomplete,
+not a count of every change.
+
+**Stage All** and **Unstage All** apply to the whole working tree, including
+changes beyond the first loaded page. They are unavailable during conflicts;
+you can still stage or unstage other files individually.
+The file filter searches loaded changes only. Use **Show more files** to
+continue searching when the list is incomplete.
+
+The trash button beside **Unstaged Files** opens **Discard all unstaged**.
+It previews the entire checkout, even when a filter hides files. The same
+action is available in **Working directory options**, along with an opt-in
+**Select files for discard** mode. You can also open the bulk preview from the
+command palette with **Discard All Unstaged Changes…**. A native preview includes files beyond the loaded
 status page and expands untracked folders. Conflicts, submodule working trees,
 and nested repositories are excluded; staged contents and ignored files are
-preserved. On Linux, only files directly in the repository root can be discarded:
-bulk previews identify ordinary subdirectory files as blockers and refuse the
-entire request if any are present, leaving otherwise eligible root files
-unchanged. Individual, hunk, and line discards also refuse nested paths because
-a parent directory could move outside the worktree during the operation.
-Conflicts, submodule trees, and nested repositories remain excluded without
-blocking eligible root-only requests. Recovery also refuses captures with
-nested paths. Discard is not yet available on other operating systems. Changed
-files or index contents invalidate the preview.
+preserved. On Linux x86-64, use **Discard changes** on an unstaged file to
+restore its working copy from the index (not from HEAD). This works for
+regular tracked files in subdirectories, including deleted files when
+their parent directories still exist. **Undo** restores the unstaged edit
+or reinstates the deletion without changing what is staged.
+
+Regular untracked files in subdirectories can also be discarded and recovered.
+Nested symbolic links and hunk or line discard are not supported. If an unsupported path blocks a bulk request, nothing is
+discarded. Use **Choose eligible files** to select the files you want and
+review a fresh preview before confirming. Changed files or index contents
+invalidate a prepared single-file or bulk preview. Discard is not yet available
+on other operating systems or in linked worktrees.
+
+Safe discard requires Linux Landlock ABI 3. Recovery is bounded: each
+working or indexed file can be at most 64 MiB, and a batch can exceed its
+capture budget even when all its files fit individually. Review a smaller
+selection if the app reports a capture-size limit.
 File, hunk, selected-line and bulk discards save binary-capable recovery patches in the worktree's Git
 directory before changing files. **Recover discarded** discovers these captures
 after restart and offers checked recovery, repeat discard, and explicit capture
@@ -995,7 +1120,12 @@ resolution against filesystem failures.
 
 **Working directory options → Stash with options** saves selected files,
 optionally includes untracked files, keeps staged contents in place, or saves
-only staged changes (Git 2.35+). Ignored files are never included. The standard
+only staged changes (Git 2.35+). In **Choose specific files**, load additional
+paths without leaving the review, or filter the loaded list by path. Filtering
+only changes what you see: hidden selections remain selected. **Select
+matching files** adds the visible matches, while **Select all** still
+applies to all loaded eligible files. Ignored files are never
+included. The standard
 Stash shortcut still saves all changes, including untracked files. Stash actions
 can restore the original staged state or create a clean recovery branch at the
 stash's original base; these new restore workflows keep the stash even after
@@ -1314,10 +1444,28 @@ new destination. Temporary captures are cleaned up; cleanup failures are explici
 Configured hook effects, outside processes and disk failures are not covered by
 a filesystem transaction.
 
-`task test:e2e` runs fast, deterministic renderer journeys against the sample
-repository. These tests cover interface behavior but do not replace native
-Tauri integration tests for Git, filesystem, terminal, or operating-system
-dialogs.
+`task test:e2e` runs the full browser-renderer suite against sample data.
+The full suite includes thousands of cases and can take an hour locally.
+For a focused run, pass a spec or Playwright filter:
+
+```sh
+task test:e2e -- e2e/renderer/history-search.spec.ts --workers=1
+```
+
+For a long run, set `GIT_KHRONOS_RENDERER_PROGRESS_FILE` to a JSON file in
+an existing directory. It records completed counts and the active specs
+while the runner is alive. The test command's exit status is the final
+verdict. Renderer tests do not replace native Tauri acceptance for Git,
+filesystem, terminal, or operating-system dialogs.
+
+CI distributes the browser tests in round-robin order across four shards,
+so the exhaustive graph-column cases do not all land in one job.
+Each job checks that Playwright resolved its exact assigned cases before
+running them. The `renderer-progress-…-shard-…`
+CI artifacts include the slowest specs for each shard, including passing
+shards. Compare `testPhaseElapsedMs` for elapsed time and
+`totalAttemptDurationMs` for the sum of individual test attempts, including
+retries. The latter can exceed elapsed time with multiple workers.
 
 ### Workspace overview, identity profiles and hosted reviews
 

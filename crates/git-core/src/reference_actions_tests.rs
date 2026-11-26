@@ -10713,6 +10713,29 @@ fn operation_recovery_symlink_and_deleted_contents_roundtrip_and_private_records
 }
 
 #[test]
+fn stash_options_whole_checkout_honors_untracked_only_without_retaining_paths() {
+    let repository = Repository::new();
+    let untracked = repository.0.join("untracked");
+    fs::write(&untracked, b"untracked bytes\n").unwrap();
+    let status = read_status_with_limit(&repository.0, 0).unwrap();
+    assert!(status.entries.is_empty());
+    assert_eq!(status.untracked, 1);
+    assert_eq!(
+        stash_with_options(&repository.0, &stash_options("all", false, None))
+            .unwrap_err()
+            .kind,
+        "emptyStashSelection"
+    );
+    assert!(untracked.exists());
+    assert!(read_stashes(&repository.0).unwrap().is_empty());
+    stash_with_options(&repository.0, &stash_options("all", true, None)).unwrap();
+    assert!(!untracked.exists());
+    let stash = read_stashes(&repository.0).unwrap().remove(0);
+    apply_stash_with_index(&repository.0, &stash.reference, &stash.oid, false).unwrap();
+    assert_eq!(fs::read(untracked).unwrap(), b"untracked bytes\n");
+}
+
+#[test]
 fn stash_options_selected_paths_leave_other_changes_and_index_intact() {
     let repository = Repository::new();
     fs::write(repository.0.join("file"), b"staged\n").unwrap();

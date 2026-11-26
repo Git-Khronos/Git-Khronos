@@ -30,6 +30,9 @@
       <button type="button" role="menuitem" (click)="view.copyContextValue(menu.kind === 'commit' ? menu.oids.join('\n') : menu.label)">
         <span><gk-icon name="copy" [size]="13" /></span>Copy {{ menu.kind === 'commit' ? (menu.oids.length === 1 ? 'commit SHA' : menu.oids.length + ' commit SHAs') : menu.kind === 'tag' ? 'tag name' : menu.kind === 'remote' ? 'remote branch name' : 'branch name' }}
       </button>
+      @if (menu.kind === 'branch' || menu.kind === 'remote' || menu.kind === 'tag') {
+        <button type="button" role="menuitem" (click)="view.copyContextReference()"><span><gk-icon name="copy" [size]="13" /></span>Copy full ref</button>
+      }
       @if (menu.kind === 'branch' && view.git.repository()?.status?.branch) {
         <button type="button" role="menuitem" data-integration-entry [disabled]="view.git.busy()" (click)="view.openContextIntegration()"><span><gk-icon name="merge" [size]="13" /></span>{{ menu.label === view.git.repository()?.status?.branch ? 'Merge or rebase another branch into ' + menu.label + '…' : 'Merge or rebase into ' + view.git.repository()?.status?.branch + '…' }}</button>
       }

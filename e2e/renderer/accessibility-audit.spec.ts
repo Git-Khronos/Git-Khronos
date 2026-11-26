@@ -243,7 +243,8 @@ for (const theme of ['khronos', 'midnight'] as const) {
     const opener = page.getByTitle('Command palette (Ctrl+P)');
     await opener.focus();
     await page.keyboard.press('Control+P');
-    await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+    const palette = page.getByRole('dialog', { name: 'Command palette' });
+    await expect(palette.getByRole('combobox', { name: 'Search commands', exact: true })).toBeVisible();
     expect(await audit(page)).toEqual([]);
     expect(await auditTextContrast(page)).toEqual([]);
     await page.keyboard.press('Escape');

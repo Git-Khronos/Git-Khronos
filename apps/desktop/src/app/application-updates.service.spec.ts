@@ -132,6 +132,42 @@ describe('native-owned application updates service', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('backs off rejected status polls without delaying explicit refresh or a newer event', async () => {
+    vi.useFakeTimers();
+    try {
+      const failed = new Error('Owned transport failure');
+      bridge.status.mockRejectedValue(failed);
+      const service = create();
+      await service.refresh();
+      expect(service.statusError()).toContain('could not be read');
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(3000);
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(3000);
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(2);
+
+      bridge.status.mockResolvedValueOnce(state());
+      await service.refresh();
+      expect(bridge.status).toHaveBeenCalledTimes(3);
+      expect(service.statusError()).toBe('');
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(4);
+      expect(service.statusError()).toContain('could not be read');
+
+      emit(state({ revision: 2 }));
+      bridge.status.mockResolvedValueOnce(state({ revision: 3 }));
+      await service.pollStatus();
+      expect(bridge.status).toHaveBeenCalledTimes(5);
+      expect(service.state()?.revision).toBe(3);
+      expect(service.statusError()).toBe('');
+      expect(bridge.install).not.toHaveBeenCalled();
+      expect(bridge.automatic).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
   it('retries a failed live subscription on activation and clears the fallback notice', async () => {
     bridge.listen.mockRejectedValueOnce(new Error('Owned event registration failure'));
     const service = create();

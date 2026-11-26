@@ -127,6 +127,39 @@ test('late remote-tag read cannot qualify a replacement reference review', async
   await expect(dialog).toContainText('Check the remote tag before confirming deletion.');
 });
 
+test('a canceled remote-tag check does not wait for a history page or refresh the checkout', async ({ page }) => {
+  await page.evaluate(() => {
+    const w = window as any;
+    const state = w.__refScope;
+    const { git, repository } = state;
+    git.repositories.set([{ ...repository, historyTruncated: true }]);
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (command: string, args: unknown) => {
+      if (command === 'load_more_commits') return new Promise(resolve => {
+        state.finishPage = () => resolve({ commits: [], historyTruncated: false });
+      });
+      if (command === 'preview_remote_tag') {
+        state.calls.push({ command, args });
+        return Promise.reject({ kind: 'operationCancelled', message: 'Operation canceled' });
+      }
+      return invoke(command, args);
+    };
+    void git.loadMoreHistory();
+  });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__refScope.finishPage)).toBe('function');
+  const dialog = await open(page, 'delete-remote-tag');
+  await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-reference-action-dialog')).remoteExpected.set(null));
+  await dialog.getByRole('button', { name: 'Check remote tag', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__refScope.git.activityLogs()
+    .find((entry: any) => entry.description === 'Checking selected remote tag')?.status)).toBe('cancelled');
+  await expect(dialog.getByRole('button', { name: 'Delete remote reference', exact: true })).toBeDisabled();
+  await page.evaluate(() => (window as any).__refScope.finishPage());
+  await expect.poll(() => page.evaluate(() => (window as any).__refScope.git.historyLoading())).toBe(false);
+  const calls = await page.evaluate(() => (window as any).__refScope.calls.map((call: any) => call.command));
+  expect(calls).not.toContain('refresh_repository');
+  expect(calls).not.toContain('transport_reference');
+});
+
 test('an outgoing reference name field cannot leave text in a replacement review', async ({ page }) => {
   const dialog = await open(page, 'rename-tag');
   await dialog.getByRole('textbox', { name: 'New name' }).fill('v0.1.0');

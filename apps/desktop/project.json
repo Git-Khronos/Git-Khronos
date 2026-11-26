@@ -54,6 +54,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite full --headless" }
     },
+    "native-gitlab": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite gitlab --headless" }
+    },
     "native-gitlab-fork-ui": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -104,6 +109,16 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite file-history --headless" }
     },
+    "native-reference-copy": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite reference-copy --headless" }
+    },
+    "native-configured-tools": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite configured-tools --headless" }
+    },
     "native-tag-preview": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -119,10 +134,30 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite file-tools --headless" }
     },
+    "native-discard-busy": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite discard-busy --headless" }
+    },
     "native-working-tree-recaps": {
       "executor": "nx:run-commands",
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite working-tree-recaps --headless" }
+    },
+    "native-worktrees": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite worktrees --headless" }
+    },
+    "native-discard-subset": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite discard-subset --headless" }
+    },
+    "native-discard-large": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite discard-large --headless" }
     },
     "native-environment": {
       "executor": "nx:run-commands",
@@ -138,6 +173,14 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": { "command": "playwright test" }
+    },
+    "e2e-webkit": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node tools/check-renderer-browser.mjs webkit && playwright test --project=webkit",
+        "env": { "GIT_KHRONOS_RENDERER_WEBKIT": "1" }
+      }
     },
     "native-harness-test": {
       "executor": "nx:run-commands",
@@ -181,7 +224,7 @@
         "commands": [
           { "command": "ng build desktop", "forwardAllArgs": true },
           { "command": "node tools/check-production-renderer.mjs \"{args.output-path}/browser\"", "forwardAllArgs": false },
-          { "command": "node tools/report-initial-renderer.mjs \"{args.output-path}\" --record", "forwardAllArgs": false }
+          { "command": "node tools/report-initial-renderer.mjs \"{args.output-path}\" --record --enforce-warning", "forwardAllArgs": false }
         ],
         "parallel": false
       },
@@ -203,10 +246,12 @@
       "options": { "command": "tauri build --config apps/desktop/src-tauri/tauri.conf.json" }
     },
     "check": {
-      "inputs": ["default", "^production", "rust", "{workspaceRoot}/angular.json", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml"],
+      "inputs": ["default", "^production", "rust", "{workspaceRoot}/angular.json", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/report-renderer-css-tokens*.mjs", "{workspaceRoot}/tools/cli-entry.mjs"],
       "executor": "nx:run-commands",
       "options": {
         "commands": [
+          "node --test tools/report-renderer-css-tokens.test.mjs && node tools/report-renderer-css-tokens.mjs --check",
+          "cargo fmt --all -- --check",
           "ng build desktop --configuration development --output-path=dist/checks/desktop",
           "cargo check --workspace --all-targets",
           "cargo clippy --workspace --all-targets -- -D warnings"
@@ -214,13 +259,18 @@
         "parallel": false
       }
     },
+    "renderer-unit-test": {
+      "cache": true,
+      "inputs": ["default", "^production", "{workspaceRoot}/vitest.config.mts", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs"],
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm exec vitest run apps/desktop/src/app/*.spec.ts" }
+    },
     "test": {
-      "dependsOn": ["graph-test-typecheck", "owned-process-test", "editor-recovery-test"],
+      "dependsOn": ["graph-test-typecheck", "owned-process-test", "editor-recovery-test", "renderer-unit-test"],
       "inputs": ["default", "^production", "rust", "{workspaceRoot}/angular.json", "{workspaceRoot}/vitest.config.mts", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs"],
       "executor": "nx:run-commands",
       "options": {
         "commands": [
-          "pnpm exec vitest run apps/desktop/src/app/*.spec.ts",
           "cargo test --workspace",
           "cargo test --locked -p git-khronos-desktop --example stage-debian-update"
         ],

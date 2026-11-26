@@ -76,7 +76,9 @@ test('compact move dialog traps focus and returns opener focus after cancel', as
   await confirm.focus();
   await page.keyboard.press('Tab');
   await expect(dialog.getByLabel('Destination parent directory')).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => !document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Unidentified', code: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+  })))).toBe(true);
   await expect(confirm).toBeFocused();
   expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.keyboard.press('Escape');

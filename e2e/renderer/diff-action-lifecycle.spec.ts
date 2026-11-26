@@ -20,6 +20,9 @@ async function prepare(page: Page, untrackedPath?: string): Promise<void> {
     (window as any).__diffAction = state;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       state.calls.push({ command, args });
+      if (command === 'preview_discard') return Promise.resolve({
+        token: 'owned-review', paths: args.paths, skippedPaths: [], blockedPaths: [], untracked: 0,
+      });
       if (command === 'inspect_working_tree_file') return Promise.resolve({ path: args.path, staged: args.staged,
         patch: state.patch, truncated: false });
       if (command === 'apply_working_tree_hunk' || command === 'apply_working_tree_lines') return new Promise((resolve, reject) => {
@@ -66,9 +69,9 @@ async function prepare(page: Page, untrackedPath?: string): Promise<void> {
 for (const action of ['discard', 'ignore', 'restore-commit']) {
   test(`file confirmation ${action} stays bound to its original repository`, async ({ page }) => {
     await prepare(page);
-    const result = await page.evaluate(async action => {
+    await page.evaluate(async action => {
       const state = (window as any).__diffAction;
-      const { app, git } = state;
+      const { app } = state;
       if (action === 'restore-commit') {
         app.actionOverlays.open({ kind: 'commitFile', value: { file: { path: 'file.txt' }, oid: state.repository.headOid } });
         app.requestRestoreCommitFile();
@@ -77,12 +80,17 @@ for (const action of ['discard', 'ignore', 'restore-commit']) {
         if (action === 'discard') app.requestDiscardFile();
         else await app.requestIgnoreFile('file');
       }
+    }, action);
+    await expect.poll(() => page.evaluate(() => !!(window as any).__diffAction.app.pendingFileAction())).toBe(true);
+    const result = await page.evaluate(async () => {
+      const state = (window as any).__diffAction;
+      const { app, git } = state;
       const repositoryId = app.pendingFileAction().repositoryId;
       git.activateRepository('other-diff');
       const count = state.calls.length;
       await app.confirmFileAction();
       return { repositoryId, expected: state.repository.id, calls: state.calls.slice(count), error: git.error() };
-    }, action);
+    });
     expect(result.repositoryId).toBe(result.expected);
     expect(result.calls).toEqual([]);
     expect(result.error).toContain('active repository changed');
@@ -633,6 +641,50 @@ test('a delayed bulk discard preview cannot open for a later visit to the same c
     return app.pendingFileAction();
   });
   expect(action).toBeNull();
+});
+
+test('a delayed single-file preview cannot open for a later visit to the same checkout', async ({ page }) => {
+  await prepare(page);
+  const action = await page.evaluate(async () => {
+    const { app, git, repository } = (window as any).__diffAction;
+    let complete!: (preview: unknown) => void;
+    git.previewDiscard = () => new Promise(resolve => { complete = resolve; });
+    const pending = app.requestSingleDiscard('file.txt', false, null);
+    git.activateRepository('other-diff');
+    git.activateRepository(repository.id);
+    complete({ token: 'retired-preview', paths: ['file.txt'], blockedPaths: [], skippedPaths: [], untracked: 0 });
+    await pending;
+    return app.pendingFileAction();
+  });
+  expect(action).toBeNull();
+});
+
+test('a single-file review refuses expanded, blocked, or reclassified native previews', async ({ page }) => {
+  await prepare(page);
+  const results = await page.evaluate(async () => {
+    const { app, git } = (window as any).__diffAction;
+    const eligible = { token: 'owned-review', paths: ['file.txt'], blockedPaths: [], skippedPaths: [], untracked: 0 };
+    const attempts = [
+      { ...eligible, paths: ['file.txt', 'new.txt'] },
+      { ...eligible, paths: ['new.txt'] },
+      { ...eligible, blockedPaths: ['new.txt'] },
+      { ...eligible, skippedPaths: ['new.txt'] },
+      { ...eligible, untracked: 1 },
+    ];
+    const results = [];
+    for (const preview of attempts) {
+      git.previewDiscard = async () => preview;
+      await app.requestSingleDiscard('file.txt', false, null);
+      results.push({ opened: !!app.pendingFileAction(), error: git.error() });
+      git.error.set(null);
+    }
+    return results;
+  });
+  expect(results).toHaveLength(5);
+  for (const result of results) {
+    expect(result.opened).toBe(false);
+    expect(result.error).toContain('Refresh and review the file again');
+  }
 });
 
 test('a delayed bulk preview cannot reopen after a newer file review was opened and cancelled', async ({ page }) => {

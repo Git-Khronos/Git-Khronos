@@ -3,6 +3,28 @@
 Git Khronos is built in vertical slices. A milestone is complete only when its
 workflows run in the packaged desktop application—not merely in a browser mock.
 
+## Near-term priorities
+
+1. **Debian release first.** Keep the tested installer stable. Review the
+   integration on `dev`, then qualify the tagged production-key archive
+   through the [release checklist](docs/production-readiness.md#release-operator-checklist).
+   The fixture-key matrix is evidence for the local archive only. Confirm
+   the one-time manual upgrade path before promising public automatic updates.
+   Move the hosted Jammy jobs to a supported runner before the
+   [March 2027 brownouts](https://github.com/actions/runner-images/issues/14254)
+   without raising the installer ABI baseline.
+2. **Verify desktop launch and authentication on real user setups.** A
+   Windows-pinned WSLg shortcut and assistive-technology review cover users
+   that Xvfb cannot. The exact local build drew a nonblank window via
+   command and desktop-entry launches on WSLg XWayland; the actual
+   Windows pin was inspected but not launched. Hosted HTTPS/SSH and credential-helper checks should use
+   a dedicated test repository and credentials; do not infer them from the
+   local protocol fixtures.
+3. **Keep high-risk Git actions recoverable.** Prioritize stale-review and
+   restart evidence for destructive actions over adding more write commands.
+   Broader AppImage, RPM, and other platform publication should wait until
+   their own packaging, runtime, and signing gates are met.
+
 ## Foundation and repository vertical slice — in progress
 
 - [x] Nx, Angular, Tauri, and Rust workspace
@@ -46,19 +68,28 @@ workflows run in the packaged desktop application—not merely in a browser mock
   evidence—see [Linux packaged acceptance](docs/linux-acceptance.md). The
   accessible native startup shell defers workspace import; the current
   production build's initial asset set is 292 kB versus 1.28 MB before the
-  split; current Debian package `4782ab3ce8358067102e931757c960a276022b66daa6d75141336604218ed21e`
-  passes all 301 full native scenarios. The separate inherited-environment and
-  large-history performance results are retained against their earlier exact
-  package hashes and do not qualify this artifact.)
+  split; the portable test-key package
+  `8ca22c68d893436cb25631d9d94c2ace07b02b1a7aff1f5acbe5b9ef5f55a926`
+  passed all 52 installed release checks in one exact-archive run.
+  The check set includes
+  returning to the primary `dev` checkout, CTI-sized discard preserving
+  staged work, expanded file-list keyboard navigation, and delayed GitLab catalogue navigation. The same archive
+  passed WSLg startup and the offline updater rehearsal; the earlier
+  keyboard-focus archive passed clipboard checks on all five baselines.)
 - [ ] System-installed Linux desktop acceptance
-  (the locally built Debian package, installed executable and desktop entry
-  pass all 301 native scenarios on Ubuntu 26.04; pinned-shortcut/host
-  integration, hardware-key and real hosted-service validation remain)
+  (the portable test-key artifact passed the installed matrix in isolated
+  Ubuntu 22.04, 24.04, 26.04 and Debian 12, 13 containers, including both X11 launch paths and APT removal. Upgrade from public 0.1.5 and renderer
+  recovery passed on all five baselines with the final local archive. The production
+  publisher build, actual Windows-pinned WSLg launch, hardware keys, and
+  real hosted-service validation remain)
 
 - [x] File, hunk, and line staging with safe discard recovery
-  (new-file line selection and native displayed-diff guards are qualified with
-  actual index/worktree fixtures and renderer journeys; packaged acceptance
-  remains part of the professional Git roadmap)
+  (qualified index/worktree fixtures and packaged UI journeys cover nested
+  tracked modifications and deletions on Linux x86-64, prepared single-file
+  and bulk confirmation, stale-review refusal and recovery without changing
+  staged content. Regular nested untracked files also have recovery-backed
+  discard. Nested symbolic links, partial discard and linked worktrees
+  remain unsupported.)
 - [x] Commit amendment, tags, remotes, and stash workflows
   (ordinary commit and message-only amendments preserve the previous HEAD and
   tracked snapshot in Recovery History; packaged UI verifies restoring the
@@ -79,10 +110,13 @@ workflows run in the packaged desktop application—not merely in a browser mock
   The release workflow implements package and source CycloneDX inventories,
   SHA256SUMS, and publication gated on exact-package Linux runtime acceptance.
   Signed Debian update controls, local publisher-key builds, and manifest
-  staging are implemented; the public signed release feed and installed
-  update/restart qualification remain. An uncached Ubuntu 22.04 AppImage build
-  task now validates that exactly one executable ELF artifact was produced;
-  release checksums/SBOM/signatures and packaged runtime qualification remain)
+  staging are implemented. Installed test-key checks cover manual checks and
+  opt-in/opt-out across restart; the public signed feed and an installed
+  signed-upgrade journey remain. An uncached Ubuntu 22.04 AppImage build
+  task checks the ELF runtime and the embedded SquashFS payload bounds;
+  the experimental archive opened a window offline and contains the audited
+  library notices. Redistribution review, release checksums/SBOM/signatures
+  and full packaged runtime qualification remain)
 - [ ] English accessibility review and externalized UI strings
   (an automated structural audit covers names, labels, dialogs, ARIA references,
   focusability and reading order in 17 preview states and open overlays;

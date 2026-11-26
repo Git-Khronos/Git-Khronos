@@ -52,6 +52,7 @@ import type {
   SystemInfo,
   TagDetails,
   TrackedFileSearch,
+  WorkingTreeEntry,
   WorkingTreeFileDiff,
   WorktreeMove,
   WorktreeRepair,
@@ -96,6 +97,7 @@ const REPOSITORY_CHANGE_DEBOUNCE_MS = 450;
 const REPOSITORY_CHANGE_MAX_WAIT_MS = 1_500;
 const SAFE_DISCARD_FAILURES = new Set([
   'repositoryFileRefused', 'staleWorkingTreeFile', 'staleDiscard', 'emptyDiscard', 'missingRecoveryPatch',
+  'discardFileTooLarge',
   'untrackedPartialDiscardUnsupported', 'invalidLineSelection', 'invalidLineAction', 'invalidRecoveryPath',
   'invalidDiffLine', 'partialFinalNewline',
   'discardRecoveryUnavailable', 'discardRecoveryMissing', 'discardRecoveryChanged', 'gitInspectionTimeout',
@@ -362,7 +364,8 @@ export class GitKhronosService implements OnDestroy {
   readonly historyLoading = signal(false);
   readonly checkpointVisibilityUpdating = signal(false);
   private historyRequest: { repoId: string } | null = null;
-  readonly changesLoading = signal(false);
+  private readonly changesLoadingRepositories = signal<ReadonlySet<string>>(new Set());
+  readonly changesLoading = computed(() => this.changesLoadingRepositories().has(this.activeRepositoryId() ?? ''));
   readonly trackedFileSearch = signal<TrackedFileSearch | null>(null);
   readonly trackedFileSearchBusy = signal(false);
   readonly trackedFileSearchError = signal<string | null>(null);
@@ -1346,8 +1349,9 @@ export class GitKhronosService implements OnDestroy {
   async loadMoreChanges(force = false): Promise<void> {
     const repository = this.repository();
     if (!repository || (!force && !repository.status.entriesTruncated) || this.changesLoading()) return;
+    const scope = this.activeRepositoryReadScope();
     const generation = this.statusGeneration(repository.id);
-    this.changesLoading.set(true);
+    this.changesLoadingRepositories.update(current => new Set(current).add(repository.id));
     this.error.set(null);
     try {
       if (this.browserPreview()) {
@@ -1363,9 +1367,13 @@ export class GitKhronosService implements OnDestroy {
       });
       if (generation === this.statusGeneration(repository.id)) this.storeStatus(repository.id, status);
     } catch (error: unknown) {
-      this.error.set(this.formatError(error));
+      if (scope === this.activeRepositoryReadScope()) this.error.set(this.formatError(error));
     } finally {
-      this.changesLoading.set(false);
+      this.changesLoadingRepositories.update(current => {
+        const remaining = new Set(current);
+        remaining.delete(repository.id);
+        return remaining;
+      });
     }
   }
 
@@ -1482,22 +1490,28 @@ export class GitKhronosService implements OnDestroy {
           const entries = repository.status.entries.filter(entry =>
             (!paths || paths.includes(entry.path))
             && (entry.conflicted || entry.indexStatus === '?' || entry.worktreeStatus.trim()));
-          const eligible = entries.filter(entry => !entry.conflicted && !entry.path.includes('/'));
+          // Sample data has no filesystem types. Model ordinary tracked edits
+          // and deletions in subdirectories, including untracked regular files.
+          const supported = (entry: WorkingTreeEntry) => !entry.path.includes('/')
+            || entry.indexStatus === '?' || ['M', 'D'].includes(entry.worktreeStatus);
+          const eligible = entries.filter(entry => !entry.conflicted && supported(entry));
           preview = {
             token: 'preview',
             paths: eligible.map(entry => entry.path),
             skippedPaths: entries.filter(entry => entry.conflicted).map(entry => entry.path),
-            blockedPaths: entries.filter(entry => !entry.conflicted && entry.path.includes('/')).map(entry => entry.path),
+            blockedPaths: entries.filter(entry => !entry.conflicted && !supported(entry)).map(entry => entry.path),
+            oversizedPaths: [],
             untracked: eligible.filter(entry => entry.indexStatus === '?').length,
           };
         } else {
           preview = await ipc.preview_discard({ repoId: repository.id, paths });
         }
-      }, repository.id);
+      }, repository.id, null, false, false);
       return preview;
     }
 
-    async discardPrepared(preview: DiscardPreview, repositoryId: string): Promise<boolean> {
+    async discardPrepared(preview: DiscardPreview, repositoryId: string,
+      historyLabel = 'Discard Unstaged Changes'): Promise<boolean> {
       if (!this.requireRecoveryRepository(repositoryId)) return false;
       const previous = this.operationHistory()[repositoryId];
       const result = await this.changeWorkingTree('Discarding captured unstaged changes…',
@@ -1505,7 +1519,7 @@ export class GitKhronosService implements OnDestroy {
           const { id, status } = this.browserPreview()
             ? { id: 'preview', status: preview.paths.reduce((current, path) => predictDiscardPath(current, path), this.repository()!.status) }
             : await ipc.discard_changes({ repoId, token: preview.token });
-          this.recordDiscard(repoId, 'Discard Unstaged Changes', id);
+          this.recordDiscard(repoId, historyLabel, id);
           return status;
         }, undefined, 'discard');
       if (!result.succeeded && this.discardMayHaveChanged(result.failureKind)) this.clearHistoryEntry(repositoryId, previous);
@@ -2144,13 +2158,15 @@ export class GitKhronosService implements OnDestroy {
     await this.mutate('continue_rebase', 'Continuing rebase…', snapshot => this.rebaseActivity(snapshot));
   }
 
-  async prepareMergeRebase(repositoryId: string, source: string, target: string): Promise<MergeRebasePlan | null> {
+  async prepareMergeRebase(repositoryId: string, source: string, target: string,
+    current: () => boolean,
+  ): Promise<MergeRebasePlan | null> {
     if (!this.requireRecoveryRepository(repositoryId)) return null;
     let plan: MergeRebasePlan | null = null;
     await this.run('Reviewing merge-preserving rebase…', async report => {
       plan = await ipc.prepare_merge_rebase({ repoId: repositoryId, source, target });
-      report('Merge-preserving review ready; no history changed');
-    }, repositoryId);
+      if (current()) report('Merge-preserving review ready; no history changed');
+    }, repositoryId, null, false, false, { announceFailure: current });
     return plan;
   }
 
@@ -2405,7 +2421,7 @@ export class GitKhronosService implements OnDestroy {
       let oid: string | null = null;
       await this.run('Checking selected remote tag…', async () => {
         oid = await ipc.preview_remote_tag({ repoId: repository.id, remote, name, operationId });
-      }, repository.id, operationId);
+      }, repository.id, operationId, false, false);
       return oid;
     }
 
@@ -2710,9 +2726,10 @@ export class GitKhronosService implements OnDestroy {
     const repository = this.repository();
     if (!repository) return null;
     let preview: ResetPreview | null = null;
+    // Preparing a token doesn't reset the history cursor; execution still takes the barrier.
     const result = await this.run('Reviewing reset scope…', async () => {
       preview = await ipc.preview_reset({ repoId: repository.id, oid, mode });
-    }, repository.id);
+    }, repository.id, null, false, false);
     return result === 'success' ? preview : null;
   }
 

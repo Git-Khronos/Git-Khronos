@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, afterNextRender, inject, input, output } from '@angular/core';
 import type { Branch, RepositorySnapshot } from '@git-khronos/contracts';
 import { IconComponent, type IconName } from './icon.component';
+import { lfsCheckoutSummary } from './lfs-checkout-summary';
 import { PULL_STRATEGY_CHOICES, PULL_STRATEGY_LABEL, type PullStrategy } from './pull-strategy';
 
 export type ToolbarOptionsKind = 'fetch' | 'pull' | 'push' | 'branch' | 'stash' | 'lfs' | 'sparseCheckout';
@@ -46,6 +47,7 @@ export type ToolbarOptionsAction =
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ToolbarOptionsComponent {
+  protected readonly lfsCheckoutSummary = lfsCheckoutSummary;
   readonly view = input.required<ToolbarOptionsView>();
   readonly activate = output<ToolbarOptionsAction>();
   readonly ready = output<HTMLElement>();

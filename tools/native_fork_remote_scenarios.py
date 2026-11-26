@@ -53,8 +53,7 @@ def hosted_fork_remote_attachment(driver, fixtures, original_repository, report)
             raise AssertionError("Owned attachment precondition unexpectedly succeeded")
 
     def button(text, selector="gk-hosted-forks button"):
-        driver.wait(f"return [...document.querySelectorAll({json.dumps(selector)})].some(button => button.textContent.trim() === {json.dumps(text)} && !button.matches(':disabled'))")
-        driver.click_text(selector, text)
+        driver.click_scrolled_text(selector, text, wait_for_ready=True)
 
     def unchanged():
         assert fixtures.git(repository, "show-ref") == refs
@@ -161,6 +160,9 @@ def hosted_fork_remote_attachment(driver, fixtures, original_repository, report)
         button('Load repositories', 'gk-hosted-repository-browser button')
         button('Select owned-fixture/native-repo', 'gk-hosted-repository-browser button')
         button('Manage forks and saved requests', 'gk-hosted-repository-browser button')
+        driver.wait("""return [...document.querySelectorAll('gk-hosted-repository-browser button')]
+            .some(button => button.textContent.trim() === 'Close fork controls')
+            && !!document.querySelector('gk-hosted-forks');""")
         button('Find existing forks')
         button('Inspect owned-author/owned-fork')
         button('Attach fork to local repository')

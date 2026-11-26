@@ -85,13 +85,17 @@ async function loseCachedOwner(page: Page, failureKind: string, failRefresh = fa
   }, { failureKind, failRefresh });
 }
 
-test('graph double click recovers when another checkout took the branch after the last read', async ({ page }) => {
+test('graph double click recovers when another checkout took the branch after the last read', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   const fixture = await setup(page);
   await loseCachedOwner(page, 'branchInAnotherWorktree');
   await page.locator('.commit-row .branch-column .ref-pill.local', { hasText: fixture.branch }).dblclick();
   const dialog = page.getByRole('dialog', { name: 'Branch is open in another checkout' });
   await expect(dialog).toContainText(fixture.ownerPath);
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  expect(await page.evaluate(() => !document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Unidentified', code: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+  })))).toBe(true);
+  await expect(dialog.getByRole('button', { name: 'Open existing checkout' })).toBeFocused();
   const calls = () => page.evaluate(() => (window as any).__checkoutWorktree.calls
     .filter((entry: any) => ['checkout_branch', 'refresh_repository', 'open_repository'].includes(entry.command))
     .map((entry: any) => entry.command));
@@ -250,7 +254,7 @@ test('available local branches still use one ordinary native checkout', async ({
   await expect(page.getByRole('dialog', { name: 'Branch is open in another checkout' })).toHaveCount(0);
 });
 
-test('keyboard branch-picker activation reviews occupancy and returns to its opener', async ({ page }) => {
+test('keyboard branch-picker activation reviews occupancy and returns to its opener', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   const fixture = await setup(page);
   const toggle = page.getByRole('button', { name: /Switch branch, current/ });
   await toggle.click();

@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { IconComponent } from './icon.component';
 import type { ShortcutLabels } from './shortcut-labels';
+import { isTabKey } from './tab-key';
 
 type ShortcutSection = 'repository' | 'navigation' | 'interface' | 'tabs-view';
 
@@ -104,7 +105,7 @@ function chord(value: string): string[] {
 .shortcut-groups dt { min-width: 0; flex: 1; color: var(--overlay-list-text); font-size: var(--font-size-body); }
 .shortcut-groups dd { display: flex; align-items: center; gap: 3px; margin: 0; color: var(--overlay-muted); font-size: 12px; white-space: nowrap; }
 .shortcut-groups dd > span { padding-inline: 1px; color: var(--overlay-muted); }
-.shortcuts-dialog kbd { min-width: 20px; padding: 3px 5px; border: 1px solid var(--overlay-control-border); border-bottom-color: var(--overlay-border); border-radius: 3px; background: var(--overlay-control); color: var(--overlay-kbd); font: 12px var(--mono); text-align: center; box-shadow: 0 1px 0 #11111b; }
+.shortcuts-dialog kbd { min-width: 20px; padding: 3px 5px; border: 1px solid var(--overlay-control-border); border-bottom-color: var(--overlay-border); border-radius: 3px; background: var(--overlay-control); color: var(--overlay-kbd); font: 12px var(--font-mono); text-align: center; box-shadow: 0 1px 0 #11111b; }
 .shortcut-empty { grid-column: 1 / -1; min-height: 210px; display: grid; place-items: center; align-content: center; gap: 8px; color: var(--overlay-muted); text-align: center; }
 .shortcut-empty strong { color: var(--overlay-list-text); font-size: var(--font-size-body); }
 .shortcut-empty small { color: var(--overlay-muted); font-size: var(--font-size-caption); }
@@ -245,7 +246,7 @@ export class KeyboardShortcutsDialogComponent {
   }
 
   protected trapFocus(event: KeyboardEvent): void {
-    if (event.key !== 'Tab') return;
+    if (!isTabKey(event)) return;
     const dialog = event.currentTarget as HTMLElement;
     const focusable = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])')]
       .filter((element) => element.getClientRects().length > 0);

@@ -1,6 +1,28 @@
 use super::*;
 
 #[test]
+fn gitlab_https_reports_a_refused_tcp_connection_without_exposing_the_endpoint() {
+    // Keep the port reserved without listening. No authentication header
+    // can be delivered, and another process cannot take the test port.
+    let socket = tokio::net::TcpSocket::new_v4().unwrap();
+    socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let address = socket.local_addr().unwrap();
+    let origin = format!("https://{address}");
+    let instance = GitLabInstance::parse(&origin).unwrap();
+    let token = "owned-private-fixture-token";
+    let mut transport = GitLabHttpsTransport::new(instance.clone(), token).unwrap();
+    let error = transport
+        .get(&instance, "user", &CancellationToken::default())
+        .unwrap_err();
+    assert_eq!(error.kind, "gitlabConnection");
+    assert!(error.message.contains("The TCP connection was refused."));
+    let diagnostic = format!("{} {:?}", error.message, error.hint);
+    assert!(!diagnostic.contains(token));
+    assert!(!diagnostic.contains(&address.to_string()));
+    assert!(!diagnostic.contains("/api/"));
+}
+
+#[test]
 fn gitlab_https_encoded_project_lookup_keeps_one_closed_component_and_no_query_aliases() {
     let instance = GitLabInstance::parse("https://gitlab.example.test:8443").unwrap();
     assert_eq!(

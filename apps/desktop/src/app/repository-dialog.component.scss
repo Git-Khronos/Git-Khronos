@@ -19,7 +19,7 @@
   .repository-action-card strong { font-size: var(--font-size-body); }
   .repository-action-card small { color: #858499; font-size: var(--font-size-caption); }
   .repository-action-card b { padding: 5px 9px; border-radius: 3px; background: #34334b; color: #aaa9bb; font-size: 12px; }
-  .repository-action-disclosure { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: #2c2b40; color: #77768b; font-style: normal; transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out), transform var(--motion-fast) var(--ease-out); }
+  .repository-action-disclosure { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: #2c2b40; color: #77768b; font-style: normal; transition: background var(--motion-feedback) var(--ease-out), color var(--motion-feedback) var(--ease-out), transform var(--motion-feedback) var(--ease-out); }
   .repository-action-card:hover .repository-action-disclosure, .repository-action-card:focus-visible .repository-action-disclosure { background: #3a3852; color: var(--accent); transform: translateX(2px); }
   .manager-repository-filter { display: flex; align-items: center; gap: 9px; margin-top: 7px; padding-top: 12px; border-top: 1px solid #343449; }
   .manager-repository-filter > label { height: 33px; min-width: 0; display: flex; flex: 1; align-items: center; gap: 7px; padding: 0 8px; border: 1px solid #414057; border-radius: 4px; background: #14141f; color: #77768b; }

@@ -242,8 +242,16 @@ installed_status() {
 
 install_package() {
   local mode="$1" package_file legacy_status transition_directory guard
-  package_file="$(latest_package)"
-  verify_package "$package_file"
+  if [[ "$mode" == simulate && -n "${2:-}" ]]; then
+    package_file="$(realpath -e -- "$2")" || fail "the selected Debian package does not exist."
+    [[ -f "$package_file" && "$package_file" == *.deb ]] || fail "select a regular .deb archive."
+    [[ "$(dpkg-deb --field "$package_file" Package)" == "$package_name" ]] \
+      || fail "the selected archive is not a Git Khronos Debian package."
+    printf 'Previewing the selected archive (not verifying release provenance):\n  %s\n' "$package_file"
+  else
+    package_file="$(latest_package)"
+    verify_package "$package_file"
+  fi
   require_apt
   if [[ "$mode" == simulate ]]; then
     printf 'APT dry run only; no system packages will change.\n'
@@ -312,8 +320,8 @@ require_package_tools
 case "${1:-}" in
   name) name_package ;;
   verify) verify_package ;;
-  install) install_package apply ;;
-  simulate-install) install_package simulate ;;
+  install) [[ $# -eq 1 ]] || fail "usage: $0 install (no archive argument)"; install_package apply ;;
+  simulate-install) [[ $# -le 2 ]] || fail "usage: $0 simulate-install [PACKAGE.deb]"; install_package simulate "${2:-}" ;;
   installed-status) [[ $# -le 2 ]] || fail "usage: $0 installed-status [PACKAGE.deb]"; installed_status "${2:-}" ;;
   uninstall) uninstall_package ;;
   print-package) print_package ;;

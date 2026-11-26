@@ -61,7 +61,7 @@ for (const action of ['Load older file history', 'Reload file history']) {
     await expect(button).toBeEnabled();
     await button.focus();
     await page.keyboard.press('Enter');
-    await expect(pane.getByRole('status')).toHaveText('Reading file history…');
+    await expect(pane.getByRole('status').filter({ hasText: 'Reading file history…' })).toHaveText('Reading file history…');
     await expect(button).toBeFocused();
     await expect(button).toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('Enter');

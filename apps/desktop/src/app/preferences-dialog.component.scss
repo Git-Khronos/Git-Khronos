@@ -116,14 +116,14 @@
   .preference-group > .preference-help-action { display: flex; align-items: center; justify-content: flex-start; justify-self: stretch; margin: 2px 5px 4px; padding: 6px 8px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--accent); font-weight: 650; text-align: left; }
   .preference-group > .preference-help-action:hover, .preference-group > .preference-help-action:focus-visible { border-color: #4b4a62; background: #34334b; color: white; }
   .lfs-preferences .lfs-pattern-field { display: grid; grid-template-columns: 82px minmax(0, 1fr); }
-  .lfs-pattern-field input[type='text'] { min-width: 0; width: 100%; padding: 5px 6px; border: 1px solid #44435a; border-radius: 3px; outline: 0; background: #191925; color: #d2d1dd; font: var(--font-size-body) var(--mono); }
+  .lfs-pattern-field input[type='text'] { min-width: 0; width: 100%; padding: 5px 6px; border: 1px solid #44435a; border-radius: 3px; outline: 0; background: #191925; color: #d2d1dd; font: var(--font-size-body) var(--font-mono); }
   .lfs-pattern-field input[type='text']:focus { border-color: var(--purple); }
   .sparse-checkout-preferences > span { display: flex; align-items: center; justify-content: space-between; }
   .sparse-checkout-preferences > span small { color: #8d8c9e; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; }
   .sparse-checkout-preferences > small { padding: 1px 5px 4px; color: #8d8c9e; font-size: 12px; line-height: 1.4; }
   .sparse-checkout-preferences > small.preference-warning { color: #dda16f; }
   .sparse-checkout-preferences .sparse-paths-field { display: grid; align-items: start; gap: 5px; }
-  .sparse-paths-field textarea { width: 100%; min-height: 62px; resize: vertical; padding: 6px 7px; border: 1px solid #44435a; border-radius: 3px; outline: 0; background: #191925; color: #d2d1dd; font: var(--font-size-body)/1.45 var(--mono); }
+  .sparse-paths-field textarea { width: 100%; min-height: 62px; resize: vertical; padding: 6px 7px; border: 1px solid #44435a; border-radius: 3px; outline: 0; background: #191925; color: #d2d1dd; font: var(--font-size-body)/1.45 var(--font-mono); }
   .sparse-paths-field textarea:focus { border-color: var(--purple); }
   .preference-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px 5px; }
   .preference-actions button { display: flex; min-height: 29px; flex: 1 1 auto; align-items: center; justify-content: center; gap: 5px; padding: 5px 7px; border: 1px solid #4b5f5a; border-radius: 3px; background: #2b4640; color: #8ae5ca; font-size: var(--font-size-body); font-weight: 750; }

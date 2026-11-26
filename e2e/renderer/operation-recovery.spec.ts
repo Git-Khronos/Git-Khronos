@@ -105,6 +105,41 @@ test('keeps a failed stale reset open and requires a fresh preview', async ({ pa
   await expect(dialog).toHaveCount(0);
 });
 
+test('reset review leaves history paging independent but execution waits for paging', async ({ page }) => {
+  await mockRecovery(page);
+  await page.evaluate(() => {
+    const w = window as any;
+    const { git } = w.ng.getComponent(document.querySelector('gk-app'));
+    const repo = git.repository();
+    git.repositories.set([{ ...repo, historyTruncated: true }]);
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (command: string, args: unknown) => {
+      if (command !== 'load_more_commits') return invoke(command, args);
+      return new Promise(resolve => {
+        w.__finishResetHistoryPage = () => resolve({ commits: [], historyTruncated: false });
+      });
+    };
+    void git.loadMoreHistory();
+  });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__finishResetHistoryPage)).toBe('function');
+  await openReset(page);
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog).toContainText('2 index paths affected');
+  await dialog.getByRole('button', { name: 'Reset mixed', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    return git.activityLogs().some((entry: any) => entry.status === 'running' && entry.description === 'Resetting mixed');
+  })).toBe(true);
+  expect(await page.evaluate(() => (window as any).__operationTest.calls
+    .some((call: { command: string }) => call.command === 'execute_prepared_reset'))).toBe(false);
+  await page.evaluate(() => (window as any).__finishResetHistoryPage());
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__operationTest.calls
+    .filter((call: { command: string }) => call.command === 'execute_prepared_reset'))).toEqual([
+    { command: 'execute_prepared_reset', args: { repoId: expect.any(String), token: 'reset-mixed' } },
+  ]);
+});
+
 test('discovers durable reset captures and restores on an explicitly named clean branch', async ({ page }) => {
   await mockRecovery(page);
   await openRecovery(page);

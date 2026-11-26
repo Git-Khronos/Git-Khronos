@@ -4,6 +4,8 @@ from pathlib import Path
 import time
 import uuid
 
+from native_repository_navigation import open_gitlab_catalogue
+
 
 def gitlab_reviewed_clones(driver, fixtures, original_repository, report):
     from native_scenarios import open_ui
@@ -190,10 +192,7 @@ def gitlab_reviewed_clones(driver, fixtures, original_repository, report):
         # Drive the same operation through ordinary desktop controls, not Angular
         # state or a renderer-supplied plan. Native IPC and Git remain installed.
         open_ui(driver, original_repository)
-        driver.click('[aria-label="New repository tab"]')
-        driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
-        button("Browse GitLab projects")
+        open_gitlab_catalogue(driver)
         driver.wait("return !!document.querySelector('#gitlab-account') && !document.querySelector('#gitlab-account').matches(':disabled') && [...document.querySelector('#gitlab-account').options].some(option => option.value === " + json.dumps(connection["connectionId"]) + ")")
         driver.script("""const select=document.querySelector('#gitlab-account');
           select.value=arguments[0];select.dispatchEvent(new Event('change',{bubbles:true}));""", connection["connectionId"])

@@ -339,7 +339,7 @@ fn read_bounded_working_file(
 pub(crate) mod worktree {
     use super::*;
     use rustix::fs::{AtFlags, FileType, Mode, OFlags, open, openat, readlinkat, statat};
-    use std::os::fd::OwnedFd;
+    use std::os::fd::{AsFd, OwnedFd};
     use std::os::unix::fs::MetadataExt;
 
     fn directories() -> OFlags {
@@ -361,17 +361,20 @@ pub(crate) mod worktree {
         })
     }
     pub(crate) fn descend_worktree(
-        root: &OwnedFd,
+        root: &impl AsFd,
         relative: &Path,
     ) -> Result<OwnedFd, WorktreeParentError> {
         descend_checked(root, relative, true)
     }
     fn descend_checked(
-        root: &OwnedFd,
+        root: &impl AsFd,
         relative: &Path,
         reject_nested_repositories: bool,
     ) -> Result<OwnedFd, WorktreeParentError> {
-        let mut directory = root.try_clone().map_err(|_| rustix::io::Errno::IO)?;
+        let mut directory = root
+            .as_fd()
+            .try_clone_to_owned()
+            .map_err(|_| rustix::io::Errno::IO)?;
         for part in relative.components() {
             let Component::Normal(name) = part else {
                 return Err(rustix::io::Errno::INVAL.into());

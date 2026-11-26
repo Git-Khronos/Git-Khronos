@@ -34,6 +34,9 @@ if [ "${{1:-}}" = -C ] && [ "${{2:-}}" = {shlex.quote(str(fixtures.root / CHECKO
     esac
   done
   if [ "$status:$porcelain:$complete" = yes:yes:yes ]; then
+    # A full diagnostic pipe must not block the app before it can read status.
+    touch "$gate/diagnostics-started"
+    head -c 2097152 /dev/zero >&2
     touch "$gate/entered"
     attempts=0
     while [ ! -f "$gate/release" ] && [ "$attempts" -lt 300 ]; do
@@ -65,6 +68,8 @@ def first_status(driver, fixtures, report):
         deadline = time.monotonic() + 10
         while not (gate / 'entered').is_file():
             if time.monotonic() >= deadline:
+                if (gate / 'diagnostics-started').is_file():
+                    raise TimeoutError('The first file scan stalled while writing owned Git diagnostics')
                 raise TimeoutError('The packaged app did not start its first complete file scan')
             time.sleep(.05)
         # Sample while the native Git process is still blocked. Do not inject
@@ -92,4 +97,5 @@ def first_status(driver, fixtures, report):
     assert checkout_footprint(fixtures, repo, files) == before
     driver.screenshot(Path(report['artifactsDirectory']) / 'first-status-loaded.png')
     report['scenarios'].append('native-first-file-scan-publishes-real-staged-and-unstaged-recaps-without-writes')
+    report['scenarios'].append('native-first-file-scan-drains-large-diagnostics-without-blocking-status')
     return repo, repo_id

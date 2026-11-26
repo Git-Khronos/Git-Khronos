@@ -25,16 +25,42 @@ test.beforeEach(async ({ page }) => {
   await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(1);
 });
 
-test('unstaged header shows additions and deletions with binary/partial disclosure', async ({ page }) => {
+test('unstaged header shows additions and deletions with binary/partial disclosure', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({ staged: null, unstaged: { additions: 17, deletions: 8, uncountedFiles: 2, partial: true } }));
   const recap = page.locator('.unstaged-section gk-working-tree-summary');
   await expect(recap).toContainText('+17'); await expect(recap).toContainText('−8');
-  await expect(recap).toContainText('2 other'); await expect(recap).toContainText('(partial)');
+  await expect(recap).toContainText('2 excluded'); await expect(recap).toContainText('(partial)');
+  const excluded = recap.getByText('2 excluded', { exact: true });
+  await expect(excluded).toHaveCSS('color', 'rgb(146, 145, 165)');
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'midnight'; });
+  await expect(excluded).toHaveCSS('color', 'rgb(154, 168, 187)');
+  await expect(recap.getByText('(partial)', { exact: true })).toHaveCSS('color', 'rgb(154, 168, 187)');
   await expect(recap.locator('[aria-label]')).toHaveAttribute('aria-label', /17 additions and 8 deletions.*2 binary or uncounted.*partial totals/);
   await page.getByRole('button', { name: /^Unstaged Files/ }).click();
   await expect(page.locator('#unstaged-files-list')).toHaveCount(0);
   await expect(recap).toContainText('+17');
   await expect(page.getByRole('button', { name: 'Stage all changes', exact: true })).toBeEnabled();
+});
+
+test('large unstaged line totals fit beside bulk actions in a compact window', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 720 });
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: null, unstaged: { additions: 1234567, deletions: 7654321, uncountedFiles: 123, partial: true },
+  }));
+  const section = page.locator('.unstaged-section .file-section-title');
+  const recap = section.getByRole('img', { name: /1234567 additions and 7654321 deletions/ });
+  const stage = section.getByRole('button', { name: 'Stage all changes', exact: true });
+  const discard = section.getByRole('button', { name: 'Discard all unstaged changes', exact: true });
+  await expect(recap).toContainText('123 excluded');
+  await expect(stage).toBeVisible();
+  await expect(discard).toBeVisible();
+  const [header, totals, stageButton, discardButton] = await Promise.all(
+    [section, recap, stage, discard].map(element => element.boundingBox()),
+  );
+  expect(header && totals && stageButton && discardButton).toBeTruthy();
+  expect(stageButton!.x + stageButton!.width).toBeLessThanOrEqual(discardButton!.x + 1);
+  expect(discardButton!.x + discardButton!.width).toBeLessThanOrEqual(header!.x + header!.width + 1);
+  expect(totals!.x + totals!.width).toBeLessThanOrEqual(stageButton!.x + 1);
 });
 
 test('status bursts coalesce and an old result cannot replace current totals', async ({ page }) => {
@@ -299,7 +325,7 @@ test('one native read supplies independent staged and unstaged counts', async ({
   const staged = page.locator('.staged-section gk-working-tree-summary');
   const unstaged = page.locator('.unstaged-section gk-working-tree-summary');
   await expect(staged.getByLabel(/24 additions and 13 deletions in staged files/)).toHaveAttribute('title', /relative to the last commit/);
-  await expect(staged).toContainText('1 other');
+  await expect(staged).toContainText('1 excluded');
   await expect(unstaged.getByLabel(/5 additions and 2 deletions in unstaged files/)).toHaveAttribute('title', /relative to the index/);
   await page.getByRole('button', { name: /^Staged Files/ }).click();
   await expect(page.locator('#staged-files-list')).toHaveCount(0);

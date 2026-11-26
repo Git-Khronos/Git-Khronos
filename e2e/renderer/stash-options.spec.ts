@@ -34,6 +34,54 @@ test('opens advanced stash controls from the toolbar and restores focus', async 
   await expect(toggle).toBeFocused();
 });
 
+test('toolbar stash review survives a status refresh during activation without running Git', { tag: '@daily-driver-smoke' }, async ({ page }) => {
+  const toggle = page.getByRole('button', { name: 'Stash options' });
+  await toggle.click();
+  const action = page.getByRole('menuitem', { name: /^Stash with options/ });
+  await action.evaluate(button => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    button.addEventListener('click', () => {
+      const repository = git.repository();
+      git.repositories.set([{ ...repository, status: { ...repository.status } }]);
+    }, { capture: true, once: true });
+  });
+  await action.click();
+  const dialog = page.getByRole('dialog', { name: 'Stash with options' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(toggle).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__stashCalls.filter((call: any) =>
+    call.command === 'stash_changes' || call.command === 'stash_selected'))).toEqual([]);
+});
+
+for (const invalidation of ['clean status', 'switched checkout'] as const) {
+  test(`toolbar stash review refuses ${invalidation} during activation`, async ({ page }) => {
+    await page.getByRole('button', { name: 'Stash options' }).click();
+    const action = page.getByRole('menuitem', { name: /^Stash with options/ });
+    await action.evaluate((button, reason) => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      button.addEventListener('click', () => {
+        const repository = git.repository();
+        if (reason === 'clean status') {
+          git.repositories.set([{ ...repository, status: {
+            ...repository.status, entryCount: 0, entries: [], staged: 0, unstaged: 0, untracked: 0,
+          } }]);
+        } else {
+          const target = { ...repository, id: 'other-stash-checkout', path: '/owned/other-stash-checkout' };
+          git.repositories.set([repository, target]);
+          git.activeRepositoryId.set(target.id);
+        }
+        (window as any).__stashInvalidation = reason;
+      }, { capture: true, once: true });
+    }, invalidation);
+    await action.click();
+    expect(await page.evaluate(() => (window as any).__stashInvalidation)).toBe(invalidation);
+    await expect(page.getByRole('dialog', { name: 'Stash with options' })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__stashCalls.filter((call: any) =>
+      call.command === 'stash_changes' || call.command === 'stash_selected'))).toEqual([]);
+  });
+}
+
 test('the keyboard palette opens a non-mutating stash review and returns focus on Escape', async ({ page }) => {
   const opener = page.getByRole('button', { name: 'Command palette', exact: true });
   await opener.focus();
@@ -201,6 +249,102 @@ test('stash selections follow the mode and do not send hidden or ineligible path
     mode: 'staged-only', includeUntracked: false, paths: ['staged.rs'], message: '',
   } } }]);
 });
+
+test('select all in a partial stash list explicitly saves only loaded files', async ({ page }) => {
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    const repo = git.repository();
+    git.repositories.update((repos: any[]) => repos.map(item => item.id === repo.id ? {
+      ...repo, status: { ...repo.status, entriesTruncated: true, entryCount: 2000,
+        staged: 0, unstaged: 2000, untracked: 0, conflicted: 0,
+        entries: [{ path: 'loaded.txt', indexStatus: ' ', worktreeStatus: 'M', conflicted: false }] },
+    } : item));
+  });
+  await page.getByRole('button', { name: 'Stash options', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Stash with options/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Stash with options' });
+  await dialog.getByText('Choose specific files', { exact: true }).click();
+  await dialog.getByLabel('Save only selected files').check();
+  await dialog.getByRole('button', { name: 'Select all loaded eligible files', exact: true }).click();
+  await expect(dialog.getByRole('checkbox', { name: 'Stash loaded.txt', exact: true })).toBeChecked();
+  await expect(dialog).toContainText('1 of 1 loaded eligible files selected');
+  const filter = dialog.getByRole('searchbox', { name: 'Filter files to stash' });
+  await filter.fill('missing');
+  await expect(dialog.getByRole('checkbox', { name: 'Stash loaded.txt', exact: true })).toHaveCount(0);
+  await expect(dialog).toContainText('1 of 1 loaded eligible files selected');
+  await filter.press('Escape');
+  await expect(filter).toHaveValue('');
+  await expect(dialog.getByRole('checkbox', { name: 'Stash loaded.txt', exact: true })).toBeChecked();
+  await filter.fill('missing');
+  await dialog.getByRole('button', { name: 'Create stash' }).click();
+  await expect(dialog).toHaveCount(0);
+  const saves = await page.evaluate(() => (window as any).__stashCalls.filter((call: any) => call.command === 'stash_selected'));
+  expect(saves).toEqual([{ command: 'stash_selected', args: { repoId: expect.any(String), options: {
+    mode: 'all', includeUntracked: true, paths: ['loaded.txt'], message: '',
+  } } }]);
+});
+
+for (const moveFocus of [false, true]) {
+  test(`loading more stash files preserves the selection and ${moveFocus ? 'does not steal' : 'returns'} keyboard focus`, async ({ page }) => {
+    await page.evaluate(() => {
+      const w = window as any;
+      const { git } = w.ng.getComponent(document.querySelector('gk-app'));
+      const repo = git.repository();
+      const entry = (path: string) => ({ path, indexStatus: ' ', worktreeStatus: 'M', conflicted: false });
+      const status = { ...repo.status, entriesTruncated: true, entryCount: 2,
+        staged: 0, unstaged: 2, untracked: 0, conflicted: 0, entries: [entry('first.txt')] };
+      git.repositories.update((repos: any[]) => repos.map(item => item.id === repo.id ? { ...repo, status } : item));
+      const invoke = w.__TAURI_INTERNALS__.invoke;
+      w.__TAURI_INTERNALS__.invoke = (command: string, args: any) => command === 'load_more_changes'
+        ? new Promise((resolve, reject) => {
+          w.__finishStashPage = () => resolve({
+            ...status, entriesTruncated: false, entries: [...status.entries, entry('second.txt')],
+          });
+          w.__failStashPage = () => reject(new Error('Could not load the next page'));
+        })
+        : invoke(command, args);
+    });
+    await page.getByRole('button', { name: 'Stash options', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^Stash with options/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'Stash with options' });
+    await dialog.getByText('Choose specific files', { exact: true }).click();
+    const selectedOnly = dialog.getByLabel('Save only selected files');
+    await selectedOnly.check();
+    const first = dialog.getByRole('checkbox', { name: 'Stash first.txt' });
+    const second = dialog.getByRole('checkbox', { name: 'Stash second.txt' });
+    await first.check();
+    const more = dialog.getByRole('button', { name: 'Load more files to select' });
+    await more.press('Enter');
+    await expect(dialog.getByRole('button', { name: 'Loading more files…' })).toBeFocused();
+    if (!moveFocus) {
+      await page.evaluate(() => (window as any).__failStashPage());
+      await expect(dialog.getByRole('alert')).toContainText('Could not load the next page');
+      await expect(page.locator('gk-error-toast')).toHaveCount(0);
+      await expect(first).toBeChecked();
+      await expect(more).toBeFocused();
+      await more.press('Enter');
+      await expect(dialog.getByRole('button', { name: 'Loading more files…' })).toBeFocused();
+    }
+    if (moveFocus) await first.focus();
+    await page.evaluate(() => (window as any).__finishStashPage());
+    await expect(moveFocus ? first : selectedOnly).toBeFocused();
+    await expect(first).toBeChecked();
+    await expect(second).toBeVisible();
+    await expect(second).not.toBeChecked();
+    const filter = dialog.getByRole('searchbox', { name: 'Filter files to stash' });
+    await filter.fill('SECOND');
+    await expect(first).toHaveCount(0);
+    const matching = dialog.getByRole('button', { name: 'Select matching files', exact: true });
+    await matching.click();
+    await expect(matching).toBeDisabled();
+    await expect(second).toBeChecked();
+    await expect(dialog).toContainText('2 of 2 eligible files selected');
+    await filter.press('Escape');
+    await expect(first).toBeChecked();
+    await expect(second).toBeChecked();
+    expect(await page.evaluate(() => (window as any).__stashCalls.filter((call: any) => call.command === 'stash_selected'))).toEqual([]);
+  });
+}
 
 test('apply options restore the index using the selected immutable stash', async ({ page }) => {
   const row = page.locator('.commit-row.stash-row').first();

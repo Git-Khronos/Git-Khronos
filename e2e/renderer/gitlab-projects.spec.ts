@@ -38,12 +38,14 @@ test.beforeEach(async ({ page }) => {
     app.commitMessage.set('Owned retained GitLab commit draft');
     const repositories = structuredClone(app.git.repositories());
     const fixture = { calls: [] as any[], connections: [] as any[], next: 0, hold: '',
-      release: null as (() => void) | null, fail: '', lostDisconnectReply: false, wrongAccount: false, wrongCapability: false };
+      release: null as (() => void) | null, fail: '', failMessage: '', lostDisconnectReply: false, wrongAccount: false, wrongCapability: false };
     (window as any).__gitlab = fixture;
     (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string, args: any) => {
       // This protocol fixture contains synthetic data only, never real credentials.
       fixture.calls.push({ command, args: structuredClone(args) });
-      if (fixture.fail === command) throw { kind: 'gitlabOwnedRefusal', message: 'Owned GitLab request refused.' };
+      if (fixture.fail === command) throw {
+        kind: 'gitlabOwnedRefusal', message: fixture.failMessage || 'Owned GitLab request refused.',
+      };
       let result: any;
       if (command === 'refresh_repository_status') {
         const repository = repositories.find((candidate: any) => candidate.id === args.repoId);
@@ -82,7 +84,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('GitLab connect clears its token, loads only explicitly, and keeps reads separate from Git mutations', async ({ page }) => {
+test('GitLab connect clears its token, loads only explicitly, and keeps reads separate from Git mutations', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   const panel = await connect(page);
   await expect(panel.getByLabel('Personal access token', { exact: true })).toHaveValue('');
   expect(await calls(page, 'load_gitlab_projects')).toHaveLength(0);
@@ -113,17 +115,22 @@ test('changing the selected instance clears a previously entered token and Enter
   expect(await calls(page, 'clone_repository')).toHaveLength(0);
 });
 
-test('connection failure retains the instance and focuses original feedback without retaining the token', async ({ page }) => {
+test('TCP refusal explains the failed connection without retaining the token or retrying', async ({ page }) => {
   const panel = await open(page);
-  await page.evaluate(() => { (window as any).__gitlab.fail = 'connect_gitlab_account'; });
+  await page.evaluate(() => {
+    const fixture = (window as any).__gitlab;
+    fixture.fail = 'connect_gitlab_account';
+    fixture.failMessage = 'A verified HTTPS read from GitLab could not complete. The TCP connection was refused.';
+  });
   await panel.getByLabel('HTTPS instance', { exact: true }).fill('https://gitlab.example.test');
   await panel.getByLabel('Personal access token', { exact: true }).fill(TOKEN);
   await panel.getByRole('button', { name: 'Connect to GitLab', exact: true }).click();
-  await expect(panel.getByRole('alert')).toContainText('Owned GitLab request refused.');
+  await expect(panel.getByRole('alert')).toContainText('The TCP connection was refused.');
   await expect(panel.getByRole('alert')).toBeFocused();
   await expect(panel.getByLabel('Personal access token', { exact: true })).toHaveValue('');
   await expect(panel.getByLabel('HTTPS instance', { exact: true })).toHaveValue('https://gitlab.example.test');
   await expect(panel.getByRole('combobox', { name: 'Connected account', exact: true })).toHaveValue('');
+  expect(await calls(page, 'connect_gitlab_account')).toHaveLength(1);
 });
 
 test('literal query filters and explicit pagination retain the selected native account identity', async ({ page }) => {

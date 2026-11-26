@@ -237,11 +237,11 @@ export interface HistorySearchOpenOptions {
     .primary-action { min-height: 34px; border: 1px solid color-mix(in srgb, var(--accent) 70%, var(--border)); border-radius: 6px; padding: 6px 14px; color: var(--on-accent, #fff); background: var(--accent); font-weight: 650; white-space: nowrap; }
     .primary-action:not(:disabled, [aria-disabled=true]):hover { filter: brightness(1.08); }
     .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: var(--muted); }
-    .icon-button:hover { color: var(--text); background: var(--hover); }
+    .icon-button:hover { color: var(--text); background: var(--surface-hover); }
     details { min-width: 0; }
     summary { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 34px; cursor: pointer; list-style: none; border-radius: 5px; padding: 0 6px; }
     summary::-webkit-details-marker { display: none; }
-    summary:hover { background: var(--hover); }
+    summary:hover { background: var(--surface-hover); }
     .summary-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; font-weight: 650; }
     .summary-label gk-icon { color: var(--muted); }
     .disclosure-icon { color: var(--muted); transition: transform 120ms ease; }
@@ -274,8 +274,8 @@ export interface HistorySearchOpenOptions {
     .results:empty { display: none; }
     .result-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 48px; padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--border); }
     .result-row:last-child { border-bottom: 0; }
-    .result-row:hover { background: var(--hover); }
-    .result-row:active { background: color-mix(in srgb, var(--accent) 9%, var(--hover)); }
+    .result-row:hover { background: var(--surface-hover); }
+    .result-row:active { background: color-mix(in srgb, var(--accent) 9%, var(--surface-hover)); }
     .commit-mark { display: inline-flex; color: var(--accent); }
     .result-copy { display: grid; gap: 3px; min-width: 0; }
     .result-subject { overflow: hidden; color: var(--text); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -284,7 +284,7 @@ export interface HistorySearchOpenOptions {
     code { color: var(--accent); font-family: var(--font-mono, ui-monospace, monospace); font-size: inherit; }
     .result-arrow { color: var(--muted); }
     .load-more { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; min-height: 32px; border: 1px solid var(--border); border-radius: 6px; color: var(--text); background: var(--surface); font-size: 12px; font-weight: 650; }
-    .load-more:not([aria-disabled=true]):hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--hover); }
+    .load-more:not([aria-disabled=true]):hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); background: var(--surface-hover); }
     .empty-state { display: flex; align-items: center; gap: 12px; min-height: 74px; border: 1px dashed var(--border); border-radius: 7px; padding: 12px; }
     .empty-state strong { display: block; font-size: 12px; }
     .empty-state p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }

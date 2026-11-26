@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 
+from native_repository_navigation import open_gitlab_catalogue
+
 
 def wait_for_ssh_clone_outcome(driver, journal):
     outcome = driver.wait("""
@@ -19,8 +21,15 @@ def wait_for_ssh_clone_outcome(driver, journal):
         with (journal.parent / "server.log").open("rb") as log:
             tail = log.seek(0, os.SEEK_END)
             log.seek(max(0, tail - 8192))
-            if b"not allowed because account is locked" in log.read(8192):
+            recent = log.read(8192)
+            if b"not allowed because account is locked" in recent:
                 note = " The private SSH fixture refused the locked login; run it with an unlocked disposable account."
+            elif b"error while loading shared libraries:" in recent:
+                note = " A private OpenSSH fixture executable could not load its shared libraries; use a prepared test image."
+            elif b"Accepted publickey" in recent and not journal.exists():
+                note = " The private SSH fixture accepted a key, but the owned Git command did not reach its journal."
+            elif b"Accepted publickey" not in recent and not journal.exists():
+                note = " No accepted key or owned Git operation was recorded by the private SSH fixture."
     except OSError:
         pass
     message = outcome["message"].rstrip(".")
@@ -40,10 +49,7 @@ def gitlab_ssh_clone(driver, fixtures, original_repository, report, connection,
     (gate / "project-overrides.json").write_text(json.dumps({"ssh_url_to_repo": url}))
     try:
         open_ui(driver, original_repository)
-        driver.click('[aria-label="New repository tab"]')
-        driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
-        button("Browse GitLab projects")
+        open_gitlab_catalogue(driver)
         driver.wait("return !!document.querySelector('#gitlab-account') && !document.querySelector('#gitlab-account').matches(':disabled') && [...document.querySelector('#gitlab-account').options].some(option => option.value === " + json.dumps(connection["connectionId"]) + ")")
         driver.script("""const select=document.querySelector('#gitlab-account');
           select.value=arguments[0];select.dispatchEvent(new Event('change',{bubbles:true}));""", connection["connectionId"])

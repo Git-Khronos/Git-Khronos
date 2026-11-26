@@ -29,6 +29,7 @@ const UNREPAIRED = {
 const REPAIRED = { ...UNREPAIRED, shortcuts: [START_ROW, shortcut('taskbarPin', PIN, 'works', 'matching', IDENTITY), UNREPAIRED.shortcuts[2]] };
 
 async function mock(page: Page, responses: { inspect: unknown[]; repair?: unknown }, wsl = true) {
+  await expect(page.locator('gk-app')).toBeAttached();
   await page.evaluate(({ responses, wsl }) => {
     const calls: Array<{ command: string; args: any }> = [];
     const inspections = [...responses.inspect];

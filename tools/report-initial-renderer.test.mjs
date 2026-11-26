@@ -101,6 +101,25 @@ test('CLI cross-checks file sizes against metadata in the selected output direct
   }
 });
 
+test('the production gate accepts its warning boundary but records and fails one byte above it', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-initial-renderer-budget-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const browser = join(root, 'browser');
+  const cli = fileURLToPath(new URL('./report-initial-renderer.mjs', import.meta.url));
+  mkdirSync(browser);
+  writeFileSync(join(browser, 'index.html'), '<script type="module" src="main.js"></script>');
+  for (const bytes of [900_000, 900_001]) {
+    writeFileSync(join(browser, 'main.js'), Buffer.alloc(bytes));
+    writeFileSync(join(root, 'browser-stats.json'), JSON.stringify({ outputs: { 'main.js': { bytes, imports: [] } } }));
+    const result = spawnSync(process.execPath, [cli, root, '--record', '--enforce-warning'], { encoding: 'utf8' });
+    assert.equal(result.status, bytes === 900_000 ? 0 : 1, result.stderr);
+    if (bytes > 900_000) assert.match(result.stderr, /warning budget by 1 bytes/);
+    const report = JSON.parse(readFileSync(join(root, 'initial-renderer.json'), 'utf8'));
+    assert.equal(report.initialBytes, bytes);
+    assert.equal(report.warningOverageBytes, bytes - 900_000);
+  }
+});
+
 test('compares two emitted builds without counting lazy files or rewriting reports', () => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-renderer-compare-'));
   try {

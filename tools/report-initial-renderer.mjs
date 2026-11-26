@@ -117,9 +117,10 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
   try {
     const args = process.argv.slice(2);
     const compare = args.length === 3 && args[0] === '--compare' && args.slice(1).every(arg => !arg.startsWith('--'));
-    const record = args.length === 2 && args[1] === '--record';
+    const enforceWarning = args.length === 3 && args[1] === '--record' && args[2] === '--enforce-warning';
+    const record = enforceWarning || (args.length === 2 && args[1] === '--record');
     if (!compare && ((!record && args.length !== 1) || args[0].startsWith('--'))) {
-      throw new Error('Usage: node tools/report-initial-renderer.mjs BUILD-OUTPUT-DIRECTORY [--record]\n'
+      throw new Error('Usage: node tools/report-initial-renderer.mjs BUILD-OUTPUT-DIRECTORY [--record [--enforce-warning]]\n'
         + '   or: node tools/report-initial-renderer.mjs --compare BASELINE-DIRECTORY CANDIDATE-DIRECTORY');
     }
     const angular = JSON.parse(readFileSync(new URL('../angular.json', import.meta.url), 'utf8'));
@@ -136,6 +137,9 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
       const json = JSON.stringify(report, null, 2);
       if (!record) console.log(json);
       else recordRendererReport(directory, report, json);
+      if (enforceWarning && report.warningOverageBytes > 0) {
+        throw new Error(`Initial renderer exceeds its warning budget by ${report.warningOverageBytes} bytes. See initial-renderer.json for the eager assets.`);
+      }
     }
   } catch (error) {
     console.error(error.message);

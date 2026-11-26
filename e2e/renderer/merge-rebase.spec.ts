@@ -30,7 +30,11 @@ test.beforeEach(async ({ page }) => {
       if (command === 'prepare_merge_rebase') {
         if (fixture.refused) return Promise.reject({ kind: 'shallowMergeRebase',
           message: 'Merge-preserving review requires complete history.', hint: 'Deepen and reload the complete review.' });
-        if (fixture.deferred) return new Promise(resolve => { fixture.finish = () => resolve(fixture.plan); });
+        if (fixture.deferred) return new Promise((resolve, reject) => {
+          fixture.finish = () => fixture.refused
+            ? reject({ kind: 'shallowMergeRebase', message: 'Merge-preserving review requires complete history.' })
+            : resolve(fixture.plan);
+        });
         return Promise.resolve(fixture.plan);
       }
       if (command === 'execute_merge_rebase') {
@@ -150,27 +154,52 @@ test('preparation refusal is explicit and retry never substitutes ordinary flatt
   expect(calls.some((call: any) => call.command === 'execute_interactive_rebase' || call.command === 'execute_merge_rebase')).toBe(false);
 });
 
-test('late preparation after switching away and back cannot reopen captured merge review', async ({ page }) => {
+test('a slow merge review has a keyboard-dismissable waiting state that owns its result', async ({ page }) => {
   await page.evaluate(() => { (window as any).__mergeRebase.deferred = true; });
-  await openReview(page);
-  await expect.poll(() => page.evaluate(() => !!(window as any).__mergeRebase.finish)).toBe(true);
-  await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
-    const source = (window as any).__mergeRebase.original;
-    app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'merge-other', path: '/owned/other' }]);
-    app.git.activateRepository('merge-other');
-  });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId())).toBe('merge-other');
-  await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
-    app.git.activateRepository((window as any).__mergeRebase.original.id);
-  });
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId()))
-    .toBe(await page.evaluate(() => (window as any).__mergeRebase.original.id));
-  await page.evaluate(() => { (window as any).__mergeRebase.finish(); });
+  await openReview(page, true);
+  const pending = page.getByRole('dialog', { name: 'Preparing merge-preserving rebase', exact: true });
+  const close = pending.getByRole('button', { name: 'Close review', exact: true });
+  await expect(pending.getByRole('status')).toContainText('No history changes have been made');
+  await expect(close).toBeFocused();
+  await close.press('Shift+Tab');
+  await expect(close).toBeFocused();
+  await close.press('Escape');
+  await expect(pending).toHaveCount(0);
+  await expect(page.locator('.branch-item').filter({ hasText: 'merge-destination' })).toBeFocused();
+  await page.evaluate(() => (window as any).__mergeRebase.finish());
   await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
   await expect(page.getByRole('dialog', { name: 'Rebase preserving merges', exact: true })).toHaveCount(0);
+  expect((await page.evaluate(() => (window as any).__mergeRebase.calls))
+    .some((call: any) => call.command === 'execute_merge_rebase')).toBe(false);
 });
+
+for (const refused of [false, true]) {
+  test(`late preparation ${refused ? 'failure' : 'success'} after switching away and back stays out of the active checkout`, async ({ page }) => {
+    await page.evaluate(() => { (window as any).__mergeRebase.deferred = true; });
+    await openReview(page);
+    await expect.poll(() => page.evaluate(() => !!(window as any).__mergeRebase.finish)).toBe(true);
+    await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      const source = (window as any).__mergeRebase.original;
+      app.git.repositories.update((items: any[]) => [...items, { ...source, id: 'merge-other', path: '/owned/other' }]);
+      app.git.activateRepository('merge-other');
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId())).toBe('merge-other');
+    await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      app.git.activateRepository((window as any).__mergeRebase.original.id);
+    });
+    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.activeRepositoryId()))
+      .toBe(await page.evaluate(() => (window as any).__mergeRebase.original.id));
+    await page.evaluate(refused => {
+      (window as any).__mergeRebase.refused = refused;
+      (window as any).__mergeRebase.finish();
+    }, refused);
+    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
+    await expect(page.getByRole('dialog', { name: 'Rebase preserving merges', exact: true })).toHaveCount(0);
+    await expect(page.locator('.error-toast')).toHaveCount(0);
+  });
+}
 
 test('loaded merge review closes on repository switch without rewriting another repository', async ({ page }) => {
   await openReview(page);

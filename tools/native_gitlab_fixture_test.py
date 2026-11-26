@@ -1,6 +1,7 @@
 """Qualify the owned TLS fixture before trusting packaged GitLab acceptance."""
 import json
 from pathlib import Path
+import socket
 import ssl
 import subprocess
 import time
@@ -10,7 +11,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import HTTPSHandler, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from native_acceptance import Fixtures, stop_owned_process_group
-from native_gitlab_scenarios import start_gitlab_fixture
+from native_gitlab_scenarios import _diagnose_owned_tls, _owned_accept_count, start_gitlab_fixture
 from native_gitlab_git_fixture import prepare_git_https
 
 
@@ -20,6 +21,48 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 class GitLabFixtureTests(unittest.TestCase):
+    def test_idle_tcp_client_does_not_block_another_tls_handshake(self):
+        children = []
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            with (Path(directory) / "fixture.log").open("w") as log:
+                try:
+                    start_gitlab_fixture(fixtures, children, log, {})
+                    port = int(fixtures.gitlab_origin.rsplit(":", 1)[1])
+                    gate = fixtures.gitlab_gate
+                    self.assertEqual(_owned_accept_count(gate), 1)
+                    with socket.create_connection(("127.0.0.1", port), timeout=2):
+                        deadline = time.monotonic() + 2
+                        while _owned_accept_count(gate) != 2 and time.monotonic() < deadline:
+                            time.sleep(.01)
+                        self.assertEqual(_owned_accept_count(gate), 2)
+                        self.assertEqual(_diagnose_owned_tls(gate, port), "negotiated")
+                        self.assertEqual(_owned_accept_count(gate), 3)
+                    self.assertFalse((gate / "requests.jsonl").exists())
+                finally:
+                    for child in reversed(children):
+                        stop_owned_process_group(child)
+                        child.stdout.close()
+
+    def test_tls_refusal_diagnostic_checks_only_the_owned_listener_without_http(self):
+        children = []
+        with tempfile.TemporaryDirectory() as directory:
+            fixtures = Fixtures(directory)
+            with (Path(directory) / "fixture.log").open("w") as log:
+                try:
+                    start_gitlab_fixture(fixtures, children, log, {})
+                    port = int(fixtures.gitlab_origin.rsplit(":", 1)[1])
+                    gate = fixtures.gitlab_gate
+                    self.assertEqual(_diagnose_owned_tls(gate, port), "negotiated")
+                    self.assertFalse((gate / "requests.jsonl").exists())
+                    stop_owned_process_group(children[0])
+                    self.assertEqual(_diagnose_owned_tls(gate, port), "listener-refused")
+                    self.assertFalse((gate / "requests.jsonl").exists())
+                finally:
+                    for child in reversed(children):
+                        stop_owned_process_group(child)
+                        child.stdout.close()
+
     def test_private_trust_verified_origin_redacted_log_and_owned_redirect(self):
         children = []
         with tempfile.TemporaryDirectory() as directory:
@@ -44,10 +87,15 @@ class GitLabFixtureTests(unittest.TestCase):
                     request = Request(url, headers={"PRIVATE-TOKEN": "owned-api-fixture-token"})
                     with trusted.open(request, timeout=5) as response:
                         self.assertEqual(json.load(response), {"id": 41, "username": "owned-reader"})
-                    observed_tls = [json.loads(line) for line in (gate / "tls-observations.jsonl").read_text().splitlines()]
-                    self.assertEqual([item["outcome"] for item in observed_tls], ["negotiated", "tls-error", "negotiated"])
+                    deadline = time.monotonic() + 2
+                    while True:
+                        observed_tls = [json.loads(line) for line in (gate / "tls-observations.jsonl").read_text().splitlines()]
+                        if len(observed_tls) >= 3 or time.monotonic() >= deadline:
+                            break
+                        time.sleep(.01)
+                    self.assertCountEqual([item["outcome"] for item in observed_tls], ["negotiated", "tls-error", "negotiated"])
                     self.assertEqual(observed_tls[0], {"destination": False, "outcome": "negotiated", "reason": None})
-                    self.assertEqual(observed_tls[2], {"destination": False, "outcome": "negotiated", "reason": None})
+                    self.assertIn({"destination": False, "outcome": "negotiated", "reason": None}, observed_tls[1:])
                     self.assertTrue(all(set(item) == {"destination", "outcome", "reason"} for item in observed_tls))
                     (gate / "mode").write_text("redirect-302")
                     with self.assertRaises(HTTPError) as failure:

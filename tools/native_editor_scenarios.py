@@ -194,7 +194,11 @@ def working_file_editor(driver, fixtures, original_repository, report):
         assert index_bytes(ui_path) == encode_le('saved through WebKit\r\n')
         driver.screenshot(Path(report['artifactsDirectory']) / 'working-file-editor-inert-markdown.png')
         button('Edit text')
-        assert driver.script("return document.querySelector('#working-editor-text').value") == markdown
+        # The mode switch is asynchronous. Read the value in the same poll
+        # that observes the new editor, then assert the unmodified draft.
+        reopened = driver.wait("""const editor = document.querySelector('#working-editor-text');
+          return editor?.getClientRects().length ? {value: editor.value} : null;""")
+        assert reopened['value'] == markdown
         button('Back to preview')
         button('Discard draft')
         driver.wait("return !document.querySelector('gk-working-file-editor')")

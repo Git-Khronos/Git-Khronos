@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isCliEntry } from './cli-entry.mjs';
 
 const REPO = 'Git-Khronos/Git-Khronos';
 const WORKFLOW = '.github/workflows/release.yml';
@@ -35,7 +35,7 @@ async function json(path, limit) {
   return JSON.parse(await readFile(path, 'utf8'));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isCliEntry(import.meta)) {
   try {
     const [runPath, runId, candidatePath, tag, commit] = process.argv.slice(2);
     const run = await json(runPath, 128 * 1024);

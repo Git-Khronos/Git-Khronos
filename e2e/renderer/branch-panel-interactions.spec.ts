@@ -394,7 +394,8 @@ test('keeps branch reference navigation and context menus available during a mut
   const menu = page.locator('.context-menu');
   await expect(menu.getByRole('menuitem', { name: /^Merge \S+ into / })).toBeDisabled();
   await expect(menu.getByRole('menuitem', { name: /^Merge or rebase into / })).toBeDisabled();
-  await expect(menu.getByRole('menuitem', { name: /^Copy / })).toBeEnabled();
+  await expect(menu.getByRole('menuitem', { name: 'Copy branch name', exact: true })).toBeEnabled();
+  await expect(menu.getByRole('menuitem', { name: 'Copy full ref', exact: true })).toBeEnabled();
   await page.keyboard.press('Escape');
 
   const remote = page.locator('.remote-branch-item').first();
@@ -403,7 +404,8 @@ test('keeps branch reference navigation and context menus available during a mut
   await expect(remote).toHaveClass(/tip-selected/);
   await remote.click({ button: 'right' });
   await expect(menu.getByRole('menuitem', { name: 'Fetch and check out local branch' })).toBeDisabled();
-  await expect(menu.getByRole('menuitem', { name: /Copy/ })).toBeEnabled();
+  await expect(menu.getByRole('menuitem', { name: 'Copy remote branch name', exact: true })).toBeEnabled();
+  await expect(menu.getByRole('menuitem', { name: 'Copy full ref', exact: true })).toBeEnabled();
   await page.keyboard.press('Escape');
   await remote.dblclick();
   expect(await page.evaluate(() => window.__branchCalls)).toEqual([
@@ -418,7 +420,8 @@ test('keeps branch reference navigation and context menus available during a mut
   await graphLocal.click({ button: 'right' });
   await expect(menu.getByRole('menuitem', { name: /^Merge \S+ into / })).toBeDisabled();
   await expect(menu.getByRole('menuitem', { name: /^Merge or rebase into / })).toBeDisabled();
-  await expect(menu.getByRole('menuitem', { name: /^Copy / })).toBeEnabled();
+  await expect(menu.getByRole('menuitem', { name: 'Copy branch name', exact: true })).toBeEnabled();
+  await expect(menu.getByRole('menuitem', { name: 'Copy full ref', exact: true })).toBeEnabled();
   await page.evaluate(() => window.__completeBranchMutation());
   await expect(form).toHaveCount(0);
 });

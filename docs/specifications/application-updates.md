@@ -8,6 +8,9 @@ privileged installation are not yet qualified.
 
 - Provide an application-level **Updates** menu entry with a manual check and
   explicit download/install controls. It must work without an open repository.
+- With a repository open, searching the command palette for **Application
+  Updates** or **check for updates** opens the same dialog. Opening it does
+  not check for updates or change automatic consent.
 - Provide an **Enable automatic updates** setting, disabled by default. Turning
   it off must not remove manual checks or install an already downloaded update.
 - Automatic mode may check/download/verify in the background and install only at
@@ -210,6 +213,23 @@ build and runtime evidence without asserting installation or the Ubuntu ABI.
 An extracted-package report cannot qualify a release. The release stager
 separately verifies the actual package bytes.
 
+After offline staging, you can rehearse manifest consumption using the real
+updater library in a mock app runtime. Supply the prepared assets, the same
+public key, the qualified digest and an older baseline version:
+
+```sh
+GIT_KHRONOS_STAGED_RELEASE_DIR="$STAGED_DIRECTORY" \
+GIT_KHRONOS_STAGED_PUBLIC_KEY="$PUBLIC_KEY_FILE" \
+GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256="$QUALIFIED_PACKAGE_SHA256" \
+GIT_KHRONOS_STAGED_BASELINE_VERSION="$BASELINE_VERSION" \
+  cargo test --locked -p git-khronos-desktop --example stage-debian-update \
+  qualified_release_can_be_consumed_offline -- --ignored
+```
+
+The test requires no private key. It verifies that the older runtime
+accepts the offer and package signature, and that the offered version
+receives no upgrade. It does not fetch, authorize or install an update.
+
 With `PACKAGE` (absolute path), `VERSION`, `PRIVATE_KEY_FILE`, `PUBLIC_KEY_FILE`,
 `STAGING_PARENT` (existing directory), and `QUALIFIED_PACKAGE_SHA256` set:
 
@@ -226,9 +246,10 @@ The stager prints a new directory containing the verified package, a
 `latest.json` manifest, and `update-assets.sha256`. It streams the signed bytes
 into owned staging, checks the exact qualified digest, and rejects mismatched
 package metadata, architecture, and signed version. No signing secret is needed
-for staging. Publication is a separate operation: the matching release tag and
-asset name must agree with the staged URL. The current release workflow does not
-publish these assets automatically.
+for staging. Neither qualification nor local staging publishes anything. The
+separate **Publish signed Debian release** workflow can publish only when
+publication is explicitly enabled and the protected environment approves it.
+The release tag and asset name must match the staged URL.
 
 Installations built without the public key need a one-time manual upgrade to a
 trusted build. They cannot use a release manifest to establish trust in its own
@@ -304,26 +325,38 @@ changes and deletion.
 2. Dispatch **Qualify Debian release candidate** on `main` with the existing
    stable tag (for example, `v0.1.6`). Wait for the whole run to pass. Download
    `debian-candidate-<attempt>` and `debian-candidate-evidence-<attempt>`
-   from that run. The package is built once, qualifies unchanged in the five
-   installed-runtime jobs, and additionally passes the publisher trust and
-   default-off checks on Jammy. If a rerun does not produce both artifacts
-   under its own attempt, start a fresh candidate run rather than mixing attempts.
+   plus all `debian-runtime-reports-<attempt>-*` artifacts from that run.
+   The package is built once and qualifies unchanged on five Linux baselines.
+   The Jammy publisher suite runs separately from Jammy smoke and GitLab.
+   If a rerun does not produce the complete artifact set under its own
+   attempt, start a fresh candidate run rather than mixing attempts.
 3. Use the downloaded `.deb`, `build-receipt.json`, and evidence
    `report.json` for the strict preflight and offline signature command above.
+   Preserve the runtime artifacts in separate directories under
+   `candidate-matrix/`. Before signing, verify the installed matrix with
+   `node tools/report-installed-acceptance.mjs --verify-release "$BUILD_RECEIPT" "$PUBLIC_KEY_FILE" "$PACKAGE" --reports-dir candidate-matrix`.
    Sign those exact package bytes without rebuilding. The artifact is retained
    for seven days; preserve it and the evidence separately for longer reviews.
 4. Dispatch **Publish signed Debian release** on `main` with the tag, candidate
    run ID, and only the **public** `.deb.sig` content. The read-only verification
    job checks the successful run, attempt, exact tag commit, qualification
-   digest, and publisher signature before creating `latest.json`. With
+   digest, installed matrix, and publisher signature before creating
+   `latest.json`. Reviewers can download the verified matrix separately
+   from the signed assets. With
    publication disabled, the workflow stops after retaining the five verified
    assets for review. To approve an enabled release, review the workflow inputs
    and verification outcome in the protected deployment.
 5. The write job rechecks the transferred files and tag and refuses to replace
    the current stable release with an equal or older version. It publishes only
    the installer, signed manifest, two inventories, and checksums. Confirm the
-   public manifest matches the staged manifest and smoke-test the update check
-   from a supported installation with the matching pinned key. An already
+   public manifest matches the staged manifest. In a disposable supported
+   installation with an **older version and the same pinned production key**,
+   check for the offer, verify the signed download, install it, restart, and
+   confirm the new version reports no further update. A baseline without that
+   key must be upgraded manually; a check from the just-published version
+   cannot prove upgrade behavior. If this is the first release with that key
+   and no trusted older baseline is available, record the live upgrade as
+   unverified rather than substituting the offline rehearsal. An already
    published tag is not a repair target for this workflow.
 
 On Linux, a verified package can be downloaded even if the desktop cannot

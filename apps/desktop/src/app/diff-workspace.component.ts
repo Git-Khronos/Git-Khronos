@@ -4,7 +4,7 @@ import { FileBlameComponent } from './file-blame.component';
 import { FileHistoryComponent } from './file-history.component';
 import { FileMediaComponent } from './file-media.component';
 import { IconComponent } from './icon.component';
-import { renderDiffLines, splitRenderedDiff, tokenizeDiffLine } from './diff-rendering';
+import { diffMinimapMarks, renderDiffLines, splitRenderedDiff, tokenizeDiffLine } from './diff-rendering';
 
 @Component({
   selector: 'gk-diff-workspace',
@@ -39,10 +39,5 @@ export class DiffWorkspaceComponent {
       : []);
   });
 
-  protected readonly diffMapMarks = computed(() => {
-    const lines = this.diffLines();
-    return lines.flatMap((line, lineIndex) => line.kind === 'addition' || line.kind === 'deletion'
-      ? [{ kind: line.kind, position: lines.length <= 1 ? 0 : lineIndex / (lines.length - 1) * 100 }]
-      : []);
-  });
+  protected readonly diffMapMarks = computed(() => diffMinimapMarks(this.diffLines()));
 }

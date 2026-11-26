@@ -72,7 +72,7 @@
     <button type="button" role="menuitem" (click)="activate.emit('stashOptions')" [disabled]="!menu.changeCount || menu.busy"><gk-icon name="settings" [size]="13" /><span><strong>Stash with options…</strong><small>Choose which changes and files to save</small></span></button>
   }
   @case ('lfs') {
-    <div class="lfs-menu-status"><gk-icon name="server" [size]="15" /><span><strong>Git LFS</strong><small>{{ menu.lfs.available ? (menu.lfs.version || 'Available') : 'Not installed or unavailable' }}@if (menu.lfs.trackedFiles !== null) { · {{ menu.lfs.trackedFiles }} tracked {{ menu.lfs.trackedFiles === 1 ? 'file' : 'files' }} } @else if (menu.lfs.available) { · File counts unavailable }@if (menu.lfs.pointerFiles) { · {{ menu.lfs.pointerFiles }} not materialized }</small></span></div>
+    <div class="lfs-menu-status"><gk-icon name="server" [size]="15" /><span><strong>Git LFS</strong><small>{{ lfsCheckoutSummary(menu.lfs) }}</small></span></div>
     <div class="menu-separator"></div>
     <button type="button" role="menuitem" (click)="activate.emit('pullLfs')" [disabled]="menu.busy || !menu.lfs.available"><gk-icon name="pull" [size]="13" /><span><strong>Pull LFS objects</strong><small>Download objects needed by the current checkout</small></span></button>
     <button class="danger-item" type="button" role="menuitem" (click)="activate.emit('pruneLfs')" [disabled]="menu.busy || !menu.lfs.available"><gk-icon name="trash" [size]="13" /><span><strong>Clean LFS storage</strong><small>Review and remove unreferenced local objects</small></span></button>

@@ -2,22 +2,90 @@
 import json
 from pathlib import Path
 import re
+from unittest.mock import patch
 import uuid
-from native_repository_navigation import open_repository_dialog
+from native_repository_navigation import open_gitlab_catalogue
 
 
-_NAVIGATION_BUTTONS = frozenset({
-    'Browse GitLab projects', 'Return from forks to GitLab projects',
-    'Return from outcomes to GitLab projects', 'Open saved fork outcomes',
-    'Inspect saved fork outcomes',
+_SOURCE_PATH = 'team/subgroup/owned-project'
+_LOCAL_FORK_TRANSITIONS = frozenset({
+    ('gk-repository-dialog button', 'Browse GitLab projects'),
+    ('gk-gitlab-projects button', 'Return from forks to GitLab projects'),
+    ('gk-gitlab-fork-records button', 'Return from outcomes to GitLab projects'),
+    ('gk-gitlab-projects button', 'Open saved fork outcomes'),
+    ('gk-gitlab-fork-create button', 'Inspect saved fork outcomes'),
+    ('gk-gitlab-projects button', 'Browse forks of ' + _SOURCE_PATH),
+    ('gk-gitlab-projects button', 'Review a new GitLab fork'),
 })
 
 
 def click_fork_button(driver, selector, text):
-    """Use bounded stale-refusal recovery only for non-mutating navigation."""
-    if text in _NAVIGATION_BUTTONS:
-        return driver.click_navigation(selector, text, scroll=True)
-    return driver.click_scrolled_text(selector, text)
+    """Capture readiness and the target together; only local transitions may replay."""
+    if (selector, text) in _LOCAL_FORK_TRANSITIONS:
+        # A local control may follow an asynchronous catalogue read. Only
+        # its safe click is eligible for stale recovery, never the read.
+        return driver.click_navigation(selector, text, scroll=True, wait_for_ready=True, timeout=30)
+    return driver.click_scrolled_text(selector, text, wait_for_ready=True)
+
+
+def prove_stale_navigation_replacement(driver, report):
+    """Use real WebDriver stale handling on an inert, harness-owned control."""
+    selector = '#owned-stale-navigation-probe button'
+    text = 'Owned navigation probe'
+    old = driver.script("""const probe = document.createElement('div');
+      probe.id = 'owned-stale-navigation-probe';
+      probe.style.cssText = 'position:fixed;top:16px;left:16px;z-index:2147483647';
+      const button = document.createElement('button');
+      button.textContent = arguments[0];
+      probe.append(button);
+      document.body.append(probe);
+      return button;""", text)
+    try:
+        driver.script("""const old = arguments[0], next = old.cloneNode(true);
+          const probe = old.parentElement;
+          probe.dataset.clicks = '0';
+          probe.dataset.disabledClicks = '0';
+          const disabled = old.cloneNode(true);
+          disabled.setAttribute('aria-disabled', 'true');
+          disabled.addEventListener('click', () => ++probe.dataset.disabledClicks);
+          next.addEventListener('click', () => ++probe.dataset.clicks);
+          old.replaceWith(disabled, next);""", old)
+        # Pin the first dispatch to the detached element. The resulting stale
+        # response comes from WebDriver, not a simulated exception.
+        with patch.object(driver, 'click_text', side_effect=lambda *_: driver._click_element(old)) as first:
+            driver.click_navigation(selector, text)
+        assert first.call_count == 1
+        assert driver.script("""const data = document.querySelector('#owned-stale-navigation-probe').dataset;
+          return [data.clicks, data.disabledClicks];""") == ['1', '0']
+        # The next distinct navigation starts with both buttons present.
+        # Its initial lookup, too, must ignore the disabled duplicate.
+        driver.click_navigation(selector, text)
+        assert driver.script("""const data = document.querySelector('#owned-stale-navigation-probe').dataset;
+          return [data.clicks, data.disabledClicks];""") == ['2', '0']
+        # Model the Clone tab transition: the first real DOM poll sees two
+        # disabled controls, then the intended button becomes available.
+        execute = driver.script
+        execute("document.querySelector(arguments[0] + ':last-child').disabled = true", selector)
+        readiness_polls = []
+
+        def reveal_after_first_poll(*args, **kwargs):
+            result = execute(*args, **kwargs)
+            readiness_polls.append(len(result))
+            if len(readiness_polls) == 1:
+                assert result == [], "The first poll unexpectedly found a ready control"
+                execute("document.querySelector(arguments[0] + ':last-child').disabled = false", selector)
+            return result
+
+        with patch.object(driver, 'script', side_effect=reveal_after_first_poll):
+            driver.click_navigation(selector, text, scroll=True, wait_for_ready=True)
+        assert readiness_polls == [0, 1], readiness_polls
+        assert execute("""const data = document.querySelector('#owned-stale-navigation-probe').dataset;
+          return [data.clicks, data.disabledClicks];""") == ['3', '0']
+    finally:
+        driver.script("document.querySelector('#owned-stale-navigation-probe')?.remove()")
+    report['scenarios'].append('native-webdriver-explicit-stale-refusal-clicks-only-the-owned-replacement')
+    report['scenarios'].append('native-webdriver-initial-navigation-ignores-disabled-duplicate')
+    report['scenarios'].append('native-webdriver-waits-for-delayed-navigation-and-clicks-once')
 
 
 def gitlab_reviewed_forks(driver, fixtures, repository, report):
@@ -25,7 +93,7 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
     token = 'owned-api-fixture-token'
     namespace = {'id': 9007199254740993, 'name': 'Owned reader', 'path': 'owned-reader',
                  'full_path': 'owned-reader', 'kind': 'user'}
-    source_path = 'team/subgroup/owned-project'
+    source_path = _SOURCE_PATH
     before = {'refs': fixtures.git(repository, 'show-ref'),
               'index': (repository / '.git/index').read_bytes(),
               'config': (repository / '.git/config').read_bytes(),
@@ -47,20 +115,11 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         return matches[0]
 
     def button(text, scope='gk-gitlab-projects'):
-        selector = scope + ' button'
-        driver.wait('return [...document.querySelectorAll(' + json.dumps(selector) + ')].some(e => e.getClientRects().length && !e.matches(":disabled") && e.textContent.trim() === ' + json.dumps(text) + ')')
-        click_fork_button(driver, selector, text)
+        click_fork_button(driver, scope + ' button', text)
 
     def fill(selector, value, event='input'):
         driver.wait('return !!document.querySelector(' + json.dumps(selector) + ') && !document.querySelector(' + json.dumps(selector) + ').matches(":disabled")')
         driver.script("const e=document.querySelector(arguments[0]);e.value=arguments[1];e.dispatchEvent(new Event(arguments[2],{bubbles:true}));", selector, value, event)
-
-    def catalogue():
-        open_repository_dialog(driver)
-        driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-        driver.click_navigation('gk-repository-dialog [role=tab]', 'Clone')
-        button('Browse GitLab projects', 'gk-repository-dialog')
-        driver.wait("return !!document.querySelector('#gitlab-origin') && !document.querySelector('#gitlab-origin').matches(':disabled')")
 
     def connect(write):
         fill('#gitlab-origin', origin)
@@ -136,7 +195,7 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
                      '/api/v4/projects/101/forks?per_page=20&page=1&order_by=id&sort=asc': []}
         (gate / 'fork-resources.json').write_text(json.dumps(resources))
         (gate / 'project-overrides.json').write_text(json.dumps({'empty_repo': False, 'default_branch': 'main'}))
-        catalogue()
+        open_gitlab_catalogue(driver)
         read = connect(False)
         browse()
         assert driver.script("return [...document.querySelectorAll('gk-gitlab-forks button')].find(e=>e.textContent.trim()==='Review a new GitLab fork').matches(':disabled')")
@@ -193,7 +252,7 @@ def gitlab_reviewed_forks(driver, fixtures, repository, report):
         driver.wait("return !!document.querySelector('gk-root')")
         assert driver.invoke('gitlab_connections') == [] and len(posts()) == count
         assert row('lost-reply-project')['record']['phase'] == 'awaitingConfirmation'
-        catalogue()
+        open_gitlab_catalogue(driver)
         button('Open saved fork outcomes')
         driver.wait("return !!document.querySelector('gk-gitlab-fork-records ul')?.textContent.includes('lost-reply-project')")
         assert len(posts()) == count

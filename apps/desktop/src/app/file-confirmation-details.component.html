@@ -1,11 +1,11 @@
 @if (action(); as action) {
   @if (action.kind === 'discard-bulk' && choicePaths(); as paths) {
-    <section class="blocked-discard-choice" aria-label="Choose root-level files for a fresh discard review">
-      <p>No files have been changed. Select root-level files to review. A fresh preview is required before confirmation.</p>
+    <section class="blocked-discard-choice" aria-label="Choose eligible files for a fresh discard review">
+      <p>No files have been changed. Select eligible files to review. A fresh preview is required before confirmation.</p>
       @if (action.preview?.blockedPaths?.length) {
         <div class="blocked-discard-path-group">
           <p>Still blocked; these paths will remain unchanged:</p>
-          <ul class="discard-preview-paths">@for (path of action.preview.blockedPaths; track path) { <li>{{ path }}</li> }</ul>
+          <ul class="discard-preview-paths">@for (path of action.preview.blockedPaths; track path) { <li>{{ path }}@if (oversizedPaths().has(path)) { <span> · Too large to save for recovery</span> }</li> }</ul>
         </div>
       }
       @if (action.preview?.skippedPaths?.length) {
@@ -16,7 +16,7 @@
         </div>
       }
       <fieldset [disabled]="busy() || loading()">
-        <legend>Eligible root-level files</legend>
+        <legend>Eligible files</legend>
         <div class="blocked-discard-selection">
           <button type="button" [attr.aria-disabled]="paths.length === selectedPaths().length" (click)="selectAllChanged.emit(true)">Select all eligible</button>
           <button type="button" [attr.aria-disabled]="!selectedPaths().length" (click)="selectAllChanged.emit(false)">Clear selection</button>
@@ -30,7 +30,7 @@
             <code>{{ path }}</code>
           </label>
         } @empty {
-          <p>No root-level files are currently eligible.</p>
+          <p>No files are currently eligible.</p>
         }
       </fieldset>
       @if (error()) { <p class="blocked-discard-choice-error" role="alert">{{ error() }}</p> }
@@ -39,13 +39,13 @@
   } @else {
     @if (action.kind === 'discard-bulk' && action.preview; as preview) {
       @if (preview.blockedPaths.length) {
-        <p>This request is blocked as a whole because these subdirectory paths cannot be changed safely. No files will be discarded. To continue, choose root-level files for a fresh preview.</p>
-        <ul class="discard-preview-paths">@for (path of preview.blockedPaths; track path) { <li>{{ path }}</li> }</ul>
+        <p>This request is blocked as a whole because these subdirectory paths cannot be changed safely. No files will be discarded. To continue, choose eligible files for a fresh preview.</p>
+        <ul class="discard-preview-paths">@for (path of preview.blockedPaths; track path) { <li>{{ path }}@if (oversizedPaths().has(path)) { <span> · Too large to save for recovery</span> }</li> }</ul>
       } @else {
         <p>Restore tracked files to their staged contents and delete {{ preview.untracked }} untracked files. Staged contents and ignored files remain untouched. A recovery capture is saved before discarding and remains available after restart.</p>
       }
       @if (preview.paths.length) {
-        @if (preview.blockedPaths.length) { <p>Otherwise eligible root-level files, not changed:</p> }
+        @if (preview.blockedPaths.length) { <p>Eligible files, not changed:</p> }
         <ul class="discard-preview-paths">@for (path of preview.paths; track path) { <li>{{ path }}</li> }</ul>
       }
       @if (preview.skippedPaths.length) { <p>Also excluded: conflicts, submodule working trees, and nested repositories.</p><ul class="discard-preview-paths">@for (path of preview.skippedPaths; track path) { <li>{{ path }}</li> }</ul> }

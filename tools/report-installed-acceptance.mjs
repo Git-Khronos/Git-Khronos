@@ -4,9 +4,9 @@
 import { constants } from 'node:fs';
 import { lstat, open, opendir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { checkPackage } from './check-linux-abi.mjs';
-import { checkEvidenceWithReport } from './check-debian-update-evidence.mjs';
+import { isCliEntry } from './cli-entry.mjs';
+import { checkPackage, checkPackageIdentity } from './check-linux-abi.mjs';
+import { checkEvidenceWithReport, UPDATE_CONSENT_SCENARIO } from './check-debian-update-evidence.mjs';
 
 const MAX_REPORT_BYTES = 4 * 1024 * 1024;
 const MAX_REPORTS = 512;
@@ -16,6 +16,8 @@ const SMOKE_SCENARIO = 'native-ui-reviewed-checkpoint-deletion-preserves-sibling
 const GITLAB_SCENARIOS = [
   'native-gitlab-catalogue-preserves-independent-git-refs-index-config-and-working-tree',
   'native-gitlab-fork-lost-reply-private-outcome-survives-real-process-restart-without-credential-or-post-replay',
+  'native-webdriver-explicit-stale-refusal-clicks-only-the-owned-replacement',
+  'native-webdriver-initial-navigation-ignores-disabled-duplicate',
 ];
 
 // Keep the local checklist aligned with linux-package-acceptance.yml. It
@@ -50,6 +52,34 @@ const UBUNTU_NOBLE_REVIEWS = [
   ['discard-subset', [
     'native-ui-blocked-discard-returns-to-read-only-review-and-clears-selection',
     'native-ui-blocked-discard-confirms-only-reviewed-root-and-undo-restores-exact-state',
+    'native-discard-review-wraps-shift-tab-without-applying-the-preview',
+    'native-ui-direct-selection-discards-only-reviewed-path-and-undo-restores-bytes',
+    'native-ui-nested-tracked-discard-restores-index-and-undo-restores-working-bytes',
+    'native-ui-single-nested-file-discard-and-undo-preserve-index-and-head',
+    'native-ui-nested-lockfile-discard-preserves-index-and-sibling-edit',
+  ]],
+  ['discard-deletion', [
+    'native-ui-nested-deletion-discards-undoes-and-redoes-without-changing-index',
+    'native-palette-previews-all-unstaged-and-cancels-without-checkout-changes',
+    'native-text-undo-does-not-restore-discarded-repository-file',
+    'native-ui-trash-discards-nested-untracked-file-and-undo-restores-it',
+  ]],
+  ['discard-stale-review', [
+    'native-ui-single-discard-refuses-newer-working-edit-without-capture',
+    'native-ui-fresh-single-discard-after-stale-review-can-undo-newer-edit',
+    'native-ui-refused-keyboard-discard-returns-focus-and-keeps-files',
+  ]],
+  ['discard-large', [
+    'native-ui-discards-and-recovers-four-large-nested-untracked-files',
+    'native-large-discard-capture-survives-restart-and-recovers-exact-bytes',
+    'native-cti-data-paths-and-sizes-recover-unchanged-after-restart',
+    'native-cti-sized-bulk-discard-skips-and-preserves-staged-only-file',
+  ]],
+  ['discard-limit', [
+    'native-oversized-nested-file-gets-size-specific-refusal-without-mutation',
+    'native-oversized-nested-bulk-gets-size-specific-refusal-without-mutation',
+    'native-palette-restores-opener-after-oversized-bulk-discard-refusal',
+    'native-mixed-discard-labels-oversized-paths-and-leaves-all-files-unchanged',
   ]],
   ['submodule-initialize', [
     'native-submodule-initialize-opener-and-cancel-do-not-touch-repository',
@@ -61,6 +91,10 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-submodule-remote-update-moves-only-selected-checkout-and-preserves-parent-index',
   ]],
   ['stash-selection', [
+    'native-whole-checkout-stash-only-saves-untracked-files-when-included',
+    'native-stash-selection-loads-more-files-and-saves-only-explicit-paths',
+    'native-stash-path-filter-keeps-hidden-selection-in-exact-stash',
+    'native-stash-select-matching-adds-only-filtered-loaded-paths',
     'native-stash-refuses-mixed-mode-selection-without-changing-index-stash-or-files',
     'native-stash-mode-change-saves-only-currently-eligible-selected-paths',
     'native-stash-restore-refuses-local-untracked-collision-before-applying',
@@ -74,12 +108,41 @@ const UBUNTU_NOBLE_REVIEWS = [
   ['tracked-file-search', [
     'native-tracked-file-search-uses-distinct-unmerged-paths-before-the-result-limit',
     'native-tracked-file-palette-keeps-one-history-and-blame-per-path-without-changing-merge-state',
+    'native-file-history-copies-deleted-path-without-git-mutation',
+    'native-file-history-long-subject-keeps-copy-actions-visible',
+    'native-file-history-copies-full-commit-id-without-git-mutation',
+    'native-file-history-clears-copied-path-feedback-on-starting-revision-change',
+    'native-file-history-selects-tag-branch-and-commit-start-points-and-restores-diff-revision',
     'native-file-history-opens-a-deleted-literal-path-and-its-removal-diff',
   ]],
+  ['file-menu-copy', [
+    'native-working-file-menu-copies-literal-path-without-git-mutation',
+    'native-commit-file-menu-copies-literal-path-without-git-mutation',
+  ]],
+  ['reference-copy', [
+    'native-ui-copies-ambiguous-local-remote-and-tag-namespaces-without-git-mutation',
+    'native-ui-full-ref-keyboard-copy-restores-branch-focus',
+  ]],
   ['feature-rebase', 'native-feature-rebase-uses-configured-development-without-moving-sibling-refs'],
+  ['comparison-responsiveness', [
+    'native-branch-comparison-keeps-native-status-responsive-and-preserves-checkout',
+    'native-git-comparisons-do-not-block-unrelated-native-status-and-preserve-worktree',
+  ]],
+  ['merge-rebase-review', [
+    'native-slow-merge-rebase-review-dismisses-before-git-finishes-without-writes',
+    'native-merge-preserving-review-shows-exact-parents-and-cancel-leaves-checkout-unchanged',
+    'native-merge-preserving-rebase-refuses-stale-destination-before-writing',
+    'native-merge-preserving-rebase-keeps-topology-sibling-refs-and-protects-original-tip',
+    'native-merge-preserving-rebase-leaves-native-status-responsive',
+  ]],
   ['commit-rewrite', [
     'native-commit-rewrite-refuses-a-stale-branch-at-the-same-head',
     'native-commit-editor-rewrites-only-the-reviewed-branch-and-keeps-staged-and-working-bytes',
+  ]],
+  ['commit-responsiveness', [
+    'native-commit-and-amend-do-not-block-unrelated-native-status-or-include-unstaged-data',
+    'native-message-only-amend-keeps-status-responsive-and-preserves-index',
+    'native-ancestor-edit-keeps-status-responsive-and-preserves-trees-and-staging',
   ]],
   ['file-review-scope', [
     'native-same-tip-external-checkout-disables-the-old-file-discard-review',
@@ -92,6 +155,7 @@ const UBUNTU_NOBLE_REVIEWS = [
   ['first-status', [
     'native-first-file-scan-shows-loading-not-clean-while-history-is-usable',
     'native-first-file-scan-publishes-real-staged-and-unstaged-recaps-without-writes',
+    'native-first-file-scan-drains-large-diagnostics-without-blocking-status',
   ]],
   ['working-tree-recaps', [
     'native-working-tree-same-path-selects-each-index-side-from-its-tree-row',
@@ -99,8 +163,26 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-unstaged-summary-recounts-after-staging-without-including-staged-lines',
     'native-unstaged-recap-updates-after-external-edit-with-unchanged-porcelain',
     'native-unstaged-recap-is-complete-when-staged-recap-hits-its-bound',
+    'native-compact-unstaged-recap-does-not-cover-bulk-actions',
+    'native-unstaged-excluded-label-follows-both-theme-palettes',
+    'native-collapsing-staged-files-docks-header-and-expands-unstaged-viewport',
+    'native-staged-file-disclosure-persists-and-keeps-unstaged-space-after-reload',
+    'native-collapsing-unstaged-files-expands-staged-viewport-without-writes',
+    'native-palette-focuses-working-tree-filter-without-changing-draft-or-checkout',
+    'native-palette-opens-and-focuses-only-the-requested-file-section',
+    'native-collapsed-working-tree-headers-show-loaded-filter-matches',
+    'native-discard-picker-reopens-and-focuses-unstaged-list-without-writes',
+    'native-discard-picker-discloses-filtered-selections-and-restores-focus-on-cancel',
+    'native-discard-picker-explains-collapsed-and-filtered-out-files-without-writes',
+    'native-stage-all-reaches-unstaged-files-beyond-initial-status-page',
+    'native-unstage-all-reaches-staged-files-beyond-initial-status-page',
+    'native-expanded-unstaged-list-reaches-both-keyboard-edges-without-writes',
+    'native-expanded-unstaged-scroll-jumps-keep-offset-and-visible-rows-without-writes',
+    'native-final-working-tree-page-restores-keyboard-focus-without-changing-checkout',
     'native-unstaged-recap-survives-status-byte-bound-without-counting-conflicts',
     'native-worktree-rename-stages-and-unstages-both-paths-without-changing-files',
+    'native-stage-and-unstage-preserve-executable-mode-change-and-exact-binary-bytes',
+    'native-stage-and-unstage-gitlink-without-changing-dirty-submodule',
   ]],
   ['repository-open-scope', [
     'native-retired-repository-read-preserves-active-tab-draft-and-saved-membership',
@@ -137,6 +219,15 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-confirmed-detached-checkout-keeps-refs-and-non-overlapping-local-edits',
   ]],
   ['checkout-snapshot', 'native-snapshot-retries-mixed-reads-across-an-external-same-tip-checkout'],
+  ['checkout-responsiveness', 'native-local-remote-and-detached-checkouts-keep-native-status-responsive'],
+  ['history-control-responsiveness', [
+    'native-interactive-review-replay-continue-and-abort-leave-status-responsive',
+    'native-merge-continue-and-abort-leave-status-responsive-and-preserve-reviewed-history',
+  ]],
+  ['local-mutation-responsiveness', [
+    'native-stash-save-apply-and-pop-keep-status-responsive-and-restore-owned-bytes',
+    'native-cherry-pick-and-revert-keep-status-responsive-and-preserve-exact-history',
+  ]],
 ];
 
 const RELEASE_MATRIX = [
@@ -146,19 +237,60 @@ const RELEASE_MATRIX = [
     'native-packed-ref-refresh-replays-read-after-held-status',
     'native-loose-ref-refresh-converges-during-continuous-watcher-events',
   ]],
-  ['ubuntu', '22.04', 'lfs-counts', 'native-lfs-checkout-counts-handle-literal-filenames-without-following-transfer-filters'],
-  ['ubuntu', '22.04', 'lfs-snapshot-timeout', 'native-lfs-stalled-listing-does-not-block-opening-or-invent-counts'],
+  ['ubuntu', '22.04', 'lfs-counts', [
+    'native-lfs-checkout-counts-handle-literal-filenames-without-following-transfer-filters',
+    'native-lfs-preferences-show-tracked-and-pointer-counts-without-writes',
+    'native-lfs-toolbar-menu-and-preferences-agree-on-measured-zero-without-writes',
+  ]],
+  ['ubuntu', '22.04', 'lfs-snapshot-timeout', [
+    'native-lfs-stalled-listing-does-not-block-opening-or-invent-counts',
+    'native-lfs-toolbar-distinguishes-unknown-count-and-keeps-pull-available',
+    'native-lfs-stalled-attribute-discovery-shares-snapshot-deadline',
+    'native-lfs-object-review-times-out-stalled-version-preflight-without-writes',
+    'native-lfs-pull-refuses-stalled-eligibility-before-any-transfer',
+    'native-lfs-pull-cancels-active-eligibility-before-any-transfer',
+  ]],
   ['ubuntu', '22.04', 'environment', [
     'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer',
+    'native-updates-tab-recovers-to-first-or-last-action-without-changing-git',
+    UPDATE_CONSENT_SCENARIO,
+    'native-ui-file-diff-exact-index-working-private-bytes-literal-argv-sanitized-context',
+    'native-ui-file-merge-stage-roles-binary-output-review-save-without-staging',
+    'native-ui-file-merge-separate-reviewed-real-index-staging-and-private-cleanup',
     'native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal',
     'native-worktree-and-branch-removal-requires-recovery-before-removing-checkout',
+    'native-occupied-branch-review-cancel-preserves-both-dirty-checkouts',
+    'native-occupied-branch-review-wraps-shift-tab-without-navigating',
+    'native-shortcut-reference-wraps-shift-tab-without-changing-git-or-draft',
+    'native-occupied-branch-navigation-opens-registered-owner-without-checkout-or-data-loss',
+    'native-occupied-branch-graph-double-click-opens-registered-owner-without-detaching-head',
+    'native-occupied-branch-review-refuses-changed-owner-without-fallback-checkout',
     'native-ordinary-and-background-fetch-refuse-local-branch-refspecs',
+    'native-stash-branch-refuses-ignored-obstruction-before-creating-branch',
+    'native-reviewed-stash-branch-retains-exact-saved-state-and-source',
   ], true],
   ['ubuntu', '24.04', 'smoke', SMOKE_SCENARIO],
   ['ubuntu', '24.04', 'gitlab', GITLAB_SCENARIOS],
+  ['ubuntu', '24.04', 'application-update-consent', [
+    'native-updater-manual-check-runs-offline-without-automatic-consent',
+    'native-updater-opt-in-survives-process-restart-and-schedules-an-offline-check',
+    'native-updater-opt-out-survives-process-restart-and-keeps-manual-checks-available',
+  ]],
   ...UBUNTU_NOBLE_REVIEWS.map(([suite, scenarios]) => ['ubuntu', '24.04', suite, scenarios]),
   ['ubuntu', '26.04', 'smoke', SMOKE_SCENARIO],
-  ['ubuntu', '26.04', 'gitlab', GITLAB_SCENARIOS],
+  ['ubuntu', '26.04', 'gitlab', [
+    ...GITLAB_SCENARIOS,
+    'native-webdriver-waits-for-delayed-navigation-and-clicks-once',
+  ]],
+  ['ubuntu', '26.04', 'gitlab-connect-refused',
+    'native-gitlab-tcp-refusal-explains-failure-clears-token-and-sends-no-http'],
+  ['ubuntu', '26.04', 'worktrees', [
+    'native-occupied-branch-review-cancel-preserves-both-dirty-checkouts',
+    'native-occupied-branch-navigation-opens-registered-owner-without-checkout-or-data-loss',
+    'native-occupied-branch-graph-double-click-opens-registered-owner-without-detaching-head',
+    'native-occupied-dev-graph-double-click-returns-from-linked-to-primary-checkout',
+    'native-occupied-branch-review-refuses-changed-owner-without-fallback-checkout',
+  ]],
   ['debian', '12', 'incoming-links', 'native-incoming-cold-saved-promisor-restoration-and-patch-read-never-fetch-with-independent-positive-control', true],
   ['debian', '12', 'gitlab', GITLAB_SCENARIOS],
   ['debian', '13', 'smoke', SMOKE_SCENARIO],
@@ -285,6 +417,14 @@ export function summarizeInstalledReport(candidate, report) {
     throw new Error('The report has invalid suite or scenario evidence');
   }
   const distro = report.linuxDistribution;
+  // Advisory timings help diagnose slow lanes; they do not decide acceptance.
+  const seconds = value => Number.isFinite(value) && value >= 0;
+  const phaseName = value => typeof value === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(value);
+  const { elapsedSeconds, phases } = report.timing ?? {};
+  const timed = seconds(elapsedSeconds) && Array.isArray(phases) && phases.length <= 128 &&
+    phases.every(item => phaseName(item?.phase) &&
+      seconds(item.durationSeconds) && Number.isSafeInteger(item.scenariosCompleted) &&
+      item.scenariosCompleted >= 0 && item.scenariosCompleted <= report.scenarios.length);
   return {
     suite: report.suite,
     passed: report.passed,
@@ -294,6 +434,10 @@ export function summarizeInstalledReport(candidate, report) {
     distribution: typeof distro?.id === 'string' && distro.id
       ? { id: distro.id, versionId: typeof distro.versionId === 'string' ? distro.versionId : null } : null,
     inheritedGitEnvironment: report.inheritedGitEnvironment === true,
+    ...(!report.passed && phaseName(report.failurePhase) ? { failurePhase: report.failurePhase } : {}),
+    ...(timed ? { elapsedSeconds, slowestPhases: [...phases]
+      .sort((a, b) => b.durationSeconds - a.durationSeconds).slice(0, 3)
+      .map(({ phase, durationSeconds, scenariosCompleted }) => ({ phase, durationSeconds, scenariosCompleted })) } : {}),
   };
 }
 
@@ -307,26 +451,29 @@ function releaseRequirements() {
 }
 
 // Input reports must already have been matched to the installed payload.
-function matchChecks(requirements, validatedReports, exactGitEnvironment) {
+function gitEnvironmentMatches(requirement, report) {
+  return report.inheritedGitEnvironment === (requirement.inheritedGitEnvironment ?? false);
+}
+
+function matchChecks(requirements, validatedReports) {
   return requirements.map(requirement => {
-    const { distribution: { id, versionId }, suite, inheritedGitEnvironment, requiredScenarios } = requirement;
+    const { distribution: { id, versionId }, suite, requiredScenarios } = requirement;
     const observed = validatedReports.find(report => report.passed === true &&
       report.linuxDistribution?.id === id && report.linuxDistribution.versionId === versionId &&
       report.suite === suite &&
-      (exactGitEnvironment ? report.inheritedGitEnvironment === inheritedGitEnvironment
-        : !inheritedGitEnvironment || report.inheritedGitEnvironment === true) &&
+      gitEnvironmentMatches(requirement, report) &&
       requiredScenarios.every(required => report.scenarios.includes(required)));
     return { ...requirement, report: observed?.path ?? null };
   });
 }
 
 export function summarizeReleaseMatrix(validatedReports) {
-  const checks = matchChecks(releaseRequirements(), validatedReports, false);
+  const checks = matchChecks(releaseRequirements(), validatedReports);
   return { complete: checks.every(check => check.report !== null), checks };
 }
 
 export function summarizeFocusedAcceptance(request, validatedReports) {
-  const checks = matchChecks(parseFocusedAcceptance(request), validatedReports, true);
+  const checks = matchChecks(parseFocusedAcceptance(request), validatedReports);
   const failedReports = validatedReports.filter(report => !report.passed).map(report => report.path);
   return { complete: !failedReports.length && checks.every(check => check.report !== null), checks, failedReports };
 }
@@ -337,13 +484,24 @@ export function summarizeReleaseProgress(matrix, reports) {
   const counts = { satisfied: 0, failed: 0, incomplete: 0, 'awaiting-report': 0 };
   const checks = matrix.checks.map(check => {
     const matching = reports.filter(report => report.suite === check.suite
-      && report.distribution?.id === check.distribution.id
-      && report.distribution.versionId === check.distribution.versionId);
+      && report.linuxDistribution?.id === check.distribution.id
+      && report.linuxDistribution.versionId === check.distribution.versionId);
     const state = check.report !== null ? 'satisfied'
-      : matching.some(report => !report.passed) ? 'failed'
+      : matching.some(report => !report.passed && gitEnvironmentMatches(check, report)) ? 'failed'
       : matching.length ? 'incomplete' : 'awaiting-report';
     counts[state] += 1;
-    return { ...check, state };
+    // Explain why an otherwise passing report does not qualify. Do not
+    // combine scenarios across reports or allow an old failure to hide this
+    // diagnostic; only matchChecks can satisfy the requirement.
+    const closestPassingReport = check.report === null ? matching.filter(report => report.passed)
+      .map(report => ({
+        report: report.path,
+        inheritedGitEnvironmentMatches: gitEnvironmentMatches(check, report),
+        missingScenarios: check.requiredScenarios.filter(scenario => !report.scenarios.includes(scenario)),
+      }))
+      .sort((a, b) => Number(b.inheritedGitEnvironmentMatches) - Number(a.inheritedGitEnvironmentMatches)
+        || a.missingScenarios.length - b.missingScenarios.length)[0] : undefined;
+    return { ...check, state, ...(closestPassingReport && { closestPassingReport }) };
   });
   return {
     totalChecks: checks.length, counts,
@@ -415,14 +573,15 @@ async function reportInstalledProgress(packagePath, reportPaths) {
     kind: 'installed-release-progress',
     ...installerReportSummary(candidate, reports),
     rejectedReports,
-    releaseProgress: summarizeReleaseProgress(summarizeReleaseMatrix(validatedReports), reports),
+    releaseProgress: summarizeReleaseProgress(summarizeReleaseMatrix(validatedReports), validatedReports),
   };
 }
 
 export async function reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix = false, publisherPreflight, focusedRequest } = {}) {
   releaseMatrix ||= !!publisherPreflight;
   if (focusedRequest !== undefined && releaseMatrix) throw new Error('Focused acceptance cannot qualify a release matrix.');
-  const candidate = checkPackage(resolve(packagePath));
+  const inspect = focusedRequest !== undefined ? checkPackageIdentity : checkPackage;
+  const candidate = inspect(resolve(packagePath));
   const { reports, validatedReports, environmentReports } = await collectInstalledReports(candidate, reportPaths, {
     collectScenarios: releaseMatrix || focusedRequest !== undefined,
     collectEnvironment: !!publisherPreflight,
@@ -441,16 +600,23 @@ export async function reportInstalledAcceptance(packagePath, reportPaths, { rele
   return summary;
 }
 
-async function planReleaseLane(id, versionId, packagePath, reportInputs) {
+async function planReleaseLane(id, versionId, packagePath, reportInputs, suites = []) {
   const inLane = ({ distribution }) => distribution.id === id && distribution.versionId === versionId;
-  let checks = releaseRequirements().filter(inLane);
-  if (!checks.length) throw new Error(`Unsupported release distribution: ${id} ${versionId}. Use --list-release-matrix.`);
+  const lane = releaseRequirements().filter(inLane);
+  if (!lane.length) throw new Error(`Unsupported release distribution: ${id} ${versionId}. Use --list-release-matrix.`);
+  for (const suite of suites) {
+    if (!lane.some(check => check.suite === suite)) {
+      throw new Error(`Suite ${suite} is not required on ${id} ${versionId}. Use --list-release-matrix.`);
+    }
+  }
+  const inSelection = check => inLane(check) && (!suites.length || suites.includes(check.suite));
+  let checks = lane.filter(inSelection);
   if (packagePath !== undefined) {
     const reportPaths = await expandAcceptanceReports(reportInputs, { allowEmptyDirectories: true });
     // The strict collector rejects foreign or malformed evidence. A valid failed
     // report is expected on retries, but cannot satisfy any release check.
     const { releaseMatrix } = await reportInstalledAcceptance(packagePath, reportPaths, { releaseMatrix: true });
-    checks = releaseMatrix.checks.filter(check => inLane(check) && check.report === null);
+    checks = releaseMatrix.checks.filter(check => inSelection(check) && check.report === null);
   }
   const plan = {
     version: 1,
@@ -464,7 +630,7 @@ async function planReleaseLane(id, versionId, packagePath, reportInputs) {
 async function main(args) {
   try {
     const usage = 'Usage: node tools/report-installed-acceptance.mjs --list-release-matrix\n'
-      + '   or: node tools/report-installed-acceptance.mjs --plan-release-lane ID VERSION_ID [PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …]\n'
+      + '   or: node tools/report-installed-acceptance.mjs --plan-release-lane ID VERSION_ID [--suite SUITE]… [PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …]\n'
       + '   or: node tools/report-installed-acceptance.mjs [--verify-focused PLAN | --release-progress | --release-matrix | --verify-release BUILD-RECEIPT PUBLIC-KEY] PACKAGE.deb [REPORT.json | --reports-dir DIRECTORY] …';
     if (args[0] === '--list-release-matrix') {
       if (args.length !== 1) throw new Error(usage);
@@ -473,10 +639,19 @@ async function main(args) {
       return;
     }
     if (args[0] === '--plan-release-lane') {
-      const [, id, versionId, packagePath, ...reportInputs] = args;
+      const [, id, versionId, ...selection] = args;
+      const suites = [];
+      while (selection[0] === '--suite') {
+        const [, suite] = selection.splice(0, 2);
+        if (!suite || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(suite) || suites.includes(suite)) {
+          throw new Error('Supply a distinct native suite name for each --suite.');
+        }
+        suites.push(suite);
+      }
+      const [packagePath, ...reportInputs] = selection;
       if (!id || !versionId || [id, versionId].some(arg => arg.startsWith('--')) ||
           packagePath === '' || packagePath?.startsWith('--')) throw new Error(usage);
-      console.log(JSON.stringify(await planReleaseLane(id, versionId, packagePath, reportInputs), null, 2));
+      console.log(JSON.stringify(await planReleaseLane(id, versionId, packagePath, reportInputs, suites), null, 2));
       return;
     }
     const releaseMatrix = args[0] === '--release-matrix';
@@ -525,6 +700,6 @@ async function main(args) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isCliEntry(import.meta)) {
   await main(process.argv.slice(2));
 }

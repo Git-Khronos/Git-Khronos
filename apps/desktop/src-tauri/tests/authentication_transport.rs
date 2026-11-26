@@ -1,14 +1,14 @@
 use git_khronos_git_core::authentication::{PromptKind, configure, with_authentication};
 use git_khronos_git_core::{CancellationToken, fetch_cancellable};
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -704,6 +704,48 @@ fn rejection_and_cancellation_release_the_operation_for_retry() {
     fixture.fetch(Some(credentials())).unwrap();
 }
 
+fn wait_for_https_port(server: &mut Child, file: &Path, timeout: Duration) -> Result<u16, String> {
+    let start = Instant::now();
+    loop {
+        if let Some(status) = server.try_wait().map_err(|error| error.to_string())? {
+            return Err(format!("fixture exited during startup: {status}"));
+        }
+        match fs::read_to_string(file) {
+            Ok(value) => {
+                return value
+                    .trim()
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|port| *port != 0)
+                    .ok_or_else(|| "fixture published an invalid port".to_owned());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
+        }
+        if start.elapsed() >= timeout {
+            return Err("fixture did not publish its port before the startup deadline".to_owned());
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn https_fixture_startup_times_out_without_a_port() {
+    let fixture = Fixture::new();
+    let mut server = Command::new("python3")
+        .args(["-c", "import time; time.sleep(30)"])
+        .spawn()
+        .unwrap();
+    let result = wait_for_https_port(
+        &mut server,
+        &fixture.directory.join("https-port"),
+        Duration::from_millis(30),
+    );
+    let _ = server.kill();
+    let _ = server.wait();
+    assert!(result.unwrap_err().contains("startup deadline"));
+}
+
 struct HttpsFixture {
     fixture: Fixture,
     server: Child,
@@ -753,25 +795,29 @@ impl HttpsFixture {
             backend.is_file(),
             "HTTPS qualification requires git-http-backend"
         );
-        let script =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/https_git_server.py");
+        // Keep the compiled test runnable in an isolated installed-package
+        // container without mounting the build machine's checkout.
+        let script = fixture.directory.join("https_git_server.py");
+        fs::write(&script, include_str!("fixtures/https_git_server.py")).unwrap();
         let mut server = Command::new("python3")
             .arg(script)
             .arg(&fixture.directory)
             .arg(backend)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stdout(Stdio::null())
             .spawn()
             .expect("HTTPS qualification requires Python stdlib SSL support");
-        let mut port = String::new();
-        BufReader::new(server.stdout.take().unwrap())
-            .read_line(&mut port)
-            .unwrap();
-        if port.trim().parse::<u16>().is_err() {
-            let _ = server.kill();
-            let _ = server.wait();
-            panic!("loopback HTTPS smart-Git server did not start");
-        }
+        let port = match wait_for_https_port(
+            &mut server,
+            &fixture.directory.join("https-port"),
+            Duration::from_secs(10),
+        ) {
+            Ok(port) => port,
+            Err(error) => {
+                let _ = server.kill();
+                let _ = server.wait();
+                panic!("loopback HTTPS smart-Git server did not start: {error}");
+            }
+        };
         let fixture = Self { fixture, server };
         let repository = &fixture.fixture.repository;
         git(
@@ -780,7 +826,7 @@ impl HttpsFixture {
                 "remote",
                 "set-url",
                 "origin",
-                &format!("https://127.0.0.1:{}/repo.git", port.trim()),
+                &format!("https://127.0.0.1:{port}/repo.git"),
             ],
         );
         git(

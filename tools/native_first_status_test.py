@@ -22,10 +22,12 @@ class FirstStatusEnvironmentTest(unittest.TestCase):
             application = fixture.env | first_status_environment(fixture)
             entered = root / GATE / 'entered'
 
-            def invoke(checkout, args, env):
+            def invoke(checkout, args, env, diagnostics=0):
                 command = ['-C', str(root / checkout), *args]
-                result = subprocess.check_output(['git', *command], env=env, text=True, timeout=2)
-                self.assertEqual(result.splitlines(), command)
+                result = subprocess.run(['git', *command], env=env, text=True, timeout=2,
+                                        capture_output=True, check=True)
+                self.assertEqual(result.stdout.splitlines(), command)
+                self.assertEqual(len(result.stderr), diagnostics)
 
             complete = ['status', '--porcelain=v1', '--untracked-files=normal']
             invoke(CHECKOUT, complete, fixture.env)
@@ -36,7 +38,7 @@ class FirstStatusEnvironmentTest(unittest.TestCase):
             self.assertFalse(entered.exists())
             (root / GATE / 'release').touch()
             for mode in ('normal', 'all'):
-                invoke(CHECKOUT, ['status', '--porcelain=v1', '--untracked-files=' + mode], application)
+                invoke(CHECKOUT, ['status', '--porcelain=v1', '--untracked-files=' + mode], application, 2097152)
                 self.assertTrue(entered.is_file())
                 entered.unlink()
 

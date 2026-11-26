@@ -1,12 +1,24 @@
 """Unstaged recap uses real index-relative Git counts, never commit totals."""
 import json
 import subprocess
+import time
 from native_worktree_scenarios import checkout_footprint
 from native_working_tree_recaps import wait_for_line_recaps
 
 
 def unstaged_summary_workflow(driver, fixtures, report):
-    from native_acceptance import open_ui
+    from native_acceptance import open_ui, seed_commit_draft
+
+    def wait_index_entry(repository, path, expected, timeout=20):
+        # Rows move optimistically before the native command updates the index.
+        deadline = time.monotonic() + timeout
+        while True:
+            actual = fixtures.git(repository, 'ls-files', '--stage', '--', path)
+            if actual == expected:
+                return actual
+            if time.monotonic() >= deadline:
+                raise AssertionError(f'Index entry for {path}: expected {expected!r}, got {actual!r}')
+            time.sleep(.05)
 
     repository = fixtures.repository('unstaged-summary-review', commits=2)
     (repository / 'fixture.txt').write_text('old\nretained\n')
@@ -30,6 +42,183 @@ def unstaged_summary_workflow(driver, fixtures, report):
     assert checkout_footprint(fixtures, repository, files) == before
     report['unstagedLineSummary'] = {'source': str(repository), 'before': before, 'initialRecap': initial, 'initialStagedRecap': initial_staged}
     report['scenarios'].append('native-unstaged-summary-counts-index-relative-lines-untracked-text-and-binary-exclusion-without-writes')
+
+    colors = driver.script("""const root = document.documentElement;
+      const previous = root.getAttribute('data-theme');
+      const excluded = document.querySelector('.unstaged-section gk-working-tree-summary .summary em');
+      if (excluded?.textContent.trim() !== '1 excluded') return null;
+      const color = () => getComputedStyle(excluded).color;
+      try {
+        root.removeAttribute('data-theme');
+        const standard = color();
+        root.setAttribute('data-theme', 'midnight');
+        return {standard, midnight: color()};
+      } finally {
+        if (previous === null) root.removeAttribute('data-theme');
+        else root.setAttribute('data-theme', previous);
+      }""")
+    assert colors == {'standard': 'rgb(146, 145, 165)', 'midnight': 'rgb(154, 168, 187)'}, colors
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['unstagedLineSummary']['excludedColors'] = colors
+    report['scenarios'].append('native-unstaged-excluded-label-follows-both-theme-palettes')
+
+    try:
+        driver.request('POST', driver.path('window/rect'), {'width': 820, 'height': 720})
+        compact = driver.wait("""if (innerWidth < 780 || innerWidth > 900) return null;
+          const title = document.querySelector('.unstaged-section .file-section-title');
+          if (!title) return null;
+          const elements = [title.querySelector('.summary'), title.querySelector('[aria-label="Stage all changes"]'),
+            title.querySelector('[aria-label="Discard all unstaged changes"]')];
+          if (!elements.every(e => e?.getClientRects().length) || !elements[0].textContent.includes('1 excluded')) return null;
+          const [totals, stage, discard] = elements.map(e => e.getBoundingClientRect());
+          const header = title.getBoundingClientRect();
+          const overlap = (a, b) => a.left < b.right - 1 && b.left < a.right - 1
+            && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+          return [totals, stage, discard].every(box => box.left >= header.left - 1 && box.right <= header.right + 1)
+            && !overlap(totals, stage) && !overlap(totals, discard) && !overlap(stage, discard)
+            ? {innerWidth, totals: elements[0].textContent.trim()} : null;""")
+        assert checkout_footprint(fixtures, repository, files) == before
+        report['unstagedLineSummary']['compactActions'] = compact
+        report['scenarios'].append('native-compact-unstaged-recap-does-not-cover-bulk-actions')
+    finally:
+        driver.request('POST', driver.path('window/rect'), {'width': 1440, 'height': 900})
+    driver.wait('return innerWidth >= 1300')
+
+    staged_toggle = '.staged-section .file-section-toggle'
+    driver.wait(f"""return document.querySelector({staged_toggle!r})?.getAttribute('aria-controls') === 'staged-files-list'
+      && document.querySelector('.unstaged-section .file-section-toggle')?.getAttribute('aria-controls') === 'unstaged-files-list'
+      && !!document.getElementById('staged-files-list') && !!document.getElementById('unstaged-files-list');""")
+    original_height = driver.script("return document.querySelector('#unstaged-files-list').clientHeight")
+    driver.script(f"document.querySelector({staged_toggle!r}).focus()")
+    driver.key('\ue007')  # Enter
+    driver.wait(f"""const panel = document.querySelector('.working-tree-scroll');
+      const staged = panel.querySelector('.staged-section');
+      const list = panel.querySelector('#unstaged-files-list');
+      const toggle = staged.querySelector('.file-section-toggle');
+      const collapsed = toggle.getAttribute('aria-expanded') === 'false' && !toggle.hasAttribute('aria-controls');
+      const docked = Math.abs(panel.getBoundingClientRect().bottom - staged.getBoundingClientRect().bottom) <= 1;
+      const focused = document.activeElement === toggle;
+      return collapsed && docked && focused && list.clientHeight > {original_height};""")
+    driver.key('\ue00d')  # Space
+    driver.wait(f"""return document.querySelector('#staged-files-list')?.getClientRects().length
+      && document.querySelector('#unstaged-files-list')?.clientHeight === {original_height}
+      && document.activeElement?.matches({staged_toggle!r})
+      && document.activeElement.getAttribute('aria-controls') === 'staged-files-list'""")
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-collapsing-staged-files-docks-header-and-expands-unstaged-viewport')
+
+    # Keep local storage intact so this exercises ordinary startup rather
+    # than the harness's clean repository bootstrap.
+    driver.key('\ue007')  # Collapse again before reloading.
+    driver.wait(f"return document.querySelector({staged_toggle!r})?.getAttribute('aria-expanded') === 'false'")
+    driver.reload()
+    driver.wait(f"""const list = document.querySelector('#unstaged-files-list');
+      return document.querySelector({staged_toggle!r})?.getAttribute('aria-expanded') === 'false'
+        && list?.clientHeight > {original_height} && !document.querySelector('#staged-files-list');""")
+    driver.click_visible(staged_toggle)
+    driver.wait("return !!document.querySelector('#staged-files-list')")
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-staged-file-disclosure-persists-and-keeps-unstaged-space-after-reload')
+
+    unstaged_toggle = '.unstaged-section .file-section-toggle'
+    staged_height = driver.script("return document.querySelector('#staged-files-list').clientHeight")
+    driver.click_visible(unstaged_toggle)
+    driver.wait(f"""return !document.querySelector('#unstaged-files-list')
+      && document.querySelector('#staged-files-list')?.clientHeight > {staged_height}
+      && !document.querySelector('[aria-controls="staged-files-list"][role="separator"]');""")
+    driver.click_visible(unstaged_toggle)
+    driver.wait(f"""return !!document.querySelector('#unstaged-files-list')
+      && document.querySelector('#staged-files-list')?.clientHeight === {staged_height};""")
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-collapsing-unstaged-files-expands-staged-viewport-without-writes')
+
+    draft = 'Keep the owned draft while filtering'
+    seed_commit_draft(driver, repository, draft)
+    driver.click_visible('[aria-label="Close commit panel"]')
+    search = 'gk-command-palette input[aria-label="Search commands"]'
+
+    def palette_option(label):
+        driver.click_visible('[aria-label="Command palette"]')
+        driver.wait(f"return document.activeElement?.matches({search!r})")
+        driver.script("""const field = document.querySelector(arguments[0]);
+          field.value = arguments[1]; field.dispatchEvent(new Event('input', {bubbles: true}));""", search, label)
+        driver.wait(f"""return [...document.querySelectorAll('gk-command-palette [role="option"]')]
+          .some(option => option.textContent.includes({label!r}));""")
+        driver.key('\ue007')
+
+    palette_option('Filter Changed Files')
+    driver.wait("""return document.activeElement?.matches('input[aria-label="Filter changed files"]')
+      && !document.querySelector('gk-command-palette');""")
+    assert driver.script("return document.querySelector('#commit-summary').value") == draft
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-palette-focuses-working-tree-filter-without-changing-draft-or-checkout')
+
+    driver.click_visible(staged_toggle)
+    driver.click_visible(unstaged_toggle)
+    palette_option('Show Staged Files')
+    driver.wait("""return document.activeElement?.id === 'staged-files-list'
+      && !document.querySelector('#unstaged-files-list');""")
+    driver.click_visible(staged_toggle)
+    palette_option('Show Unstaged Files')
+    driver.wait("""return document.activeElement?.id === 'unstaged-files-list'
+      && !document.querySelector('#staged-files-list');""")
+    driver.click_visible(staged_toggle)
+    driver.wait("return !!document.querySelector('#staged-files-list')")
+    assert driver.script("return document.querySelector('#commit-summary').value") == draft
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-palette-opens-and-focuses-only-the-requested-file-section')
+
+    filter_field = 'input[aria-label="Filter changed files"]'
+
+    def filter_paths(value):
+        driver.script("""const field = document.querySelector(arguments[0]);
+          field.value = arguments[1]; field.dispatchEvent(new Event('input', {bubbles: true}));""", filter_field, value)
+
+    driver.click_visible(staged_toggle)
+    driver.click_visible(unstaged_toggle)
+    filter_paths('deleted.txt')
+    driver.wait("""return document.querySelector('.unstaged-section .collapsed-file-matches')?.textContent.trim() === '1 loaded match'
+      && document.querySelector('.staged-section .collapsed-file-matches')?.textContent.trim() === '0 loaded matches';""")
+    driver.click_visible('button[aria-label="Clear file filter"]')
+    driver.wait("return !document.querySelector('.collapsed-file-matches')")
+    driver.click_visible(staged_toggle)
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-collapsed-working-tree-headers-show-loaded-filter-matches')
+
+    driver.wait("return !document.querySelector('#unstaged-files-list')")
+    driver.click_visible('[aria-label="Working directory options"]')
+    driver.click_scrolled_text('.panel-options-menu [role=menuitem]',
+                               'Select files for discardChoose only the unstaged files to discard',
+                               wait_for_ready=True)
+    driver.wait("""return document.activeElement?.id === 'unstaged-files-list'
+      && !!document.querySelector('#unstaged-files-list input.discard-selection:not(:checked)');""")
+    assert checkout_footprint(fixtures, repository, files) == before
+    driver.click_visible(unstaged_toggle)
+    driver.wait("""return !document.querySelector('#unstaged-files-list')
+      && document.querySelector('.discard-actions [aria-live]')?.textContent.includes('Expand Unstaged Files to select files');""")
+    driver.click_visible(unstaged_toggle)
+    filter_paths('no-visible-discard-path')
+    driver.wait("""return document.querySelector('.discard-actions [aria-live]')?.textContent.includes('Clear the filter to select unstaged files')
+      && !document.querySelector('#unstaged-files-list input.discard-selection');""")
+    filter_paths('')
+    driver.wait("""return document.querySelector('.discard-actions [aria-live]')?.textContent.includes('Select files below')
+      && !!document.querySelector('#unstaged-files-list input.discard-selection:not(:checked)');""")
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-discard-picker-explains-collapsed-and-filtered-out-files-without-writes')
+    driver.click_scrolled_text('#unstaged-files-list input[aria-label="Select fixture.txt for discard"]',
+                               '', wait_for_ready=True)
+    filter_paths('no-selected-path-matches')
+    driver.wait("""return document.querySelector('.discard-actions span[aria-live]')?.textContent.includes('1 hidden by the filter')
+      && !document.querySelector('#unstaged-files-list input.discard-selection');""")
+    driver.click_scrolled_text('.discard-actions button', 'Cancel selection', wait_for_ready=True)
+    driver.wait("""return !document.querySelector('.discard-actions')
+      && document.activeElement?.id === 'unstaged-files-list';""")
+    driver.click_visible(filter_field)
+    driver.key('\ue00c')  # Escape clears the path filter.
+    driver.wait(f"return document.querySelector({filter_field!r})?.value === ''")
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['scenarios'].append('native-discard-picker-reopens-and-focuses-unstaged-list-without-writes')
+    report['scenarios'].append('native-discard-picker-discloses-filtered-selections-and-restores-focus-on-cancel')
 
     # A partially staged path is present in both viewports. Selecting its
     # Tree row must inspect that side of the index, not the other row's diff.
@@ -135,6 +324,84 @@ def unstaged_summary_workflow(driver, fixtures, report):
     report['unstagedLineSummary']['renameDiff'] = {'unstaged': unstaged_diff, 'staged': staged_diff}
     report['scenarios'].append('native-worktree-rename-diff-reviews-both-paths-and-shows-only-edited-lines')
 
+    special = fixtures.repository('worktree-mode-and-binary-staging', commits=1)
+    executable, binary = special / 'owned-script.sh', special / 'owned-binary.dat'
+    executable.write_text('#!/bin/sh\ntrue\n')
+    executable.chmod(0o644)
+    binary.write_bytes(b'owned\0before')
+    fixtures.git(special, 'config', 'core.filemode', 'true')
+    fixtures.git(special, 'add', '--', executable.name, binary.name)
+    fixtures.git(special, 'commit', '-m', 'Owned mode and binary baseline')
+    executable.chmod(0o755)
+    binary.write_bytes(b'owned\0after')
+    paths = (executable.name, binary.name)
+    original_index = fixtures.git(special, 'ls-files', '--stage', '--', *paths)
+    expected_blob = fixtures.git(special, 'hash-object', '--', binary.name)
+    expected_modes = {executable.name: ('100755', fixtures.git(special, 'rev-parse', f'HEAD:{executable.name}')),
+                      binary.name: ('100644', expected_blob)}
+    originals = {entry.split('\t')[1]: entry for entry in original_index.splitlines()}
+    footprint = checkout_footprint(fixtures, special, paths)
+    open_ui(driver, special)
+
+    for path in paths:
+        driver.click_visible(f'[aria-label="Stage {path}"]')
+        mode, blob = expected_modes[path]
+        wait_index_entry(special, path, f'{mode} {blob} 0\t{path}')
+        driver.wait(f'return !!document.querySelector(\'[aria-label="Unstage {path}"]\')')
+    staged_index = fixtures.git(special, 'ls-files', '--stage', '--', *paths)
+    entries = {line.split('\t')[1]: line.split('\t')[0].split()
+               for line in staged_index.splitlines()}
+    assert entries[binary.name] == ['100644', expected_blob, '0'], entries
+    assert entries[executable.name] == [
+        '100755', fixtures.git(special, 'rev-parse', f'HEAD:{executable.name}'), '0',
+    ], entries
+
+    for path in paths:
+        driver.click_visible(f'[aria-label="Unstage {path}"]')
+        wait_index_entry(special, path, originals[path])
+        driver.wait(f'return !!document.querySelector(\'[aria-label="Stage {path}"]\')')
+    restored_index = fixtures.git(special, 'ls-files', '--stage', '--', *paths)
+    assert restored_index == original_index, restored_index
+    final = checkout_footprint(fixtures, special, paths)
+    for key in ('head', 'branch', 'references', 'status', 'configSha256', 'files'):
+        assert final[key] == footprint[key], 'Stage/unstage changed ' + key
+    assert executable.stat().st_mode & 0o777 == 0o755
+    report['unstagedLineSummary']['modeAndBinaryIndex'] = {
+        'original': original_index, 'staged': staged_index, 'restored': restored_index,
+    }
+    report['scenarios'].append('native-stage-and-unstage-preserve-executable-mode-change-and-exact-binary-bytes')
+
+    parent = fixtures.repository('worktree-gitlink-staging', commits=1)
+    source = fixtures.repository('owned-gitlink-source', commits=2)
+    path = 'owned-submodule'
+    child = parent / path
+    fixtures.git(parent, 'submodule', 'add', '--', str(source), path)
+    newest = fixtures.git(child, 'rev-parse', 'HEAD')
+    previous = fixtures.git(child, 'rev-parse', 'HEAD^')
+    fixtures.git(child, 'checkout', '--detach', previous)
+    fixtures.git(parent, 'add', '--', path)
+    fixtures.git(parent, 'commit', '-m', 'Record previous gitlink')
+    fixtures.git(child, 'checkout', '--detach', newest)
+    (child / 'fixture.txt').write_text('Keep the nested worktree edit.\n')
+    nested_before = checkout_footprint(fixtures, child)
+    parent_before = checkout_footprint(fixtures, parent, ('.gitmodules', 'fixture.txt'))
+    open_ui(driver, parent)
+
+    driver.click_visible(f'[aria-label="Stage {path}"]')
+    indexed_link = wait_index_entry(parent, path, f'160000 {newest} 0\t{path}')
+    driver.wait(f'return !!document.querySelector(\'[aria-label="Unstage {path}"]\')')
+    assert checkout_footprint(fixtures, child) == nested_before
+
+    driver.click_visible(f'[aria-label="Unstage {path}"]')
+    restored_link = wait_index_entry(parent, path, f'160000 {previous} 0\t{path}')
+    driver.wait(f'return !!document.querySelector(\'[aria-label="Stage {path}"]\')')
+    assert checkout_footprint(fixtures, child) == nested_before
+    parent_after = checkout_footprint(fixtures, parent, ('.gitmodules', 'fixture.txt'))
+    for key in ('head', 'branch', 'references', 'status', 'configSha256', 'files'):
+        assert parent_after[key] == parent_before[key], 'Gitlink staging changed parent ' + key
+    report['unstagedLineSummary']['gitlinkIndex'] = {'staged': indexed_link, 'restored': restored_link}
+    report['scenarios'].append('native-stage-and-unstage-gitlink-without-changing-dirty-submodule')
+
     crowded = fixtures.repository('unstaged-recap-beyond-staged-budget', commits=2)
     for index in range(2001):
         (crowded / f'a-staged-{index:04}.txt').write_text('staged only\n')
@@ -148,6 +415,92 @@ def unstaged_summary_workflow(driver, fixtures, report):
     assert checkout_footprint(fixtures, crowded, files) == before_budget
     report['unstagedLineSummary']['independentBudget'] = recaps
     report['scenarios'].append('native-unstaged-recap-is-complete-when-staged-recap-hits-its-bound')
+    stage_all = 'button[aria-label="Stage all changes"]'
+    driver.wait(f"""return document.querySelector({stage_all!r})?.matches(':enabled')
+      && !document.querySelector('#unstaged-files-list [aria-label^="Stage "]')
+      && document.querySelector('.change-loader')?.textContent.includes('Unstaged changes are outside the loaded list')
+      && [...document.querySelectorAll('.working-tree-scroll button')].some(e => e.textContent.includes('Show 1,000 more files'))""")
+    driver.click_visible(stage_all)
+    driver.wait(f"return document.querySelector({stage_all!r})?.matches(':disabled') && document.querySelector('.unstaged-section .file-section-toggle')?.textContent.includes('(0)')")
+    assert fixtures.git(crowded, '--no-optional-locks', 'diff', '--name-only') == ''
+    assert fixtures.git(crowded, 'ls-files', '--others', '--exclude-standard') == ''
+    assert {'fixture.txt', 'z-untracked.txt'} <= set(fixtures.git(crowded, 'diff', '--cached', '--name-only').splitlines())
+    after_stage = checkout_footprint(fixtures, crowded, files)
+    for key in ('head', 'branch', 'references', 'configSha256', 'files'):
+        assert after_stage[key] == before_budget[key], key
+    report['scenarios'].append('native-stage-all-reaches-unstaged-files-beyond-initial-status-page')
+
+    fixtures.git(crowded, 'commit', '-qm', 'Record the crowded fixture baseline')
+    for index in range(1001):
+        (crowded / f'a-staged-{index:04}.txt').write_text('new unstaged content\n')
+    (crowded / 'z-untracked.txt').write_text('hidden staged change\n')
+    fixtures.git(crowded, 'add', '--', 'z-untracked.txt')
+    before_unstage = checkout_footprint(fixtures, crowded, files)
+    open_ui(driver, crowded)
+    driver.wait("""return document.querySelector('.staged-section .file-section-toggle')?.textContent.includes('(1)')
+      && !document.querySelector('#staged-files-list [aria-label^="Unstage "]')
+      && document.querySelector('.change-loader')?.textContent.includes('Staged changes are outside the loaded list')
+      && [...document.querySelectorAll('.working-tree-scroll button')].some(e => e.textContent.includes('Show 1,000 more files'))""")
+    # Use the real truncated status page so the test exercises virtual rows
+    # and the extra footer rather than scrolling a small, fully rendered list.
+    driver.click_visible(staged_toggle)
+    driver.wait(f"""return document.querySelector({staged_toggle!r})?.getAttribute('aria-expanded') === 'false'
+      && document.querySelector('#unstaged-files-list')?.querySelector('[aria-label="View changes in a-staged-0000.txt"]');""")
+    driver.script("document.querySelector('#unstaged-files-list').focus()")
+    for key, path, at_end in (('\ue010', 'a-staged-0999.txt', True), ('\ue011', 'a-staged-0000.txt', False)):
+        driver.key(key)  # WebDriver End / Home
+        selector = f'button[aria-label="View changes in {path}"]'
+        driver.wait(f"""
+          const list = document.getElementById('unstaged-files-list');
+          const row = list?.querySelector({json.dumps(selector)});
+          if (!row || document.activeElement !== list || list.scrollHeight <= list.clientHeight) return false;
+          const edge = {str(at_end).lower()} ? list.scrollHeight - list.clientHeight : 0;
+          const viewport = list.getBoundingClientRect(), box = row.getBoundingClientRect();
+          return Math.abs(list.scrollTop - edge) <= 1 && box.bottom > viewport.top && box.top < viewport.bottom;
+        """)
+    assert checkout_footprint(fixtures, crowded, files) == before_unstage
+    report['scenarios'].append('native-expanded-unstaged-list-reaches-both-keyboard-edges-without-writes')
+
+    # Non-keyboard jumps use the list's scroll event path. Checking only
+    # for mounted rows would miss an offset clamped during recycling.
+    for fraction in (0.42, 0.86, 0.17, 0.69, 0, 0.99, 1):
+        expected = driver.script("""
+          const list = document.getElementById('unstaged-files-list');
+          const offset = Math.round((list.scrollHeight - list.clientHeight) * arguments[0]);
+          list.scrollTop = offset;
+          return offset;
+        """, fraction)
+        driver.wait(f"""
+          const list = document.getElementById('unstaged-files-list');
+          if (!list || Math.abs(list.scrollTop - {expected}) > 1) return false;
+          const viewport = list.getBoundingClientRect();
+          const rows = Array.from(list.querySelectorAll('.file-row'), row => row.getBoundingClientRect())
+            .filter(row => row.bottom > viewport.top && row.top < viewport.bottom);
+          return !!rows.length && rows[0].top <= viewport.top + 1
+            && rows[rows.length - 1].bottom >= viewport.bottom - 1;
+        """)
+    assert checkout_footprint(fixtures, crowded, files) == before_unstage
+    report['scenarios'].append('native-expanded-unstaged-scroll-jumps-keep-offset-and-visible-rows-without-writes')
+    driver.click_visible(staged_toggle)
+    driver.wait("return !!document.querySelector('#staged-files-list')")
+
+    driver.click_scrolled_text('.staged-section .file-section-title button', 'Unstage all', wait_for_ready=True)
+    driver.wait("return document.querySelector('.staged-section .file-section-toggle')?.textContent.includes('(0)')")
+    assert fixtures.git(crowded, 'diff', '--cached', '--name-only') == ''
+    assert 'z-untracked.txt' in fixtures.git(crowded, '--no-optional-locks', 'diff', '--name-only').splitlines()
+    after_unstage = checkout_footprint(fixtures, crowded, files)
+    for key in ('head', 'branch', 'references', 'configSha256', 'files'):
+        assert after_unstage[key] == before_unstage[key], key
+    report['scenarios'].append('native-unstage-all-reaches-staged-files-beyond-initial-status-page')
+
+    more_files = '.change-loader button'
+    filter_files = 'input[aria-label="Filter changed files"]'
+    driver.wait(f"return document.querySelector({more_files!r})?.textContent.includes('Show 1,000 more files')")
+    driver.script("document.querySelector(arguments[0]).focus()", more_files)
+    driver.key('\ue007')  # Enter
+    driver.wait(f"return !document.querySelector({more_files!r}) && document.activeElement?.matches({filter_files!r})")
+    assert checkout_footprint(fixtures, crowded, files) == after_unstage
+    report['scenarios'].append('native-final-working-tree-page-restores-keyboard-focus-without-changing-checkout')
     return status_byte_bound_workflow(driver, fixtures, report)
 
 

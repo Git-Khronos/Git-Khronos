@@ -30,7 +30,7 @@ function sameSnapshot(first: Request, next: Request): boolean {
       @let refreshing = current.phase === 'refreshing';
       <span class="summary" role="img" [attr.aria-label]="label(current.value, refreshing)" [title]="description(refreshing)">
         <span>+{{ current.value.additions }}</span><i>−{{ current.value.deletions }}</i>
-        @if (current.value.uncountedFiles) { <em>{{ current.value.uncountedFiles }} other</em> }
+        @if (current.value.uncountedFiles) { <em>{{ current.value.uncountedFiles }} excluded</em> }
         @if (current.value.partial) { <em>(partial)</em> }
         @if (refreshing) { <em aria-hidden="true">…</em> }
       </span>
@@ -49,7 +49,7 @@ function sameSnapshot(first: Request, next: Request): boolean {
     .summary { display: inline-flex; align-items: center; gap: 5px; font: 12px "SFMono-Regular", Consolas, monospace; font-variant-numeric: tabular-nums; }
     .summary span { color: #62d7a6; }
     .summary i { color: #ef849b; font-style: normal; }
-    .summary em, .pending { color: var(--text-muted); font-size: 11px; font-style: normal; font-weight: 400; }
+    .summary em, .pending { color: var(--muted); font-size: 11px; font-style: normal; font-weight: 400; }
     .retry { min-block-size: 24px; padding-inline: 4px; border: 0; background: transparent;
       color: var(--accent); font: inherit; font-size: 11px; text-decoration: underline; }
     .retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

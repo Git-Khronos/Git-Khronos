@@ -8,7 +8,8 @@ from pathlib import Path
 from native_acceptance import open_ui
 
 
-def file_tools(driver, fixtures, original_repository, report):
+def file_tools(driver, fixtures, original_repository, report, *, enter_phase):
+    enter_phase('file-tool-profile-setup')
     repository = fixtures.repository('external-file-tools-owned', commits=2)
     path = 'external [owned].txt'
     target = repository / path
@@ -57,13 +58,11 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         driver.script("const e=document.querySelector(arguments[0]);e.value=arguments[1];e.dispatchEvent(new Event(arguments[2],{bubbles:true}));", selector, value, event)
 
     def button(text, scope='gk-file-tools-dialog'):
-        driver.wait('return [...document.querySelectorAll(' + json.dumps(scope + ' button') + ')].some(e=>e.textContent.trim()===' + json.dumps(text) + ' && !e.disabled)')
-        driver.click_scrolled_text(scope + ' button', text)
+        # Capture the enabled element during the readiness poll. Reviewed
+        # launches, saves, staging and cleanup still get one click only.
+        driver.click_scrolled_text(scope + ' button', text, wait_for_ready=True)
 
     def create_profile(role, arguments):
-        driver.click('[aria-label="Preferences"]')
-        driver.wait("return !!document.querySelector('#preferences-tab-terminal')")
-        driver.click('#preferences-tab-terminal')
         button('New program profile', 'gk-configured-tools-panel')
         fill('[name=toolName]', 'Owned file ' + role)
         fill('[name=toolRole]', role, 'change')
@@ -74,7 +73,6 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         driver.click('[name=toolDefault]')
         button('Save program profile', 'gk-configured-tools-panel')
         driver.wait("return [...document.querySelectorAll('gk-configured-tools-panel [role=status]')].some(e=>e.textContent.includes('Profile saved.'))")
-        driver.click('[aria-label="Close preferences"]')
 
     def preview():
         driver.click('.wip-nav')
@@ -121,10 +119,17 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
 
     try:
         open_ui(driver, repository)
+        # Keep one Preferences session for setup; launches below still
+        # exercise the persisted profiles after a full document reload.
+        driver.click('[aria-label="Preferences"]')
+        driver.wait("return !!document.querySelector('#preferences-tab-terminal')")
+        driver.click('#preferences-tab-terminal')
         for role, arguments in [('editor', ['{file}']), ('diff', ['{before}', '{after}']),
                                 ('merge', ['{base}', '{before}', '{after}', '{merged}'])]:
             create_profile(role, arguments)
+        driver.click('[aria-label="Close preferences"]')
         assert not records.exists(), 'Saving profiles executed a command'
+        enter_phase('file-tool-diff-review')
         target.write_bytes(b'working\n')
         # Ordinary context-menu preview and reviewed native comparison.
         driver.reload(); driver.wait("return !!document.querySelector('.commit-row')")
@@ -138,6 +143,7 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         cleanup()
         report['scenarios'].append('native-ui-file-diff-exact-index-working-private-bytes-literal-argv-sanitized-context')
 
+        enter_phase('file-tool-editor-review')
         button('Review external editor for working file', 'gk-file-content-dialog')
         row = launch(2); assert_environment(row)
         assert row['paths'] == [str(target)] and row['bytes'] == [b'working\n'.hex()], row
@@ -146,6 +152,7 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
         button('Close', 'gk-file-content-dialog')
         report['scenarios'].append('native-ui-file-editor-saved-working-file-changes-without-index-change')
 
+        enter_phase('file-tool-merge-review')
         target.write_bytes(b'current\n')
         merge = subprocess.run(['git', '-C', str(repository), 'merge', '--no-edit', 'owned-incoming'], env=fixtures.env, capture_output=True)
         assert merge.returncode == 1 and fixtures.git(repository, 'ls-files', '-u'), merge.stderr
@@ -190,6 +197,8 @@ with pathlib.Path(records).open('a') as out: out.write(json.dumps(row)+'\\n')
                 report.setdefault('fileToolCaptureErrors', []).append(str(error))
         # A fixture failure preserves file copies for inspection. Never infer
         # GUI completion, replay a launch/write, or kill a process by saved PID.
+        if not failing:
+            enter_phase('file-tool-cleanup')
         try:
             for identifier in sessions:
                 driver.invoke('stop_file_tool_command', sessionId=identifier)

@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import type { Worktree } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
+import { isTabKey } from './tab-key';
 
 export interface WorktreeMoveRequest {
   repositoryId: string;
@@ -165,7 +166,7 @@ export class WorktreeMoveDialogComponent {
     if (!this.owns(target)) return;
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); this.close(target); }
-    if (event.key !== 'Tab') return;
+    if (!isTabKey(event)) return;
     const controls = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled)') ?? [])]
       .filter(control => control.getClientRects().length);
     if (!controls.length) return;

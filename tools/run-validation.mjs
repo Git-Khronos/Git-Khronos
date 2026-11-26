@@ -2,24 +2,61 @@ import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, openSync, closeSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { delimiter, resolve, join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
-import { processStart, validationStatus } from './validation-status.mjs';
+import { currentBootId, processStart, validationStatus } from './validation-status.mjs';
+import { validationSourceFingerprint } from './validation-source.mjs';
 
 const [mode, runDirectory, ...args] = process.argv.slice(2);
+const usage = `Usage:
+  node tools/run-validation.mjs start DIRECTORY [--snapshot REF | --guard-source] NX_COMMAND [NX_ARGS...]
+  node tools/run-validation.mjs run   DIRECTORY [--snapshot REF | --guard-source] NX_COMMAND [NX_ARGS...]
+  node tools/run-validation.mjs status DIRECTORY
+  node tools/run-validation.mjs wait   DIRECTORY
+
+Use start for a detached run, or run to wait in the foreground.
+Without --snapshot the run uses the current checkout; with it, it uses the named local commit.
+--guard-source refuses a passing result if Git-visible checkout files differ at the end.
+Use wait to observe an existing run and return its exit code, without taking ownership.
+
+Example:
+  node tools/run-validation.mjs start target/validation-runs/local-check run desktop:e2e -- --workers=2
+`;
+if (mode === '--help' || mode === '-h') {
+  process.stdout.write(usage);
+  process.exit(0);
+}
 const useSnapshot = args[0] === '--snapshot';
 const snapshot = useSnapshot ? args.splice(0, 2)[1] : undefined;
-if (!runDirectory || !['start', 'run', 'status'].includes(mode)) {
-  throw new Error('Expected start|run DIRECTORY [--snapshot REF] [Nx arguments], or status DIRECTORY');
+const guardSource = !useSnapshot && args[0] === '--guard-source';
+if (guardSource) args.shift();
+if (!runDirectory || !['start', 'run', 'status', 'wait'].includes(mode)) {
+  throw new Error('Expected start|run DIRECTORY [--snapshot REF] [Nx arguments], or status|wait DIRECTORY');
 }
-if (mode === 'status') {
-  if (useSnapshot || args.length) throw new Error('status accepts only a run directory');
-  writeFileSync(process.stdout.fd, JSON.stringify(validationStatus(resolve(runDirectory)), null, 2) + '\n');
-  process.exit(0);
+if (mode === 'status' || mode === 'wait') {
+  if (useSnapshot || guardSource || args.length) throw new Error(`${mode} accepts only a run directory`);
+  const directory = resolve(runDirectory);
+  let status = validationStatus(directory);
+  while (mode === 'wait' && ['preparing', 'running'].includes(status.state)) {
+    await delay(1000);
+    status = validationStatus(directory);
+  }
+  writeFileSync(process.stdout.fd, JSON.stringify(status, null, 2) + '\n');
+  if (mode === 'status') process.exit(0);
+  const code = status.exitCode;
+  process.exit(Number.isInteger(code) && code >= 0 && code <= 255 ? code : 1);
 }
 if (useSnapshot && (!snapshot || !args.length)) {
   throw new Error('--snapshot needs a Git ref followed by Nx arguments');
 }
+if (!args.length) {
+  process.stderr.write(usage);
+  process.exit(2);
+}
+// Accept the target notation used in diagnostics, but Nx needs the explicit
+// run verb before a project:target[:configuration] argument.
+if (/^[\w@][\w@./-]*:[\w.-]+(?::[\w.-]+)?$/.test(args[0])) args.unshift('run');
 const gitEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
 const gitArgs = ['--no-optional-locks', '-c', 'core.fsmonitor=false'];
 const gitValue = args => {
@@ -36,12 +73,19 @@ if (snapshot && !commit) throw new Error('Snapshot ref does not resolve to a loc
 const directory = resolve(runDirectory);
 const commandCwd = commit ? join(directory, 'source') : process.cwd();
 if (commit && directory.includes(delimiter)) throw new Error('Snapshot run path contains Git’s path-list delimiter');
-const rendererRun = (args[0] === 'run' && /^desktop:e2e(?::[^:]+)?$/.test(args[1] ?? ''))
-  || (args[0] === 'e2e' && args[1] === 'desktop');
-const rendererSnapshot = Boolean(commit) && (
-  args.some(argument => argument === 'desktop:e2e' || argument.startsWith('desktop:e2e:'))
-  || (args[0] === 'e2e' && args[1] === 'desktop')
-);
+const isDesktopRenderer = value => /^desktop:e2e(?:-webkit)?(?::[^:]+)?$/.test(value ?? '');
+const nxArgs = args.includes('--') ? args.slice(0, args.indexOf('--')) : args;
+const rendererTargets = new Set(['e2e', 'e2e-webkit']);
+const selectedRendererTargets = nxArgs[0] === 'run-many' ? new Set(nxArgs.flatMap((argument, index) => {
+  const flag = /^(?:-t|--target|--targets)(?:=(.*))?$/.exec(argument);
+  return flag ? (flag[1] ?? nxArgs[index + 1] ?? '').split(/[,\s]+/).filter(target => rendererTargets.has(target)) : [];
+})) : new Set();
+if (selectedRendererTargets.size > 1) {
+  throw new Error('Run desktop:e2e and desktop:e2e-webkit in separate validation directories so each owns its port and renderer progress.');
+}
+const rendererRun = (nxArgs[0] === 'run' && isDesktopRenderer(nxArgs[1]))
+  || (rendererTargets.has(nxArgs[0]) && nxArgs[1] === 'desktop')
+  || selectedRendererTargets.size === 1;
 
 async function selectRendererPort() {
   const server = createServer();
@@ -69,7 +113,7 @@ const environment = {
 };
 if (mode === 'start') {
   const runner = spawn(process.execPath, [fileURLToPath(import.meta.url), 'run', directory,
-    ...(commit ? ['--snapshot', commit] : []), ...args], {
+    ...(commit ? ['--snapshot', commit] : guardSource ? ['--guard-source'] : []), ...args], {
     cwd: process.cwd(), detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     env: { ...environment, NX_DAEMON: 'false', NX_ISOLATE_PLUGINS: 'false' },
   });
@@ -109,7 +153,8 @@ async function runValidation() {
       branch: gitValue(['symbolic-ref', '--short', '-q', 'HEAD']),
       status: gitValue(['status', '--porcelain=v1', '--untracked-files=normal']) };
   const started = new Date().toISOString();
-  const runner = { runnerPid: process.pid, runnerStart: processStart(process.pid) };
+  const runnerBootId = currentBootId();
+  const runner = { runnerPid: process.pid, runnerStart: processStart(process.pid), ...(runnerBootId ? { runnerBootId } : {}) };
   const writeReceipt = (name, data) => {
     const destination = join(directory, name);
     const temporary = `${destination}.${process.pid}.tmp`;
@@ -129,10 +174,11 @@ async function runValidation() {
   process.on('SIGINT', onInterrupt);
   process.on('SIGTERM', onTerminate);
   let rendererPort;
+  let sourceCheck;
   const finish = (exitCode, signal, error) => {
     closeSync(output);
     writeReceipt('result.json', {
-      ...runner, command, source, started, rendererPort, finished: new Date().toISOString(), exitCode, signal, error,
+      ...runner, command, source, started, rendererPort, finished: new Date().toISOString(), exitCode, signal, error, sourceCheck,
     });
     process.exitCode = exitCode ?? 1;
   };
@@ -149,6 +195,9 @@ async function runValidation() {
   try {
     writeReceipt('preparing.json', { ...runner, command, source, started });
     if (process.connected) process.send({ ready: true }, () => {});
+    if (guardSource) {
+      source.inputFingerprint = validationSourceFingerprint(commandCwd, gitEnv);
+    }
     if (commit) {
       const archive = join(directory, 'snapshot.tar');
       mkdirSync(commandCwd);
@@ -158,9 +207,12 @@ async function runValidation() {
       rmSync(archive);
       await prepare('Installing pinned dependencies offline', 'pnpm', ['install', '--offline', '--frozen-lockfile']);
     }
-    if (rendererSnapshot) {
+    if (rendererRun) {
       rendererPort = environment.PLAYWRIGHT_PORT ?? await selectRendererPort();
       environment.PLAYWRIGHT_PORT = rendererPort;
+      // A named receipt must come from the source this run serves, not an
+      // unrelated server that the parent shell opted into for interactive use.
+      environment.PLAYWRIGHT_REUSE_SERVER = '0';
       writeFileSync(output, `==> Renderer test server: 127.0.0.1:${rendererPort}\n`);
     }
     const result = await runOwnedCommand(command[0], command.slice(1), {
@@ -170,6 +222,20 @@ async function runValidation() {
       },
     });
     outcome = [result.code, result.signal, undefined];
+    if (guardSource) {
+      try {
+        const fingerprint = validationSourceFingerprint(commandCwd, gitEnv);
+        const changed = fingerprint !== source.inputFingerprint
+          || gitValue(['rev-parse', 'HEAD']) !== source.commit
+          || gitValue(['symbolic-ref', '--short', '-q', 'HEAD']) !== source.branch;
+        sourceCheck = { state: changed ? 'changed' : 'unchanged', fingerprint };
+      } catch (error) {
+        sourceCheck = { state: 'unverified', error: error.message };
+      }
+      if (sourceCheck.state !== 'unchanged' && result.code === 0) {
+        outcome = [1, null, 'Validation command passed, but the checkout input guard did not.'];
+      }
+    }
   } catch (error) {
     outcome = [interrupted === 'SIGINT' ? 130 : interrupted === 'SIGTERM' ? 143 : 1,
       interrupted ?? null, String(error)];

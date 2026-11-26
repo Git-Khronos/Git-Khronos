@@ -3,6 +3,28 @@ export const MAX_DETAILED_DIFF_LINES = 1_500;
 export const MAX_SYNTAX_LINE_CHARACTERS = 2_048;
 export const MAX_SYNTAX_TOKENS_PER_LINE = 256;
 
+const MAX_MINIMAP_MARKS = 512;
+type MinimapMark = { kind: 'addition' | 'deletion' | 'mixed'; position: number };
+
+export function diffMinimapMarks(lines: readonly { kind: string }[]): MinimapMark[] {
+  const last = lines.length - 1;
+  const marks = new Map<number, MinimapMark['kind']>();
+  // Marks are decorative; exact hunk navigation is rendered independently.
+  // On a dense patch, keep both kinds of changes in each coarse position.
+  const slots = Math.min(last, MAX_MINIMAP_MARKS - 1);
+  for (let index = 0; index < lines.length; index++) {
+    const kind = lines[index].kind;
+    if (kind !== 'addition' && kind !== 'deletion') continue;
+    const slot = last > slots ? Math.round(index / last * slots) : index;
+    const previous = marks.get(slot);
+    marks.set(slot, previous && previous !== kind ? 'mixed' : kind);
+  }
+  return Array.from(marks, ([slot, kind]) => ({
+    kind,
+    position: slots > 0 ? slot / slots * 100 : 0,
+  }));
+}
+
 export interface DiffTextSegment {
   text: string;
   changed: boolean;

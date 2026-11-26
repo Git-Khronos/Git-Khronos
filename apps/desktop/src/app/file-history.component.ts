@@ -31,13 +31,18 @@ import { HistorySearchService } from './history-search.service';
           <small role="status">{{ owned() && history.fileCancelling() ? 'Stopping file history…' : owned() && history.fileCancellationRequested() ? 'Cancellation not confirmed. Retry, or wait for the read to finish.' : 'Reading file history…' }}</small>
         }
         @if (owned() && history.fileError()) { <p role="alert">{{ history.fileError() }}</p> }
+        <div class="copy-feedback" role="status" aria-atomic="true">{{ copyAnnouncement() }}</div>
       </div>
       <div class="history-list" tabindex="0" aria-label="File history commits">
         @for (entry of entries(); track entry.oid) {
           <article class="history-entry">
             <span class="history-avatar" [style.--author-color]="authorColor()(entry.authorName, entry.authorEmail)">{{ initials()(entry.authorName) }}</span>
-            <div><button type="button" (click)="navigate.emit(entry)">{{ entry.subject }}</button><small>{{ entry.path }} · @if (entry.status === 'D') { Deleted · } {{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small></div>
-            <code>{{ entry.oid.slice(0, 8) }}</code>
+            <div><button class="history-subject" type="button" [title]="entry.subject" (click)="navigate.emit(entry)">{{ entry.subject }}</button><small>{{ entry.path }} · @if (entry.status === 'D') { Deleted · } {{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small></div>
+            <button class="copy-history-path" type="button" [attr.aria-label]="'Copy path: ' + entry.path" [title]="'Copy path: ' + entry.path"
+              (click)="copyEntryValue(entry.oid, entry.path, 'file path')">Copy path</button>
+            <button class="copy-history-commit" type="button"
+              [attr.aria-label]="'Copy commit ID: ' + entry.oid.slice(0, 8)" title="Copy full commit ID"
+              (click)="copyEntryValue(entry.oid, entry.path, 'commit ID')"><code>{{ entry.oid.slice(0, 8) }}</code></button>
           </article>
         } @empty {
           @if (owned() && history.fileComplete()) { <div class="file-insight-empty">No history was found for this file at the selected revision.</div> }
@@ -60,9 +65,12 @@ import { HistorySearchService } from './history-search.service';
     .history-insight > header strong { color: var(--text); }
     .history-insight > header b { background: var(--surface); color: var(--muted); }
     .history-entry { border-color: var(--border); }
+    .history-entry { grid-template-columns: 29px minmax(0, 1fr) max-content 78px; }
     .history-entry:hover { background: var(--surface-hover); }
     .history-entry small, .file-insight-empty { color: var(--muted); }
     .history-feedback { padding: 8px 14px; }
+    .copy-feedback { color: var(--text); overflow-wrap: anywhere; }
+    .copy-feedback:not(:empty) { margin-top: 6px; }
     .history-start { color: var(--muted); }
     .history-start summary { cursor: pointer; overflow-wrap: anywhere; }
     .history-start form { display: grid; gap: 6px; margin: 8px 0; }
@@ -71,6 +79,10 @@ import { HistorySearchService } from './history-search.service';
     button { font: inherit; }
     .history-entry button { padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; font-weight: 600; cursor: pointer; }
     .history-entry button:hover { color: var(--accent); }
+    .history-entry .history-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-entry :is(.copy-history-path, .copy-history-commit) { min-height: 28px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); color: var(--text); font-size: var(--font-size-caption); white-space: nowrap; }
+    .history-entry :is(.copy-history-path, .copy-history-commit):hover { background: var(--surface-hover); }
+    .history-entry .copy-history-commit { text-align: center; }
     p { margin: 6px 0 0; color: var(--danger); overflow-wrap: anywhere; }
     .history-start-actions, footer { display: flex; flex-wrap: wrap; gap: 8px; }
     footer { padding: 8px 14px; border-top: 1px solid var(--border); }
@@ -92,11 +104,16 @@ export class FileHistoryComponent {
   readonly alternateStart = computed(() => this.startingPoint() !== null && this.startingPoint() !== this.revision());
   readonly canChangeStart = computed(() => this.owned() && (!this.history.fileBusy() || this.history.fileCancellationRequested()));
   readonly canLoadMore = computed(() => this.owned() && !this.history.fileBusy() && !this.history.fileComplete());
+  private readonly copyContext = computed(() => ({
+    revision: this.revision(), path: this.path(), start: this.startingPoint(),
+  }));
+  readonly copyAnnouncement = linkedSignal({ source: this.copyContext, computation: (): string => '' });
   readonly draft = linkedSignal({ source: () => [this.revision(), this.path()], computation: (): string => '' });
   private readonly injector = inject(Injector);
   private readonly retryButton = viewChild.required<ElementRef<HTMLButtonElement>>('retryButton');
   private readonly cancelButton = viewChild<ElementRef<HTMLButtonElement>>('cancelButton');
   private wasBusy = false;
+  private copyGeneration = 0;
 
   // Keep the active control focusable while a read is pending. A disabled
   // native button would drop keyboard focus before the next page arrives.
@@ -116,6 +133,22 @@ export class FileHistoryComponent {
     if (!this.canChangeStart() || !this.alternateStart()) return;
     this.draft.set('');
     void this.history.changeFileStartingPoint(this.revision(), this.path(), this.revision());
+  }
+
+  async copyEntryValue(oid: string, path: string, kind: 'file path' | 'commit ID'): Promise<void> {
+    const context = this.copyContext();
+    if (!this.owned() || !this.entries().some(entry => entry.oid === oid && entry.path === path)) return;
+    const generation = ++this.copyGeneration;
+    const current = () => generation === this.copyGeneration && this.owned()
+      && this.copyContext() === context && this.entries().some(entry => entry.oid === oid && entry.path === path);
+    this.copyAnnouncement.set('');
+    const value = kind === 'commit ID' ? oid : path;
+    try {
+      await navigator.clipboard.writeText(value);
+      if (current()) this.copyAnnouncement.set(`Copied ${kind}: ${value}`);
+    } catch {
+      if (current()) this.copyAnnouncement.set(`Could not copy ${kind}: ${value}. Clipboard access is unavailable.`);
+    }
   }
 
   constructor() {

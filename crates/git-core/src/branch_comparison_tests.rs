@@ -92,11 +92,18 @@ fn comparison_lists_commits_unique_to_each_branch() {
 #[test]
 fn comparison_reports_behind_up_to_date_and_published_commits() {
     let fixture = Fixture::new();
+    fixture.git(&["branch", "equal-to-main"]);
+    let equal = compare_branches(fixture.path(), "main", "equal-to-main").unwrap();
+    assert_eq!((equal.incoming_count, equal.outgoing_count), (0, 0));
+    assert_eq!(equal.outgoing_published, 0);
+    assert!(equal.incoming.is_empty() && equal.outgoing.is_empty());
     fixture.diverge(0, 3);
     let behind = compare_branches(fixture.path(), "main", "feature").unwrap();
     assert_eq!((behind.incoming_count, behind.outgoing_count), (3, 0));
+    assert!(behind.outgoing.is_empty());
     let reverse = compare_branches(fixture.path(), "feature", "main").unwrap();
     assert_eq!((reverse.incoming_count, reverse.outgoing_count), (0, 3));
+    assert!(reverse.incoming.is_empty());
 
     // Commits reachable from a remote-tracking ref count as published.
     fixture.git(&["update-ref", "refs/remotes/origin/feature", "feature~1"]);

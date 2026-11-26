@@ -105,6 +105,7 @@ tasks:
       - tools/manage-linux-package.sh
       - tools/build-linux-package.sh
       - tools/check-linux-package-watcher.mjs
+      - tools/cli-entry.mjs
       - tools/package-build-receipt.mjs
       - tools/check-linux-abi.mjs
       - tools/require-ubuntu-jammy.sh
@@ -166,24 +167,34 @@ tasks:
     aliases: [install:linux]
     desc: Build and install Git Khronos system-wide on Debian/Ubuntu
     platforms: [linux]
-    deps: [package:deb]
     cmds:
-      - tools/manage-linux-package.sh install
+      - >-
+        {{if .CLI_ARGS}}
+        printf '%s\n' 'task install:linux takes no archive argument. Use install:linux:dry-run or install:linux:status to inspect a selected archive.' >&2; exit 2
+        {{else}}
+        task package:deb && tools/manage-linux-package.sh install
+        {{end}}
 
   install:system:dry-run:
     aliases: [install:linux:dry-run]
-    desc: Build the local Debian package and preview the APT installation without installing
+    desc: Preview APT installation of the local build or an explicitly selected Debian package
     platforms: [linux]
-    deps: [package:deb]
     cmds:
-      - tools/manage-linux-package.sh simulate-install
+      - "{{if .CLI_ARGS}}tools/manage-linux-package.sh simulate-install {{.CLI_ARGS}}{{else}}task package:deb && tools/manage-linux-package.sh simulate-install{{end}}"
+
+  install:system:preview:
+    aliases: [install:linux:preview]
+    desc: Open a reviewed Debian archive with a temporary profile, without installing
+    platforms: [linux]
+    cmds:
+      - "bash tools/preview-linux-package.sh {{.CLI_ARGS}}"
 
   install:system:status:
     aliases: [install:linux:status]
-    desc: Check the installed executable and launcher against the local Debian package without building or installing
+    desc: Compare the installed executable and launcher with the latest or explicitly selected Debian package
     platforms: [linux]
     cmds:
-      - tools/manage-linux-package.sh installed-status
+      - tools/manage-linux-package.sh installed-status{{if .CLI_ARGS}} {{.CLI_ARGS}}{{end}}
 
   uninstall:system:
     aliases: [uninstall:linux]
@@ -202,7 +213,7 @@ tasks:
     desc: Run deterministic browser-renderer journeys against sample data
     deps: [doctor]
     cmds:
-      - pnpm test:e2e
+      - pnpm nx run desktop:e2e{{if .CLI_ARGS}} -- {{.CLI_ARGS}}{{end}}
 
   test:e2e:install:
     desc: Install the Chromium runtime used by renderer end-to-end tests

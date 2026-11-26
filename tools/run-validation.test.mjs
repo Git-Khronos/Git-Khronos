@@ -1,18 +1,200 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
-import { processStart } from './validation-status.mjs';
+import { currentBootId, processStart } from './validation-status.mjs';
+import { validationSourceFingerprint } from './validation-source.mjs';
 import RendererProgress from './renderer-progress-reporter.cjs';
 
 const launcher = fileURLToPath(new URL('./run-validation.mjs', import.meta.url));
 
 const readStatus = directory => JSON.parse(execFileSync(process.execPath,
   [launcher, 'status', directory], { encoding: 'utf8' }));
+
+test('guarded validation rejects changed bytes even when the Git status names stay the same', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-run-guard-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cwd = join(root, 'checkout'), bin = join(root, 'bin');
+  mkdirSync(cwd); mkdirSync(bin);
+  const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' });
+  git('init', '-q');
+  const file = join(cwd, 'owned source\nname.txt');
+  writeFileSync(file, 'first');
+  git('add', '--', 'owned source\nname.txt');
+  const originalStatus = git('status', '--porcelain=v1');
+  writeFileSync(join(bin, 'pnpm'), `#!${process.execPath}
+if (process.env.CHANGE_GUARDED_SOURCE) {
+  require('node:fs').writeFileSync(process.env.CHANGE_GUARDED_SOURCE, 'third');
+}
+`, { mode: 0o700 });
+  // Keep the file dirty with the same Git status and length before and after
+  // the child changes it; neither pathname nor length proves input identity.
+  writeFileSync(file, 'other');
+  const dirtyStatus = git('status', '--porcelain=v1');
+  assert.notEqual(dirtyStatus, originalStatus);
+  for (const change of [false, true]) {
+    const directory = join(root, change ? 'changed' : 'unchanged');
+    const result = spawnSync(process.execPath, [launcher, 'run', directory, '--guard-source', 'desktop:test'], {
+      cwd, encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
+        CHANGE_GUARDED_SOURCE: change ? file : '' },
+    });
+    assert.equal(result.status, change ? 1 : 0, result.stderr);
+    const receipt = readStatus(directory);
+    assert.equal(receipt.sourceCheck.state, change ? 'changed' : 'unchanged');
+    assert.equal(receipt.source.inputFingerprint === receipt.sourceCheck.fingerprint, !change);
+    assert.equal(git('status', '--porcelain=v1'), dirtyStatus);
+  }
+});
+
+test('the checkout fingerprint does not follow a replaced tracked directory outside the fixture', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-run-guard-link-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cwd = join(root, 'checkout'), outside = join(root, 'outside'), tracked = join(cwd, 'tracked');
+  mkdirSync(cwd); mkdirSync(outside); mkdirSync(tracked);
+  execFileSync('git', ['init', '-q'], { cwd });
+  writeFileSync(join(tracked, 'file'), 'owned checkout file');
+  execFileSync('git', ['add', 'tracked/file'], { cwd });
+  assert.match(validationSourceFingerprint(cwd, process.env), /^[a-f0-9]{64}$/);
+  rmSync(tracked, { recursive: true });
+  writeFileSync(join(outside, 'file'), 'must not read this');
+  symlinkSync(outside, tracked);
+  assert.throws(() => validationSourceFingerprint(cwd, process.env), /input directory has been replaced/);
+});
+
+test('guarded runs launched in a subdirectory also fingerprint worktree-root files', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-guard-worktree-root-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cwd = join(root, 'checkout with trailing space '), subdirectory = join(cwd, 'nested');
+  mkdirSync(subdirectory, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd });
+  writeFileSync(join(subdirectory, 'spec'), 'nested');
+  const input = join(cwd, 'root-input');
+  writeFileSync(input, 'earlier');
+  const before = validationSourceFingerprint(subdirectory, process.env);
+  assert.equal(before, validationSourceFingerprint(cwd, process.env));
+  writeFileSync(input, 'changed');
+  assert.notEqual(validationSourceFingerprint(subdirectory, process.env), before);
+});
+
+test('renderer shards spread adjacent cases, preserve their identities, and reject incomplete lists', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-renderer-shards-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cli = fileURLToPath(new URL('./plan-renderer-shard.mjs', import.meta.url));
+  const input = join(root, 'playwright-list');
+  const cases = Array.from({ length: 7 }, (_, index) =>
+    `  [chromium] › graph-columns.spec.ts:${index + 1}:1 › case ${index + 1}`);
+  const writeList = (entries, count = entries.length) =>
+    writeFileSync(input, `Listing tests:\n${entries.join('\n')}\nTotal: ${count} tests in 1 file\n`);
+  const run = (part, total) => spawnSync(process.execPath, [cli, input, part, total], { encoding: 'utf8' });
+  writeList(cases);
+  const shards = ['1', '2', '3'].map(part => {
+    const result = run(part, '3');
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trimEnd().split('\n');
+  });
+  assert.deepEqual(shards, [[cases[0], cases[3], cases[6]], [cases[1], cases[4]], [cases[2], cases[5]]]);
+  assert.equal(run('4', '3').status, 1);
+  assert.equal(run('1', '8').status, 1);
+  writeList(cases.slice(1), cases.length);
+  assert.equal(run('1', '3').status, 1);
+  writeList([...cases, cases[0]]);
+  assert.equal(run('1', '3').status, 1);
+});
+
+test('validation help shows the Nx run form and missing commands create no run directory', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-validation-help-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const directory = join(root, 'no-command');
+  const help = spawnSync(process.execPath, [launcher, '--help'], { encoding: 'utf8' });
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /run desktop:e2e -- --workers=2/);
+  for (const mode of ['start', 'run']) {
+    const missing = spawnSync(process.execPath, [launcher, mode, directory], { encoding: 'utf8' });
+    assert.equal(missing.status, 2, missing.stderr);
+    assert.match(missing.stderr, /NX_COMMAND/);
+    assert.equal(existsSync(directory), false);
+  }
+});
+
+test('waiting for an existing run returns its terminal receipt and exit code', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'khronos-validation-wait-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const wait = () => spawnSync(process.execPath, [launcher, 'wait', directory], { encoding: 'utf8' });
+  const missing = wait();
+  assert.equal(missing.status, 1);
+  assert.equal(JSON.parse(missing.stdout).state, 'not-started');
+
+  const owner = { runnerPid: process.pid, runnerStart: processStart(process.pid) };
+  writeFileSync(join(directory, 'preparing.json'), JSON.stringify({ ...owner, runnerStart: '0' }));
+  const stopped = wait();
+  assert.equal(stopped.status, 1);
+  assert.equal(JSON.parse(stopped.stdout).state, 'stopped-without-result');
+
+  writeFileSync(join(directory, 'preparing.json'), JSON.stringify(owner));
+  const waiter = spawn(process.execPath, [launcher, 'wait', directory]);
+  t.after(() => waiter.kill());
+  let output = '';
+  waiter.stdout.setEncoding('utf8').on('data', chunk => { output += chunk; });
+  const closed = new Promise(resolve => waiter.once('close', resolve));
+  await delay(150);
+  assert.equal(waiter.exitCode, null);
+  const pendingResult = join(directory, 'result.tmp');
+  writeFileSync(pendingResult, JSON.stringify({ ...owner, exitCode: 7, signal: null }));
+  renameSync(pendingResult, join(directory, 'result.json'));
+  assert.equal(await closed, 7);
+  assert.equal(JSON.parse(output).state, 'failed');
+});
+
+test('live renderer validation chooses an available test-server port unless overridden', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-live-renderer-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const listener = createServer();
+  await new Promise((resolve, reject) => listener.once('error', reject).listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => listener.close(resolve)));
+  const occupied = String(listener.address().port);
+  const bin = join(root, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'pnpm'), `#!${process.execPath}
+process.stdout.write(process.env.PLAYWRIGHT_PORT + ' reuse=' + process.env.PLAYWRIGHT_REUSE_SERVER);
+`, { mode: 0o700 });
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+  delete env.PLAYWRIGHT_PORT;
+  env.PLAYWRIGHT_REUSE_SERVER = '1';
+  const mixed = spawnSync(process.execPath, [launcher, 'run', join(root, 'mixed'),
+    'run-many', '--targets=e2e,e2e-webkit', '--projects=desktop'], { cwd: root, env });
+  assert.notEqual(mixed.status, 0);
+  assert.match(String(mixed.stderr), /separate validation directories/);
+  for (const [name, override, args] of [
+    ['auto', undefined, ['run', 'desktop:e2e']],
+    ['explicit', occupied, ['run', 'desktop:e2e']],
+    ['bare', undefined, ['desktop:e2e']],
+    ['many', undefined, ['run-many', '--targets=test,e2e', '--projects=desktop']],
+    ['many-short', undefined, ['run-many', '-t', 'check,e2e', '-p', 'desktop']],
+    ['webkit', undefined, ['desktop:e2e-webkit']],
+    ['webkit-shorthand', undefined, ['e2e-webkit', 'desktop']],
+    ['webkit-many', undefined, ['run-many', '--targets=check,e2e-webkit', '--projects=desktop']],
+  ]) {
+    const directory = join(root, name);
+    const run = spawnSync(process.execPath, [launcher, 'run', directory, ...args], {
+      cwd: root, env: override ? { ...env, PLAYWRIGHT_PORT: override } : env,
+    });
+    assert.equal(run.status, 0, String(run.stderr));
+    const { rendererPort } = readStatus(directory);
+    assert.match(rendererPort, /^[0-9]+$/);
+    if (override) assert.equal(rendererPort, override);
+    else assert.notEqual(rendererPort, occupied);
+    assert.ok(readFileSync(join(directory, 'output.log'), 'utf8').endsWith(rendererPort + ' reuse=0'));
+    if (name === 'bare') {
+      const result = JSON.parse(readFileSync(join(directory, 'result.json'), 'utf8'));
+      assert.deepEqual(result.command, ['pnpm', 'nx', 'run', 'desktop:e2e']);
+    }
+  }
+});
 
 test('validation status verifies live ownership and the real final result', async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-run-status-'));
@@ -63,29 +245,118 @@ test('validation status distinguishes waiting, stale ownership and unverified le
   assert.equal(readStatus(root).state, 'interrupted');
 });
 
+test('validation status rejects nonregular or oversized terminal receipts without hanging', { skip: process.platform !== 'linux' }, (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-invalid-run-receipt-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const receipt = join(root, 'result.json');
+  const inspect = () => {
+    const run = spawnSync(process.execPath, [launcher, 'status', root], { encoding: 'utf8', timeout: 2000 });
+    assert.ifError(run.error);
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /Invalid validation receipt: result\.json/);
+    assert.equal(run.stdout, '');
+    unlinkSync(receipt);
+  };
+  const other = join(root, 'other.json');
+  writeFileSync(other, '{"exitCode":0}');
+  symlinkSync(other, receipt);
+  inspect();
+  execFileSync('mkfifo', [receipt]);
+  inspect();
+  writeFileSync(receipt, '{"exitCode":0}' + ' '.repeat(1024 * 1024));
+  inspect();
+  assert.equal(readStatus(root).state, 'not-started');
+});
+
 test('renderer progress updates retry outcomes without deciding the validation result', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-renderer-progress-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const runner = { runnerPid: process.pid, runnerStart: processStart(process.pid) };
   writeFileSync(join(root, 'started.json'), JSON.stringify(runner));
   const reporter = new RendererProgress({ path: join(root, 'renderer-progress.json') });
-  const first = { id: 'owned-first' }, second = { id: 'owned-second' };
+  const first = { id: 'owned-first', location: { file: join(root, 'first.spec.ts'), line: 42 } };
+  const second = { id: 'owned-second', location: { file: join(root, 'second.spec.ts'), line: -5 } };
   reporter.onBegin(undefined, { allTests: () => [first, second] });
   const started = readStatus(root);
   assert.equal(started.state, 'running');
   assert.equal(started.rendererProgress.totalTests, 2);
   assert.equal(started.rendererProgress.testsReported, 0);
-  reporter.onTestEnd(first, { status: 'failed' });
-  reporter.onTestEnd(first, { status: 'passed' });
-  reporter.onTestEnd(second, { status: 'skipped' });
+  assert.equal(started.rendererProgress.testsRemainingToReport, 2);
+  assert.equal(started.rendererProgress.reportedPercent, 0);
+  assert.equal(started.rendererProgress.activeAttempts, 0);
+  assert.ok(Number.isSafeInteger(started.rendererProgress.testPhaseElapsedMs));
+  assert.equal(started.rendererProgress.totalAttemptDurationMs, 0);
+  reporter.onTestBegin(first);
+  reporter.publish(null);
+  const active = readStatus(root).rendererProgress;
+  assert.equal(active.activeAttempts, 1);
+  assert.equal(active.oldestActiveAttempts[0].spec, 'first.spec.ts');
+  assert.ok(Number.isFinite(Date.parse(active.oldestActiveAttempts[0].startedAt)));
+  assert.equal(active.testsReported, 0, 'an ongoing test must not count as completed');
+  reporter.onTestEnd(first, { status: 'failed', duration: 300 });
+  reporter.onTestBegin(first);
+  reporter.onTestEnd(first, { status: 'passed', duration: 200 });
+  reporter.onTestEnd(second, { status: 'skipped', duration: 0 });
   reporter.onEnd({ status: 'passed' });
   writeFileSync(join(root, 'result.json'), JSON.stringify({ ...runner, exitCode: 7, signal: null }));
   const final = readStatus(root);
   assert.equal(final.state, 'failed', 'Playwright progress must not override the owned command receipt');
   assert.equal(final.rendererProgress.playwrightStatus, 'passed');
   assert.equal(final.rendererProgress.testsReported, 2);
+  assert.equal(final.rendererProgress.testsRemainingToReport, 0);
+  assert.equal(final.rendererProgress.reportedPercent, 100);
   assert.equal(final.rendererProgress.attemptsReported, 3);
+  assert.ok(final.rendererProgress.testPhaseElapsedMs >= started.rendererProgress.testPhaseElapsedMs);
+  assert.equal(final.rendererProgress.totalAttemptDurationMs, 500);
+  assert.equal(final.rendererProgress.activeAttempts, 0);
+  assert.deepEqual(final.rendererProgress.oldestActiveAttempts, []);
+  assert.deepEqual(final.rendererProgress.slowestSpecsByAttemptTime, [
+    { spec: 'first.spec.ts', durationMs: 500, timedAttempts: 2, maxAttemptMs: 300, maxAttemptLine: 42 },
+    { spec: 'second.spec.ts', durationMs: 0, timedAttempts: 1, maxAttemptMs: 0 },
+  ]);
   assert.deepEqual(final.rendererProgress.latestOutcomes, { passed: 1, failed: 0, timedOut: 0, skipped: 1, interrupted: 0 });
+  rmSync(join(root, 'result.json'));
+  writeFileSync(join(root, 'started.json'), JSON.stringify({ ...runner, runnerStart: runner.runnerStart + '0' }));
+  const stopped = readStatus(root);
+  assert.equal(stopped.state, 'stopped-without-result', 'a passing snapshot is not a missing command receipt');
+  assert.deepEqual(stopped.rendererProgress, final.rendererProgress, 'keep the last observation after abrupt stop');
+  writeFileSync(join(root, 'result.json'), JSON.stringify({ ...runner, exitCode: 7, signal: null }));
+  const progressPath = join(root, 'renderer-progress.json');
+  const progress = JSON.parse(readFileSync(progressPath, 'utf8'));
+  progress.slowestSpecsByAttemptTime = [
+    { spec: 'old.spec.ts', durationMs: 500 },
+    { spec: 'invalid-detail.spec.ts', durationMs: 50, timedAttempts: 99, maxAttemptMs: 60 },
+  ];
+  writeFileSync(progressPath, JSON.stringify(progress));
+  assert.deepEqual(readStatus(root).rendererProgress.slowestSpecsByAttemptTime, [
+    { spec: 'old.spec.ts', durationMs: 500 },
+    { spec: 'invalid-detail.spec.ts', durationMs: 50 },
+  ]);
+  progress.slowestSpecsByAttemptTime = [{ spec: '/untrusted/path', durationMs: -1 }];
+  progress.activeAttempts = 1;
+  progress.testPhaseElapsedMs = -1;
+  progress.totalAttemptDurationMs = '500';
+  progress.oldestActiveAttempts = [{ spec: '/untrusted/path', startedAt: progress.updatedAt }];
+  writeFileSync(progressPath, JSON.stringify(progress));
+  const ignored = readStatus(root);
+  assert.equal(ignored.rendererProgress.slowestSpecsByAttemptTime, undefined);
+  assert.equal(ignored.rendererProgress.activeAttempts, undefined);
+  assert.equal(ignored.rendererProgress.testPhaseElapsedMs, undefined);
+  assert.equal(ignored.rendererProgress.totalAttemptDurationMs, undefined);
+  assert.equal(ignored.rendererProgress.testsReported, 2);
+  progress.totalTests = 10_000;
+  progress.testsReported = 9_999;
+  progress.attemptsReported = 10_038;
+  progress.latestOutcomes = { passed: 9_998, failed: 1, timedOut: 0, skipped: 0, interrupted: 0 };
+  writeFileSync(progressPath, JSON.stringify(progress));
+  assert.equal(readStatus(root).rendererProgress.reportedPercent, 99.9);
+  assert.equal(readStatus(root).rendererProgress.testsRemainingToReport, 1);
+  progress.totalTests = 0;
+  progress.testsReported = 0;
+  progress.attemptsReported = 0;
+  progress.latestOutcomes = { passed: 0, failed: 0, timedOut: 0, skipped: 0, interrupted: 0 };
+  writeFileSync(progressPath, JSON.stringify(progress));
+  assert.equal(readStatus(root).rendererProgress.reportedPercent, null);
   writeFileSync(join(root, 'renderer-progress.json'), ' '.repeat(8193));
   const invalid = readStatus(root);
   assert.equal(invalid.state, 'failed');
@@ -296,4 +567,45 @@ test('an invalid snapshot ref never creates a run or starts Nx', () => {
       { cwd: root, stdio: 'pipe' }), /Snapshot ref does not resolve/);
     assert.equal(existsSync(directory), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('WebKit preflight distinguishes a missing browser from an executable that cannot start', {
+  skip: process.platform !== 'linux' ? 'uses a POSIX fixture executable' : false,
+}, t => {
+  const cache = mkdtempSync(join(tmpdir(), 'gk-webkit-preflight-'));
+  t.after(() => rmSync(cache, { recursive: true, force: true }));
+  const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: cache };
+  const check = fileURLToPath(new URL('./check-renderer-browser.mjs', import.meta.url));
+  const run = (browser = 'webkit') => spawnSync(process.execPath, [check, browser], { env, encoding: 'utf8', timeout: 15_000 });
+  const missing = run();
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /not installed or executable/);
+  const executable = execFileSync(process.execPath, ['--input-type=module', '-e',
+    'import { webkit } from "@playwright/test"; console.log(webkit.executablePath());'],
+  { env, encoding: 'utf8' }).trim();
+  assert.ok(executable.startsWith(cache + '/'), executable);
+  mkdirSync(join(executable, '..'), { recursive: true });
+  writeFileSync(join(executable, '..', 'DEPENDENCIES_VALIDATED'), '');
+  writeFileSync(executable, '#!/bin/sh\nprintf "owned fixture refused launch\\n" >&2\nexit 24\n', { mode: 0o700 });
+  const broken = run();
+  assert.equal(broken.status, 1);
+  assert.match(broken.stderr, /installed but could not start/);
+  assert.match(broken.stderr, /owned fixture refused launch/);
+  const missingChromium = run('chromium');
+  assert.equal(missingChromium.status, 1);
+  assert.match(missingChromium.stderr, /Playwright Chromium could not start/);
+  assert.equal(run('unapproved-browser').status, 2);
+});
+
+test('a receipt from another Linux boot cannot claim a live PID', { skip: !currentBootId() }, t => {
+  const directory = mkdtempSync(join(tmpdir(), 'gk-run-boot-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const file = join(directory, 'started.json');
+  const owner = { runnerPid: process.pid, runnerStart: processStart(process.pid), runnerBootId: currentBootId() };
+  writeFileSync(file, JSON.stringify(owner));
+  assert.equal(readStatus(directory).state, 'running');
+  writeFileSync(file, JSON.stringify({ ...owner, runnerBootId: owner.runnerBootId.replace(/^./, c => c === '0' ? '1' : '0') }));
+  const stopped = readStatus(directory);
+  assert.equal(stopped.state, 'stopped-without-result');
+  assert.equal(stopped.stopReason, 'different-boot');
 });

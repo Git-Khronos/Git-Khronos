@@ -2415,3 +2415,19 @@ copied.
 
 Used to bind an optional local progress snapshot to actual reporter events,
 not Nx console output. No documentation examples or upstream code were copied.
+
+## AppImage artifact preflight
+
+[AppImage Type 2 format draft](https://github.com/AppImage/AppImageSpec/blob/master/draft.md#type-2-image-format)
+defines the ELF container and its Type 2 marker at byte eight. The local
+gate checks that marker and the expected amd64 ELF runtime header.
+The [Type 2 runtime](https://github.com/AppImage/type2-runtime/blob/main/src/runtime/runtime.c)
+establishes the payload offset at the end of the section table or final
+section, whichever is later. The [Linux SquashFS layout](https://github.com/torvalds/linux/blob/master/fs/squashfs/squashfs_fs.h)
+defines the superblock's format and byte-count field. The gate checks those
+bounds without running or extracting the payload. No upstream code was copied.
+
+[Tauri AppImage packaging](https://v2.tauri.app/distribute/appimage/)
+documents extra-file mapping. The AppImage build uses it to include original
+Ubuntu package notices from the build system and the project's license and
+generated dependency notices. The notice contents are not altered.

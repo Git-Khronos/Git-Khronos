@@ -3,6 +3,7 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
+from native_ui_conditions import wait_git_error_message
 
 
 def _owned_path(fixtures, path):
@@ -75,6 +76,7 @@ def occupied_branch_navigation(driver, fixtures, report):
     from native_acceptance import open_ui
 
     source = fixtures.repository('occupied-checkout-navigation', commits=3)
+    fixtures.git(source, 'branch', '-m', 'dev')
     # Keep embedded and trailing whitespace in the registered path through
     # the production snapshot, confirmation, and native repository opening.
     owner = fixtures.root / 'occupied-owner Linéa\tfirst\nsecond '
@@ -97,11 +99,10 @@ def occupied_branch_navigation(driver, fixtures, report):
 
     before = footprints()
     review = 'gk-checkout-worktree-dialog [role=dialog]'
-    branch_button = '.branch-item[aria-label="Local branch ' + branch + '"]'
 
-    def open_review(from_graph=False):
+    def open_review(from_graph=False, *, active=source, target=owner, ref=branch):
         if from_graph:
-            graph_branch = '.commit-row .branch-column button[aria-label="Graph reference ' + branch + ', local branch"]'
+            graph_branch = '.commit-row .branch-column button[aria-label="Graph reference ' + ref + ', local branch"]'
             element = driver.wait(f"""const button = document.querySelector({json.dumps(graph_branch)});
               // The first complete file scan inserts a WIP row above history.
               // Take the mouse target only after that row has actually painted.
@@ -126,17 +127,28 @@ def occupied_branch_navigation(driver, fixtures, report):
                 ],
             }]})
         else:
-            driver.context_click(branch_button)
+            driver.context_click('.branch-item[aria-label="Local branch ' + ref + '"]')
             # Checkout can be a write when a branch is free: never replay this click.
             driver.click_visible('.graph-action-menu button', 'Checkout branch')
         driver.wait('return !!document.querySelector(' + json.dumps(review) + ')')
         text = driver.script('return document.querySelector(arguments[0]).textContent', review)
-        assert str(source) in text and str(owner) in text and branch in text, text
+        assert str(active) in text and str(target) in text and ref in text, text
 
     def at(path):
         driver.wait('return document.querySelector(".status-repository-path")?.textContent === ' + json.dumps(str(path)))
 
     open_review()
+    driver.wait("""return document.activeElement?.matches('gk-checkout-worktree-dialog button')
+      && document.activeElement.textContent.trim() === 'Cancel'""")
+    driver.key('\ue004', modifiers=('\ue008',))  # Shift+Tab
+    driver.wait("""return document.activeElement?.matches('gk-checkout-worktree-dialog button')
+      && document.activeElement.textContent.trim() === 'Open existing checkout'""", timeout=5)
+    driver.key('\ue004')  # Tab wraps back to the safe action.
+    driver.wait("""return document.activeElement?.matches('gk-checkout-worktree-dialog button')
+      && document.activeElement.textContent.trim() === 'Cancel'""")
+    at(source)
+    assert footprints() == before, 'Moving focus changed a checkout, index, configuration or reference'
+    report['scenarios'].append('native-occupied-branch-review-wraps-shift-tab-without-navigating')
     driver.click_visible('gk-checkout-worktree-dialog button', 'Cancel')
     driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
     at(source)
@@ -157,6 +169,17 @@ def occupied_branch_navigation(driver, fixtures, report):
     report['scenarios'].append('native-occupied-branch-navigation-opens-registered-owner-without-checkout-or-data-loss')
     report['scenarios'].append('native-occupied-branch-graph-double-click-opens-registered-owner-without-detaching-head')
 
+    # The primary checkout can own the branch too. From the linked checkout,
+    # graph double-click on dev must open the already registered primary tab.
+    open_review(from_graph=True, active=owner, target=source, ref='dev')
+    driver.click_visible('gk-checkout-worktree-dialog button', 'Open existing checkout')
+    driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
+    at(source)
+    driver.wait("""return !!document.querySelector('[aria-label="View current branch dev tip"]')""")
+    after_return = footprints()
+    assert after_return == before, 'Returning to the primary checkout changed either checkout'
+    report['scenarios'].append('native-occupied-dev-graph-double-click-returns-from-linked-to-primary-checkout')
+
     # Change real Git ownership after review. Fresh inspection must refuse the
     # old request, not silently fall back to a branch checkout in the source.
     open_ui(driver, source)
@@ -176,6 +199,7 @@ def occupied_branch_navigation(driver, fixtures, report):
     report['occupiedBranchNavigation'] = {
         'source': str(source), 'owner': str(owner), 'branch': branch,
         'before': before, 'afterCancel': after_cancel, 'afterNavigation': after_navigation,
+        'afterReturnToPrimary': after_return,
         'afterOwnedOwnershipChange': changed, 'afterStaleReviewRefusal': after_refusal,
     }
 
@@ -212,8 +236,7 @@ def reserved_branch_guidance(driver, fixtures, report):
     assert before['conflicts']
     driver.context_click('.branch-item[aria-label="Local branch ' + branch + '"]')
     driver.click_visible('.graph-action-menu button', 'Checkout branch')
-    message = driver.wait("""const toast = document.querySelector('.error-toast');
-      return toast?.getClientRects().length ? toast.textContent.trim() : null;""")
+    message = wait_git_error_message(driver)
     assert branch in message and str(owner) in message, message
     driver.wait('return document.querySelector(".status-repository-path")?.textContent === ' + json.dumps(str(source)))
     assert not driver.script('return !!document.querySelector("gk-checkout-worktree-dialog [role=dialog]")')

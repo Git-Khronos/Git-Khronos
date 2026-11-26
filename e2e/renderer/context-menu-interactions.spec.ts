@@ -63,6 +63,86 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.commit-row').first()).toBeVisible();
 });
 
+test('reference actions copy an exact namespace without changing the checkout', async ({ page }) => {
+  await page.evaluate(() => {
+    (window as any).__copiedReference = '';
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (text: string) => { (window as any).__copiedReference = text; },
+    } });
+  });
+  const checkout = () => page.evaluate(() => {
+    const repo = (window as any).ng.getComponent(document.querySelector('gk-app')).git.repository();
+    return { head: repo.headOid, branch: repo.status?.branch };
+  });
+  const before = await checkout();
+  for (const [surfaceName, labelPrefix, refNamespace] of [
+    ['local branch', 'Local branch ', 'heads'],
+    ['remote-only branch', 'Remote branch ', 'remotes'],
+    ['tag', 'Tag ', 'tags'],
+  ]) {
+    const surface = surfaces.find(({ name }) => name === surfaceName)!;
+    await surface.prepare?.(page);
+    const target = surface.trigger(page);
+    const label = (await target.getAttribute('aria-label'))!;
+    expect(label.startsWith(labelPrefix)).toBe(true);
+    await target.click({ button: 'right' });
+    const menu = surface.menu(page);
+    await menu.getByRole('menuitem', { name: 'Copy full ref', exact: true }).click();
+    await expect(menu).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__copiedReference))
+      .toBe(`refs/${refNamespace}/${label.slice(labelPrefix.length)}`);
+  }
+  expect(await checkout()).toEqual(before);
+});
+
+test('a refused reference clipboard write explains the failure', async ({ page }) => {
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: async () => { throw new Error('Clipboard refused'); } },
+  }));
+  await page.locator('#reference-section-local .branch-item').first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Copy full ref', exact: true }).click();
+  await expect(page.locator('.error-toast')).toContainText('Could not copy the Git ref');
+});
+
+test('a late ref-copy failure leaves a newer context menu open', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: () => new Promise<void>((_resolve, reject) => {
+        (window as any).__rejectRefCopy = () => reject(new Error('Clipboard refused after navigation'));
+      }),
+    } });
+  });
+  const localBranches = page.locator('#reference-section-local .branch-item');
+  const menu = page.locator('.context-menu');
+  await localBranches.first().click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: 'Copy full ref', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__rejectRefCopy)).toBe('function');
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await localBranches.nth(1).click({ button: 'right' });
+  const newer = await menu.locator('.context-heading strong').innerText();
+  await page.evaluate(async () => {
+    (window as any).__rejectRefCopy();
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+  await expect(menu.locator('.context-heading strong')).toHaveText(newer);
+  await expect(page.locator('.error-toast').filter({hasText: 'Could not copy the Git ref'})).toHaveCount(0);
+});
+
+test('keyboard ref copy returns focus to the branch that opened the menu', async ({ page }) => {
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
+    configurable: true, value: { writeText: async () => {} },
+  }));
+  const opener = page.locator('#reference-section-local .branch-item').first();
+  await opener.press('Shift+F10');
+  const copy = page.getByRole('menuitem', { name: 'Copy full ref', exact: true });
+  await copy.focus();
+  await page.keyboard.press('Enter');
+  await expect(copy).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
 for (const outcome of ['cancel', 'fail', 'load', 'switch'] as const) {
   test(`sidebar item actions load on demand and preserve keyboard ownership on ${outcome}`, async ({ page }) => {
     let release!: () => void;

@@ -34,13 +34,18 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    ...(process.env['GIT_KHRONOS_RENDERER_WEBKIT'] === '1'
+      ? [{ name: 'webkit', use: { ...devices['Desktop Safari'] } }]
+      : []),
   ],
   webServer: {
     // Acceptance uses a fixed source snapshot. Watching the workspace is
     // unnecessary and can keep startup busy before the server starts listening.
+    // Never silently test an arbitrary server on the local port; reusing a
+    // known local server must be requested explicitly.
     command: `pnpm exec ng serve desktop --watch=false --no-hmr --live-reload=false --host 127.0.0.1 --port ${port}`,
     url: `http://127.0.0.1:${port}`,
-    reuseExistingServer: !process.env['CI'],
+    reuseExistingServer: !process.env['CI'] && process.env['PLAYWRIGHT_REUSE_SERVER'] === '1',
     timeout: serverTimeout,
   },
 });

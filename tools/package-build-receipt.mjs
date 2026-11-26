@@ -17,13 +17,34 @@ const [action, checksum] = process.argv.slice(2);
 // Fingerprint the value without recording unrelated environment or signing keys.
 const buildConfiguration = { updaterPublicKeySha256: createHash('sha256')
   .update(process.env.GIT_KHRONOS_UPDATER_PUBLIC_KEY ?? '').digest('hex') };
+// Task's file checksum does not see Cargo's environment overrides. Do not
+// reuse a package built for different flags, targets, toolchains or profiles.
+// Keep ordinary receipts unchanged when there are no explicit overrides.
+const rustOverrides = Object.keys(process.env).filter(name =>
+  /^(?:RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|CARGO_BUILD_RUSTFLAGS|RUSTC|RUSTUP_TOOLCHAIN|CARGO_BUILD_TARGET)$/.test(name) ||
+  /^CARGO_(?:TARGET_[A-Z0-9_]+_(?:RUSTFLAGS|LINKER)|PROFILE_RELEASE_[A-Z0-9_]+)$/.test(name)).sort();
+if (rustOverrides.length) {
+  buildConfiguration.rustOverridesSha256 = createHash('sha256')
+    .update(JSON.stringify(rustOverrides.map(name => [name, process.env[name]]))).digest('hex');
+}
 const fail = (message) => { throw new Error(message); };
 const exists = async (path) => { try { await lstat(path); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } };
 
 async function readJson(path) {
-  const metadata = await lstat(path);
-  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 65536) fail('Invalid package build receipt metadata.');
-  return JSON.parse(await readFile(path, 'utf8'));
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const metadata = await file.stat();
+    if (!metadata.isFile() || metadata.size < 1 || metadata.size > 65536) fail('Invalid package build receipt metadata.');
+    const bytes = Buffer.alloc(65537);
+    let size = 0;
+    while (size < bytes.length) {
+      const { bytesRead } = await file.read(bytes, size, bytes.length - size);
+      if (!bytesRead) break;
+      size += bytesRead;
+    }
+    if (size !== metadata.size) fail('A package build receipt changed while reading it.');
+    return JSON.parse(bytes.toString('utf8', 0, size));
+  } finally { await file.close(); }
 }
 async function atomicJson(path, value) {
   const temporary = `${path}.${randomUUID()}.tmp`;
@@ -43,12 +64,14 @@ async function processIdentity(pid) {
 }
 const sameOwner = (a, b) => !!a && !!b && a.pid === b.pid && a.started === b.started;
 async function outputDigest(path) {
-  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const before = await file.stat({ bigint: true });
-    if (!before.isFile() || before.size === 0n) fail(`Package build output is missing or empty: ${path}`);
+    if (!before.isFile() || before.size === 0n || before.size > 512n * 1024n * 1024n) {
+      fail(`Expected a bounded regular package build output: ${path}`);
+    }
     const hash = createHash('sha256');
-    for await (const chunk of file.createReadStream({ autoClose: false })) hash.update(chunk);
+    for await (const chunk of file.createReadStream({ autoClose: false, end: Number(before.size - 1n) })) hash.update(chunk);
     const after = await file.stat({ bigint: true });
     const current = await lstat(path, { bigint: true });
     for (const key of ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs']) {
@@ -75,9 +98,15 @@ async function outputDigests() {
   for (const [name, path] of Object.entries(paths)) outputs[name] = await outputDigest(path);
   return outputs;
 }
+function validSource(value) {
+  return value && typeof value === 'object' && value.version === 1
+    && value.checksum === checksum && value.workspace === root && value.cargoTarget === cargo;
+}
+function validConfiguration(value) {
+  return JSON.stringify(value.buildConfiguration) === JSON.stringify(buildConfiguration);
+}
 function validBase(value) {
-  return value && typeof value === 'object' && value.version === 1 && value.checksum === checksum && value.workspace === root && value.cargoTarget === cargo
-    && JSON.stringify(value.buildConfiguration) === JSON.stringify(buildConfiguration);
+  return validSource(value) && validConfiguration(value);
 }
 async function main() {
   if (!['begin', 'complete', 'check'].includes(action) || !/^[A-Za-z0-9_:+/=.-]{1,256}$/.test(checksum ?? '')) fail('Usage: package-build-receipt.mjs {begin|complete|check} <Task source checksum>');
@@ -106,7 +135,8 @@ async function main() {
   }
   if (await exists(pendingPath)) fail('A package build is unfinished; older outputs cannot be reused.');
   const receipt = await readJson(receiptPath);
-  if (!validBase(receipt)) fail('The package build receipt does not match these source inputs and Cargo output.');
+  if (!validSource(receipt)) fail('The package build receipt does not match these source inputs and Cargo output.');
+  if (!validConfiguration(receipt)) fail('The package build settings changed (publisher key or explicit Rust overrides).');
   const outputs = await outputDigests();
   if (JSON.stringify(receipt.outputs) !== JSON.stringify(outputs)) fail('Package outputs differ from the completed build receipt.');
   if (await exists(pendingPath)) fail('A package build started while checking the cache.');

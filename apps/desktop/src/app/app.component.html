@@ -5,6 +5,8 @@
         [attr.aria-label]="menu.label" [attr.aria-describedby]="menu.kind === 'pull' && menu.hasSubmodules ? 'pull-submodule-scope' : null"
         [view]="menu" (activate)="runToolbarOptionsAction(menu, $event)" (ready)="toolbarOptionsReady(menu, $event)"
         (keydown)="handleToolbarActionMenuKeydown($event)"></div>
+    } @placeholder {
+      <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ $implicit: menu, failed: false }" />
     } @loading {
       <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ $implicit: menu, failed: false }" />
     } @error {
@@ -26,9 +28,9 @@
 </ng-template>
 
 <ng-template #fileChangeRecap let-stats>
-  <span class="file-change-summary" role="img" [attr.aria-label]="stats.label">
+  <span class="file-change-summary" role="img" [attr.aria-label]="stats.label" [title]="stats.label">
     <span>+{{ stats.additions }}</span><i>−{{ stats.deletions }}</i>
-    @if (stats.uncountedFiles) { <em>{{ stats.uncountedFiles }} other</em> }
+    @if (stats.uncountedFiles) { <em>{{ stats.uncountedFiles }} excluded</em> }
     @if (stats.partial) { <em>(partial)</em> }
   </span>
 </ng-template>
@@ -421,8 +423,19 @@
         </div>
         <button class="tool-button toolbar-secondary-direct" type="button" title="Pop the latest stash" (click)="git.popStash(repo.stashes[0], repo.id)" [disabled]="!repo.stashes.length || git.busy()"><span><gk-icon name="archive-restore" /></span><small>Pop</small></button>
         @if (repo.lfs.enabled) {
+          @let lfsCountsKnown = repo.lfs.trackedFiles !== null && repo.lfs.pointerFiles !== null;
+          @let lfsStatus = !repo.lfs.available ? 'Git LFS is not installed or unavailable'
+            : !lfsCountsKnown ? 'LFS file counts unavailable'
+            : repo.lfs.pointerFiles === 0 ? 'No LFS files to materialize'
+            : repo.lfs.pointerFiles + (repo.lfs.pointerFiles === 1 ? ' LFS file not materialized' : ' LFS files not materialized');
           <div class="toolbar-split toolbar-secondary-direct" (click)="$event.stopPropagation()">
-            <button class="tool-button split-main" type="button" title="Pull Git LFS objects" [class.lfs-pointers]="!!repo.lfs.pointerFiles" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available"><span><gk-icon name="server" /></span><small>LFS@if (repo.lfs.pointerFiles) { <span class="lfs-pointer-count">{{ repo.lfs.pointerFiles }}</span> }</small></button>
+            <button class="tool-button split-main" type="button" aria-label="Pull Git LFS objects"
+              [attr.aria-description]="lfsStatus" [title]="'Pull Git LFS objects · ' + lfsStatus"
+              [class.lfs-pointers]="repo.lfs.available && lfsCountsKnown && !!repo.lfs.pointerFiles" (click)="pullLfsObjects()" [disabled]="git.busy() || !repo.lfs.available">
+              <span><gk-icon name="server" /></span>
+              <small>LFS@if (repo.lfs.available && lfsCountsKnown && repo.lfs.pointerFiles) { <span class="lfs-pointer-count" aria-hidden="true">{{ repo.lfs.pointerFiles }}</span> }
+                @else if (repo.lfs.available && !lfsCountsKnown) { <span class="lfs-count-unknown" aria-hidden="true">?</span> }</small>
+            </button>
             <button class="split-toggle" type="button" title="Git LFS options" aria-label="Git LFS options" aria-haspopup="menu" [attr.aria-controls]="lfsMenuOpen() ? 'lfs-options-menu' : null" (click)="toggleToolbarOptions($event, 'lfs')" [attr.aria-expanded]="lfsMenuOpen()"><gk-icon name="chevron-down" [size]="10" /></button>
             @if (lfsMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
           </div>
@@ -1186,8 +1199,8 @@
             @if (workingTreeOptionsOpen()) {
               <div #workingTreeOptionsMenu class="toolbar-menu panel-options-menu" role="menu" aria-label="Working directory options" (keydown)="handleWorkingTreeOptionsKeydown($event)">
                 <button type="button" role="menuitem" [disabled]="!git.repository()?.status?.entryCount || git.busy()" (click)="openStashOptions('save')"><gk-icon name="archive" [size]="13" /><span><strong>Stash with options…</strong><small>Selected files, keep staged contents, or staged-only</small></span></button>
-                <button type="button" role="menuitem" [disabled]="!(repo.status.unstaged + repo.status.untracked) || git.busy()" (click)="workingTreeOptionsOpen.set(false); requestBulkDiscard()"><gk-icon name="trash" [size]="13" /><span><strong>Discard all unstaged…</strong><small>Preview all files; preserve staged changes</small></span></button>
-                <button type="button" role="menuitem" [disabled]="!unstagedEntries().length || git.busy()" (click)="workingTreeOptionsOpen.set(false); discardSelectionMode.set(true)"><gk-icon name="check" [size]="13" /><span><strong>Select files for discard</strong><small>Choose only the unstaged files to discard</small></span></button>
+                <button type="button" role="menuitem" [disabled]="!(repo.status.unstaged + repo.status.untracked) || git.busy()" (click)="workingTreeOptionsOpen.set(false); requestBulkDiscard(false, workingTreeOptionsToggle)"><gk-icon name="trash" [size]="13" /><span><strong>Discard all unstaged…</strong><small>Preview all files; preserve staged changes</small></span></button>
+                <button type="button" role="menuitem" [disabled]="!unstagedEntries().length || git.busy()" (click)="startDiscardSelection()"><gk-icon name="check" [size]="13" /><span><strong>Select files for discard</strong><small>Choose only the unstaged files to discard</small></span></button>
                 <button type="button" role="menuitem" [disabled]="git.busy()" (click)="workingTreeOptionsOpen.set(false); openSavedDiscards()"><gk-icon name="archive-restore" [size]="13" /><span><strong>Recover discarded…</strong><small>Restore or remove saved bulk-discard captures</small></span></button>
                 <button type="button" role="menuitem" (click)="workingTreeOptionsOpen.set(false); git.refresh()"><gk-icon name="refresh" [size]="13" /><span><strong>Refresh working directory</strong><small>Reload status and repository history</small></span></button>
                 <button type="button" role="menuitem" (click)="workingTreeOptionsOpen.set(false); git.openRepositoryInFileManager()"><gk-icon name="folder-git" [size]="13" /><span><strong>Open in file manager</strong><small>{{ repo.path }}</small></span></button>
@@ -1196,10 +1209,11 @@
             }
           </div>
           <div class="working-tree-scroll" gkWorkingTreeSummaries #lineTotals="gkWorkingTreeSummaries"
+            [class.expanded-unstaged-layout]="unstagedFillsWorkingTree()" [class.expanded-staged-layout]="stagedFillsWorkingTree()"
             [repositoryId]="repo.id" [repositoryPath]="repo.path" [status]="repo.status" [visible]="detailsVisible()">
           <div class="working-tree-view-toolbar">
             <button class="file-sort-direction" type="button" title="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" aria-label="Sort files {{ workingTreeSortAscending() ? 'descending' : 'ascending' }}" (click)="toggleWorkingTreeSort()"><span>A</span><b>{{ workingTreeSortAscending() ? '↓' : '↑' }}</b><span>Z</span></button>
-            <label class="file-filter"><gk-icon name="search" [size]="10" /><input type="search" aria-label="Filter changed files" placeholder="Filter files" [gkTextValue]="fileFilter()" (gkTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ visibleWorkingTreeFileCount() }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gk-icon name="x" [size]="9" /></button> }</label>
+            <label class="file-filter"><gk-icon name="search" [size]="10" /><input #workingTreeFilterInput type="search" aria-label="Filter changed files" placeholder="Filter files" [gkTextValue]="fileFilter()" (gkTextValueChange)="fileFilter.set($event)" (keydown.escape)="$event.stopPropagation(); fileFilter.set('')" />@if (fileFilterQuery()) { <small class="file-filter-count" aria-live="polite">{{ visibleWorkingTreeFileCount() }}</small><button type="button" title="Clear file filter (Esc)" aria-label="Clear file filter" (click)="fileFilter.set('')"><gk-icon name="x" [size]="9" /></button> }</label>
             <div class="file-view-switch" role="group" aria-label="File list layout" (keydown)="handleFileViewModeKeydown($event)">
               <button type="button" data-file-view-mode="path" [class.active]="workingTreeViewMode() === 'path'" [attr.aria-pressed]="workingTreeViewMode() === 'path'" [attr.tabindex]="workingTreeViewMode() === 'path' ? 0 : -1" (click)="setWorkingTreeViewMode('path')"><gk-icon name="file" [size]="11" />Path</button>
               <button type="button" data-file-view-mode="tree" [class.active]="workingTreeViewMode() === 'tree'" [attr.aria-pressed]="workingTreeViewMode() === 'tree'" [attr.tabindex]="workingTreeViewMode() === 'tree' ? 0 : -1" (click)="setWorkingTreeViewMode('tree')"><gk-icon name="folder-git" [size]="11" />Tree</button>
@@ -1250,53 +1264,72 @@
                     @if (tree) { {{ directory ? fileName(entry.path) : row.label }} }
                     @else { <span class="file-path-prefix">{{ fileDirectory(entry.path) }}</span><strong class="file-path-name">{{ fileName(entry.path) }}</strong> }
                   </button>
-                  @if (!staged && !directory) { <button class="row-discard" type="button" title="Discard changes in {{ entry.path }}" aria-label="Discard changes in {{ entry.path }}" (click)="requestDiscardEntry(entry, $event)"><gk-icon name="trash" [size]="12" /></button> }
+                  @if (!staged && !directory) { <button class="row-discard" type="button" [attr.title]="git.busy() ? 'Wait for the current Git operation before discarding changes' : 'Discard changes in ' + entry.path"
+                    [attr.aria-disabled]="git.busy() ? 'true' : null" aria-label="Discard changes in {{ entry.path }}" (click)="requestDiscardEntry(entry, $event)"><gk-icon name="trash" [size]="12" /></button> }
                 </div>
               }
             } @empty { <div class="clean-state">{{ fileFilterQuery() ? 'No matching ' : 'No ' }}{{ section }} files</div> }
             <div class="virtual-file-spacer" [style.height.px]="window.bottomPadding" aria-hidden="true"></div>
           </ng-template>
           <section class="file-section unstaged-section">
-            <div class="file-section-title"><div class="file-section-heading"><button #unstagedSectionHeading class="file-section-toggle" type="button" [attr.aria-expanded]="unstagedFilesOpen()" (click)="unstagedFilesOpen.update(open => !open)"><gk-icon [name]="unstagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Unstaged Files ({{ repo.status.unstaged + repo.status.untracked }})</button><gk-working-tree-summary section="unstaged" [state]="lineTotals.unstaged()" (retryRequested)="lineTotals.retry('unstaged', $event) && unstagedSectionHeading.focus()" /></div><button type="button" aria-label="Stage all changes" (click)="git.stageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before staging all files' : null" [disabled]="!unstagedEntries().length || repo.status.conflicted !== 0 || git.busy()"><span class="file-section-bulk-full">Stage all changes</span><span class="file-section-bulk-compact" aria-hidden="true">Stage all</span></button></div>
+            <div class="file-section-title"><div class="file-section-heading"><button #unstagedSectionHeading class="file-section-toggle" type="button" [attr.aria-expanded]="unstagedFilesOpen()" [attr.aria-controls]="unstagedFilesOpen() ? 'unstaged-files-list' : null" (click)="toggleWorkingTreeSection('unstaged')"><gk-icon [name]="unstagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Unstaged Files ({{ repo.status.unstaged + repo.status.untracked }})</button>@if (!unstagedFilesOpen() && fileFilterQuery()) { <small class="collapsed-file-matches">@let count = filteredUnstagedEntries().length; {{ count }} loaded {{ count === 1 ? 'match' : 'matches' }}</small> }<gk-working-tree-summary section="unstaged" [state]="lineTotals.unstaged()" (retryRequested)="lineTotals.retry('unstaged', $event) && unstagedSectionHeading.focus()" /></div><button type="button" aria-label="Stage all changes" (click)="git.stageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before staging all files' : null" [disabled]="!(repo.status.unstaged + repo.status.untracked) || repo.status.conflicted !== 0 || git.busy()"><span class="file-section-bulk-full">Stage all changes</span><span class="file-section-bulk-compact" aria-hidden="true">Stage all</span></button><button #discardAllUnstaged class="discard-all-unstaged" type="button" aria-label="Discard all unstaged changes" title="Preview discard of all unstaged changes, including files hidden by filters" [disabled]="!(repo.status.unstaged + repo.status.untracked) || git.busy()" (click)="requestBulkDiscard(false, discardAllUnstaged)"><gk-icon name="trash" [size]="14" /></button></div>
             @if (discardSelectionMode()) {
               <div class="discard-actions" role="group" aria-label="Select unstaged files for discard">
-                <span>Select files below</span>
-                <button type="button" (click)="requestBulkDiscard(true)" [disabled]="!selectedDiscardPaths().length || git.busy()">Discard selected…</button>
-                <button type="button" (click)="discardSelectionMode.set(false); selectedDiscardPaths.set([])">Cancel selection</button>
+                <span aria-live="polite">
+                  @if (selectedEligibleDiscardPaths().length) {
+                    {{ selectedEligibleDiscardPaths().length }} selected
+                    @if (filteredOutDiscardCount()) { · {{ filteredOutDiscardCount() }} hidden by the filter }
+                  } @else if (!unstagedFilesOpen()) {
+                    Expand Unstaged Files to select files
+                  } @else if (fileFilterQuery() && !filteredUnstagedEntries().length) {
+                    Clear the filter to select unstaged files
+                  } @else { Select files below }
+                </span>
+                <button #discardSelected type="button" (click)="requestBulkDiscard(true, discardSelected)" [disabled]="!selectedEligibleDiscardPaths().length || git.busy()">Discard selected…</button>
+                <button type="button" (click)="cancelDiscardSelection()">Cancel selection</button>
               </div>
             }
 <p id="working-tree-file-navigation-help" class="sr-only">Focus a file list and use Home or End to reach the first or last files. Use Tab to move through visible file actions.</p>
-            @if (unstagedFilesOpen()) { <div #unstagedFilesList id="unstaged-files-list" class="file-list unstaged-file-list working-tree-file-list" role="region" aria-label="Unstaged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('unstaged')" [style.height.px]="workingTreeFileListSized.unstaged() ? workingTreeFileListHeight('unstaged') : null" (scroll)="updateWorkingTreeFilesViewport('unstaged', $event)" (keydown)="handleWorkingTreeFileListNavigation('unstaged', $event)">
+            @if (unstagedFilesOpen()) { <div #unstagedFilesList id="unstaged-files-list" class="file-list unstaged-file-list working-tree-file-list" role="region" aria-label="Unstaged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="unstagedFillsWorkingTree() ? null : workingTreeFileListHeight('unstaged')" [style.height.px]="!unstagedFillsWorkingTree() && workingTreeFileListSized.unstaged() ? workingTreeFileListHeight('unstaged') : null" (scroll)="updateWorkingTreeFilesViewport('unstaged', $event)" (keydown)="handleWorkingTreeFileListNavigation('unstaged', $event)">
               <gk-working-tree-viewport #unstagedFilesViewport [content]="workingTreeRows" section="unstaged" />
             </div> }
-            @if (unstagedFilesOpen()) {
+            @if (unstagedFilesOpen() && !unstagedFillsWorkingTree()) {
               <div class="unstaged-files-resizer" role="separator" tabindex="0" aria-label="Resize Unstaged Files section" aria-controls="unstaged-files-list" aria-orientation="horizontal" [attr.aria-valuemin]="80" [attr.aria-valuemax]="420" [attr.aria-valuenow]="workingTreeFileListHeight('unstaged')" [attr.aria-valuetext]="workingTreeFileListHeight('unstaged') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (keydown)="handleWorkingTreeFileListResizeKeydown('unstaged', $event)" (dblclick)="resetWorkingTreeFileListHeight('unstaged', $event)" (pointerdown)="beginWorkingTreeFileListResize('unstaged', $event)"></div>
-            }
-          </section>
-          <section class="file-section staged-section">
-            <div class="file-section-title"><div class="file-section-heading"><button #stagedSectionHeading class="file-section-toggle" type="button" [attr.aria-expanded]="stagedFilesOpen()" (click)="stagedFilesOpen.update(open => !open)"><gk-icon [name]="stagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Staged Files ({{ repo.status.staged }})</button><gk-working-tree-summary section="staged" [state]="lineTotals.staged()" (retryRequested)="lineTotals.retry('staged', $event) && stagedSectionHeading.focus()" /></div><button type="button" (click)="git.unstageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before unstaging all files' : null" [disabled]="!stagedEntries().length || repo.status.conflicted !== 0 || git.busy()">Unstage all</button></div>
-            @if (stagedFilesOpen()) { <div #stagedFilesList id="staged-files-list" class="file-list working-tree-file-list" role="region" aria-label="Staged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="workingTreeFileListHeight('staged')" [style.height.px]="workingTreeFileListSized.staged() ? workingTreeFileListHeight('staged') : null" (scroll)="updateWorkingTreeFilesViewport('staged', $event)" (keydown)="handleWorkingTreeFileListNavigation('staged', $event)">
-              <gk-working-tree-viewport #stagedFilesViewport [content]="workingTreeRows" section="staged" />
-            </div> }
-            @if (stagedFilesOpen()) {
-              <div class="unstaged-files-resizer" role="separator" aria-label="Resize Staged Files section" aria-controls="staged-files-list" aria-orientation="horizontal" tabindex="0" [attr.aria-valuemin]="80" [attr.aria-valuemax]="420" [attr.aria-valuenow]="workingTreeFileListHeight('staged')" [attr.aria-valuetext]="workingTreeFileListHeight('staged') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (keydown)="handleWorkingTreeFileListResizeKeydown('staged', $event)" (dblclick)="resetWorkingTreeFileListHeight('staged', $event)" (pointerdown)="beginWorkingTreeFileListResize('staged', $event)"></div>
             }
           </section>
           @if (repo.status.entriesTruncated) {
             <div class="history-loader change-loader" aria-live="polite">
-              @if (repo.status.conflicted && !conflictedEntries().length && !fileFilterQuery()) {
-                <small>Conflicted files are outside the loaded list. Show more files to find them.</small>
-              }
-              @if (git.changesLoading()) {
-                <span><i></i>Loading more changed files…</span>
+              @if (fileFilterQuery()) {
+                <small>The filter only searches loaded files. Show more files to search further.</small>
               } @else {
-                <button #moreChangedFiles type="button" (click)="git.loadMoreChanges()">Show 1,000 more files · {{ repo.status.entries.length }} of {{ repo.status.entryCount }}</button>
+                @if (repo.status.conflicted && !conflictedEntries().length) {
+                  <small>Conflicted files are outside the loaded list. Show more files to find them.</small>
+                }
+                @if (repo.status.unstaged + repo.status.untracked && !unstagedEntries().length) {
+                  <small>Unstaged changes are outside the loaded list. Show more files to find them.</small>
+                }
+                @if (repo.status.staged && !stagedEntries().length) {
+                  <small>Staged changes are outside the loaded list. Show more files to find them.</small>
+                }
               }
+              <button #moreChangedFiles type="button" [attr.aria-disabled]="git.changesLoading() ? 'true' : null" (click)="loadMoreWorkingTreeFiles(moreChangedFiles)">
+                @if (git.changesLoading()) { Loading more changed files… }
+                @else { Show 1,000 more files · {{ repo.status.entries.length }} of {{ repo.status.entryCount }} }
+              </button>
             </div>
           }
           @if (git.detailsBusy()) {
             <div class="details-loading"><span></span><span></span><span></span></div>
           }
+          <section class="file-section staged-section">
+            <div class="file-section-title"><div class="file-section-heading"><button #stagedSectionHeading class="file-section-toggle" type="button" [attr.aria-expanded]="stagedFilesOpen()" [attr.aria-controls]="stagedFilesOpen() ? 'staged-files-list' : null" (click)="toggleWorkingTreeSection('staged')"><gk-icon [name]="stagedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Staged Files ({{ repo.status.staged }})</button>@if (!stagedFilesOpen() && fileFilterQuery()) { <small class="collapsed-file-matches">@let count = filteredStagedEntries().length; {{ count }} loaded {{ count === 1 ? 'match' : 'matches' }}</small> }<gk-working-tree-summary section="staged" [state]="lineTotals.staged()" (retryRequested)="lineTotals.retry('staged', $event) && stagedSectionHeading.focus()" /></div><button type="button" (click)="git.unstageAll()" [attr.title]="repo.status.conflicted ? 'Resolve conflicts before unstaging all files' : null" [disabled]="!repo.status.staged || repo.status.conflicted !== 0 || git.busy()">Unstage all</button></div>
+            @if (stagedFilesOpen()) { <div #stagedFilesList id="staged-files-list" class="file-list working-tree-file-list" role="region" aria-label="Staged files" aria-describedby="working-tree-file-navigation-help" tabindex="0" [style.max-height.px]="stagedFillsWorkingTree() ? null : workingTreeFileListHeight('staged')" [style.height.px]="!stagedFillsWorkingTree() && workingTreeFileListSized.staged() ? workingTreeFileListHeight('staged') : null" (scroll)="updateWorkingTreeFilesViewport('staged', $event)" (keydown)="handleWorkingTreeFileListNavigation('staged', $event)">
+              <gk-working-tree-viewport #stagedFilesViewport [content]="workingTreeRows" section="staged" />
+            </div> }
+            @if (stagedFilesOpen() && !stagedFillsWorkingTree()) {
+              <div class="unstaged-files-resizer" role="separator" aria-label="Resize Staged Files section" aria-controls="staged-files-list" aria-orientation="horizontal" tabindex="0" [attr.aria-valuemin]="80" [attr.aria-valuemax]="420" [attr.aria-valuenow]="workingTreeFileListHeight('staged')" [attr.aria-valuetext]="workingTreeFileListHeight('staged') + ' pixels'" title="Drag or use Up/Down to resize · Shift for larger steps · Double-click to reset" (keydown)="handleWorkingTreeFileListResizeKeydown('staged', $event)" (dblclick)="resetWorkingTreeFileListHeight('staged', $event)" (pointerdown)="beginWorkingTreeFileListResize('staged', $event)"></div>
+            }
+          </section>
           </div>
           <div class="commit-composer">
           <div class="commit-action-tabs" role="toolbar" aria-label="Working tree actions">
@@ -1701,7 +1734,7 @@
         (retentionConfirmed)="confirmLfsRetentionPrune(lfsReview)" />
     }
   }
-  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !integrationRequest() && !workspaceCenterRequest() && !branchWorkflowRequest() && git.error(); as error) {
+  @if (!lfsTrackingRequest() && !documentation.request() && !worktreeRegistrationRequest() && !mergeRebaseReview() && !mergePreviewRequest() && !integrationRequest() && !workspaceCenterRequest() && !branchWorkflowRequest() && !deferredActions.stash && git.error(); as error) {
     @defer (on immediate) { <gk-error-toast [error]="error" (logRequested)="openErrorActivityLog()" /> }
   }
   @if (!workspaceCenterRequest() && !fileContentDialog() && !repositoryHistorySearch()?.opened() && !git.conflictDetails() && git.backgroundOperationWarnings().length) {
@@ -1932,6 +1965,13 @@
       </div>
     }
   }
+  @if (pendingMergeRebaseReview(); as pending) {
+    <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true"
+      aria-label="Preparing merge-preserving rebase" (keydown)="handlePendingMergeRebaseKey($event)">
+      <p role="status">Reviewing {{ pending.source }} onto {{ pending.target }}. No history changes have been made.</p>
+      <button #rebaseLoaderClose type="button" (click)="closePendingMergeRebaseReview()">Close review</button>
+    </section></div>
+  }
   @if (interactiveRebase() || mergeRebaseReview()) {
     @defer (on immediate) {
       @if (mergeRebaseReview(); as mergeReview) {
@@ -2022,9 +2062,9 @@
             </button>
           } @else {
             @if (action.kind === 'discard-bulk' && (action.preview?.blockedPaths?.length ?? 0) > 0) {
-              <button type="button" data-choose-root-files (click)="chooseRootFilesFromBlockedDiscard(action)"
+              <button type="button" data-choose-root-files (click)="chooseEligibleFilesFromBlockedDiscard(action)"
                 [disabled]="!currentReview || git.busy() || blockedDiscardChoiceLoading() || fileConfirmationDetailsReady() !== action">
-                {{ blockedDiscardChoiceLoading() ? 'Refreshing file list…' : 'Choose root files…' }}
+                {{ blockedDiscardChoiceLoading() ? 'Refreshing file list…' : 'Choose eligible files…' }}
               </button>
             }
             <button class="confirm-action" [class.danger]="!ignoreRuleOnly && action.kind !== 'restore-commit' && action.kind !== 'recover-discard'" type="button" [disabled]="!currentReview || git.busy() || fileConfirmationDetailsReady() !== action || (action.kind === 'discard-bulk' && (action.preview?.blockedPaths.length ?? 0) > 0)" (click)="confirmFileAction(action)">{{ action.kind === 'discard-bulk' ? 'Discard captured changes' : action.kind === 'recover-discard' ? (action.recovery?.restored ? 'Discard again' : 'Recover changes') : action.kind === 'forget-discard' ? 'Remove capture' : action.kind === 'discard' ? 'Discard changes' : action.kind === 'discard-hunk' ? 'Discard hunk' : action.kind === 'discard-lines' ? 'Discard selected lines' : action.kind === 'restore-commit' ? 'Restore and stage ' + ((action.paths?.length ?? 1) === 1 ? 'file' : (action.paths?.length ?? 1) + ' files') : ignoreLabel }}</button>

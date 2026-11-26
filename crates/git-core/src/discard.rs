@@ -6,7 +6,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_RECOVERY_PATHS: usize = 50;
 const MAX_RECOVERY_PATH_REPORT_BYTES: usize = 1024 * 1024;
-const MAX_RECOVERY_PATCH_INSPECTION_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_GUARDED_FILE_BYTES: u64 = 64 * 1024 * 1024;
+// The recovery document holds base64 file snapshots in a base64 JSON header,
+// followed by a Git-readable patch. These are distinct from the per-file cap.
+const MAX_GUARDED_HEADER_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_RECOVERY_PATCH_INSPECTION_BYTES: u64 = 256 * 1024 * 1024;
 const GUARDED_CAPTURE_PREFIX: &str = "# git-khronos-guard-v1 ";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -36,6 +40,7 @@ pub struct DiscardPreview {
     pub paths: Vec<String>,
     pub skipped_paths: Vec<String>,
     pub blocked_paths: Vec<String>,
+    pub oversized_paths: Vec<String>,
     pub untracked: usize,
 }
 
@@ -156,6 +161,17 @@ fn nested_discard_error(paths: &[String]) -> AppError {
     unsafe_discard(&format!(
         "This discard request includes nested paths that cannot be changed safely: {displayed}{suffix}."
     ))
+}
+
+fn discard_file_size_error(source: &str) -> AppError {
+    AppError::new(
+        "discardFileTooLarge",
+        format!(
+            "{source} exceeds the {} MiB per-file limit for discard recovery.",
+            MAX_GUARDED_FILE_BYTES / (1024 * 1024)
+        ),
+        Some("Keep the file or use another tool after backing it up."),
+    )
 }
 
 pub(super) fn guarded_leaf(file: &str) -> bool {
@@ -526,13 +542,22 @@ fn inspect_git(path: &Path, args: &[&str]) -> Result<Output, AppError> {
         .stderr(Stdio::piped());
     restrict_git_to_read_only(&mut command)?;
     configure_process_tree(&mut command);
-    run_cancellable_command(command, &CancellationToken::default()).map_err(|error| {
+    let (output, truncated) = run_cancellable_command_with_stdout_limit(
+        command,
+        &CancellationToken::default(),
+        Some(MAX_RECOVERY_PATCH_INSPECTION_BYTES as usize),
+    )
+    .map_err(|error| {
         if error.kind == "gitUnavailable" {
             unsafe_discard("Git could not be started in the required read-only sandbox.")
         } else {
             error
         }
-    })
+    })?;
+    if truncated {
+        return Err(discard_capture_size_error());
+    }
+    Ok(output)
 }
 
 fn inspect_discard_status(path: &Path) -> Result<Vec<WorkingTreeEntry>, AppError> {
@@ -578,14 +603,67 @@ fn inspect_discard_status(path: &Path) -> Result<Vec<WorkingTreeEntry>, AppError
 }
 
 #[cfg(target_os = "linux")]
+fn discard_parent<'a>(root: &fs::File, path: &'a str) -> Result<(fs::File, &'a str), AppError> {
+    if path.split('/').any(|part| !guarded_leaf(part)) {
+        return Err(unsafe_discard(
+            "The selected file is not a valid worktree-relative path.",
+        ));
+    }
+    let Some((parent, leaf)) = path.rsplit_once('/') else {
+        return Ok((root.try_clone().map_err(io_error)?, path));
+    };
+    let directory = file_content::worktree::descend_worktree(root, Path::new(parent))
+        .map_err(|_| unsafe_discard("The selected file's parent could not be opened safely."))?;
+    Ok((fs::File::from(directory), leaf))
+}
+
+#[cfg(target_os = "linux")]
+fn check_nested_discard_candidate(
+    root: &fs::File,
+    path: &str,
+    deleted: bool,
+) -> Result<bool, AppError> {
+    use rustix::fs::{AtFlags, FileType, Mode, OFlags, fstat, openat, statat};
+
+    if !cfg!(target_arch = "x86_64") {
+        return Ok(false);
+    }
+    let (parent, leaf) = discard_parent(root, path)?;
+    match statat(&parent, leaf, AtFlags::SYMLINK_NOFOLLOW) {
+        Ok(metadata) if FileType::from_raw_mode(metadata.st_mode) == FileType::RegularFile => {
+            let Ok(file) = openat(
+                &parent,
+                leaf,
+                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+                Mode::empty(),
+            ) else {
+                return Ok(false);
+            };
+            let inspected = fstat(&file).map_err(|error| io_error(error.into()))?;
+            if FileType::from_raw_mode(inspected.st_mode) != FileType::RegularFile
+                || inspected.st_dev != metadata.st_dev
+                || inspected.st_ino != metadata.st_ino
+            {
+                return Ok(false);
+            }
+            if inspected.st_size > MAX_GUARDED_FILE_BYTES as _ {
+                return Err(discard_file_size_error("The selected file"));
+            }
+            Ok(true)
+        }
+        Err(rustix::io::Errno::NOENT) => Ok(deleted),
+        _ => Ok(false),
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn read_guarded_file(root: &fs::File, name: &str) -> Result<GuardedFile, AppError> {
     use rustix::fs::{AtFlags, FileType, Mode, OFlags, openat, readlinkat, statat};
     use std::os::unix::fs::MetadataExt;
 
     if !guarded_leaf(name) {
-        return Err(unsafe_discard(
-            "Files in subdirectories cannot be discarded safely because their parent directories may move outside the worktree.",
-        ));
+        let (directory, leaf) = discard_parent(root, name)?;
+        return read_guarded_file(&directory, leaf);
     }
     let metadata = match statat(root, name, AtFlags::SYMLINK_NOFOLLOW) {
         Ok(metadata) => metadata,
@@ -611,19 +689,15 @@ fn read_guarded_file(root: &fs::File, name: &str) -> Result<GuardedFile, AppErro
                     "The selected file changed while it was inspected.",
                 ));
             }
-            if before.len() > MAX_RECOVERY_PATCH_INSPECTION_BYTES {
-                return Err(unsafe_discard(
-                    "The selected file is too large for a safe recovery capture.",
-                ));
+            if before.len() > MAX_GUARDED_FILE_BYTES {
+                return Err(discard_file_size_error("The selected file"));
             }
             let mut bytes = Vec::new();
-            std::io::Read::take(&mut file, MAX_RECOVERY_PATCH_INSPECTION_BYTES + 1)
+            std::io::Read::take(&mut file, MAX_GUARDED_FILE_BYTES + 1)
                 .read_to_end(&mut bytes)
                 .map_err(io_error)?;
-            if bytes.len() as u64 > MAX_RECOVERY_PATCH_INSPECTION_BYTES {
-                return Err(unsafe_discard(
-                    "The selected file is too large for a safe recovery capture.",
-                ));
+            if bytes.len() as u64 > MAX_GUARDED_FILE_BYTES {
+                return Err(discard_file_size_error("The selected file"));
             }
             let after = file.metadata().map_err(io_error)?;
             if file_content::worktree::identity(&before) != file_content::worktree::identity(&after)
@@ -691,6 +765,9 @@ fn indexed_file(
     };
     let output = inspect_git(path, &args)?;
     ensure_success("inspect the indexed file", &output)?;
+    if output.stdout.len() as u64 > MAX_GUARDED_FILE_BYTES {
+        return Err(discard_file_size_error("The indexed file"));
+    }
     Ok(match mode {
         "120000" => GuardedFile::Symlink {
             target: BASE64.encode(output.stdout),
@@ -713,17 +790,99 @@ fn indexed_file(
     })
 }
 
+fn supported_nested_capture_states(before: &GuardedFile, after: &GuardedFile) -> bool {
+    matches!(
+        (before, after),
+        (
+            GuardedFile::Regular { .. },
+            GuardedFile::Regular { .. } | GuardedFile::Missing
+        ) | (GuardedFile::Missing, GuardedFile::Regular { .. })
+    )
+}
+
 fn encode_guarded_capture(changes: &[GuardedChange], patch: &[u8]) -> Result<Vec<u8>, AppError> {
-    let json = serde_json::to_vec(changes).map_err(|_| {
-        unsafe_discard("The independent recovery data could not be encoded safely.")
-    })?;
-    let encoded = BASE64.encode(json);
-    if encoded.len() as u64 >= MAX_RECOVERY_PATCH_INSPECTION_BYTES {
-        return Err(unsafe_discard(
-            "The files are too large for a safely inspectable discard capture.",
-        ));
+    encode_guarded_capture_with_limits(
+        changes,
+        patch,
+        MAX_GUARDED_HEADER_BYTES,
+        MAX_RECOVERY_PATCH_INSPECTION_BYTES,
+    )
+}
+
+fn discard_capture_size_error() -> AppError {
+    AppError::new(
+        "repositoryFileRefused",
+        "The files are too large for a safely inspectable discard capture.",
+        Some(
+            "No working files were changed. Select fewer or smaller files and review a new discard preview.",
+        ),
+    )
+}
+
+fn guarded_header_payload_limit(patch_bytes: usize, max_header: u64, max_capture: u64) -> u64 {
+    max_capture
+        .saturating_sub(patch_bytes as u64)
+        .min(max_header)
+        .saturating_sub(GUARDED_CAPTURE_PREFIX.len() as u64 + 1)
+}
+
+fn guarded_state_data_len(state: &GuardedFile) -> usize {
+    match state {
+        GuardedFile::Missing => 0,
+        GuardedFile::Regular { data, .. } => data.len(),
+        GuardedFile::Symlink { target } => target.len(),
     }
-    let mut result = format!("{GUARDED_CAPTURE_PREFIX}{encoded}\n").into_bytes();
+}
+
+fn encode_guarded_capture_with_limits(
+    changes: &[GuardedChange],
+    patch: &[u8],
+    max_header: u64,
+    max_capture: u64,
+) -> Result<Vec<u8>, AppError> {
+    struct BoundedHeader {
+        bytes: Vec<u8>,
+        limit: usize,
+    }
+    impl std::io::Write for BoundedHeader {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::FileTooLarge,
+                    "discard header budget",
+                ));
+            }
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let payload_limit = guarded_header_payload_limit(patch.len(), max_header, max_capture);
+    if payload_limit == 0 {
+        return Err(discard_capture_size_error());
+    }
+    let limit = payload_limit as usize + GUARDED_CAPTURE_PREFIX.len();
+    let mut encoder = base64::write::EncoderWriter::new(
+        BoundedHeader {
+            bytes: GUARDED_CAPTURE_PREFIX.as_bytes().to_vec(),
+            limit,
+        },
+        &BASE64,
+    );
+    serde_json::to_writer(&mut encoder, changes).map_err(|error| {
+        if error.io_error_kind() == Some(std::io::ErrorKind::FileTooLarge) {
+            discard_capture_size_error()
+        } else {
+            unsafe_discard("The independent recovery data could not be encoded safely.")
+        }
+    })?;
+    let mut result = encoder
+        .finish()
+        .map_err(|_| discard_capture_size_error())?
+        .bytes;
+    result.push(b'\n');
     result.extend_from_slice(patch);
     Ok(result)
 }
@@ -763,6 +922,7 @@ pub fn prepare_discard(
     let mut paths = Vec::new();
     let mut skipped_paths = Vec::new();
     let mut blocked_paths = Vec::new();
+    let mut oversized_paths = Vec::new();
     let mut patch = Vec::new();
     let mut untracked = 0;
     for entry in status {
@@ -784,8 +944,32 @@ pub fn prepare_discard(
             continue;
         }
         if !guarded_leaf(&entry.path) {
-            blocked_paths.push(entry.path);
-            continue;
+            // Classification needs only the held parent's metadata. Capture
+            // below still opens and checks identity and bytes before review.
+            match check_nested_discard_candidate(
+                &boundary.root,
+                &entry.path,
+                entry.worktree_status == "D",
+            ) {
+                Ok(true) => {}
+                Err(error)
+                    if error.kind == "discardFileTooLarge"
+                        && selected
+                            .as_ref()
+                            .is_some_and(|paths| paths == &[entry.path.as_str()]) =>
+                {
+                    return Err(error);
+                }
+                Err(error) if error.kind == "discardFileTooLarge" => {
+                    oversized_paths.push(entry.path.clone());
+                    blocked_paths.push(entry.path);
+                    continue;
+                }
+                _ => {
+                    blocked_paths.push(entry.path);
+                    continue;
+                }
+            }
         }
         let output = if entry.index_status == "?" {
             untracked += 1;
@@ -847,10 +1031,25 @@ pub fn prepare_discard(
                 Some("No files were discarded. Refresh and review the file."),
             ));
         }
+        if patch.len() as u64 + output.stdout.len() as u64 > MAX_RECOVERY_PATCH_INSPECTION_BYTES {
+            return Err(discard_capture_size_error());
+        }
         patch.extend(output.stdout);
         paths.push(entry.path);
     }
     if paths.is_empty() {
+        if !oversized_paths.is_empty() && oversized_paths.len() == blocked_paths.len() {
+            return Err(AppError::new(
+                "discardFileTooLarge",
+                format!(
+                    "The blocked nested files exceed the {} MiB per-file limit for discard recovery.",
+                    MAX_GUARDED_FILE_BYTES / (1024 * 1024)
+                ),
+                Some(
+                    "No files were discarded. Keep these files or use another tool after backing them up.",
+                ),
+            ));
+        }
         if !blocked_paths.is_empty() {
             return Err(nested_discard_error(&blocked_paths));
         }
@@ -858,15 +1057,33 @@ pub fn prepare_discard(
             "emptyDiscard",
             "There are no eligible unstaged files to discard.",
             Some(
-                "Conflicts, submodule working trees, nested repositories, and files in subdirectories are not discarded. Linux currently supports only worktree-root files because parent directories can move outside the worktree during a discard.",
+                "Conflicts, submodule working trees, and nested repositories are excluded. In subdirectories, only supported regular files are eligible.",
             ),
         ));
     }
+    // Base64 snapshot strings are ASCII and need no JSON escaping. Bound
+    // retained snapshot data while assembling the plan; serialization still
+    // enforces the exact cap including JSON fields, paths and separators.
+    let max_snapshot_bytes = guarded_header_payload_limit(
+        patch.len(),
+        MAX_GUARDED_HEADER_BYTES,
+        MAX_RECOVERY_PATCH_INSPECTION_BYTES,
+    ) / 4
+        * 3;
+    let mut snapshot_bytes = 0_u64;
     let changes = paths
         .iter()
         .map(|file| {
             let before = read_guarded_file(&boundary.root, file)?;
             let after = indexed_file(path, &index_output.stdout, file, &before)?;
+            if !guarded_leaf(file) && !supported_nested_capture_states(&before, &after) {
+                return Err(nested_discard_error(std::slice::from_ref(file)));
+            }
+            snapshot_bytes +=
+                (guarded_state_data_len(&before) + guarded_state_data_len(&after)) as u64;
+            if snapshot_bytes > max_snapshot_bytes {
+                return Err(discard_capture_size_error());
+            }
             Ok(GuardedChange {
                 path: file.clone(),
                 before,
@@ -880,6 +1097,7 @@ pub fn prepare_discard(
             paths,
             skipped_paths,
             blocked_paths,
+            oversized_paths,
             untracked,
         },
         selected,
@@ -1481,7 +1699,7 @@ fn guarded_capture(
     snapshot.file.seek(SeekFrom::Start(0)).map_err(io_error)?;
     let mut header = Vec::new();
     {
-        let limited = (&mut snapshot.file).take(MAX_RECOVERY_PATCH_INSPECTION_BYTES);
+        let limited = (&mut snapshot.file).take(MAX_GUARDED_HEADER_BYTES);
         BufReader::new(limited)
             .read_until(b'\n', &mut header)
             .map_err(io_error)?;
@@ -1504,16 +1722,24 @@ fn guarded_capture(
     }
     let mut names = HashSet::new();
     for change in &changes {
-        if !guarded_leaf(&change.path) || !names.insert(&change.path) {
+        let supported = guarded_leaf(&change.path)
+            || (cfg!(target_arch = "x86_64")
+                && change.path.split('/').all(guarded_leaf)
+                && supported_nested_capture_states(&change.before, &change.after));
+        if !supported || !names.insert(&change.path) {
             return Err(unsafe_discard(
-                "The recovery capture contains paths that cannot be changed safely. Only worktree-root files are supported; nested parent directories could move outside the worktree during an operation.",
+                "The recovery capture contains paths that cannot be changed safely.",
             ));
         }
         for state in [&change.before, &change.after] {
             match state {
                 GuardedFile::Missing => {}
                 GuardedFile::Regular { data, mode } => {
-                    if *mode > 0o777 || BASE64.decode(data).is_err() {
+                    if *mode > 0o777
+                        || !BASE64
+                            .decode(data)
+                            .is_ok_and(|bytes| bytes.len() as u64 <= MAX_GUARDED_FILE_BYTES)
+                    {
                         return Err(changed_recovery_capture());
                     }
                 }
@@ -1562,15 +1788,85 @@ fn guarded_capture(
     Ok(changes)
 }
 
+// Only the dedicated rename thread receives the narrower filesystem policy.
+#[cfg(target_os = "linux")]
+fn confined_discard_rename(
+    worktree: &fs::File,
+    from: &fs::File,
+    source: &str,
+    to: &fs::File,
+    destination: &str,
+) -> std::io::Result<()> {
+    use rustix::fs::{RenameFlags, renameat_with};
+    #[cfg(target_arch = "x86_64")]
+    {
+        std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .spawn_scoped(scope, || {
+                    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+                    unsafe extern "C" {
+                        fn syscall(number: std::ffi::c_long, ...) -> std::ffi::c_long;
+                        fn prctl(option: std::ffi::c_int, ...) -> std::ffi::c_int;
+                    }
+                    #[repr(C, packed)]
+                    struct PathBeneath {
+                        allowed_access: u64,
+                        parent_fd: i32,
+                    }
+                    // Handle ABI 3 write rights; grant only regular/link moves.
+                    const HANDLED: u64 = (1 << 1) | (((1 << 15) - 1) & !((1 << 4) - 1));
+                    const RENAME: u64 = (1 << 5) | (1 << 8) | (1 << 12) | (1 << 13);
+                    let raw =
+                        unsafe { syscall(444, &HANDLED as *const u64, size_of::<u64>(), 0u32) };
+                    if raw < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    let ruleset = unsafe { OwnedFd::from_raw_fd(raw as i32) };
+                    let rule = PathBeneath {
+                        allowed_access: RENAME,
+                        parent_fd: worktree.as_raw_fd(),
+                    };
+                    if unsafe {
+                        syscall(
+                            445,
+                            ruleset.as_raw_fd(),
+                            1u32,
+                            &rule as *const PathBeneath,
+                            0u32,
+                        )
+                    } != 0
+                        || unsafe { prctl(38, 1usize, 0usize, 0usize, 0usize) } != 0
+                        || unsafe { syscall(446, ruleset.as_raw_fd(), 0u32) } != 0
+                    {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    renameat_with(from, source, to, destination, RenameFlags::NOREPLACE)
+                        .map_err(Into::into)
+                })?
+                .join()
+                .map_err(|_| std::io::Error::other("The confined discard worker failed."))?
+        })
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        let _ = (worktree, from, source, to, destination);
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Confined discard is unavailable on this architecture.",
+        ))
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn write_guarded_file(
     root: &fs::File,
+    parent: &fs::File,
     recovery: &fs::File,
     capture_id: &str,
     name: &str,
     state: &GuardedFile,
 ) -> Result<(), AppError> {
-    use rustix::fs::{Mode, OFlags, RenameFlags, openat, renameat_with, symlinkat};
+    use rustix::fs::{Mode, OFlags, openat, symlinkat};
     use std::os::unix::ffi::OsStringExt;
     use std::os::unix::fs::PermissionsExt;
 
@@ -1620,14 +1916,7 @@ fn write_guarded_file(
         GuardedFile::Missing => unreachable!(),
     }
     recovery.sync_all().map_err(io_error)?;
-    renameat_with(
-        recovery,
-        temporary.as_str(),
-        root,
-        name,
-        RenameFlags::NOREPLACE,
-    )
-    .map_err(|error| {
+    confined_discard_rename(root, recovery, temporary.as_str(), parent, name).map_err(|error| {
         unsafe_discard(&format!("The selected file could not be replaced: {error}"))
     })?;
     Ok(())
@@ -1643,7 +1932,6 @@ fn apply_guarded_changes(
     check: bool,
     mut before_mutation: impl FnMut(&str),
 ) -> Result<(), AppError> {
-    use rustix::fs::{RenameFlags, renameat_with};
     for change in changes {
         let (source, target) = if reverse {
             (&change.before, &change.after)
@@ -1669,7 +1957,8 @@ fn apply_guarded_changes(
         } else {
             (&change.after, &change.before)
         };
-        let current = read_guarded_file(root, &change.path)?;
+        let (parent, leaf) = discard_parent(root, &change.path)?;
+        let current = read_guarded_file(&parent, leaf)?;
         if current == *target {
             continue;
         }
@@ -1685,28 +1974,17 @@ fn apply_guarded_changes(
                 .map_err(|_| unsafe_discard("A recovery object name could not be allocated."))?;
             let suffix: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
             let name = format!("{capture_id}.original-{suffix}");
-            renameat_with(
-                root,
-                change.path.as_str(),
-                recovery,
-                name.as_str(),
-                RenameFlags::NOREPLACE,
-            )
-            .map_err(|error| {
-                unsafe_discard(&format!(
-                    "The original file could not be retained safely: {error}"
-                ))
-            })?;
-            root.sync_all().map_err(io_error)?;
+            confined_discard_rename(root, &parent, leaf, recovery, name.as_str()).map_err(
+                |error| {
+                    unsafe_discard(&format!(
+                        "The original file could not be retained safely: {error}"
+                    ))
+                },
+            )?;
+            parent.sync_all().map_err(io_error)?;
             recovery.sync_all().map_err(io_error)?;
             if !read_guarded_file(recovery, &name).is_ok_and(|state| state == *source) {
-                let _ = renameat_with(
-                    recovery,
-                    name.as_str(),
-                    root,
-                    change.path.as_str(),
-                    RenameFlags::NOREPLACE,
-                );
+                let _ = confined_discard_rename(root, recovery, name.as_str(), &parent, leaf);
                 return Err(unsafe_discard(
                     "A working file changed while its original was being preserved.",
                 ));
@@ -1715,19 +1993,13 @@ fn apply_guarded_changes(
         } else {
             None
         };
-        if let Err(error) = write_guarded_file(root, recovery, capture_id, &change.path, target) {
+        if let Err(error) = write_guarded_file(root, &parent, recovery, capture_id, leaf, target) {
             if let Some(displaced) = &displaced {
-                let _ = renameat_with(
-                    recovery,
-                    displaced.as_str(),
-                    root,
-                    change.path.as_str(),
-                    RenameFlags::NOREPLACE,
-                );
+                let _ = confined_discard_rename(root, recovery, displaced.as_str(), &parent, leaf);
             }
             return Err(error);
         }
-        root.sync_all().map_err(io_error)?;
+        parent.sync_all().map_err(io_error)?;
         if read_guarded_file(root, &change.path)? != *target {
             return Err(unsafe_discard("A working file changed during replacement."));
         }
@@ -1776,11 +2048,6 @@ fn execute_discard_with_hook(
         if !plan.preview.blocked_paths.is_empty() {
             return Err(nested_discard_error(&plan.preview.blocked_paths));
         }
-        if !plan.preview.paths.iter().all(|file| guarded_leaf(file)) {
-            return Err(unsafe_discard(
-                "Files in subdirectories cannot be discarded safely because their parent directories may move outside the worktree.",
-            ));
-        }
         let rooted_path = plan.boundary.root_path();
         let path = rooted_path.as_path();
         let current = prepare_discard(path, plan.selected.clone())?;
@@ -1795,6 +2062,7 @@ fn execute_discard_with_hook(
             || current.preview.paths != plan.preview.paths
             || current.preview.skipped_paths != plan.preview.skipped_paths
             || current.preview.blocked_paths != plan.preview.blocked_paths
+            || current.preview.oversized_paths != plan.preview.oversized_paths
             || !same_directory(&current.boundary.root, &plan.boundary.root)?
             || !same_directory(
                 &current.boundary.git_directory,
@@ -1807,6 +2075,7 @@ fn execute_discard_with_hook(
                 Some("Nothing was discarded. Review a new preview before continuing."),
             ));
         }
+        drop(current);
         if let Some((file, preview)) = &plan.selection_preview {
             safe_selection_patch(path, file, Some(preview))?;
         }
@@ -2509,6 +2778,65 @@ fn finish_removing_recovery_marker(marker: &Path) -> Result<(), AppError> {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn nested_discard_snapshot_refuses_links_metadata_and_nested_repositories() {
+        let repository = Repository::new();
+        repository.write("nested/café notes.txt", b"working");
+        let root = fs::File::open(&repository.0).unwrap();
+        let snapshot = read_guarded_file(&root, "nested/café notes.txt").unwrap();
+        assert!(
+            matches!(snapshot, GuardedFile::Regular { data, .. } if data == BASE64.encode(b"working"))
+        );
+        std::os::unix::fs::symlink("nested", repository.0.join("alias")).unwrap();
+        for path in ["alias/café notes.txt", "nested/../.git/HEAD", ".git/HEAD"] {
+            assert!(read_guarded_file(&root, path).is_err(), "{path}");
+        }
+        repository.write("nested/.git", b"gitdir: redirect");
+        assert!(read_guarded_file(&root, "nested/café notes.txt").is_err());
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    #[ignore = "Requires a Linux host with Landlock enabled"]
+    fn worktree_rules_restrict_replacement_to_root_after_parent_moves() {
+        let repository = Repository::new();
+        repository.write("root/inside/target", b"original");
+        repository.write("root/recovery/replacement", b"replacement");
+        repository.write("root/moved/target", b"original");
+        let root = fs::File::open(repository.0.join("root")).unwrap();
+        let inside = fs::File::open(repository.0.join("root/inside")).unwrap();
+        let moved = fs::File::open(repository.0.join("root/moved")).unwrap();
+        let recovery = fs::File::open(repository.0.join("root/recovery")).unwrap();
+        let outside = repository.0.join("outside");
+        fs::rename(repository.0.join("root/moved"), &outside).unwrap();
+        confined_discard_rename(&root, &inside, "target", &recovery, "original").unwrap();
+        confined_discard_rename(&root, &recovery, "replacement", &inside, "target").unwrap();
+        assert_eq!(
+            confined_discard_rename(&root, &moved, "target", &recovery, "outside-original")
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            confined_discard_rename(&root, &recovery, "original", &moved, "restore-target")
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(
+            fs::read(repository.0.join("root/inside/target")).unwrap(),
+            b"replacement"
+        );
+        assert_eq!(fs::read(outside.join("target")).unwrap(), b"original");
+        assert_eq!(
+            fs::read(repository.0.join("root/recovery/original")).unwrap(),
+            b"original"
+        );
+        assert!(!repository.0.join("root/recovery/outside-original").exists());
+        assert!(!outside.join("restore-target").exists());
+    }
+
     #[test]
     fn nested_discard_error_does_not_mark_short_unicode_paths_as_truncated() {
         let error = nested_discard_error(&["nested/é.txt".into()]);
@@ -2559,7 +2887,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn recovery_refuses_a_capture_with_nested_paths_before_mutation() {
+    fn recovery_refuses_a_capture_with_invalid_nested_paths_before_mutation() {
         let repository = Repository::new();
         repository.baseline();
         let nested = "nested/selected.txt";
@@ -2570,7 +2898,7 @@ mod tests {
         let id = next_discard_capture_id().unwrap();
         let payload = encode_guarded_capture(
             &[GuardedChange {
-                path: nested.into(),
+                path: "nested/../nested/selected.txt".into(),
                 before: GuardedFile::Regular {
                     data: BASE64.encode(b"before\n"),
                     mode: 0o644,
@@ -2738,16 +3066,14 @@ mod tests {
         fs::create_dir(&outside).unwrap();
         fs::write(outside.join("selected.txt"), b"outside sentinel\n").unwrap();
 
-        let error = prepare_discard(&repository.0, Some(vec![file.to_owned()]))
-            .err()
-            .expect("nested file should be refused before a plan is returned");
-        assert_eq!(error.kind, "repositoryFileRefused");
+        let plan = prepare_discard(&repository.0, Some(vec![file.to_owned()])).unwrap();
         fs::rename(repository.0.join("folder"), outside.join("original")).unwrap();
         symlink(&outside, repository.0.join("folder")).unwrap();
         let error = prepare_discard(&repository.0, Some(vec![file.to_owned()]))
             .err()
             .expect("symlinked parent should not produce a discard plan");
         assert_eq!(error.kind, "emptyDiscard");
+        assert!(execute_discard(&repository.0, &plan).is_err());
         assert_eq!(
             fs::read(outside.join("original/selected.txt")).unwrap(),
             b"worktree data\n"
@@ -3964,7 +4290,9 @@ mod tests {
         repository.write(".gitignore", b"ignored/\n");
         stage_path(&repository.0, ".gitignore").unwrap();
         repository.write("ignored/secret", b"keep");
-        repository.write("selected/new.txt", b"discard");
+        fs::create_dir(repository.0.join("selected")).unwrap();
+        std::os::unix::fs::symlink("../tracked.txt", repository.0.join("selected/new.txt"))
+            .unwrap();
         repository.write("unselected.txt", b"keep");
         repository.write("nested/.git/HEAD", b"ref: refs/heads/main\n");
         repository.write("nested/new.txt", b"keep");
@@ -4019,9 +4347,11 @@ mod tests {
                 repository.write(nested, b"nested baseline\n");
                 stage_all(&repository.0).unwrap();
                 commit(&repository.0, "Track nested file").unwrap();
-                repository.write(nested, b"nested work\n");
+                fs::remove_file(repository.0.join(nested)).unwrap();
+                std::os::unix::fs::symlink("../tracked.txt", repository.0.join(nested)).unwrap();
             } else {
-                repository.write(nested, b"nested untracked\n");
+                fs::create_dir(repository.0.join("nested")).unwrap();
+                std::os::unix::fs::symlink("../tracked.txt", repository.0.join(nested)).unwrap();
             }
             repository.write("tracked.txt", b"root work\n");
             let nested_contents = fs::read(repository.0.join(nested)).unwrap();
@@ -4076,7 +4406,281 @@ mod tests {
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     }
 
-    #[cfg(target_os = "linux")]
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn nested_tracked_discard_round_trips_only_unstaged_bytes() {
+        let repository = Repository::new();
+        repository.baseline();
+        let nested = "API/clients/café notes.txt";
+        let file = repository.0.join(nested);
+        repository.write(nested, b"committed\n");
+        stage_path(&repository.0, nested).unwrap();
+        commit(&repository.0, "Track nested file").unwrap();
+        repository.write(nested, b"staged\n");
+        stage_path(&repository.0, nested).unwrap();
+        repository.write(nested, b"unstaged\n");
+        let head = run_git(&repository.0, &["rev-parse", "HEAD"])
+            .unwrap()
+            .stdout;
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        let plan = prepare_discard(&repository.0, Some(vec![nested.into()])).unwrap();
+        assert_eq!(plan.preview.paths, [nested]);
+        assert_eq!(fs::read(&file).unwrap(), b"unstaged\n");
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), b"staged\n");
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), b"unstaged\n");
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        assert_eq!(
+            run_git(&repository.0, &["rev-parse", "HEAD"])
+                .unwrap()
+                .stdout,
+            head
+        );
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn nested_tracked_discard_undo_restores_a_worktree_deletion() {
+        let repository = Repository::new();
+        repository.baseline();
+        let nested = "nested/deleted.txt";
+        let file = repository.0.join(nested);
+        repository.write(nested, b"committed\n");
+        stage_path(&repository.0, nested).unwrap();
+        commit(&repository.0, "Track nested file").unwrap();
+        repository.write(nested, b"staged\n");
+        stage_path(&repository.0, nested).unwrap();
+        fs::remove_file(&file).unwrap();
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+
+        let plan = prepare_discard(&repository.0, Some(vec![nested.into()])).unwrap();
+        assert_eq!(plan.preview.paths, [nested]);
+        assert!(!file.exists(), "preview must not restore the file");
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), b"staged\n");
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert!(!file.exists(), "Undo must reinstate the working deletion");
+        recover_discarded_changes(&repository.0, &id, true).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), b"staged\n");
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn nested_deleted_discard_rejects_recreated_file_and_missing_parent() {
+        let repository = Repository::new();
+        repository.baseline();
+        let nested = "nested/deleted.txt";
+        let file = repository.0.join(nested);
+        repository.write(nested, b"committed\n");
+        stage_path(&repository.0, nested).unwrap();
+        commit(&repository.0, "Track nested file").unwrap();
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        fs::remove_file(&file).unwrap();
+
+        let plan = prepare_discard(&repository.0, Some(vec![nested.into()])).unwrap();
+        repository.write(nested, b"new working file\n");
+        assert_eq!(
+            execute_discard(&repository.0, &plan).unwrap_err().kind,
+            "staleDiscard"
+        );
+        assert_eq!(fs::read(&file).unwrap(), b"new working file\n");
+
+        fs::remove_file(&file).unwrap();
+        let parent = file.parent().unwrap();
+        fs::remove_dir(parent).unwrap();
+        assert!(prepare_discard(&repository.0, Some(vec![nested.into()])).is_err());
+        assert!(
+            !parent.exists(),
+            "discard must not recreate an unreviewed parent"
+        );
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        assert!(
+            discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn nested_tracked_discard_refuses_an_edit_after_preview() {
+        let repository = Repository::new();
+        repository.baseline();
+        let nested = "nested/tracked.txt";
+        repository.write(nested, b"committed\n");
+        stage_path(&repository.0, nested).unwrap();
+        commit(&repository.0, "Track nested file").unwrap();
+        repository.write(nested, b"previewed\n");
+        let plan = prepare_discard(&repository.0, Some(vec![nested.into()])).unwrap();
+        repository.write(nested, b"new edit\n");
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        assert_eq!(
+            execute_discard(&repository.0, &plan).unwrap_err().kind,
+            "staleDiscard"
+        );
+        assert_eq!(fs::read(repository.0.join(nested)).unwrap(), b"new edit\n");
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        assert!(
+            discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn discard_nested_untracked_file_round_trips_without_staging() {
+        let repository = Repository::new();
+        repository.baseline();
+        let name = "data/nested/new file.json";
+        repository.write(name, b"{\"new\":true}\n");
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        let plan = prepare_discard(&repository.0, None).unwrap();
+        assert_eq!(plan.preview.paths, [name]);
+        assert_eq!(plan.preview.untracked, 1);
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        drop(plan);
+        assert!(!repository.0.join(name).exists());
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(
+            fs::read(repository.0.join(name)).unwrap(),
+            b"{\"new\":true}\n"
+        );
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn larger_capture_budget_does_not_raise_the_nested_file_limit() {
+        let repository = Repository::new();
+        repository.baseline();
+        let file = repository.0.join("new/oversized.json");
+        fs::create_dir(file.parent().unwrap()).unwrap();
+        fs::File::create(&file)
+            .unwrap()
+            .set_len(MAX_GUARDED_FILE_BYTES + 1)
+            .unwrap();
+        repository.write("tracked.txt", b"keep the unrelated edit\n");
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+
+        let single = prepare_discard(&repository.0, Some(vec!["new/oversized.json".into()]))
+            .err()
+            .expect("oversized file must be refused before confirmation");
+        assert_eq!(single.kind, "discardFileTooLarge");
+        assert!(single.message.contains("64 MiB per-file limit"));
+        let bulk = prepare_discard(&repository.0, Some(vec!["new/".into()]))
+            .err()
+            .expect("a selection with only oversized nested files must be refused");
+        assert_eq!(bulk.kind, "discardFileTooLarge");
+        assert!(bulk.message.contains("64 MiB per-file limit"));
+        let plan = prepare_discard(&repository.0, None).unwrap();
+        assert_eq!(plan.preview.paths, ["tracked.txt"]);
+        assert_eq!(plan.preview.blocked_paths, ["new/oversized.json"]);
+        assert_eq!(plan.preview.oversized_paths, ["new/oversized.json"]);
+        assert_eq!(
+            execute_discard(&repository.0, &plan).unwrap_err().kind,
+            "repositoryFileRefused"
+        );
+        assert_eq!(
+            fs::metadata(file).unwrap().len(),
+            MAX_GUARDED_FILE_BYTES + 1
+        );
+        assert_eq!(
+            fs::read(repository.0.join("tracked.txt")).unwrap(),
+            b"keep the unrelated edit\n"
+        );
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        assert!(
+            discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn streaming_capture_retains_the_existing_bytes_and_enforces_both_budgets() {
+        let changes = [GuardedChange {
+            path: "nested/café \"quotes\".txt".into(),
+            before: GuardedFile::Regular {
+                data: BASE64.encode(b"fixture\n"),
+                mode: 0o640,
+            },
+            after: GuardedFile::Missing,
+        }];
+        let patch = b"fixture patch";
+        let legacy_header = format!(
+            "{GUARDED_CAPTURE_PREFIX}{}\n",
+            BASE64.encode(serde_json::to_vec(&changes).unwrap())
+        );
+        let header_len = legacy_header.len() as u64;
+        let capture_len = header_len + patch.len() as u64;
+        let expected = [legacy_header.as_bytes(), patch].concat();
+
+        assert_eq!(
+            encode_guarded_capture_with_limits(&changes, patch, header_len, capture_len).unwrap(),
+            expected
+        );
+        for (header, capture) in [(header_len - 1, capture_len), (header_len, capture_len - 1)] {
+            let error =
+                encode_guarded_capture_with_limits(&changes, patch, header, capture).unwrap_err();
+            assert!(error.message.contains("too large"));
+        }
+    }
+
+    #[test]
+    #[ignore = "Exercises a CTI-sized recovery capture; run separately to bound memory and disk use"]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn discard_large_nested_untracked_batch_and_recover_exact_bytes() {
+        use std::io::{BufWriter, Write};
+
+        let repository = Repository::new();
+        repository.baseline();
+        let sizes = [55_277_605_u64, 5_291_092, 6_144_331, 1_871_127];
+        let paths = [
+            "data/enterprise.json",
+            "data/ics.json",
+            "data/mobile.json",
+            "data/kev.json",
+        ];
+        fs::create_dir(repository.0.join("data")).unwrap();
+        for (path, size) in paths.iter().zip(sizes) {
+            let mut output = BufWriter::new(fs::File::create(repository.0.join(path)).unwrap());
+            // Keep the generated text diff comparable to a large JSON file.
+            let line =
+                b"    1234567890, 1234567890, 1234567890, 1234567890, 1234567890, 1234567890\n";
+            for _ in 0..size / line.len() as u64 {
+                output.write_all(line).unwrap();
+            }
+            output
+                .write_all(&line[..(size % line.len() as u64) as usize])
+                .unwrap();
+            output.flush().unwrap();
+        }
+        let fingerprints =
+            paths.map(|path| recovery_content_fingerprint(&repository.0.join(path)).unwrap());
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        let plan = prepare_discard(&repository.0, None).unwrap();
+        assert_eq!(plan.preview.untracked, paths.len());
+        let id = execute_discard(&repository.0, &plan).unwrap();
+        drop(plan);
+        assert!(paths.iter().all(|path| !repository.0.join(path).exists()));
+        let recoveries = discarded_change_recoveries(&repository.0).unwrap();
+        assert!(
+            recoveries
+                .iter()
+                .any(|capture| capture.id == id && capture.paths.len() == paths.len())
+        );
+        recover_discarded_changes(&repository.0, &id, false).unwrap();
+        assert_eq!(
+            paths.map(|path| recovery_content_fingerprint(&repository.0.join(path)).unwrap()),
+            fingerprints
+        );
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    }
+
     #[test]
     fn individual_and_partial_nested_discards_are_refused_before_capture() {
         for tracked_nested in [false, true] {
@@ -4087,9 +4691,11 @@ mod tests {
                 repository.write(nested, b"nested baseline\n");
                 stage_all(&repository.0).unwrap();
                 commit(&repository.0, "Track nested file").unwrap();
-                repository.write(nested, b"nested work\n");
+                fs::remove_file(repository.0.join(nested)).unwrap();
+                std::os::unix::fs::symlink("../tracked.txt", repository.0.join(nested)).unwrap();
             } else {
-                repository.write(nested, b"nested untracked\n");
+                fs::create_dir(repository.0.join("nested")).unwrap();
+                std::os::unix::fs::symlink("../tracked.txt", repository.0.join(nested)).unwrap();
             }
             let contents = fs::read(repository.0.join(nested)).unwrap();
             let index = fs::read(repository.0.join(".git/index")).unwrap();

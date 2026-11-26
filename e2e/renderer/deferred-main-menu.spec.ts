@@ -22,7 +22,17 @@ async function interceptMenu(page: Page, fail = false) {
     else await route.fulfill({ response, body: source });
     delivered();
   });
-  return { release, delivery, requests: () => requests };
+  return {
+    release,
+    delivery,
+    requests: () => requests,
+    async finish() {
+      release();
+      // Drain in-flight chunk handlers before Playwright disposes their
+      // response bodies and the browser context.
+      await page.unrouteAll({ behavior: 'wait' });
+    },
+  };
 }
 
 for (const mode of ['late', 'failure'] as const) {
@@ -53,7 +63,7 @@ for (const mode of ['late', 'failure'] as const) {
       else await expect(menu.getByRole('alert')).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(toggle).toBeFocused();
-    } finally { chunk.release(); }
+    } finally { await chunk.finish(); }
   });
 }
 
@@ -74,7 +84,7 @@ test('late main menu content does not take outside focus', async ({ page }) => {
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
     await expect(toggle).toBeFocused();
-  } finally { chunk.release(); }
+  } finally { await chunk.finish(); }
 });
 
 for (const key of ['Tab', 'Shift+Tab']) {
@@ -98,7 +108,7 @@ for (const key of ['Tab', 'Shift+Tab']) {
       } else await expect(expected).toBeFocused();
       chunk.release();
       await expect(page.getByRole('menu', { name: 'Git Khronos menu', exact: true })).toHaveCount(0);
-    } finally { chunk.release(); }
+    } finally { await chunk.finish(); }
   });
 }
 
@@ -148,5 +158,5 @@ test('outside pointer dismissal while loading cannot be undone by late content',
     await page.keyboard.press('Escape');
     await expect(menu).toHaveCount(0);
     await expect(toggle).toBeFocused();
-  } finally { chunk.release(); }
+  } finally { await chunk.finish(); }
 });

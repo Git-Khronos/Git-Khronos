@@ -899,7 +899,7 @@ test('keeps working-tree file controls compact and easy to target', async ({ pag
   await page.goto('/');
 
   const stageControls = page.locator('.stage-box');
-  expect(await stageControls.count()).toBeGreaterThan(0);
+  await expect(stageControls.first()).toBeVisible();
   const controlGeometry = await stageControls.evaluateAll((controls) => controls.map((control) => {
     const target = control.getBoundingClientRect();
     const visual = getComputedStyle(control, '::before');
@@ -1132,6 +1132,11 @@ test('moves files between change lists before Git responds and offers per-file d
     const git = app.git;
     const state = { calls: [] as string[], pending: [] as Array<(value: unknown) => void>, git };
     (window as any).__instantStageTest = state;
+    const previewDiscard = git.previewDiscard.bind(git);
+    git.previewDiscard = (paths: string[]) => {
+      state.calls.push('preview_discard');
+      return previewDiscard(paths);
+    };
     (window as any).__TAURI_INTERNALS__ = {
       invoke: (command: string) => {
         state.calls.push(command);
@@ -1178,7 +1183,7 @@ test('moves files between change lists before Git responds and offers per-file d
   await expect(confirmation).toHaveCount(0);
   await expect(discard).toBeFocused();
   expect(await page.evaluate(() => (window as any).__instantStageTest.calls
-    .filter((command: string) => command !== 'refresh_repository_status'))).toEqual(['stage_path', 'unstage_path']);
+    .filter((command: string) => command !== 'refresh_repository_status'))).toEqual(['stage_path', 'unstage_path', 'preview_discard']);
 });
 
 test('resizes and remembers staged and unstaged file viewports independently', async ({ page }) => {
@@ -2688,6 +2693,76 @@ test('opens and navigates commit actions with standard context-menu keys', async
   await expect(stashRow).toBeFocused();
 });
 
+test('copies the exact working file path from its keyboard menu and restores focus', async ({ page }) => {
+  const path = 'apps/desktop/src/app/app.component.html';
+  await page.evaluate(() => {
+    (window as any).__fileMenuClipboard = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (text: string) => { (window as any).__fileMenuClipboard.push(text); },
+    } });
+  });
+  const file = page.getByTitle(`View changes in ${path}`);
+  await file.focus();
+  await file.press('Shift+F10');
+  const menu = page.locator('.file-context-menu[role="menu"]');
+  await menu.getByRole('menuitem', { name: 'Copy file path' }).press('Enter');
+  expect(await page.evaluate(() => (window as any).__fileMenuClipboard)).toEqual([path]);
+  await expect(menu).toHaveCount(0);
+  await expect(file).toBeFocused();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async () => { throw new Error('Clipboard blocked by fixture'); },
+    } });
+  });
+  await file.press('Shift+F10');
+  await menu.getByRole('menuitem', { name: 'Copy file path' }).press('Enter');
+  await expect(page.getByText('Could not copy the file path. Clipboard access is unavailable.')).toBeVisible();
+  await expect(file).toBeFocused();
+});
+
+test('failed keyboard discard preview leaves focus on its file', async ({ page }) => {
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    git.previewDiscard = async () => {
+      git.error.set('Discard preview could not be prepared.');
+      return null;
+    };
+  });
+  const file = page.getByTitle('View changes in apps/desktop/src/app/app.component.html');
+  await file.focus();
+  await file.press('Shift+F10');
+  await page.getByRole('menuitem', { name: 'Discard changes…' }).press('Enter');
+  await expect(page.getByText('Discard preview could not be prepared.')).toBeVisible();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  await expect(file).toBeFocused();
+});
+
+test('an older clipboard refusal does not replace newer file-copy feedback', async ({ page }) => {
+  await page.evaluate(() => {
+    const pending: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+    (window as any).__fileCopyPending = pending;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: () => new Promise<void>((resolve, reject) => pending.push({ resolve, reject })),
+    } });
+  });
+  const path = 'apps/desktop/src/app/app.component.html';
+  const file = page.getByTitle(`View changes in ${path}`);
+  const menu = page.locator('.file-context-menu[role="menu"]');
+  await file.focus();
+  for (let i = 0; i < 2; i += 1) {
+    await file.press('Shift+F10');
+    await menu.getByRole('menuitem', { name: 'Copy file path' }).press('Enter');
+    await expect(file).toBeFocused();
+  }
+  await page.evaluate(() => {
+    const pending = (window as any).__fileCopyPending;
+    pending[1].resolve();
+    pending[0].reject(new Error('Older clipboard request was refused'));
+  });
+  await expect(page.locator('[data-git-operation-status]')).toContainText(`Copied file path: ${path}`);
+  await expect(page.getByText('Could not copy the file path. Clipboard access is unavailable.')).toHaveCount(0);
+});
+
 test('opens working-tree and historical file actions from the keyboard', async ({ page }) => {
   const workingFile = page.getByTitle('View changes in apps/desktop/src/app/app.component.html');
   await workingFile.focus();
@@ -2699,13 +2774,11 @@ test('opens working-tree and historical file actions from the keyboard', async (
   await expect(menu.getByRole('menuitem', { name: 'Preview file content', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Stage file' })).toBeFocused();
-  await menu.getByRole('menuitem', { name: 'Discard changes…' }).evaluate((item) => {
-    if (!(item instanceof HTMLButtonElement)) throw new Error('Expected a file menu button.');
-    item.click();
-    item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-  });
-  await page.evaluate(() => new Promise(requestAnimationFrame));
-  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  await menu.getByRole('menuitem', { name: 'Discard changes…' }).press('Enter');
+  const discardReview = page.getByRole('alertdialog');
+  await expect(discardReview.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(discardReview).toHaveCount(0);
   await expect(workingFile).toBeFocused();
 
   const viewport = page.viewportSize()!;
@@ -2732,6 +2805,18 @@ test('opens working-tree and historical file actions from the keyboard', async (
   await page.keyboard.press('ContextMenu');
 
   menu = page.locator('.commit-file-context-menu[role="menu"]');
+  await expect(menu.getByRole('menuitem', { name: 'View changes' })).toBeFocused();
+  const historicalPath = await menu.locator('.context-heading strong').innerText();
+  await page.evaluate(() => {
+    (window as any).__historicalClipboard = '';
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (text: string) => { (window as any).__historicalClipboard = text; },
+    } });
+  });
+  await menu.getByRole('menuitem', { name: 'Copy file path' }).press('Enter');
+  expect(await page.evaluate(() => (window as any).__historicalClipboard)).toBe(historicalPath);
+  await expect(historicalFile).toBeFocused();
+  await historicalFile.press('ContextMenu');
   await expect(menu.getByRole('menuitem', { name: 'View changes' })).toBeFocused();
   await page.keyboard.press('End');
   const restore = menu.getByRole('menuitem', { name: /Restore file from this commit/ });
@@ -3720,6 +3805,7 @@ test('favorites repositories and opens them with the familiar numeric shortcut',
   }, { currentPath, linkedPath });
   await page.goto('/?worktree-tabs');
 
+  await expect(page.getByRole("button", { name: "New repository tab", exact: true })).toBeVisible();
   await page.keyboard.press('Control+t');
   const manager = page.getByRole('dialog', { name: 'Repository management' });
   await manager.getByRole('button', { name: 'Add git-khronos-partial-staging to favorites' }).click();
@@ -4060,6 +4146,7 @@ test('reveals the complete active worktree tab and its close control at compact 
 
   const tablist = page.getByRole('tablist', { name: 'Open repositories' });
   const feature = tablist.getByRole('tab', { name: 'git-khronos-partial-staging, branch feature/partial-staging' });
+  await expect(feature).toBeAttached();
   await page.keyboard.press('Control+Tab');
   await expect(feature).toHaveAttribute('aria-selected', 'true');
   const activeTab = page.locator('.repo-tab.active');
@@ -4993,13 +5080,13 @@ test('shows each graph heading title in full or as an icon with a tooltip', asyn
   await expect(branch.locator('.column-heading-label')).toBeVisible();
 });
 
-test('resizes every graph column independently with flexible and narrow commit messages', async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 900 });
-  const labels = [
-    'Resize Branch and Tag column', 'Resize Graph column', 'Resize Commit Message column',
-    'Resize Author column', 'Resize Date and Time column', 'Resize SHA column',
-  ];
-  for (const narrowMessage of [false, true]) {
+for (const narrowMessage of [false, true]) {
+  test(`resizes every graph column independently with ${narrowMessage ? 'narrow' : 'flexible'} commit messages`, async ({ page }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    const labels = [
+      'Resize Branch and Tag column', 'Resize Graph column', 'Resize Commit Message column',
+      'Resize Author column', 'Resize Date and Time column', 'Resize SHA column',
+    ];
     await page.goto('/');
     await page.getByRole('button', { name: 'Configure graph columns' }).click();
     await page.getByLabel('SHA', { exact: true }).check();
@@ -5060,8 +5147,8 @@ test('resizes every graph column independently with flexible and narrow commit m
     await page.getByRole('button', { name: 'Configure graph columns' }).click();
     await page.getByRole('button', { name: 'Restore graph defaults' }).click();
     await page.getByRole('button', { name: 'Configure graph columns' }).click();
-  }
-});
+  });
+}
 
 test('resizes repository side panels with accessible keyboard splitters', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -5490,6 +5577,7 @@ test('uses a full-width inspector drawer in compact windows', async ({ page }) =
     await page.goto('/');
 
     const panel = page.locator('.detail-panel');
+    await expect(panel).toBeAttached();
     if (await panel.isHidden()) await page.getByTitle(/Show Commit Panel/).click();
     const inspector = page.locator('.detail-panel:not(.panel-hidden)');
     await expect.poll(() => inspector.evaluate((element) => {
@@ -5518,6 +5606,7 @@ test('keeps the history and inspector side by side above the compact breakpoint'
   await page.goto('/');
 
   const panel = page.locator('.detail-panel');
+  await expect(panel).toBeAttached();
   if (await panel.isHidden()) await page.getByTitle(/Show Commit Panel/).click();
   const inspector = page.locator('.detail-panel:not(.panel-hidden)');
   const history = page.locator('.history-panel');
@@ -5821,6 +5910,7 @@ test('pairs command palette surfaces with each application theme', async ({ page
   for (const theme of ['khronos', 'midnight']) {
     await page.evaluate((value) => localStorage.setItem('git-khronos.ui.theme', value), theme);
     await page.reload();
+    await expect(page.getByRole('button', { name: 'Command palette', exact: true })).toBeVisible();
     await page.keyboard.press('Control+P');
     const palette = page.getByRole('dialog', { name: 'Command palette' });
     await expect(palette).toBeVisible();
@@ -6121,8 +6211,7 @@ test('keeps a resized column edge visible while columns overflow', async ({ page
   await expect.poll(async () => { const { authorRight, dateLeft, visibleRight } = await edges(); return authorRight <= dateLeft + 1 && authorRight <= visibleRight; }).toBe(true);
 });
 
-const graphColumnFit = (page: Page) => page.evaluate(() => {
-  const list = document.querySelector('.commit-list')!;
+const graphColumnFit = (page: Page) => page.locator('.commit-list').evaluate((list) => {
   const separators = [...document.querySelectorAll('.graph-columns [role="separator"]')].map((separator) => ({
     name: separator.getAttribute('aria-label')!,
     now: Number(separator.getAttribute('aria-valuenow')),
@@ -6983,6 +7072,7 @@ test('exposes consistent remote branch actions wherever a reference appears', as
     'Fetch this branch only…',
     'Share repository context…',
     'Copy remote branch name',
+    'Copy full ref',
     'Compare with working directory',
     'Rename branch on remote…',
     'Delete branch on remote…',
@@ -8034,16 +8124,21 @@ test('keeps the selected commit distinct while previewing branch ancestry', asyn
 test('avoids transient graph flashes while crossing sidebar branches', async ({ page }) => {
   const branch = page.getByRole('button', { name: /Local branch feature\/partial-staging/ });
   const tip = page.locator('[data-commit-oid="7c17b9d37d6a36dc9477e611109136f86477041a"]');
+  const now = Date.now();
+  await page.clock.install({ time: now });
+  await page.clock.pauseAt(now + 60_000);
 
   await branch.dispatchEvent('mouseenter');
   await expect(tip).not.toHaveClass(/branch-highlighted/);
   await branch.dispatchEvent('mouseleave');
-  await page.waitForTimeout(180);
+  await page.clock.runFor(180);
   await expect(tip).not.toHaveClass(/branch-highlighted/);
 
   await branch.dispatchEvent('mouseenter');
+  await page.clock.runFor(180);
   await expect(tip).toHaveClass(/branch-highlighted/);
   await branch.dispatchEvent('mouseleave');
+  await page.clock.runFor(180);
   await expect(tip).not.toHaveClass(/branch-highlighted/);
 });
 
@@ -8361,6 +8456,8 @@ test('labels truncated commit line totals and explains binary exclusions', async
   const recap = panel.getByRole('img', { name: '1 addition and 1 deletion; 1 binary or uncounted file excluded; partial totals' });
   await expect(recap).toBeVisible();
   await expect(recap).toContainText('+1−1');
+  await expect(recap).toContainText('1 excluded');
+  await expect(recap).toHaveAttribute('title', /binary or uncounted file excluded; partial totals/);
   await expect(recap).toContainText('(partial)');
   await panel.getByRole('button', { name: 'Changed Files (2+)' }).click();
   await expect(panel.locator('.commit-file-list')).toHaveCount(0);

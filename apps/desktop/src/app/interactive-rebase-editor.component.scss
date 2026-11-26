@@ -44,8 +44,8 @@
 .rebase-message-preview { grid-column: 4; min-width: 0; overflow: hidden; color: #f1c28f; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .rebase-commit-copy { display: grid; gap: 3px; min-width: 0; }
 .rebase-commit-copy strong { overflow: hidden; color: #dddce7; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.rebase-commit-copy small { color: #aaa9bc; font-family: var(--mono); font-size: 12px; }
-.rebase-step > textarea { grid-column: 4; width: 100%; padding: 6px 7px; resize: vertical; border: 1px solid #4b5570; border-radius: 3px; background: #181824; color: #e5e4ec; font: 12px/1.35 var(--sans); }
+.rebase-commit-copy small { color: #aaa9bc; font-family: var(--font-mono); font-size: 12px; }
+.rebase-step > textarea { grid-column: 4; width: 100%; padding: 6px 7px; resize: vertical; border: 1px solid #4b5570; border-radius: 3px; background: #181824; color: #e5e4ec; font: 12px/1.35 var(--font-ui); }
 .interactive-rebase > footer { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 9px 12px; border-top: 1px solid #39384d; background: #252438; }
 .rebase-shortcuts { display: flex; flex-wrap: wrap; gap: 11px; margin-right: auto; color: var(--muted); font-size: 12px; }
 .rebase-shortcuts span { display: flex; align-items: center; gap: 4px; }

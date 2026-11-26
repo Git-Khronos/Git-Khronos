@@ -10,12 +10,35 @@ import sys
 import time
 import uuid
 
+from native_repository_navigation import open_gitlab_catalogue
 
-def _prove_owned_tls(gate, port):
+
+def _owned_tls_handshake(gate, port, timeout):
     context = ssl.create_default_context(cafile=str(gate / "certificate.pem"))
-    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
+    with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
         with context.wrap_socket(sock, server_hostname="127.0.0.1"):
             pass  # No HTTP request, API credential, or certificate override.
+
+
+def _diagnose_owned_tls(gate, port):
+    """Separate a fixture outage from a packaged-client refusal without replaying HTTP."""
+    try:
+        _owned_tls_handshake(gate, port, timeout=2)
+    except ssl.SSLCertVerificationError:
+        return "certificate-verification-failed"
+    except ssl.SSLError:
+        return "tls-negotiation-failed"
+    except TimeoutError:
+        return "timed-out"
+    except ConnectionRefusedError:
+        return "listener-refused"
+    except OSError:
+        return "fixture-io-failed"
+    return "negotiated"
+
+
+def _prove_owned_tls(gate, port):
+    _owned_tls_handshake(gate, port, timeout=5)
     record_path = gate / "tls-observations.jsonl"
     deadline = time.monotonic() + 3
     expected = [{"destination": False, "outcome": "negotiated", "reason": None}]
@@ -28,6 +51,13 @@ def _prove_owned_tls(gate, port):
                 return len(entries)
         time.sleep(0.01)
     raise TimeoutError("The owned GitLab listener did not record its prelaunch TLS handshake")
+
+
+def _owned_accept_count(gate):
+    ledger = gate / "tcp-accepts"
+    if not ledger.is_file():
+        return None  # Older fixture snapshots have no TCP observation.
+    return ledger.stat().st_size
 
 
 def start_gitlab_fixture(fixtures, children, log, report):
@@ -62,13 +92,14 @@ def start_gitlab_fixture(fixtures, children, log, report):
     # process inherits the private trust store; host trust is never changed.
     from native_gitlab_ssh_fixture import start_gitlab_ssh
     # The packaged GitLab suite requires SSH; HTTPS fixture units remain isolated.
-    ssh_environment = start_gitlab_ssh(fixtures, gate, children, report) if report.get("suite") == "gitlab" else {}
+    ssh_environment = (start_gitlab_ssh(fixtures, gate, children, report)
+                       if report.get("suite") in ("gitlab", "gitlab-connect-after-smoke") else {})
     return {"SSL_CERT_FILE": str(gate / "certificate.pem"),
             "SSL_CERT_DIR": str(empty_ca_directory), **ssh_environment}
 
 
-def gitlab_catalogue(driver, fixtures, repository, report):
-    gate, origin = fixtures.gitlab_gate, fixtures.gitlab_origin
+def gitlab_catalogue(driver, fixtures, repository, report, *, connect_only=False, refused_origin=None):
+    gate, origin = fixtures.gitlab_gate, refused_origin or fixtures.gitlab_origin
     token = "owned-api-fixture-token"
     records = gate / "requests.jsonl"
 
@@ -110,40 +141,74 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     index = (repository / ".git/index").read_bytes()
     config = (repository / ".git/config").read_bytes()
     status = fixtures.git(repository, "status", "--porcelain=v1")
+
+    def assert_git_preserved():
+        assert fixtures.git(repository, "show-ref") == refs
+        assert (repository / ".git/index").read_bytes() == index
+        assert (repository / ".git/config").read_bytes() == config
+        assert fixtures.git(repository, "status", "--porcelain=v1") == status
+
     assert driver.invoke("gitlab_connections") == []
     assert requests() == []
-    driver.click_navigation('[aria-label="New repository tab"]')
-    driver.wait("return !!document.querySelector('#repository-tab-clone')?.getClientRects().length")
-    driver.click_text('gk-repository-dialog [role=tab]', 'Clone')
-    button("Browse GitLab projects")
-    driver.wait("return !!document.querySelector('#gitlab-origin') && !document.querySelector('#gitlab-origin').disabled")
+    open_gitlab_catalogue(driver)
     assert requests() == []
     fill("#gitlab-origin", origin)
     fill("#gitlab-token", token)
+    accept_before_click = _owned_accept_count(gate)
     driver.click_scrolled_text("gk-gitlab-projects button", "Connect to GitLab", wait_for_ready=True)
     # Do not turn a completed refusal into a generic wait timeout or replay
     # the connection. Report only the category and credential-safe counters.
-    connect_result = driver.wait("""
+    observation = driver.wait("""
         const catalogue = document.querySelector('gk-gitlab-projects');
         if (!catalogue || catalogue.querySelector('section')?.getAttribute('aria-busy') === 'true') return null;
-        if (catalogue.querySelector('#gitlab-account')?.value) return 'connected';
+        if (catalogue.querySelector('#gitlab-account')?.value) return {outcome: 'connected'};
         const alert = catalogue.querySelector('[role=alert]')?.textContent.trim();
         if (!alert) return null;
-        if (alert.includes('verified HTTPS read')) return 'https-connection-refused';
-        if (alert.includes('timed out')) return 'timeout';
-        if (alert.includes('did not accept the selected credential')) return 'credential-refused';
-        return 'other-app-refusal';
+        if (alert.includes('verified HTTPS read')) {
+          const stages = [
+            ['HTTPS client could not be initialized', 'client-setup'],
+            ['TCP connection was refused', 'tcp-refused'],
+            ['host or network was unreachable', 'network-unreachable'],
+            ['operating system denied the connection', 'network-denied'],
+            ['verified connection could not be established', 'connect-unclassified'],
+            ['request or response was interrupted', 'interrupted'],
+          ];
+          return {outcome: 'https-connection-refused',
+            stage: stages.find(([text]) => alert.includes(text))?.[1] ?? null};
+        }
+        if (alert.includes('timed out')) return {outcome: 'timeout'};
+        if (alert.includes('did not accept the selected credential')) return {outcome: 'credential-refused'};
+        return {outcome: 'other-app-refusal'};
     """)
+    connect_result = observation["outcome"]
     observed = requests()
     tls_records = gate / "tls-observations.jsonl"
     preflight_count = fixtures.gitlab_preflight_tls_count
+    accept_after_click = _owned_accept_count(gate)
     report["gitlabInitialConnect"] = {
         "outcome": connect_result,
+        "fixtureTcpAccepts": accept_after_click - accept_before_click
+        if accept_before_click is not None and accept_after_click is not None else None,
         "fixtureApiRequests": len(observed),
         "matchingFixtureCredentials": sum(request["credentialMatched"] for request in observed),
         "fixtureTls": [json.loads(line) for line in tls_records.read_text().splitlines()[preflight_count:preflight_count + 16]]
         if tls_records.exists() else [],
     }
+    if connect_result != "connected":
+        report["gitlabInitialConnect"]["appFailureStage"] = observation.get("stage")
+        report["gitlabInitialConnect"]["fixtureTlsAfterRefusal"] = _diagnose_owned_tls(
+            gate, int(origin.rsplit(":", 1)[1]))
+    if refused_origin is not None:
+        result = report["gitlabInitialConnect"]
+        assert connect_result == "https-connection-refused" and result["appFailureStage"] == "tcp-refused", result
+        assert result["fixtureTlsAfterRefusal"] == "listener-refused" and not observed, result
+        assert result["fixtureTcpAccepts"] == 0 and result["fixtureTls"] == [], result
+        assert driver.invoke("gitlab_connections") == []
+        assert driver.script("return document.querySelector('#gitlab-token').value") == ""
+        assert token not in driver.script("return document.body.textContent")
+        assert_git_preserved()
+        report["scenarios"].append("native-gitlab-tcp-refusal-explains-failure-clears-token-and-sends-no-http")
+        return
     assert connect_result == "connected", (
         "Installed app refused the initial owned GitLab connection", report["gitlabInitialConnect"])
     connections = driver.invoke("gitlab_connections")
@@ -156,6 +221,10 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     assert token not in driver.script("return document.body.textContent")
     assert len(observed) == 1 and observed[0]["credentialMatched"]
     report["scenarios"].append("native-gitlab-explicit-connect-verified-private-tls-native-account-and-cleared-token")
+
+    if connect_only:
+        assert_git_preserved()
+        return
 
     button("Load GitLab projects")
     driver.wait("return document.querySelector('gk-gitlab-projects ul')?.textContent.includes('team/subgroup/owned-project')")
@@ -214,10 +283,7 @@ def gitlab_catalogue(driver, fixtures, repository, report):
     assert driver.invoke("gitlab_connections") == []
     assert len(requests()) == before
     report["scenarios"].append("native-gitlab-application-restart-restores-no-credential-and-replays-no-provider-request")
-    assert fixtures.git(repository, "show-ref") == refs
-    assert (repository / ".git/index").read_bytes() == index
-    assert (repository / ".git/config").read_bytes() == config
-    assert fixtures.git(repository, "status", "--porcelain=v1") == status
+    assert_git_preserved()
     report["gitlabRequests"] = requests()
     report["scenarios"].append("native-gitlab-catalogue-preserves-independent-git-refs-index-config-and-working-tree")
 

@@ -1,18 +1,56 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmod, copyFile, mkdir, mkdtemp, open, readFile, readdir, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, open, readFile, readdir, readlink, rename, rm, stat, symlink, unlink, utimes, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir, userInfo } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 import { checkPackage, verifyGlibcBaseline } from './check-linux-abi.mjs';
 import { checkEvidence } from './check-debian-update-evidence.mjs';
-import { checkInstalledDeb } from './check-installed-deb.mjs';
+import { checkInstalledDeb, findReplacedProcesses } from './check-installed-deb.mjs';
 import { checkLinuxPackageWatcher } from './check-linux-package-watcher.mjs';
+import { reportInstalledAcceptance } from './report-installed-acceptance.mjs';
 
 const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+
+test('launcher probe help describes archive verification without starting a desktop', () => {
+  const script = join(repositoryRoot, 'tools', 'check-installed-x11-launch.sh');
+  for (const flag of ['--help', '-h']) {
+    const result = spawnSync('bash', [script, flag], { encoding: 'utf8', timeout: 3000 });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /With PACKAGE\.deb, also requires Node/);
+    assert.match(result.stdout, /does not verify installed bytes/);
+    assert.match(result.stdout, /GIT_KHRONOS_ACCEPTANCE_PYTHON/);
+    assert.match(result.stdout, /not a host-specific pinned shortcut or WSLg/);
+    assert.equal(result.stderr, '');
+  }
+  const missingArchive = spawnSync('bash', [script, '--renderer-recovery'], { encoding: 'utf8', timeout: 3000 });
+  assert.equal(missingArchive.status, 2, missingArchive.stderr);
+  assert.match(missingArchive.stderr, /^Usage:/);
+});
+
+test('installed status and release verifiers do not silently skip checks through a symlink', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-status-cli-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const [name, args, diagnostic] of [
+    ['check-installed-deb', [], /Usage: node tools\/check-installed-deb\.mjs PACKAGE\.deb/],
+    ['report-installed-acceptance', [], /Usage: node tools\/report-installed-acceptance\.mjs/],
+    ['check-debian-update-evidence', [], /Usage: check-debian-update-evidence/],
+    ['check-debian-candidate-run', [join(root, 'missing-run.json'), '10'], /ENOENT/],
+    ['check-linux-abi', [], /Usage: node tools\/check-linux-abi\.mjs/],
+    ['check-linux-package-watcher', [], /Expected the package Cargo manifest path/],
+    ['run-focused-installed-acceptance', [], /Usage: node tools\/run-focused-installed-acceptance\.mjs/],
+  ]) {
+    const cli = join(root, `${name}.mjs`);
+    await symlink(join(repositoryRoot, 'tools', `${name}.mjs`), cli);
+    const result = spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+    assert.equal(result.status, 1, `${name}: ${result.stderr}`);
+    assert.match(result.stderr, diagnostic);
+  }
+});
+
 const outputs = [
   'target/release/git-khronos',
   'target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb',
@@ -23,6 +61,108 @@ const outputs = [
   'dist/apps/desktop/3rdpartylicenses.txt',
   'dist/apps/desktop/browser/index.html',
 ];
+
+test('detects an owned running executable replaced on disk without stopping it', {
+  skip: process.platform !== 'linux', timeout: 10_000,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-stale-process-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, 'owned-process');
+  const build = spawnSync('cc', ['-x', 'c', '-o', path, '-'], {
+    encoding: 'utf8',
+    input: '#include <unistd.h>\nint main(void) { if (write(1, "R", 1) != 1) return 1; for (;;) pause(); }',
+  });
+  assert.equal(build.status, 0, build.stderr);
+  const child = spawn(path, [], { stdio: ['ignore', 'pipe', 'ignore'] });
+  const exited = new Promise(resolve => child.once('exit', resolve));
+  t.after(async () => {
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
+      child.kill();
+      await exited;
+    }
+  });
+  await new Promise((resolve, reject) => {
+    child.stdout.once('data', chunk => {
+      if (chunk.toString() === 'R') resolve();
+      else reject(new Error('Unexpected readiness marker from the owned fixture'));
+    });
+    child.once('exit', code => reject(new Error(`Owned fixture exited before readiness: ${code}`)));
+    child.once('error', reject);
+  });
+  assert.equal(await readlink(`/proc/${child.pid}/exe`), path);
+  assert.deepEqual(findReplacedProcesses(path), []);
+  const replacement = join(root, 'replacement');
+  await copyFile(path, replacement);
+  await rename(replacement, path);
+  assert.equal(await readlink(`/proc/${child.pid}/exe`), path + ' (deleted)');
+  assert.deepEqual(findReplacedProcesses(path), [child.pid]);
+  assert.deepEqual(findReplacedProcesses(path + '-different'), []);
+  assert.deepEqual(findReplacedProcesses(path, '/proc', process.getuid() + 1), []);
+  assert.equal(child.exitCode, null);
+});
+
+test('the no-install preview isolates app settings and rejects an unreviewed archive', {
+  skip: process.getuid?.() === 0 || process.arch !== 'x64' ? 'requires an unprivileged amd64 desktop user' : false,
+}, async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-launch-preview-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const payload = join(root, 'payload');
+  const caller = join(root, 'caller');
+  const temporary = join(root, 'temporary');
+  for (const path of [join(payload, 'DEBIAN'), join(payload, 'usr/bin'), caller, temporary]) {
+    await mkdir(path, { recursive: true });
+  }
+  await writeFile(join(caller, '.Xauthority'), 'not used to connect in this fixture');
+  await writeFile(join(payload, 'DEBIAN/control'),
+    'Package: git-khronos\nVersion: 0.1.6\nArchitecture: amd64\nMaintainer: Fixture <fixture@example.test>\nDescription: Owned test archive\n');
+  await writeFile(join(payload, 'usr/bin/git-khronos'), `#!/bin/bash
+set -eu
+test -d "$HOME"
+test "$HOME" = "$PWD"
+test "$HOME" != "$CALLER_HOME"
+test "$XAUTHORITY" = "$CALLER_HOME/.Xauthority"
+for name in AT_SPI_BUS_ADDRESS XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_CACHE_HOME; do
+  ! [[ -v $name ]] || exit 91
+done
+test -n "$DBUS_SESSION_BUS_ADDRESS"
+test "$DBUS_SESSION_BUS_ADDRESS" != "$CALLER_BUS"
+printf 'fixture executable ran\\n'
+exit 17
+`, { mode: 0o755 });
+  const archive = join(root, 'preview with spaces.deb');
+  const build = spawnSync('dpkg-deb', ['--root-owner-group', '--build', payload, archive], { encoding: 'utf8' });
+  assert.equal(build.status, 0, build.stderr);
+  const sha = createHash('sha256').update(await readFile(archive)).digest('hex');
+  const { XAUTHORITY: _ignored, ...env } = process.env;
+  const options = {
+    cwd: repositoryRoot, encoding: 'utf8', timeout: 10000,
+    env: { ...env, HOME: caller, TMPDIR: temporary, DISPLAY: ':999', CALLER_HOME: caller,
+      CALLER_BUS: 'unix:path=/unusable-caller-bus',
+      DBUS_SESSION_BUS_ADDRESS: 'unix:path=/unusable-caller-bus', AT_SPI_BUS_ADDRESS: 'inherited',
+      XDG_CONFIG_HOME: caller, XDG_DATA_HOME: caller, XDG_STATE_HOME: caller, XDG_CACHE_HOME: caller },
+  };
+  const call = (digest, packagePath = archive) => spawnSync('bash',
+    ['tools/preview-linux-package.sh', packagePath, digest], options);
+  const fifo = join(root, 'not-a-package.deb');
+  assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
+  for (const path of [fifo, root, join(root, 'missing.deb')]) {
+    const refused = call(sha, path);
+    assert.equal(refused.status, 2, refused.stderr);
+    assert.match(refused.stderr, /Choose a readable regular Debian archive/);
+    assert.doesNotMatch(refused.stdout, /fixture executable ran/);
+  }
+  assert.deepEqual(await readdir(temporary), []);
+  const refused = call('0'.repeat(64));
+  assert.equal(refused.status, 1, refused.stderr);
+  assert.match(refused.stderr, /Archive checksum does not match/);
+  assert.doesNotMatch(refused.stdout, /fixture executable ran/);
+  assert.deepEqual(await readdir(temporary), []);
+  const opened = spawnSync('task', ['--exit-code', 'install:linux:preview', '--', archive, sha], options);
+  assert.equal(opened.status, 17, opened.stderr);
+  assert.match(opened.stdout, /fixture executable ran/);
+  assert.deepEqual(await readdir(temporary), []);
+  assert.deepEqual(await readdir(caller), ['.Xauthority']);
+});
 
 test('checks the installed launcher and executable bytes even when the package versions match', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'git-khronos-installed-check-'));
@@ -50,14 +190,55 @@ test('checks the installed launcher and executable bytes even when the package v
   const status = join(database, 'status');
   const setStatus = (version = '0.1.6', state = 'installed') =>
     writeFile(status, metadata(version, 'amd64') + `Status: install ok ${state}\n\n`);
-  const check = () => checkInstalledDeb(packagePath, { root: installed, administrativeDirectory: database });
+  const userDataDirectory = join(root, 'user-data');
+  const desktopDataDirectory = join(root, 'local-share');
+  const installedExecutable = join(installed, executable);
+  const shadow = join(root, 'private-bin', 'git-khronos');
+  const searchPath = [dirname(shadow), dirname(installedExecutable)].join(delimiter);
+  const check = () => checkInstalledDeb(packagePath, {
+    root: installed, administrativeDirectory: database, userDataDirectory, searchPath,
+    desktopDataDirectories: ['relative-dir-is-ignored', desktopDataDirectory, join(installed, 'usr/share')],
+  });
 
   await setStatus();
   assert.equal(check().version, '0.1.6');
   assert.deepEqual(check().files, [join(installed, executable), join(installed, launcher)]);
+  assert.equal(check().userLauncher, null);
+  assert.equal(check().desktopSearchLauncher, null);
+  const localLauncher = join(desktopDataDirectory, 'applications', 'git-khronos.desktop');
+  await mkdir(dirname(localLauncher), { recursive: true });
+  await writeFile(localLauncher, 'stale local launcher');
+  assert.deepEqual(check().desktopSearchLauncher, { path: localLauncher, state: 'differs' });
+  assert.deepEqual(check().shellExecutable, { path: installedExecutable, state: 'matches' });
+  await mkdir(dirname(shadow));
+  await writeFile(shadow, 'different executable', { mode: 0o644 });
+  assert.deepEqual(check().shellExecutable, { path: installedExecutable, state: 'matches' });
+  await chmod(shadow, 0o755);
+  assert.deepEqual(check().shellExecutable, { path: shadow, state: 'differs' });
+  await writeFile(shadow, '');
+  assert.deepEqual(check().shellExecutable, { path: shadow, state: 'unverified' });
+  await rm(shadow);
+  await symlink(installedExecutable, shadow);
+  assert.deepEqual(check().shellExecutable, { path: shadow, state: 'matches' });
+  const userLauncher = join(userDataDirectory, 'applications', 'git-khronos.desktop');
+  await mkdir(dirname(userLauncher), { recursive: true });
+  await writeFile(userLauncher, 'old user launcher');
+  assert.deepEqual(check().userLauncher, { path: userLauncher, state: 'differs' });
+  assert.equal(check().desktopSearchLauncher, null, 'a higher-priority user launcher wins');
+  await writeFile(userLauncher, 'new launcher');
+  assert.deepEqual(check().userLauncher, { path: userLauncher, state: 'matches' });
+  await rm(userLauncher);
+  await symlink(join(candidate, launcher), userLauncher);
+  assert.deepEqual(check().userLauncher, { path: userLauncher, state: 'unverified' });
   await writeFile(join(installed, executable), 'old build');
   await writeFile(join(installed, launcher), 'old launcher');
-  assert.throws(check, /Version 0\.1\.6 matches, but .*usr\/bin\/git-khronos differs; .*git-khronos\.desktop differs/);
+  assert.throws(check, /Version 0\.1\.6 matches, but .*usr\/bin\/git-khronos differs \(SHA-256 prefixes: .*\); .*git-khronos\.desktop differs/);
+  const fingerprint = value => createHash('sha256').update(value).digest('hex').slice(0, 12);
+  assert.throws(check, error => [
+    ['old build', 'new build'], ['old launcher', 'new launcher'],
+  ].every(([actual, expected]) => error.message.includes(`installed ${fingerprint(actual)}, archive ${fingerprint(expected)}`)));
+  assert.throws(check, error => error.message.includes(JSON.stringify(packagePath))
+    && error.message.includes('then quit and relaunch Git Khronos'));
   await writeFile(join(installed, executable), 'new build');
   await writeFile(join(installed, launcher), 'new launcher');
   await chmod(join(installed, executable), 0o644);
@@ -80,14 +261,135 @@ test('installed review diagnostics continue after a sibling failure without publ
   assert.ok(debian);
   assert.match(ubuntu, /id: package_install/);
   assert.match(ubuntu, /run: bash tools\/run-native-suites\.sh "\$PACKAGE" smoke gitlab/);
-  assert.match(ubuntu, /Verify installed workspace and Git workflow reviews\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '24\.04' \}\}/);
-  assert.match(ubuntu, /if: \$\{\{ success\(\) && inputs\.expect-update-trust && matrix\.ubuntu == '22\.04' \}\}[\s\S]*?name: debian-candidate-evidence-/);
+  assert.match(ubuntu, /Verify installed GitLab refusal and occupied branch handling\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '26\.04' \}\}\n\s+run: bash tools\/run-native-suites\.sh "\$PACKAGE" gitlab-connect-refused worktrees/);
+  assert.match(ubuntu, /Verify the installed app recovers from renderer crashes\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '24\.04' && matrix\.lane == 'runtime' \}\}[\s\S]*?set -o pipefail[\s\S]*?check-installed-x11-launch\.sh --renderer-recovery "\$PACKAGE"[\s\S]*?tee ubuntu-package\/renderer-recovery\.log/);
+  assert.match(ubuntu, /path: \|\n(?:\s+[^\n]+\n)*\s+ubuntu-package\/renderer-recovery\.log/);
+  const reviews = [...ubuntu.matchAll(/Verify installed workspace and Git workflow reviews \(([^)]+)\)\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '24\.04' && matrix\.lane == '([^']+)' \}\}/g)];
+  assert.deepEqual(reviews.map(([, name, lane]) => [name, lane]), [
+    ['workspace', 'workspace-review'], ['files', 'file-review'], ['history', 'history-review'],
+  ]);
+  assert.match(ubuntu, /if: \$\{\{ success\(\) && matrix\.lane == 'publisher' \}\}[\s\S]*?name: debian-candidate-evidence-/);
   assert.match(debian, /fail-fast: false/);
   assert.match(debian, /Verify installed GitLab workflows independently of smoke\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' \}\}/);
   assert.doesNotMatch(workflow, /\bcontinue-on-error:/);
 });
 
-test('Linux runtime CI provisions discoverable D-Bus and version-matched WebDriver packages', async (t) => {
+test('publisher-enabled Jammy acceptance uses independent runtime and publisher lanes', async () => {
+  const workflow = await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8');
+  const ubuntu = workflow.split('\n  debian-runtime:\n')[0];
+  const include = ubuntu.match(/lane: \[runtime\]\s+include: >-\s+\$\{\{ fromJSON\(inputs\.expect-update-trust\s+&& '([^']+)'\s+\|\| '([^']+)'\) \}\}/);
+  assert.ok(include, 'Missing release-only lane configuration');
+  const jammy = lanes => JSON.parse(lanes).filter(lane => lane.ubuntu === '22.04');
+  assert.deepEqual(jammy(include[1]), [{ ubuntu: '22.04', lane: 'publisher' }]);
+  assert.deepEqual(jammy(include[2]), []);
+  assert.match(ubuntu, /Exercise the installed executable[^\n]*\n\s+if: matrix\.lane == 'runtime'\n\s+run: .* smoke gitlab/);
+  assert.match(ubuntu, /Verify installed packed-ref refresh[^\n]*\n\s+if: [^\n]*matrix\.lane == 'runtime'/);
+  assert.match(ubuntu, /Exercise Git LFS snapshots[^\n]*\n\s+if: [^\n]*matrix\.lane == 'runtime'/);
+  assert.match(ubuntu, /Qualify publisher trust[^\n]*\n\s+if: [^\n]*matrix\.lane == 'publisher'/);
+  assert.match(ubuntu, /name: ubuntu-\$\{\{ matrix\.ubuntu \}\}-\$\{\{ matrix\.lane \}\}-/);
+});
+
+test('release qualification refuses installer and native version drift before building', async t => {
+  const workflow = (await readFile(join(repositoryRoot, '.github/workflows/release.yml'), 'utf8')).replaceAll('\r\n', '\n');
+  const step = workflow.match(/- name: Check release tag matches installer and runtime versions\n\s+run: \|\n([\s\S]*?)(?=      - name: Install Linux build prerequisites)/)?.[1];
+  assert.ok(step, 'Missing early version gate');
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-release-version-gate-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const folder of ['bin', 'apps/desktop/src-tauri', 'packaging/debian']) {
+    await mkdir(join(root, folder), { recursive: true });
+  }
+  await writeFile(join(root, 'bin/cargo'), `#!/bin/sh
+test "$*" = 'metadata --no-deps --format-version 1 --offline --locked' || exit 2
+cat metadata.json
+`, { mode: 0o755 });
+  const current = '2.3.4';
+  const defaults = { project: current, app: current, changelog: current, desktop: current, core: current };
+  const versionFixtures = async (overrides = {}) => {
+    const { project, app, changelog, desktop, core } = { ...defaults, ...overrides };
+    await writeFile(join(root, 'package.json'), JSON.stringify({ version: project }));
+    await writeFile(join(root, 'apps/desktop/src-tauri/tauri.conf.json'), JSON.stringify({ version: app }));
+    await writeFile(join(root, 'packaging/debian/changelog'), `git-khronos (${changelog}) unstable; urgency=medium
+
+  * Isolated release gate fixture.
+
+ -- Fixture <fixture@example.test>  Wed, 18 Nov 2026 10:38:17 +0100
+`);
+    await writeFile(join(root, 'metadata.json'), JSON.stringify({ packages: [
+      { name: 'git-khronos-desktop', version: desktop },
+      { name: 'git-khronos-git-core', version: core },
+    ] }));
+  };
+  const run = () => spawnSync('bash', ['-c', step.replace(/^          /gm, '')], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, RELEASE_TAG: `v${current}` },
+  });
+  await versionFixtures();
+  const valid = run();
+  assert.equal(valid.status, 0, valid.stderr || valid.stdout);
+  for (const [field, source] of [
+    ['project', 'package.json'], ['app', 'tauri.conf.json'], ['changelog', 'Debian-changelog'],
+    ['desktop', 'git-khronos-desktop'], ['core', 'git-khronos-git-core'],
+  ]) {
+    await versionFixtures({ [field]: '2.3.5' });
+    const bad = run();
+    assert.equal(bad.status, 1);
+    assert.ok(bad.stdout.includes(`::error::${source} version 2.3.5 does not match release tag v2.3.4.`), bad.stdout);
+  }
+});
+
+test('publication fails closed when GitHub reports no required release reviewer', async t => {
+  const workflow = (await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8')).replaceAll('\r\n', '\n');
+  const [verify, publish] = workflow.split('\n  publish:\n');
+  const preflight = verify.match(/- name: Require a reviewer-protected release environment before publication\n([\s\S]*?)(?=      - name:)/)?.[1];
+  assert.ok(preflight);
+  assert.match(preflight, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'/);
+  assert.match(publish, /needs: verify[\s\S]*?environment: signed-release[\s\S]*?actions: read/);
+  const step = preflight.split('        run: |\n')[1]?.replace(/^          /gm, '');
+  assert.ok(step);
+  const lastGuard = publish.match(/          # A missing environment[\s\S]*?\n(          if ! gh api[\s\S]*?\n          fi)\n          gh release create/)?.[1];
+  assert.ok(lastGuard, 'Check protection again before publishing');
+  const guards = [step, 'set -euo pipefail\n' + lastGuard.replace(/^          /gm, '')];
+  const root = await mkdtemp(join(tmpdir(), 'git-khronos-release-protection-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'gh'), `#!/bin/sh
+test "$1 $2" = 'api repos/Git-Khronos/Git-Khronos/environments/signed-release' || exit 9
+test "$#" -eq 2 || exit 9
+test "$STATUS" = ok || exit 1
+printf '%s\n' "$REPLY"
+`, { mode: 0o755 });
+  for (const guard of guards) {
+    const run = (info, STATUS = 'ok') => spawnSync('bash', ['-c', guard], { encoding: 'utf8', env: {
+      ...process.env, PATH: `${root}:${process.env.PATH}`, GITHUB_REPOSITORY: 'Git-Khronos/Git-Khronos', STATUS, REPLY: JSON.stringify(info),
+    } });
+    const good = { name: 'signed-release', protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'Team' }] }] };
+    const accepted = run(good);
+    assert.equal(accepted.status, 0, accepted.stderr || accepted.stdout);
+    for (const bad of [
+      run(good, 'unavailable'),
+      run({ ...good, name: 'unrelated' }),
+      run({ ...good, protection_rules: [] }),
+      run({ ...good, protection_rules: [{ type: 'wait_timer' }] }),
+      run({ ...good, protection_rules: [{ type: 'required_reviewers', reviewers: [] }] }),
+    ]) {
+      assert.equal(bad.status, 1);
+      assert.match(bad.stdout, /::error::.*reviewer/i);
+      assert.doesNotMatch(bad.stdout, /Team/);
+    }
+  }
+});
+
+test('signed publication requires installed reports from the selected candidate attempt', async () => {
+  const runtime = await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8');
+  const publish = await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8');
+  for (const platform of ['ubuntu', 'debian']) {
+    assert.ok(runtime.includes(`debian-runtime-reports-\${{ github.run_attempt }}-${platform}-`));
+  }
+  assert.equal((runtime.match(/path: test-results\/native\/\*\*\/report\.json/g) ?? []).length, 2);
+  assert.ok(publish.includes('pattern: debian-runtime-reports-${{ steps.candidate.outputs.attempt }}-*'));
+  const beforeStaging = publish.split('name: Prepare and reverify exactly the assets to upload')[0];
+  assert.match(beforeStaging, /report-installed-acceptance\.mjs --verify-release[\s\S]*?--reports-dir candidate-matrix/);
+});
+
+test('Linux runtime CI provisions authenticated X11, D-Bus and matching WebDriver packages', async (t) => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const step = workflow.match(/      - name: Install runtime acceptance prerequisites\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(step, 'Missing runtime prerequisite step');
@@ -124,7 +426,7 @@ esac
   ]) {
     const log = join(root, release);
     const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, COMMAND_LOG: log,
-      UBUNTU_RELEASE: release, RUNTIME_VERSION: '2.52.0-1' };
+      UBUNTU_RELEASE: release, ACCEPTANCE_LANE: 'runtime', EXPECT_UPDATE_TRUST: 'false', RUNTIME_VERSION: '2.52.0-1' };
     const result = spawnSync('bash', ['-c', script], { encoding: 'utf8', env });
     assert.equal(result.status, 0, result.stderr);
     for (const tool of ['WebKitWebDriver', 'dbus-daemon', 'dbus-send', 'dbus-run-session']) {
@@ -132,9 +434,25 @@ esac
     }
     const calls = await readFile(log, 'utf8');
     assert.match(calls, new RegExp(`install --yes ${expected} libwebkit2gtk-4\\.1-0 `));
+    assert.match(calls, / xvfb xauth /);
     assert.match(calls, / dbus\s/);
     assert.doesNotMatch(calls, / dbus-(?:daemon|bin)(?:\s|$)/);
+    assert.doesNotMatch(calls, / iproute2 util-linux/);
     assert.match(calls, /cargo install tauri-driver --locked --version 2\.0\.6/);
+    await writeFile(log, '');
+    const trusted = spawnSync('bash', ['-c', script], {
+      encoding: 'utf8', env: { ...env, EXPECT_UPDATE_TRUST: 'true' },
+    });
+    assert.equal(trusted.status, 0, trusted.stderr);
+    assert.equal((await readFile(log, 'utf8')).includes(' iproute2 util-linux'), release === '24.04');
+    if (release === '24.04') {
+      await writeFile(log, '');
+      const review = spawnSync('bash', ['-c', script], {
+        encoding: 'utf8', env: { ...env, ACCEPTANCE_LANE: 'workspace-review', EXPECT_UPDATE_TRUST: 'true' },
+      });
+      assert.equal(review.status, 0, review.stderr);
+      assert.doesNotMatch(await readFile(log, 'utf8'), / iproute2 util-linux/);
+    }
     await writeFile(log, '');
     const mismatch = spawnSync('bash', ['-c', script], {
       encoding: 'utf8', env: { ...env, RUNTIME_VERSION: '2.50.0-1' },
@@ -183,6 +501,7 @@ esac
       assert.ok(result.stdout.includes(join(bin, tool)), `Missing Debian tool path for ${tool}`);
     }
     const calls = await readFile(log, 'utf8');
+    assert.match(calls, / xvfb xauth /);
     assert.match(calls, new RegExp(`install --yes ${expected} libwebkit2gtk-4\\.1-0`));
     assert.match(calls, /install -d -m 0755 \/run\/sshd/);
     assert.match(calls, /dbus-daemon dbus-bin/);
@@ -219,36 +538,53 @@ test('Jammy CI restores known dpkg hooks after successful and failed fixture run
   for (const directory of [hooks, bin, temporary]) await mkdir(directory);
   const originals = { needrestart: 'post-invoke=fixture-needrestart\n',
     'pkg-config-hook-config': 'post-invoke=fixture-pkg-config\n',
-    'pkgconf-hook-config': 'post-invoke=fixture-pkgconf\n', unrelated: 'preserve\n' };
+    unrelated: 'preserve\n' };
   for (const [name, content] of Object.entries(originals)) {
     await writeFile(join(hooks, name), content, { mode: 0o640 });
   }
-  await writeFile(join(bin, 'sudo'), '#!/bin/sh\n[ "$1" = mv ] || exit 99\nexec "$@"\n', { mode: 0o755 });
+  await symlink('missing-hook-target', join(hooks, 'pkgconf-hook-config'));
+  await writeFile(join(bin, 'sudo'), `#!/bin/sh
+[ "$1" = mv ] || exit 99
+if [ "$3" = "$HOOK_DIRECTORY/pkg-config-hook-config" ] && [ "\${FAIL_HOOK_MOVE:-}" = 1 ]; then
+  exit 23
+fi
+exec "$@"
+`, { mode: 0o755 });
   await writeFile(join(bin, 'pnpm'), `#!/bin/sh
 [ ! -e "$HOOK_DIRECTORY/needrestart" ] || exit 98
 [ ! -e "$HOOK_DIRECTORY/pkg-config-hook-config" ] || exit 98
-[ ! -e "$HOOK_DIRECTORY/pkgconf-hook-config" ] || exit 98
+[ ! -L "$HOOK_DIRECTORY/pkgconf-hook-config" ] || exit 98
 [ -f "$HOOK_DIRECTORY/unrelated" ] || exit 98
 printf 'isolated fixtures\\n'
 exit "$FIXTURE_EXIT"
 `, { mode: 0o755 });
   for (const file of ['ci.yml', 'release.yml']) {
     const workflow = (await readFile(join(repositoryRoot, '.github/workflows', file), 'utf8')).replaceAll('\r\n', '\n');
-    const block = workflow.match(/      - name: Run packaging regressions\n        run: \|\n([\s\S]*?)(?=      - )/)?.[1];
-    assert.ok(block, `Missing packaging regression step in ${file}`);
-    const script = block.replace(/^          /gm, '').replaceAll('/etc/dpkg/dpkg.cfg.d', hooks);
-    for (const exit of [0, 7]) {
-      const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], { encoding: 'utf8',
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: temporary,
-          HOOK_DIRECTORY: hooks, FIXTURE_EXIT: String(exit) } });
-      assert.equal(result.status, exit, result.stderr);
+    assert.match(workflow, /^      - uses: \.\/\.github\/actions\/debian-package-regressions$/m,
+      `Missing shared packaging regression action in ${file}`);
+  }
+  const action = join(repositoryRoot, '.github/actions/debian-package-regressions');
+  assert.match(await readFile(join(action, 'action.yml'), 'utf8'), /run: bash "\$GITHUB_ACTION_PATH\/run\.sh"/);
+  const source = await readFile(join(action, 'run.sh'), 'utf8');
+  assert.ok(source.includes('config=/etc/dpkg/dpkg.cfg.d\n'));
+  const script = source.replace('config=/etc/dpkg/dpkg.cfg.d\n', 'config="$HOOK_DIRECTORY"\n');
+  for (const { exit, failMove } of [{ exit: 0 }, { exit: 7 }, { exit: 23, failMove: true }]) {
+    const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', script], { encoding: 'utf8',
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: temporary,
+        HOOK_DIRECTORY: hooks, FIXTURE_EXIT: String(exit), FAIL_HOOK_MOVE: failMove ? '1' : '' } });
+    assert.equal(result.status, exit, result.stderr);
+    if (failMove) {
+      assert.doesNotMatch(result.stdout, /isolated fixtures/);
+      assert.match(result.stderr, /Could not temporarily disable dpkg hook: pkg-config-hook-config/);
+    } else {
       assert.match(result.stdout, /isolated fixtures/);
-      for (const [name, content] of Object.entries(originals)) {
-        assert.equal(await readFile(join(hooks, name), 'utf8'), content);
-        assert.equal((await stat(join(hooks, name))).mode & 0o777, 0o640);
-      }
-      assert.deepEqual(await readdir(temporary), []);
     }
+    for (const [name, content] of Object.entries(originals)) {
+      assert.equal(await readFile(join(hooks, name), 'utf8'), content);
+      assert.equal((await stat(join(hooks, name))).mode & 0o777, 0o640);
+    }
+    assert.equal(await readlink(join(hooks, 'pkgconf-hook-config')), 'missing-hook-target');
+    assert.deepEqual(await readdir(temporary), []);
   }
 });
 
@@ -289,6 +625,7 @@ if (process.env.FAIL_ABI) process.exit(1);
   await copyFile(join(repositoryRoot, 'tools/build-linux-package.sh'), join(root, 'tools/build-linux-package.sh'));
   await copyFile(join(repositoryRoot, 'tools/check-linux-appimage.mjs'), join(root, 'tools/check-linux-appimage.mjs'));
   await copyFile(join(repositoryRoot, 'tools/check-linux-package-watcher.mjs'), join(root, 'tools/check-linux-package-watcher.mjs'));
+  await copyFile(join(repositoryRoot, 'tools/cli-entry.mjs'), join(root, 'tools/cli-entry.mjs'));
   await put('apps/desktop/src/main.ts');
   await put('apps/desktop/src-tauri/tauri.conf.json');
   await put('apps/desktop/src-tauri/Cargo.toml');
@@ -307,6 +644,7 @@ if (process.argv[2] === '--version') {
     'apps/desktop/src-tauri/tauri.conf.json'
   ];
   if (process.env.EXPECT_JAMMY) expected.push('--config', 'packaging/linux/ubuntu-jammy.conf.json');
+  if (appimage) expected.push('--config', 'packaging/linux/appimage-notices.conf.json');
   if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(expected)) {
     throw new Error('Unexpected build command: ' + process.argv.slice(2));
   }
@@ -339,7 +677,17 @@ if (process.argv[2] === '--version') {
     const output = process.env.CARGO_TARGET_DIR && path.startsWith('target/release/')
       ? process.env.CARGO_TARGET_DIR + path.slice('target'.length) : path;
     mkdirSync(dirname(output), { recursive: true });
-    writeFileSync(output, appimage ? Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01]) : 'built');
+    const header = Buffer.alloc(232);
+    header.set([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0, 0x41, 0x49, 0x02]);
+    header.writeUInt16LE(2, 16);
+    header.writeUInt16LE(62, 18);
+    header.writeBigUInt64LE(64n, 40);
+    header.writeUInt16LE(64, 58);
+    header.writeUInt16LE(1, 60);
+    header.write('hsqs', 128);
+    header.writeUInt16LE(4, 156);
+    header.writeBigUInt64LE(100n, 168);
+    writeFileSync(output, appimage ? header : 'built');
     if (appimage) chmodSync(output, 0o755);
   }
   mkdirSync('apps/desktop/src-tauri/gen/schemas', { recursive: true });
@@ -358,6 +706,18 @@ test -z "$FAIL_CARGO_CLEAN"
   await put('tools/manage-linux-package.sh', `#!/bin/sh
 [ "$1" = name ] && exit 0
 [ "$1" = print-package ] && { package="\${CARGO_TARGET_DIR:-target}/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb"; grep -qx built "$package" || exit $?; case "$package" in /*) printf '%s\\n' "$package" ;; *) printf '%s\\n' "$PWD/$package" ;; esac; exit 0; }
+if [ "$1" = installed-status ]; then
+  [ "$#" -le 2 ] || exit 2
+  archive=latest
+  [ "$#" -eq 1 ] || archive=$2
+  printf 'installed-status %s\\n' "$archive" >> calls
+  exit 0
+fi
+if [ "$1" = simulate-install ] && [ "$#" -gt 1 ]; then
+  [ "$#" -eq 2 ] || exit 2
+  printf 'simulate-install %s\\n' "$2" >> calls
+  exit 0
+fi
 printf '%s\\n' "$1" >> calls
 test -z "$FAIL_VERIFY"
 `);
@@ -377,6 +737,15 @@ test -z "$FAIL_VERIFY"
   const builds = async () => (await calls()).filter((call) => call === 'build').length;
   return { root, put, run, ok, calls, builds };
 }
+
+test('installed status forwards a single selected archive without a build or install', async (t) => {
+  const f = await fixture(t);
+  const archive = 'archived installers/Git-Khronos_0.1.6_amd64.deb';
+  f.ok(['install:linux:status']);
+  f.ok(['install:linux:status', '--', archive]);
+  assert.notEqual(f.run(['install:linux:status', '--', archive, 'another.deb']).status, 0);
+  assert.deepEqual(await f.calls(), ['installed-status latest', 'installed-status ' + archive]);
+});
 
 test('unchanged packaging skips Tauri but still verifies, including the deb alias', async (t) => {
   const f = await fixture(t);
@@ -411,6 +780,16 @@ test('Jammy records an exact package only after host and ABI gates and cannot re
   assert.deepEqual((await f.calls()).slice(-2), ['build', 'abi']);
 });
 
+test('AppImage fails before compiling if the file command is missing', () => {
+  const result = spawnSync('/bin/bash', ['tools/build-linux-package.sh', 'ubuntu-jammy-appimage', 'owned', 'unused.json'], {
+    cwd: repositoryRoot,
+    env: { ...process.env, PATH: '' },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /file command is required by the AppImage packager/);
+});
+
 test('AppImage builds only on the Jammy baseline, are checked as executable ELF artifacts, and rebuild each time', async (t) => {
   const f = await fixture(t);
   const appimage = ['package:appimage'];
@@ -430,6 +809,56 @@ test('AppImage builds only on the Jammy baseline, are checked as executable ELF 
   assert.equal(await f.builds(), 3);
   await assert.rejects(readFile(join(f.root, 'target/release/.git-khronos-package-build.v1.json')),
     { code: 'ENOENT' }, 'an AppImage must not be mistaken for the Debian package receipt');
+});
+
+test('Rust environment overrides invalidate the Debian build even when source files match', async (t) => {
+  const f = await fixture(t);
+  const first = { RUSTFLAGS: '--cfg owned_a' };
+  const second = { RUSTFLAGS: '--cfg owned_b' };
+  f.ok(undefined, first);
+  f.ok(undefined, first);
+  assert.equal(await f.builds(), 1);
+  const path = join(f.root, 'target/release/.git-khronos-package-build.v1.json');
+  const { checksum } = JSON.parse(await readFile(path, 'utf8'));
+  const mismatch = spawnSync(process.execPath, ['tools/package-build-receipt.mjs', 'check', checksum],
+    { cwd: f.root, encoding: 'utf8', env: { ...process.env, ...second } });
+  assert.equal(mismatch.status, 1);
+  assert.match(mismatch.stderr, /package build settings changed/);
+  assert.doesNotMatch(mismatch.stderr, /owned_[ab]/);
+  f.ok(undefined, second);
+  assert.equal(await f.builds(), 2);
+  f.ok(undefined, { ...second, CARGO_PROFILE_RELEASE_LTO: 'thin' });
+  assert.equal(await f.builds(), 3);
+  const receipt = await readFile(path, 'utf8');
+  assert.match(JSON.parse(receipt).buildConfiguration.rustOverridesSha256, /^[a-f0-9]{64}$/);
+  assert.doesNotMatch(receipt, /owned_[ab]|thin/);
+});
+
+test('cache checks reject nonregular receipts and renderer outputs without hanging', { skip: process.platform !== 'linux' }, async (t) => {
+  const f = await fixture(t);
+  f.ok();
+  const receipt = join(f.root, 'target/release/.git-khronos-package-build.v1.json');
+  const renderer = join(f.root, 'dist/apps/desktop/browser/index.html');
+  const { checksum } = JSON.parse(await readFile(receipt, 'utf8'));
+  const check = () => spawnSync(process.execPath,
+    ['tools/package-build-receipt.mjs', 'check', checksum], { cwd: f.root, encoding: 'utf8', timeout: 2000 });
+  for (const [file, message] of [
+    [receipt, /Invalid package build receipt metadata/],
+    [renderer, /Expected a bounded regular package build output/],
+  ]) {
+    const saved = file + '.owned-original';
+    await rename(file, saved);
+    const pipe = spawnSync('mkfifo', [file], { encoding: 'utf8' });
+    assert.equal(pipe.status, 0, pipe.stderr);
+    const rejected = check();
+    assert.ifError(rejected.error);
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, message);
+    await unlink(file);
+    await rename(saved, file);
+  }
+  const cached = check();
+  assert.equal(cached.status, 0, cached.stderr);
 });
 
 test('input edits, additions, renames and deletions invalidate the build', async (t) => {
@@ -580,6 +1009,14 @@ test('system installation uses the same incremental packaging path', async (t) =
   assert.deepEqual(await f.calls(), ['build', 'verify', 'install', 'verify', 'install']);
 });
 
+test('system installation rejects archive arguments instead of building or installing another package', async (t) => {
+  const f = await fixture(t);
+  const result = f.run(['install:linux', '--', 'archived builds/Git-Khronos_0.1.6_amd64.deb']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /takes no archive argument/);
+  await assert.rejects(f.calls(), { code: 'ENOENT' });
+});
+
 test('the local install preview builds and verifies the package without invoking install', async (t) => {
   const f = await fixture(t);
   f.ok(['install:linux:dry-run']);
@@ -587,6 +1024,14 @@ test('the local install preview builds and verifies the package without invoking
   assert.deepEqual(await f.calls(), ['build', 'verify', 'simulate-install', 'verify', 'simulate-install']);
   assert.notEqual(f.run(['install:linux:dry-run'], { FAIL_VERIFY: '1' }).status, 0);
   assert.equal((await f.calls()).at(-1), 'verify');
+});
+
+test('previewing a selected archive does not start a build', async (t) => {
+  const f = await fixture(t);
+  const archive = 'archived builds/Git-Khronos_0.1.6_amd64.deb';
+  f.ok(['install:linux:dry-run', '--', archive]);
+  assert.notEqual(f.run(['install:linux:dry-run', '--', archive, 'another.deb']).status, 0);
+  assert.deepEqual(await f.calls(), ['simulate-install ' + archive]);
 });
 
 test('names the real Debian artifact without spaces and keeps naming idempotent', async (t) => {
@@ -723,7 +1168,7 @@ test('local install preview uses unprivileged APT simulation for normal and lega
   await writeFile(join(f.root, 'tools/guard-linux-package-transition.sh'), refuse, { mode: 0o755 });
   await writeFile(join(bin, 'dpkg-query'), '#!/bin/sh\nprintf "%s" "$LEGACY_STATUS"\n', { mode: 0o755 });
   await writeFile(join(bin, 'apt-get'), '#!/bin/sh\n[ "$1" = install ] && [ "$2" = --simulate ] || exit 99\nprintf "%s\\n" "$@" > "$APT_LOG"\n', { mode: 0o755 });
-  const run = (legacy) => spawnSync('bash', [f.script, 'simulate-install'], { encoding: 'utf8',
+  const run = (legacy, ...archives) => spawnSync('bash', [f.script, 'simulate-install', ...archives], { encoding: 'utf8',
     env: { ...process.env, CARGO_TARGET_DIR: '', TMPDIR: f.root, PATH: `${bin}:${process.env.PATH}`,
       APT_LOG: aptLog, DENIED_LOG: deniedLog, LEGACY_STATUS: legacy },
   });
@@ -743,6 +1188,32 @@ test('local install preview uses unprivileged APT simulation for normal and lega
   assert.notEqual(refused.status, 0);
   assert.match(refused.stderr, /packaged executable differs/);
   await assert.rejects(stat(aptLog), { code: 'ENOENT' });
+
+  // An explicit archive is independent of the most recent build directory,
+  // but still only reaches unprivileged APT simulation with the exact path.
+  const archive = join(f.root, 'archive with spaces.deb');
+  await copyFile(f.artifact, archive);
+  const explicit = run('not-installed', archive);
+  assert.equal(explicit.status, 0, explicit.stderr);
+  assert.match(explicit.stdout, /not verifying release provenance/);
+  assert.deepEqual((await readFile(aptLog, 'utf8')).trim().split('\n'), [
+    'install', '--simulate', '--reinstall', '--no-remove', archive,
+  ]);
+  await assert.rejects(stat(deniedLog), { code: 'ENOENT' });
+  await rm(aptLog);
+  const invalid = join(f.root, 'not-a-package.deb');
+  await writeFile(invalid, 'not a package');
+  assert.notEqual(run('not-installed', invalid).status, 0);
+  await assert.rejects(stat(aptLog), { code: 'ENOENT' });
+
+  const install = spawnSync('bash', [f.script, 'install', archive], {
+    encoding: 'utf8',
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, APT_LOG: aptLog, DENIED_LOG: deniedLog },
+  });
+  assert.notEqual(install.status, 0);
+  assert.match(install.stderr, /install \(no archive argument\)/);
+  await assert.rejects(stat(aptLog), { code: 'ENOENT' });
+  await assert.rejects(stat(deniedLog), { code: 'ENOENT' });
 });
 
 test('failed package extraction cleans its owned temporary directory without masking the error', async (t) => {
@@ -855,7 +1326,10 @@ test('Ubuntu ABI gate inspects the actual packaged ELF without running it', asyn
     inheritedGitEnvironment: true,
     initialRepositoryIntegrity: { passed: true, exitCode: 0 },
     repositoryIntegrity: { passed: true, exitCode: 0 },
-    scenarios: ['native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer'],
+    scenarios: [
+      'native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer',
+      'native-updates-automatic-setting-describes-download-and-install-consent',
+    ],
     applicationUpdates: { nativeStatus: { runningVersion: '0.1.0', packageFormat: 'deb',
       configured: true, automatic: false, offerId: null, canInstall: false } },
   };
@@ -882,6 +1356,16 @@ test('Ubuntu ABI gate inspects the actual packaged ELF without running it', asyn
   await f.put('DEBIAN/control', control.replace('libc6 (>= 2.35)', 'libc6 (>= 2.39)'));
   f.build();
   assert.throws(() => checkPackage(f.artifact), /Release libc6 floor is 2.39/);
+  const focusedRequest = { version: 1, checks: [{
+    suite: 'smoke', distribution: { id: 'ubuntu', versionId: '24.04' },
+    inheritedGitEnvironment: false, requiredScenarios: ['production-csp'],
+  }] };
+  const focused = await reportInstalledAcceptance(f.artifact, [], { focusedRequest });
+  assert.equal(focused.focusedAcceptance.complete, false);
+  assert.equal(focused.releaseMatrix, undefined);
+  await assert.rejects(reportInstalledAcceptance(f.artifact, [], { releaseMatrix: true }), /Release libc6 floor is 2.39/);
+  await assert.rejects(reportInstalledAcceptance(f.artifact, [], { releaseMatrix: true, focusedRequest }),
+    /Focused acceptance cannot qualify a release matrix/);
   receipt.outputs.package.sha256 = report.packageSha256 = createHash('sha256')
     .update(await readFile(f.artifact)).digest('hex');
   await saveEvidence();

@@ -53,7 +53,22 @@ pub fn stash_with_options(path: &Path, options: &StashOptions) -> Result<(), App
             ));
         }
     }
-    let status = read_status(path)?;
+    // A whole-checkout stash needs counts, not a retained file list. Git
+    // applies the chosen mode to the entire checkout. Skip enumerating
+    // untracked files unless the user elected to save them.
+    let status = if options.paths.is_some() {
+        read_status(path)?
+    } else {
+        read_status_with_limit_mode(
+            path,
+            0,
+            if options.include_untracked {
+                "all"
+            } else {
+                "no"
+            },
+        )?
+    };
     if status.conflicted > 0 {
         return Err(AppError::new(
             "conflictedStash",
@@ -104,13 +119,10 @@ pub fn stash_with_options(path: &Path, options: &StashOptions) -> Result<(), App
             }
         }
     }
-    let eligible = status.entries.iter().any(|entry| {
-        eligible_entry(entry)
-            && options
-                .paths
-                .as_ref()
-                .is_none_or(|paths| paths.iter().any(|file| matches_path(entry, file)))
-    });
+    let eligible = options.paths.is_some()
+        || status.staged > 0
+        || (options.mode != "staged-only"
+            && (status.unstaged > 0 || (options.include_untracked && status.untracked > 0)));
     if !eligible {
         return Err(AppError::new(
             "emptyStashSelection",

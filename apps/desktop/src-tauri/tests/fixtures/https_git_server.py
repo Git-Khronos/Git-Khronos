@@ -93,5 +93,7 @@ server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(root / "certificate.pem", root / "private-key.pem")
 server.socket = context.wrap_socket(server.socket, server_side=True)
-print(server.server_port, flush=True)
+port_file = root / "https-port.tmp"
+port_file.write_text(str(server.server_port), encoding="ascii")
+port_file.replace(root / "https-port")
 server.serve_forever()

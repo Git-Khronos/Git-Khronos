@@ -50,9 +50,13 @@ pub fn compare_branches(
     };
     let incoming_range = format!("{target_oid}..{source_oid}");
     let outgoing_range = format!("{source_oid}..{target_oid}");
-    let incoming_count = count(path, &[&incoming_range])?;
-    let outgoing_count = count(path, &[&outgoing_range])?;
-    let unpublished = count(path, &[&outgoing_range, "--not", "--remotes"])?;
+    // One symmetric walk counts both sides. Its left side is the target.
+    let (outgoing_count, incoming_count) = count_sides(path, &target_oid, &source_oid)?;
+    let unpublished = if outgoing_count == 0 {
+        0
+    } else {
+        count(path, &[&outgoing_range, "--not", "--remotes"])?
+    };
     Ok(BranchComparison {
         target: target.to_owned(),
         source: source.to_owned(),
@@ -62,9 +66,29 @@ pub fn compare_branches(
         incoming_count,
         outgoing_count,
         outgoing_published: outgoing_count.saturating_sub(unpublished),
-        incoming: list(path, &incoming_range)?,
-        outgoing: list(path, &outgoing_range)?,
+        incoming: list(path, &incoming_range, incoming_count)?,
+        outgoing: list(path, &outgoing_range, outgoing_count)?,
     })
+}
+
+fn count_sides(path: &Path, target: &str, source: &str) -> Result<(u32, u32), AppError> {
+    let range = format!("{target}...{source}");
+    let output = run_git(path, &["rev-list", "--left-right", "--count", &range])?;
+    ensure_success("count commits between the branches", &output)?;
+    let counts = String::from_utf8_lossy(&output.stdout);
+    let mut fields = counts.split_ascii_whitespace();
+    match (
+        fields.next().and_then(|value| value.parse().ok()),
+        fields.next().and_then(|value| value.parse().ok()),
+        fields.next(),
+    ) {
+        (Some(left), Some(right), None) => Ok((left, right)),
+        _ => Err(AppError::new(
+            "branchComparisonIncomplete",
+            "Git did not return both commit counts.",
+            None,
+        )),
+    }
 }
 
 fn count(path: &Path, range: &[&str]) -> Result<u32, AppError> {
@@ -84,7 +108,10 @@ fn count(path: &Path, range: &[&str]) -> Result<u32, AppError> {
         })
 }
 
-fn list(path: &Path, range: &str) -> Result<Vec<ComparedCommit>, AppError> {
+fn list(path: &Path, range: &str, count: u32) -> Result<Vec<ComparedCommit>, AppError> {
+    if count == 0 {
+        return Ok(Vec::new());
+    }
     let limit = format!("--max-count={LISTED_COMMITS}");
     let output = run_git(
         path,

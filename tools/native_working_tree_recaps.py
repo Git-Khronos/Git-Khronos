@@ -10,7 +10,7 @@ def wait_for_line_recaps(driver, unstaged, staged, *, uncounted=0, changed_files
                  f'{removed} {"deletion" if removed == 1 else "deletions"} in {section} files')
         if excluded:
             label += f'; {excluded} binary or uncounted {"file" if excluded == 1 else "files"} excluded'
-        details = [f'{excluded} other'] if excluded else []
+        details = [f'{excluded} excluded'] if excluded else []
         if partial:
             label += '; partial totals'
             details.append('(partial)')
@@ -20,6 +20,7 @@ def wait_for_line_recaps(driver, unstaged, staged, *, uncounted=0, changed_files
             'added': f'+{added}',
             'removed': f'−{removed}',
             'details': details,
+            'basis': 'relative to the index' if section == 'unstaged' else 'relative to the last commit',
         }
 
     rows = [expected('unstaged', unstaged, uncounted), expected('staged', staged, partial=staged_partial)]
@@ -35,8 +36,10 @@ def wait_for_line_recaps(driver, unstaged, staged, *, uncounted=0, changed_files
           const added = recap.querySelector('span')?.textContent.trim();
           const removed = recap.querySelector('i')?.textContent.trim();
           const details = Array.from(recap.querySelectorAll('em'), element => element.textContent.trim());
+          const tooltip = recap.getAttribute('title') ?? '';
           return label === expected.label && added === expected.added && removed === expected.removed
             && JSON.stringify(details) === JSON.stringify(expected.details)
+            && tooltip.includes(expected.basis) && tooltip.includes('excluded from line totals')
             ? {{label, added, removed, text: recap.textContent}} : null;
         }});
         return actual.every(Boolean) ? actual : null;

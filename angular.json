@@ -29,7 +29,7 @@
               "statsJson": true,
               "budgets": [
                 { "type": "initial", "maximumWarning": "900kB", "maximumError": "1.45MB" },
-                { "type": "anyComponentStyle", "maximumWarning": "76kB", "maximumError": "80kB" }
+                { "type": "anyComponentStyle", "maximumError": "76kB" }
               ],
               "outputHashing": "all"
             },

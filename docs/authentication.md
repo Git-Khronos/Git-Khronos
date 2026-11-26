@@ -179,5 +179,21 @@ A locally built `.deb` has passed both suites this way. That shows the shipped
 binary contains the askpass entry point. It does not qualify installation through
 a package manager.
 
+The standalone SSH regression also passed using the APT-installed executable
+from package SHA-256
+`41d840918358c29dfe39ed1ee9cfafaa158b8504b21f4d7998b5936054da5579`
+in a disposable Ubuntu 24.04 container with only loopback networking. The
+standalone test executable and log are recorded by checksum and path in
+`target/local-review/pagination-checkout-41d84091/`. No host SSH service or
+personal SSH files were required.
+The compiled authentication transport tests embed their HTTPS server fixture
+instead of depending on the source checkout path. The server must publish
+its listening port within ten seconds; a timeout or early exit fails the
+test and reaps the server. All 16 HTTP, HTTPS, LFS, and fixture-startup cases
+passed with the same installed executable in a separate container without
+mounting the source checkout; see `rust-https-lfs-installed-bounded.log` in the
+same evidence directory.
+
 Production HTTPS servers/proxies, production SSH servers (agents, MFA, proxies),
-system-installed Linux packages, macOS and Windows still require acceptance qualification.
+broader installed Linux transport coverage, macOS and Windows still require
+acceptance qualification.

@@ -4,7 +4,7 @@ import { IconComponent } from './icon.component';
 
 export type FileMenuAction = 'merge-tool' | 'content' | 'take-current' | 'take-incoming' | 'changes'
   | 'stage-toggle' | 'lfs' | 'discard' | 'ignore-file' | 'ignore-extension' | 'ignore-directory'
-  | 'history' | 'blame' | 'apply-stash' | 'restore';
+  | 'history' | 'blame' | 'apply-stash' | 'restore' | 'copy-path';
 
 @Component({
   selector: 'gk-file-action-menu',

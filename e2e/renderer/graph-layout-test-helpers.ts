@@ -26,18 +26,25 @@ function probeGraphLayout({ expectedTitles, fit, explain }: GraphLayoutProbe): b
     if (!settings) problems.push('column settings button is missing');
     return explain ? problems : false;
   }
+  // Use the same measured rectangle for visibility and alignment. This probe
+  // runs after every resize key across every tested column permutation.
   const byOrder = (parent: Element, selector: string) => [...parent.querySelectorAll<HTMLElement>(selector)]
-    .filter((element) => element.style.order !== '' && element.getBoundingClientRect().width > 0)
-    .sort((a, b) => Number(a.style.order) - Number(b.style.order));
+    .flatMap(element => {
+      const { order } = element.style;
+      if (order === '') return [];
+      const box = element.getBoundingClientRect();
+      return box.width > 0 ? [{ element, order: Number(order), box }] : [];
+    })
+    .sort((a, b) => a.order - b.order);
   const headings = byOrder(header, ':scope > .draggable-column');
   const cells = byOrder(row, ':scope > [style*="order"]');
-  const titles = headings.map((heading) => (heading.textContent ?? '').replace(/\s+/g, ' ').trim());
+  const titles = headings.map(({ element }) => (element.textContent ?? '').replace(/\s+/g, ' ').trim());
   if (headings.length !== expectedTitles.length) problems.push(`expected ${expectedTitles.length} headings, found ${headings.length}: ${titles.join('|')}`);
   else if (!titles.every((title, index) => title.toUpperCase().includes(expectedTitles[index]))) {
     problems.push(`expected headings ${expectedTitles.join('|')}, found ${titles.join('|')}`);
   }
   if (cells.length !== expectedTitles.length) problems.push(`expected ${expectedTitles.length} row cells, found ${cells.length}`);
-  const boxes = headings.map((heading) => heading.getBoundingClientRect());
+  const boxes = headings.map(({ box }) => box);
   for (let index = 1; index < boxes.length; index += 1) {
     const gap = boxes[index].left - boxes[index - 1].right;
     if (Math.abs(gap) > 1) problems.push(`${gap < 0 ? 'overlap' : 'gap'} of ${gap.toFixed(1)}px between headings ${index - 1} and ${index}`);
@@ -46,9 +53,8 @@ function probeGraphLayout({ expectedTitles, fit, explain }: GraphLayoutProbe): b
     if (box.width < 30) problems.push(`heading ${index} is only ${box.width.toFixed(1)}px wide`);
   }
   // Row cells share the heading tracks.
-  for (const [index, cell] of cells.entries()) {
+  for (const [index, { box }] of cells.entries()) {
     const heading = boxes[index];
-    const box = cell.getBoundingClientRect();
     if (heading && Math.abs(box.left - heading.left) > 1.5) problems.push(`row cell ${index} starts at ${box.left.toFixed(1)}, heading at ${heading.left.toFixed(1)}`);
   }
   // Resizing moves only a column's right edge, so narrowing may leave free space after the last
@@ -59,32 +65,39 @@ function probeGraphLayout({ expectedTitles, fit, explain }: GraphLayoutProbe): b
   const last = boxes.at(-1);
   const overflow = list.scrollWidth - list.clientWidth;
   const visibleRight = header.getBoundingClientRect().left + header.clientWidth - parseFloat(getComputedStyle(header).paddingRight);
+  const panelRight = list.getBoundingClientRect().left + list.clientLeft + list.clientWidth;
+  if (gear.left < header.getBoundingClientRect().right - 1) {
+    problems.push('settings button overlaps the scrolling heading viewport');
+  }
   if (gear.width < 20 || gear.width > 32) problems.push(`settings button is ${gear.width.toFixed(1)}px wide`);
   if (!layoutIcon || layoutIcon.querySelectorAll('rect').length !== 1 || layoutIcon.querySelectorAll('path').length !== 1) {
     problems.push('settings button does not show the framed columns layout icon');
   }
   if (overflow <= 1) {
     if (last && last.right > visibleRight + 1) problems.push(`last heading ends at ${last.right.toFixed(1)}, past the panel edge at ${visibleRight.toFixed(1)}`);
-    if (Math.abs(gear.right - visibleRight) > 4) problems.push(`settings button ${gear.left.toFixed(1)}-${gear.right.toFixed(1)} is not at the panel edge ${visibleRight.toFixed(1)}`);
+    if (Math.abs(gear.right - panelRight) > 4) problems.push(`settings button ${gear.left.toFixed(1)}-${gear.right.toFixed(1)} is not at the panel edge ${panelRight.toFixed(1)}`);
   }
   // Scroll markers stay in their own rail and never cover the settings button, or row actions once
   // they rest at the end (no overflow, or scrolled fully right). Until then, overflowing content
   // scrolls under the rail as it would under a scrollbar.
   const atEnd = list.scrollWidth - list.clientWidth - list.scrollLeft <= 1;
-  const actions = [
-    ...(atEnd ? [...document.querySelectorAll<HTMLElement>('.commit-row .row-menu')].map((element) => element.getBoundingClientRect()) : []),
-    gear,
-  ];
-  for (const marker of document.querySelectorAll<HTMLElement>('.graph-scroll-marker')) {
-    const box = marker.getBoundingClientRect();
-    if (actions.some((action) => box.left < action.right && action.left < box.right && box.top < action.bottom && action.top < box.bottom)) {
-      problems.push(`scroll marker ${marker.getAttribute('aria-label')} at ${box.left.toFixed(1)}-${box.right.toFixed(1)} covers a row action`);
+  const markers = document.querySelectorAll<HTMLElement>('.graph-scroll-marker');
+  if (markers.length) {
+    const actions = [
+      ...(atEnd ? [...document.querySelectorAll<HTMLElement>('.commit-row .row-menu')].map((element) => element.getBoundingClientRect()) : []),
+      gear,
+    ];
+    for (const marker of markers) {
+      const box = marker.getBoundingClientRect();
+      if (actions.some((action) => box.left < action.right && action.left < box.right && box.top < action.bottom && action.top < box.bottom)) {
+        problems.push(`scroll marker ${marker.getAttribute('aria-label')} at ${box.left.toFixed(1)}-${box.right.toFixed(1)} covers a row action`);
+      }
     }
   }
   if (fit && overflow > 1) problems.push(`fitted columns overflow by ${overflow}px`);
   if (Math.abs(header.scrollLeft - list.scrollLeft) > 1) problems.push(`header scroll ${header.scrollLeft} differs from list scroll ${list.scrollLeft}`);
   // Separators report sane, in-range widths that match what is drawn.
-  for (const [index, heading] of headings.entries()) {
+  for (const [index, { element: heading }] of headings.entries()) {
     const separator = heading.querySelector<HTMLElement>(':scope > [role="separator"]');
     if (!separator) { problems.push(`heading ${index} has no separator`); continue; }
     const now = Number(separator.getAttribute('aria-valuenow'));
@@ -109,6 +122,9 @@ function probeGraphLayout({ expectedTitles, fit, explain }: GraphLayoutProbe): b
 export async function expectGraphLayout(page: Page, order: Column[], context: string, fit = false) {
   const input = { expectedTitles: order.map(column => HEADINGS[column]), fit };
   try {
+    // Most resize steps already have valid geometry when the key reply arrives.
+    // In that case avoid creating and disposing a browser-side polling handle.
+    if (await page.evaluate(probeGraphLayout, input) === true) return;
     // Bound readiness where geometry is measured, not around browser-reply
     // delivery to the test worker. The overall test deadline still applies.
     const ready = await page.waitForFunction(probeGraphLayout, input, { timeout: 3000 });

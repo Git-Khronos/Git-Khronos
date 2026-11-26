@@ -4,7 +4,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Component;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -5663,8 +5663,17 @@ fn ensure_sparse_checkout_enabled(path: &Path) -> Result<(), AppError> {
 }
 
 fn ensure_lfs_available(path: &Path) -> Result<(), AppError> {
-    let output = run_git(path, &["lfs", "version"])?;
-    if output.status.success() {
+    let (output, truncated) = git_cancellation::inspect_within(LFS_SNAPSHOT_BUDGET, || {
+        run_git_with_stdout_limit(path, &["lfs", "version"], 4 * 1024)
+    })
+    .map_err(|error| {
+        lfs_preflight_error(
+            error,
+            "Git LFS did not respond to its version check in time.",
+            "Check that git lfs version responds in a terminal, then retry.",
+        )
+    })?;
+    if output.status.success() && !truncated && !output.stdout.is_empty() {
         Ok(())
     } else {
         Err(AppError::new(
@@ -5672,6 +5681,14 @@ fn ensure_lfs_available(path: &Path) -> Result<(), AppError> {
             "Git LFS is not available on PATH.",
             Some("Install Git LFS 3.0 or newer and reopen the repository."),
         ))
+    }
+}
+
+fn lfs_preflight_error(error: AppError, message: &str, hint: &str) -> AppError {
+    if error.kind == "gitInspectionTimeout" {
+        AppError::new("gitInspectionTimeout", message, Some(hint))
+    } else {
+        error
     }
 }
 
@@ -5685,14 +5702,33 @@ fn run_lfs_mutation_with_cancellation(
     operation: &str,
     cancellation: Option<&CancellationToken>,
 ) -> Result<(), AppError> {
-    if !lfs_enabled(path) {
-        return Err(AppError::new(
-            "lfsNotEnabled",
-            "Git LFS is not enabled for this repository.",
-            Some("Add an LFS tracking rule before running this action."),
-        ));
+    let preflight = || {
+        git_cancellation::inspect_within(LFS_SNAPSHOT_BUDGET, || {
+            let enabled = without_lazy_fetch(|| lfs_enabled(path));
+            // A timed-out or cancelled discovery is not evidence that LFS
+            // is disabled; report the real failure before any transfer.
+            git_cancellation::inspection_checkpoint().map_err(|error| {
+                lfs_preflight_error(
+                    error,
+                    "Git did not finish checking whether this repository uses LFS.",
+                    "No transfer or cleanup started. Retry after Git is responsive.",
+                )
+            })?;
+            if !enabled {
+                return Err(AppError::new(
+                    "lfsNotEnabled",
+                    "Git LFS is not enabled for this repository.",
+                    Some("Add an LFS tracking rule before running this action."),
+                ));
+            }
+            ensure_lfs_available(path)
+        })
+    };
+    if cancellation.is_some() {
+        git_cancellation::with(cancellation, preflight)?;
+    } else {
+        preflight()?;
     }
-    ensure_lfs_available(path)?;
     run_mutation_with_cancellation(path, &["lfs", subcommand], operation, cancellation)
 }
 
@@ -9410,7 +9446,7 @@ fn run_status_with_limit(
         return Ok((output, false, StatusOverflow::default()));
     }
 
-    let mut child = git_in(path)
+    let child = git_in(path)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -9425,6 +9461,15 @@ fn run_status_with_limit(
                 Some("Install Git and ensure it is available on PATH."),
             )
         })?;
+    let (output, truncated, overflow) = collect_status_output(child, entry_limit)?;
+    ensure_success("read repository status", &output)?;
+    Ok((output, truncated, overflow))
+}
+
+fn collect_status_output(
+    mut child: Child,
+    entry_limit: usize,
+) -> Result<(Output, bool, StatusOverflow), AppError> {
     let stdout = child.stdout.take().ok_or_else(|| {
         AppError::new(
             "gitFailure",
@@ -9432,6 +9477,59 @@ fn run_status_with_limit(
             Some("Try refreshing the repository."),
         )
     })?;
+    // Git can emit more than a pipe buffer of warnings before it finishes
+    // writing status. Drain both pipes concurrently, retaining only a bounded
+    // diagnostic prefix while still consuming the complete stderr stream.
+    const STDERR_LIMIT: u64 = 128 * 1024;
+    let stderr = child.stderr.take();
+    let diagnostics = thread::spawn(move || -> std::io::Result<Vec<u8>> {
+        let mut retained = Vec::new();
+        if let Some(mut stderr) = stderr {
+            (&mut stderr)
+                .take(STDERR_LIMIT)
+                .read_to_end(&mut retained)?;
+            std::io::copy(&mut stderr, &mut std::io::sink())?;
+        }
+        Ok(retained)
+    });
+    let records = read_status_records(stdout, entry_limit);
+    if records.is_err() {
+        let _ = child.kill();
+    }
+    let status = child.wait();
+    let diagnostics = diagnostics.join();
+    let (stdout, truncated, overflow) = records?;
+    let status = status.map_err(|error| {
+        AppError::new(
+            "gitFailure",
+            format!("Git Khronos could not finish reading repository status: {error}"),
+            Some("Try refreshing the repository."),
+        )
+    })?;
+    let stderr = diagnostics
+        .map_err(|_| AppError::new("gitFailure", "Git status diagnostics reader stopped.", None))?
+        .map_err(|error| {
+            AppError::new(
+                "gitFailure",
+                format!("Git Khronos could not read a Git error: {error}"),
+                Some("Try refreshing the repository."),
+            )
+        })?;
+    Ok((
+        Output {
+            status,
+            stdout,
+            stderr,
+        },
+        truncated,
+        overflow,
+    ))
+}
+
+fn read_status_records(
+    stdout: impl Read,
+    entry_limit: usize,
+) -> Result<(Vec<u8>, bool, StatusOverflow), AppError> {
     let mut reader = BufReader::new(stdout);
     let mut captured = Vec::new();
     let mut record = Vec::new();
@@ -9481,30 +9579,7 @@ fn run_status_with_limit(
         captured.extend_from_slice(&record);
     }
 
-    let mut stderr = Vec::new();
-    if let Some(mut stream) = child.stderr.take() {
-        stream.read_to_end(&mut stderr).map_err(|error| {
-            AppError::new(
-                "gitFailure",
-                format!("Git Khronos could not read a Git error: {error}"),
-                Some("Try refreshing the repository."),
-            )
-        })?;
-    }
-    let status = child.wait().map_err(|error| {
-        AppError::new(
-            "gitFailure",
-            format!("Git Khronos could not finish reading repository status: {error}"),
-            Some("Try refreshing the repository."),
-        )
-    })?;
-    let output = Output {
-        status,
-        stdout: captured,
-        stderr,
-    };
-    ensure_success("read repository status", &output)?;
-    Ok((output, truncated, overflow))
+    Ok((captured, truncated, overflow))
 }
 
 fn parse_branch_header(header: &str, status: &mut RepositoryStatus) {
@@ -9775,7 +9850,13 @@ fn lfs_enabled(path: &Path) -> bool {
     if path.join(".lfsconfig").is_file() {
         return true;
     }
-    let attributes = run_git(
+    // A local LFS configuration is enough; don't scan attributes first.
+    if run_git(path, &["config", "--local", "--get", "filter.lfs.process"])
+        .is_ok_and(|output| output.status.success() && !output.stdout.is_empty())
+    {
+        return true;
+    }
+    run_git(
         path,
         &[
             "grep",
@@ -9787,10 +9868,8 @@ fn lfs_enabled(path: &Path) -> bool {
             ".gitattributes",
             ":(glob)**/.gitattributes",
         ],
-    );
-    attributes.is_ok_and(|output| output.status.success())
-        || run_git(path, &["config", "--local", "--get", "filter.lfs.process"])
-            .is_ok_and(|output| output.status.success() && !output.stdout.is_empty())
+    )
+    .is_ok_and(|output| output.status.success())
 }
 
 // LFS counts are optional snapshot data. A slow helper must not hold up the
@@ -9799,10 +9878,10 @@ const LFS_SNAPSHOT_BUDGET: Duration = Duration::from_secs(2);
 
 fn read_lfs_info(path: &Path) -> LfsInfo {
     without_lazy_fetch(|| {
-        // Recognize repository intent before probing the optional executable.
-        // A stalled helper must not hide a configured repository's LFS section.
-        let enabled = lfs_enabled(path);
         git_cancellation::inspect_within(LFS_SNAPSHOT_BUDGET, || {
+            // Recognize explicit repository intent first, but keep attribute
+            // discovery and helper calls under the same snapshot deadline.
+            let enabled = lfs_enabled(path);
             read_bounded_lfs_info(path, enabled)
         })
     })
@@ -11396,6 +11475,55 @@ fn version_at_least(actual: &str, minimum: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bounded_status_drains_diagnostics_before_parsing_records() {
+        // A regression in the pipe handling must fail rather than hang this
+        // test process indefinitely.
+        let child = std::process::Command::new("timeout")
+            .args([
+                "5s",
+                "sh",
+                "-c",
+                "head -c 262144 /dev/zero >&2; printf '## main\\000 M visible.txt\\000?? hidden.txt\\000'",
+            ])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let (output, truncated, overflow) = super::collect_status_output(child, 1).unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stderr.len(), 128 * 1024);
+        assert_eq!(output.stdout, b"## main\0 M visible.txt\0");
+        assert!(truncated);
+        assert_eq!((overflow.entry_count, overflow.untracked), (1, 1));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bounded_status_preserves_actionable_failure_diagnostics() {
+        let child = std::process::Command::new("timeout")
+            .args([
+                "5s",
+                "sh",
+                "-c",
+                "printf 'fatal: owned fixture could not read repository status\\n' >&2; head -c 262144 /dev/zero >&2; exit 7",
+            ])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let (output, _, _) = super::collect_status_output(child, 1).unwrap();
+        assert_eq!(output.status.code(), Some(7));
+        assert_eq!(output.stderr.len(), 128 * 1024);
+        let error = super::ensure_success("read repository status", &output).unwrap_err();
+        assert!(
+            error
+                .message
+                .contains("owned fixture could not read repository status")
+        );
+    }
+
     use super::*;
     use std::fs;
     use std::sync::atomic::{AtomicU64, Ordering};

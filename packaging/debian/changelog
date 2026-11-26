@@ -2,6 +2,24 @@ git-khronos (0.1.6) unstable; urgency=medium
 
   * Reload the window when its page renderer crashes on Linux instead of
     leaving a blank, unreachable instance.
+  * Prevent a startup crash on the affected WSLg X11 path by using the
+    current session's accessibility bus without disabling accessibility.
+  * Show additions and deletions for unstaged changes, and give Unstaged
+    Files more room when Staged Files is collapsed.
+  * Review and discard all eligible unstaged files from one action. Support
+    recovery for ordinary nested files on Linux without unstaging changes.
+  * Offer to open the linked worktree that owns a checked-out branch
+    instead of detaching the current checkout.
+  * Add manual update checks and optional automatic updates with publisher
+    verification. Automatic updates are off by default.
+  * Copy the full commit ID from a file history row and clear clipboard
+    feedback when the file history revision changes.
+  * Keep large diff minimaps lightweight without changing where their
+    jump buttons navigate.
+  * Show invalid blame line numbers beside the input instead of offering
+    to retry the last read.
+  * Copy the full Git ref from branch and tag menus, even when the short
+    names are ambiguous.
 
  -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Wed, 18 Nov 2026 10:38:17 +0100
 

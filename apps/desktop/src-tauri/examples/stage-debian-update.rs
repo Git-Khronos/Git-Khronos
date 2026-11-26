@@ -71,7 +71,7 @@ mod linux {
         Ok(file)
     }
 
-    fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>> {
+    pub(super) fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>> {
         let mut bytes = Vec::new();
         bounded_input(path, limit)?
             .take(limit + 1)
@@ -293,9 +293,9 @@ mod linux {
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
-    use super::linux::{stage, verify_release};
+    use super::linux::{read_bounded, stage, verify_release};
     use sha2::{Digest, Sha256};
-    use std::{fs, path::PathBuf};
+    use std::{env, fs, path::PathBuf};
     use tauri_plugin_updater::{Updater, UpdaterExt};
 
     fn fixture(name: &str) -> PathBuf {
@@ -335,6 +335,45 @@ mod tests {
             .build()
             .unwrap();
         (app, updater)
+    }
+
+    #[test]
+    #[ignore = "requires owned staged release assets and their public key"]
+    fn qualified_release_can_be_consumed_offline() {
+        let required = |name: &str| env::var(name).unwrap_or_else(|_| panic!("Set {name}"));
+        let dir = PathBuf::from(required("GIT_KHRONOS_STAGED_RELEASE_DIR"));
+        let key_path = PathBuf::from(required("GIT_KHRONOS_STAGED_PUBLIC_KEY"));
+        let digest = required("GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256");
+        let baseline = required("GIT_KHRONOS_STAGED_BASELINE_VERSION");
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&read_bounded(&dir.join("latest.json"), 256 * 1024).unwrap())
+                .unwrap();
+        let version = manifest["version"].as_str().expect("manifest version");
+        assert!(
+            semver::Version::parse(&baseline).unwrap() < semver::Version::parse(version).unwrap()
+        );
+        verify_release(&dir, &key_path, &format!("v{version}"), &digest).unwrap();
+        let asset = format!("Git-Khronos_{version}_amd64.deb");
+        let mut bytes = read_bounded(&dir.join(&asset), 512 * 1024 * 1024).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), digest);
+        let key = String::from_utf8(read_bounded(&key_path, 4096).unwrap()).unwrap();
+        let target = "linux-x86_64-deb";
+        let (_app, updater) = manifest_consumer(&baseline, key.trim(), target);
+        let offer = updater.restore_update(manifest.clone()).unwrap().unwrap();
+        assert_eq!(offer.version, version);
+        assert_eq!(
+            offer.download_url.as_str(),
+            format!(
+                "https://github.com/Git-Khronos/Git-Khronos/releases/download/v{version}/{asset}"
+            )
+        );
+        offer.verify(&bytes).unwrap();
+        // Keep the same accepted offer and change the downloaded body.
+        // Manifest parsing alone cannot stand in for payload verification.
+        *bytes.last_mut().expect("nonempty verified Debian package") ^= 1;
+        assert!(offer.verify(&bytes).is_err());
+        let (_app, current) = manifest_consumer(version, key.trim(), target);
+        assert!(current.restore_update(manifest).unwrap().is_none());
     }
 
     #[test]

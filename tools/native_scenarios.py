@@ -13,7 +13,7 @@ import time
 import uuid
 import zlib
 from native_acceptance import open_ui, run
-from native_ui_conditions import wait_closed_confirmation_refusal
+from native_ui_conditions import wait_closed_confirmation_refusal, wait_git_error_message
 from native_fork_remote_scenarios import hosted_fork_remote_attachment
 from native_media_scenarios import file_media_comparisons
 from native_repository_link_scenarios import repository_links
@@ -618,7 +618,64 @@ def file_history_tracks_renames(driver, fixtures, report):
     )
 
 
-def bounded_file_history_reads(driver, fixtures, report):
+def blame_parent_follows_rename(driver, fixtures, report):
+    repository = fixtures.repository("blame-parent-rename", commits=1)
+    root = fixtures.git(repository, "rev-parse", "HEAD")
+    old = repository / "before rename.txt"
+    new = repository / "after rename.txt"
+    contents = "".join(f"stable source line {number}\n" for number in range(1, 9))
+    old.write_text(contents, encoding="utf-8")
+    fixtures.git(repository, "add", "--", old.name)
+    fixtures.git(repository, "commit", "-qm", "Add original file")
+    parent = fixtures.git(repository, "rev-parse", "HEAD")
+    fixtures.git(repository, "mv", "--", old.name, new.name)
+    new.write_text(contents + "line introduced with the rename\n", encoding="utf-8")
+    fixtures.git(repository, "commit", "-qam", "Rename and add one line")
+    tip = fixtures.git(repository, "rev-parse", "HEAD")
+    index = (repository / ".git/index").read_bytes()
+    repo_id = open_ui(driver, repository)
+    navigation = driver.invoke("inspect_blame_navigation", repoId=repo_id, oid=tip, path=new.name)
+    assert navigation["oid"] == tip and navigation["parents"] == [parent], navigation
+    assert navigation["path"] == new.name and navigation["parentPath"] == old.name, navigation
+    driver.click_visible(f'.commit-row[data-commit-oid="{tip}"]')
+    selector = '.commit-file[aria-label="Open diff for before rename.txt renamed to after rename.txt"]'
+    driver.wait(f"return !!document.querySelector({json.dumps(selector)})")
+    driver.click_visible(selector)
+    driver.click_navigation('.diff-insight-toggle button', 'Blame', wait_for_ready=True)
+    last = '.blame-line:last-child'
+    driver.wait(f"""return document.querySelector({json.dumps(last + ' .blame-sha')})?.textContent.trim() === {json.dumps(tip[:8])}""")
+    driver.click_visible(last + ' button[title="Open first parent of blamed commit"]')
+    driver.wait("""
+      return !!document.querySelector('.diff-copy-path[aria-label="Copy path for before rename.txt"]')
+        && document.querySelector('.diff-source-context')?.textContent.trim() === 'Add original file'
+        && document.querySelector('.diff-primary-view')?.textContent.includes('stable source line 8');
+    """)
+    assert fixtures.git(repository, "rev-parse", "HEAD") == tip
+    assert (repository / ".git/index").read_bytes() == index
+    assert not old.exists() and new.read_text(encoding="utf-8") == contents + "line introduced with the rename\n"
+    assert not fixtures.git(repository, "status", "--porcelain=v1")
+    report["scenarios"].append("native-blame-parent-opens-pre-rename-path-without-changing-checkout")
+
+    driver.click_visible('[aria-label="Back to commit graph"]')
+    driver.click_visible(f'.commit-row[data-commit-oid="{root}"]')
+    driver.click_visible('.commit-file[aria-label="Open diff for fixture.txt"]')
+    driver.click_navigation('.diff-insight-toggle button', 'Blame', wait_for_ready=True)
+    first = '.blame-line:first-child'
+    driver.wait(f"""return document.querySelector({json.dumps(first + ' .blame-sha')})?.textContent.trim() === {json.dumps(root[:8])}""")
+    driver.click_visible(first + ' button[title="Open first parent of blamed commit"]')
+    driver.wait("return document.querySelector('.error-toast')?.textContent.includes('This is a root commit; it has no parent.')")
+    assert driver.script("""
+      return !!document.querySelector('.diff-copy-path[aria-label="Copy path for fixture.txt"]')
+        && !!document.querySelector('gk-file-blame .blame-lines')?.getClientRects().length
+    """), "A root-parent refusal changed the displayed file or closed blame"
+    assert fixtures.git(repository, "rev-parse", "HEAD") == tip
+    assert (repository / ".git/index").read_bytes() == index
+    assert not fixtures.git(repository, "status", "--porcelain=v1")
+    report["scenarios"].append("native-blame-root-parent-refusal-keeps-file-and-checkout")
+
+
+def bounded_file_history_reads(driver, fixtures, report, *, enter_phase):
+    enter_phase("file-history-responsiveness")
     repository = fixtures.repository("bounded-file-history", commits=3)
     repo_id = open_ui(driver, repository)
     head = fixtures.git(repository, "rev-parse", "HEAD")
@@ -671,6 +728,7 @@ def bounded_file_history_reads(driver, fixtures, report):
     assert (repository / ".git/index").read_bytes() == index
     assert (repository / "fixture.txt").read_bytes() == original
     report["scenarios"].append("native-file-history-read-keeps-unrelated-controls-responsive")
+    enter_phase("file-history-output-limit")
     # An unreferenced changed-tree commit avoids putting the oversized subject
     # into the UI graph while exercising the real legacy-history IPC reader.
     blob = fixtures.git(repository, "hash-object", "-w", "--stdin", input=b"oversized history fixture\n")
@@ -686,6 +744,7 @@ def bounded_file_history_reads(driver, fixtures, report):
     assert (repository / ".git/index").read_bytes() == index
     assert (repository / "fixture.txt").read_bytes() == original
     report["scenarios"].append("native-file-history-output-limit-refuses-partial-results")
+    enter_phase("file-history-intentional-deadline")
     started.unlink()
     (gate / "target").write_text(str(repository))
     hold.touch()
@@ -716,7 +775,8 @@ def bounded_file_history_reads(driver, fixtures, report):
     report["scenarios"].append("native-file-history-deadline-reaps-owned-git-without-partial-results")
 
 
-def blame_read_acceptance(driver, fixtures, report):
+def blame_read_acceptance(driver, fixtures, report, *, enter_phase):
+    enter_phase("blame-responsiveness")
     repository = fixtures.repository("blame-responsiveness", commits=3)
     repo_id = open_ui(driver, repository)
     head = fixtures.git(repository, "rev-parse", "HEAD")
@@ -767,6 +827,17 @@ def blame_read_acceptance(driver, fixtures, report):
     finally:
         (gate / "target").unlink(missing_ok=True)
         (gate / "mode").unlink(missing_ok=True)
+    enter_phase("blame-page-reads")
+    large, revision, index, contents = blame_page_reads(driver, fixtures)
+    enter_phase("blame-and-history-navigation")
+    blame_and_history_navigation(driver, fixtures, report, large, revision, index, contents)
+    enter_phase("diff-layout-continuity")
+    diff_layout_continuity(driver, fixtures, report)
+    enter_phase("production-query-isolation")
+    production_query_isolation(driver, fixtures, report)
+
+
+def blame_page_reads(driver, fixtures):
     large = fixtures.repository("large-blame-pages", commits=1)
     contents = "".join(f"élève😀 source line {index}\n" for index in range(1, 100001))
     (large / "fixture.txt").write_text(contents)
@@ -797,10 +868,17 @@ def blame_read_acceptance(driver, fixtures, report):
         assert page["lines"][0]["text"] == f"élève😀 source line {first}"
         assert page["nextLine"] == (first + 100 if first < 99901 else None)
         assert all(line["oid"] == revision for line in page["lines"])
+    return large, revision, index, contents
+
+
+def blame_and_history_navigation(driver, fixtures, report, large, revision, index, contents):
     driver.click_visible(f'.commit-row[data-commit-oid="{revision}"]')
     driver.wait("return !!document.querySelector('.commit-file[aria-label=\"Open diff for fixture.txt\"]')")
     driver.click_visible('.commit-file[aria-label="Open diff for fixture.txt"]')
     driver.wait("return !!document.querySelector('.diff-insight-toggle button:nth-child(3):not(:disabled)')")
+    mark_count = driver.script("return document.querySelectorAll('.diff-minimap-track i').length")
+    report["largeBlameDiffMinimapMarks"] = mark_count
+    assert 0 < mark_count <= 512, f"Dense diff rendered {mark_count} decorative minimap marks"
     driver.click_text('.diff-insight-toggle button', 'Blame')
     driver.wait("return document.querySelectorAll('.blame-line').length === 100")
     driver.click_text('gk-file-blame button', 'Next lines')
@@ -808,6 +886,13 @@ def blame_read_acceptance(driver, fixtures, report):
     element = driver.request("POST", driver.path("element"), {"using": "css selector", "value": "gk-file-blame input[name=line]"})
     element_id = element["element-6066-11e4-a52e-4f735466cecf"]
     driver.request("POST", driver.path(f"element/{element_id}/clear"), {})
+    driver.click_text('gk-file-blame button', 'Go')
+    driver.wait("return !!document.querySelector('gk-file-blame input[name=line][aria-invalid=true]:focus')")
+    assert driver.script("""
+        return document.querySelector('#blame-jump-error')?.textContent.trim() === 'Enter a positive whole line number.'
+          && ![...document.querySelectorAll('gk-file-blame button')].some(button => button.textContent.trim() === 'Retry blame page')
+          && document.querySelector('gk-file-blame header')?.textContent.includes('Lines 101–200');
+    """), "Invalid blame input changed the current page or showed an unrelated retry"
     driver.request("POST", driver.path(f"element/{element_id}/value"), {"text": "99901"})
     driver.click_text('gk-file-blame button', 'Go')
     driver.wait("return document.querySelector('gk-file-blame header')?.textContent.includes('Lines 99901–100000')")
@@ -864,8 +949,6 @@ def blame_read_acceptance(driver, fixtures, report):
     report["scenarios"].append("native-ui-large-unicode-blame-pages-bound-rendering-and-exact-attribution")
     report["scenarios"].append("native-file-insight-keyboard-scroll-and-region-navigation")
     report["scenarios"].append("native-visible-diff-change-shortcut-and-split-keyboard-scrolling")
-    diff_layout_continuity(driver, fixtures, report)
-    production_query_isolation(driver, fixtures, report)
 
 
 def diff_layout_continuity(driver, fixtures, report):
@@ -1021,6 +1104,66 @@ def reference_namespace_names(driver, fixtures, report):
     assert (repository / ".git/index").read_bytes() == index
     assert (repository / "fixture.txt").read_bytes() == contents
     report["scenarios"].append("native-shared-branch-tag-names-preserve-reference-action-scope")
+
+
+def copy_reference_namespaces(driver, fixtures, report):
+    repository = fixtures.repository("copy-full-reference", commits=3)
+    head = fixtures.git(repository, "rev-parse", "HEAD")
+    fixtures.git(repository, "remote", "add", "origin", ".")
+    fixtures.git(repository, "update-ref", "refs/remotes/origin/main", head)
+    fixtures.git(repository, "branch", "--set-upstream-to=refs/remotes/origin/main", "main")
+    fixtures.git(repository, "tag", "main")
+    fixtures.git(repository, "tag", "origin/main")
+    refs = fixtures.git(repository, "show-ref")
+    index = (repository / ".git/index").read_bytes()
+    repo_id = open_ui(driver, repository)
+    driver.invoke("refresh_repository", repoId=repo_id)
+    tag = '.tag-item[aria-label="Tag main"]'
+    heading = '#reference-section-tags button.sidebar-heading'
+    if driver.script("return document.querySelector(arguments[0])?.getAttribute('aria-expanded') === 'false'", heading):
+        driver.click_visible(heading)
+    driver.wait(f"return !!document.querySelector({json.dumps(tag)})")
+
+    branch = '.branch-item[aria-label^="Local branch main, current"]'
+    for selector, reference in [
+        (branch, 'refs/heads/main'),
+        ('.aligned-remote-location[aria-label="Remote branch origin/main"]', 'refs/remotes/origin/main'),
+        (tag, 'refs/tags/main'),
+    ]:
+        driver.context_click(selector)
+        driver.click_visible('.graph-action-menu button', 'Copy full ref')
+        driver.wait("return !document.querySelector('.graph-action-menu')")
+        driver.script("""
+          const input = document.createElement('input');
+          input.id = 'owned-clipboard-paste';
+          input.style.cssText = 'position:fixed;top:8px;left:8px;z-index:2147483647';
+          document.body.append(input);
+          input.focus();
+        """)
+        try:
+            driver.key('v', modifiers=('\ue009',))  # Real paste in the private X11 display.
+            driver.wait(f"""return document.querySelector('#owned-clipboard-paste')?.value === {json.dumps(reference)}""")
+        finally:
+            driver.script("document.querySelector('#owned-clipboard-paste')?.remove()")
+
+    driver.script("document.querySelector(arguments[0]).focus()", branch)
+    driver.key('\ue03a', modifiers=('\ue008',))  # Shift+F10 opens the branch actions.
+    driver.wait("return !!document.activeElement?.closest('.graph-action-menu')")
+    for _ in range(20):
+        if driver.script("return document.activeElement?.textContent.trim() === 'Copy full ref'"):
+            break
+        driver.key('\ue015')  # ArrowDown visits the enabled menu items.
+    else:
+        raise AssertionError('Copy full ref was not reachable through menu keyboard navigation')
+    driver.key('\ue007')  # Enter.
+    driver.wait(f"return document.activeElement?.matches({json.dumps(branch)}) && !document.querySelector('.graph-action-menu')")
+    assert fixtures.git(repository, "show-ref") == refs
+    assert fixtures.git(repository, "symbolic-ref", "HEAD") == "refs/heads/main"
+    assert (repository / ".git/index").read_bytes() == index
+    assert not fixtures.git(repository, "status", "--porcelain=v1")
+    report["scenarios"].append("native-ui-copies-ambiguous-local-remote-and-tag-namespaces-without-git-mutation")
+    report["scenarios"].append("native-ui-full-ref-keyboard-copy-restores-branch-focus")
+    return repository, repo_id
 
 
 def transport_cancel_after_parent_exit(driver, fixtures, report):
@@ -1377,8 +1520,7 @@ def authenticated_push_rejection(driver, fixtures, original_repository, report):
         """)
         driver.click('gk-authentication button[type=submit]')
         driver.wait("return !document.querySelector('gk-authentication dialog[open]')", 10)
-        driver.wait("return !!document.querySelector('.error-toast')", 10)
-        message = driver.script("return document.querySelector('.error-toast').textContent")
+        message = wait_git_error_message(driver)
         assert "remote rejected the push" in message, message
         assert "authentication is required" not in message.lower(), message
         assert "native-fixture-not-a-real-secret" not in message, message
@@ -1409,8 +1551,7 @@ def local_remote_error_guidance(driver, fixtures, original_repository, report, *
             fixtures.git(repository, "remote", "set-url", "origin", str(missing))
             driver.wait("return !document.querySelector('[aria-label=\"Fetch all remotes\"]')?.disabled")
             driver.click('[aria-label="Fetch all remotes"]')
-            driver.wait("return !!document.querySelector('.error-toast')", 10)
-            message = driver.script("return document.querySelector('.error-toast').textContent")
+            message = wait_git_error_message(driver)
             assert "Git transport failed" in message, message
             assert "HTTPS connection" not in message, message
             assert driver.invoke("pending_authentication") == []
@@ -2088,7 +2229,7 @@ def workspace_center_workflows(driver, fixtures, original_repository, report):
     try:
         repo_id = open_ui(driver, repository)
         driver.click('.workspace-toggle')
-        driver.click_text('.workspace-menu-actions button', 'Repository overview')
+        driver.click_scrolled_text('.workspace-menu-actions button', 'Repository overview', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gk-workspace-center [role=dialog]')")
         driver.click_text('gk-workspace-center button', 'Refresh local state')
         driver.wait("return document.querySelector('gk-workspace-center')?.textContent.includes('Read locally at')")
@@ -2199,7 +2340,7 @@ def hosted_paging_and_decisions(driver, fixtures, original_repository, report):
         assert "private diagnostic" not in json.dumps(partial)
         report["scenarios"].append("native-hosted-partial-permissions-retain-accessible-sections")
         driver.click('.workspace-toggle')
-        driver.click_text('.workspace-menu-actions button', 'Reviews and checks')
+        driver.click_scrolled_text('.workspace-menu-actions button', 'Reviews and checks', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gk-hosting-panel #hosting-state')")
         driver.click_text('gk-hosting-panel button', 'Load from GitHub')
         driver.wait("return document.querySelector('gk-hosting-panel')?.textContent.includes('Owned hosted page 1')")
@@ -2345,7 +2486,7 @@ def hosted_reviewed_writes(driver, fixtures, original_repository, report):
         config.pop("holdWritesOnly")
         config_path.write_text(json.dumps(config))
         driver.click('.workspace-toggle')
-        driver.click_text('.workspace-menu-actions button', 'Reviews and checks')
+        driver.click_scrolled_text('.workspace-menu-actions button', 'Reviews and checks', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gk-hosting-panel #hosting-remote')")
         driver.click_text('gk-hosting-panel button', 'Create pull request')
         driver.wait("return !!document.querySelector('#hosted-head-remote')")
@@ -2692,7 +2833,7 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
 
     def enter():
         driver.click('.workspace-toggle')
-        driver.click_text('.workspace-menu-actions button', 'Branch workflows')
+        driver.click_scrolled_text('.workspace-menu-actions button', 'Branch workflows', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gk-branch-workflow-dialog [role=dialog]')")
         ready()
 
@@ -2885,7 +3026,7 @@ def branch_workflow_restart_and_abort(driver, fixtures, original_repository, rep
             source = fixtures.git(repository, 'rev-parse', 'HEAD')
             repo_id = open_ui(driver, repository)
             driver.click('.workspace-toggle')
-            driver.click_text('.workspace-menu-actions button', 'Branch workflows')
+            driver.click_scrolled_text('.workspace-menu-actions button', 'Branch workflows', wait_for_ready=True)
             driver.wait("return !!document.querySelector('gk-branch-workflow-dialog .topics')")
             _workflow_button(driver, 'Finish release/recovery')
             _workflow_button(driver, 'Review finish')
@@ -2914,7 +3055,7 @@ def branch_workflow_restart_and_abort(driver, fixtures, original_repository, rep
                 (repository / 'fixture.txt').write_text('resolved after restart\n')
                 fixtures.git(repository, 'add', 'fixture.txt')
             driver.click('.workspace-toggle')
-            driver.click_text('.workspace-menu-actions button', 'Branch workflows')
+            driver.click_scrolled_text('.workspace-menu-actions button', 'Branch workflows', wait_for_ready=True)
             driver.wait("return document.querySelector('gk-branch-workflow-dialog')?.textContent.includes('Workflow paused for conflicts')")
             if action == 'continue':
                 _workflow_button(driver, 'Inspect and continue')
@@ -3314,7 +3455,8 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
         open_ui(driver, original_repository)
 
 
-def full_toolkit(driver, fixtures, repository, repo_id, report):
+def full_toolkit(driver, fixtures, repository, repo_id, report, enter_phase):
+    enter_phase("toolkit-integrity-and-file-tools")
     initial_integrity = driver.invoke("inspect_repository_integrity", repoId=repo_id,
                                       operationId=str(uuid.uuid4()))
     report["initialRepositoryIntegrity"] = initial_integrity
@@ -3322,27 +3464,34 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     incoming_repository_links(driver, fixtures, repository, report)
     working_file_editor(driver, fixtures, repository, report)
     configured_tools(driver, fixtures, repository, report)
-    file_tools(driver, fixtures, repository, report)
+    file_tools(driver, fixtures, repository, report, enter_phase=enter_phase)
+    enter_phase("toolkit-editor-recovery")
     editor_window_close(driver, fixtures, repository, report)
     editor_draft_recovery(driver, fixtures, repository, report)
+    enter_phase("toolkit-links-and-media")
     repository_links(driver, fixtures, repository, report)
     file_media_comparisons(driver, fixtures, repository, report)
+    enter_phase("toolkit-hosted-forks-and-discovery")
     hosted_fork_remote_attachment(driver, fixtures, repository, report)
     hosted_fork_requests(driver, fixtures, repository, report)
     # A real app restart discards native repository sessions as well as reviews.
     repo_id = driver.invoke("open_repository", path=str(repository))["id"]
     hosted_repository_discovery_and_clone(driver, fixtures, repository, report)
+    enter_phase("toolkit-branch-workflow-reviews")
     branch_workflow_native_boundary(driver, fixtures, repository, report)
     branch_workflow_desktop(driver, fixtures, repository, report)
     branch_workflow_restart_and_abort(driver, fixtures, repository, report)
     rebase_row_keyboard_preview(driver, fixtures, repository, report)
+    enter_phase("toolkit-hosted-review-decisions")
     hosted_paging_and_decisions(driver, fixtures, repository, report)
     hosted_reviewed_writes(driver, fixtures, repository, report)
+    enter_phase("toolkit-workspace-and-references")
     workspace_center_workflows(driver, fixtures, repository, report)
     committed_merge_preview(driver, fixtures, repository, report)
     shared_parent_avatar_attachments(driver, fixtures, repository, report)
     avatar_side_attachments(driver, fixtures, repository, report)
     reference_hover_stability(driver, fixtures, repository, report)
+    enter_phase("toolkit-git-transport")
     authenticated_lfs_lock_listing(driver, fixtures, report)
     local_remote_quoted_targets(driver, fixtures, repository, report)
     local_remote_tls_words(driver, fixtures, repository, report)
@@ -3353,6 +3502,7 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     clone_url_policy(driver, fixtures, report)
     clone_template_password_policy(driver, fixtures, report)
     busy_workspace_menu_focus(driver, fixtures, repository, report)
+    enter_phase("toolkit-core-git-actions")
     def call(command, **args):
         return driver.invoke(command, repoId=repo_id, **args)
 
@@ -3486,6 +3636,7 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     assert not call("refresh_repository_status")["bisectInProgress"]
     passed("history-search-blame-reflog-bisect")
 
+    enter_phase("toolkit-history-pagination")
     paged_repository = fixtures.repository("paged-history", commits=350)
     opened = driver.invoke("open_repository", path=str(paged_repository))
     paged_id = opened["id"]
@@ -3507,13 +3658,16 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     shallow_history_pagination(driver, fixtures, report)
     damaged_history_pagination(driver, fixtures, report)
     control_character_history(driver, fixtures, report)
+    enter_phase("toolkit-stash-stack")
     control_character_stashes(driver, fixtures, report)
     clear_stash_stack_preserves_every_object(driver, fixtures, report)
     selected_stash_actions(driver, fixtures, report)
     immutable_stash_previews(driver, fixtures, report)
+    enter_phase("commit-preview-output")
     commit_preview_output(driver, fixtures, report)
-    bounded_file_history_reads(driver, fixtures, report)
-    blame_read_acceptance(driver, fixtures, report)
+    bounded_file_history_reads(driver, fixtures, report, enter_phase=enter_phase)
+    blame_read_acceptance(driver, fixtures, report, enter_phase=enter_phase)
+    enter_phase("toolkit-stash-dialogs")
     stash_delete_confirmation(driver, fixtures, report)
     stash_pop_partial_ui(driver, fixtures, report)
     # This UI scenario intentionally navigates to its own disposable repository.
@@ -3523,6 +3677,7 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     integrity = call("inspect_repository_integrity", operationId=str(uuid.uuid4()))
     report["repositoryIntegrity"] = integrity
     assert integrity["passed"], "Owned toolkit repository did not pass Git integrity inspection"
+    enter_phase("toolkit-maintenance-and-terminal")
     call("perform_repository_maintenance")
     assert call("cancel_git_operation", operationId="not-running") is False
     terminal = call("open_terminal", rows=24, cols=80)
@@ -3647,6 +3802,7 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     assert head() == ui_commit, "Native UI Redo did not restore the committed HEAD"
     assert not fixtures.git(repository, "status", "--porcelain")
     passed("native-ui-commit-undo-redo")
+    enter_phase("toolkit-working-tree-and-recovery")
     raw_working_tree_comparisons(driver, fixtures, report)
     untracked_statistics(driver, fixtures, report)
     untracked_attribute_statistics(driver, fixtures, report)
@@ -3659,6 +3815,7 @@ def full_toolkit(driver, fixtures, repository, repo_id, report):
     file_selection_boundaries(driver, fixtures, report)
     file_workflows(driver, fixtures, report)
     diff_line_selection(driver, fixtures, report)
+    enter_phase("toolkit-advanced-git-actions")
     advanced(driver, fixtures, report)
 
 
@@ -4940,7 +5097,7 @@ def advanced(driver, fixtures, report):
     lfs_prune_scan_cancellation(driver, fixtures, repository, repo_id, report)
 
 
-def lfs_checkout_counts(driver, fixtures, report):
+def lfs_checkout_counts(driver, fixtures, report, *, review_preferences=False):
     from native_worktree_scenarios import checkout_footprint
 
     repository = fixtures.repository("lfs-checkout-counts", commits=1)
@@ -4963,6 +5120,36 @@ def lfs_checkout_counts(driver, fixtures, report):
     assert checkout_footprint(fixtures, repository, names) == before
     report["lfsCheckoutCounts"] = {"tracked": 2, "notMaterialized": 1, "unchanged": True}
     report["scenarios"].append("native-lfs-checkout-counts-handle-literal-filenames-without-following-transfer-filters")
+    if review_preferences:
+        open_ui(driver, repository)
+        driver.click_visible('[aria-label="Preferences"]')
+        driver.click_visible('#preferences-tab-git')
+        driver.wait("""const settings = document.querySelector('#preference-lfs');
+          return settings && !settings.hidden && settings.textContent.includes('2 tracked files')
+            && settings.textContent.includes('1 not materialized');""")
+        driver.click_visible('[aria-label="Close preferences"]')
+        assert checkout_footprint(fixtures, repository, names) == before
+        report["scenarios"].append("native-lfs-preferences-show-tracked-and-pointer-counts-without-writes")
+
+        # Materialize the fixture outside the application; the next review is read-only.
+        ordinary.write_bytes(b"Data to replace with a pointer\n")
+        materialized = checkout_footprint(fixtures, repository, names)
+        open_ui(driver, repository)
+        driver.wait("""return document.querySelector('[aria-label="Pull Git LFS objects"]')
+            ?.getAttribute('aria-description') === 'No LFS files to materialize';""")
+        driver.click_visible('[aria-label="Git LFS options"]')
+        driver.wait("""return document.querySelector('#lfs-options-menu .lfs-menu-status')
+            ?.textContent.includes('2 tracked files · 0 not materialized');""")
+        driver.key('\ue00c')
+        driver.click_visible('[aria-label="Preferences"]')
+        driver.click_visible('#preferences-tab-git')
+        driver.wait("""return document.querySelector('#preference-lfs')
+            ?.textContent.includes('2 tracked files · 0 not materialized');""")
+        driver.click_visible('[aria-label="Close preferences"]')
+        after = checkout_footprint(fixtures, repository, names)
+        changed = {key: (materialized[key], after[key]) for key in materialized if materialized[key] != after[key]}
+        assert not changed, f"Read-only LFS count review changed the checkout: {changed!r}"
+        report["scenarios"].append("native-lfs-toolbar-menu-and-preferences-agree-on-measured-zero-without-writes")
 
 
 def lfs_empty_store_review(driver, fixtures, repository, repo_id, report):

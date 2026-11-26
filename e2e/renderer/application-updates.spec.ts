@@ -2,7 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  // The fixture replaces IPC only after the seeded checkout is ready.
+  // A cold WebKit worker can still be on the welcome shell during startup.
+  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -49,6 +51,9 @@ test.beforeEach(async ({ page }) => {
           return Promise.resolve(state.status);
         }
         if (command === 'check_application_update') {
+          if (state.holdCheck) return new Promise(resolve => {
+            state.finishCheck = () => resolve(state.status);
+          });
           state.replace({ phase: 'available', offeredVersion: '0.2.0', offerId: 'owned-offer-A',
             notes: '<script>not executable</script>', canDownload: true, message: 'Owned release offered' });
           return Promise.resolve(state.status);
@@ -80,7 +85,29 @@ async function open(page: Page, waitForStatus = true) {
   return dialog;
 }
 
-test('manual check, verify and install work while automatic mode stays off', async ({ page }) => {
+test('command palette opens Updates without checking or changing consent', async ({ page }) => {
+  const origin = page.getByRole('searchbox', { name: 'Filter changed files' });
+  await origin.focus();
+  await page.keyboard.press('Control+p');
+  const palette = page.locator('gk-command-palette');
+  await palette.locator('input').fill('check for updates');
+  await palette.getByRole('option', { name: /Application Updates/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Updates', exact: true });
+  await expect(dialog).toContainText('Owned updater ready');
+  for (const theme of ['khronos', 'midnight']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    await expect(dialog).not.toHaveCSS('box-shadow', 'none');
+  }
+  await expect(dialog.getByRole('checkbox', { name: 'Enable automatic updates' })).not.toBeChecked();
+  const commands = await page.evaluate((): string[] => (window as any).__updates.calls.map((call: any) => call.command));
+  expect(commands).not.toContain('check_application_update');
+  expect(commands).not.toContain('set_automatic_application_updates');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(origin).toBeFocused();
+});
+
+test('manual check, verify and install work while automatic mode stays off', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   const dialog = await open(page);
   await expect(dialog.getByRole('checkbox', { name: 'Enable automatic updates' })).not.toBeChecked();
   await dialog.getByRole('button', { name: 'Check for updates', exact: true }).click();
@@ -97,9 +124,42 @@ test('manual check, verify and install work while automatic mode stays off', asy
     .toMatchObject([{ command: 'check_application_update' }, { command: 'download_application_update', args: { offerId: 'owned-offer-A' } }, { command: 'install_application_update', args: { offerId: 'owned-offer-A' } }]);
 });
 
-test('automatic preference uses confirmed native state and restores the checkbox after refusal', async ({ page }) => {
+test('Tab stays in Updates when a pending action disables the focused control', async ({ page }) => {
+  const dialog = await open(page);
+  await page.evaluate(() => { (window as any).__updates.holdCheck = true; });
+  const check = dialog.getByRole('button', { name: 'Check for updates', exact: true });
+  await check.press('Enter');
+  await expect(check).toBeDisabled();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).blur();
+  await page.keyboard.press('Shift+Tab');
+  await expect(dialog.getByRole('button', { name: 'Browse official releases (opens browser)', exact: true })).toBeFocused();
+  await page.evaluate(() => (window as any).__updates.finishCheck());
+  await expect(check).toBeEnabled();
+});
+
+test('Updates recognizes the WebKitGTK Shift+Tab key when its logical name is unidentified', async ({ page }) => {
+  const dialog = await open(page);
+  const close = dialog.getByRole('button', { name: 'Close', exact: true });
+  const refresh = dialog.getByRole('button', { name: 'Refresh status', exact: true });
+  const reverseTab = () => page.evaluate(() => !document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Unidentified', code: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+  })));
+  await close.blur();
+  expect(await reverseTab()).toBe(true);
+  await expect(refresh).toBeFocused();
+  await close.focus();
+  expect(await reverseTab()).toBe(true);
+  await expect(refresh).toBeFocused();
+});
+
+test('automatic preference uses confirmed native state and restores the checkbox after refusal', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   const dialog = await open(page);
   const automatic = dialog.getByRole('checkbox', { name: 'Enable automatic updates' });
+  await expect(automatic).toHaveAccessibleDescription(
+    /Off by default.*downloads and verifies packages.*installs updates when no Git operation.*system may ask for authorization.*does not stop an installer/,
+  );
   await page.evaluate(() => { (window as any).__updates.rejectSetting = true; });
   await automatic.click();
   await expect(dialog).toContainText('Owned preference write failure');
@@ -111,6 +171,16 @@ test('automatic preference uses confirmed native state and restores the checkbox
   await page.evaluate(() => { (window as any).__updates.loseSettingReply = false; });
   await automatic.click();
   await expect(automatic).not.toBeChecked();
+});
+
+test('automatic update consent explains the Windows manual installation requirement', async ({ page }) => {
+  await page.evaluate(() => (window as any).__updates.replace({ packageFormat: 'msi' }));
+  const dialog = await open(page);
+  const automatic = dialog.getByRole('checkbox', { name: 'Enable automatic updates' });
+  await expect(automatic).not.toBeChecked();
+  await expect(automatic).toHaveAccessibleDescription(
+    /Off by default.*downloads and verifies packages.*On Windows, you must install the update yourself\.$/,
+  );
 });
 
 test('unconfigured publisher trust never exposes an install or automatic opt-in', async ({ page }) => {
@@ -224,9 +294,18 @@ test('unknown-length downloads use indeterminate progress until a native total i
   const progress = dialog.getByRole('progressbar', { name: 'Update download' });
   await expect(progress).toBeVisible();
   await expect(progress).not.toHaveAttribute('value');
+  await expect(progress).toHaveAccessibleDescription('Downloaded 4 KiB');
+  await expect(dialog.getByRole('status').filter({ hasText: 'Downloaded' })).toHaveCount(0);
+  await page.evaluate(() => (window as any).__updates.replace({ totalBytes: 0 }));
+  await expect(progress).not.toHaveAttribute('value');
+  await expect(progress).not.toHaveAttribute('max');
+  await expect(progress).toHaveAccessibleDescription('Downloaded 4 KiB');
   await page.evaluate(() => (window as any).__updates.replace({ totalBytes: 8192 }));
   await expect(progress).toHaveAttribute('value', '4096');
   await expect(progress).toHaveAttribute('max', '8192');
+  await expect(progress).toHaveAccessibleDescription('Downloaded 4 KiB of 8 KiB');
+  await page.evaluate(() => (window as any).__updates.replace({ downloadedBytes: 1_048_576, totalBytes: 2_097_152 }));
+  await expect(progress).toHaveAccessibleDescription('Downloaded 1.0 MiB of 2.0 MiB');
 });
 
 test('failed initial status keeps release browsing and explicit refresh available without update actions', async ({ page }) => {

@@ -57,25 +57,44 @@ export interface StashDialogRequest {
               <label class="check"><input type="checkbox" name="stashSelectedOnly" [disabled]="git.busy()" [ngModel]="selectedOnly()" (ngModelChange)="changeSelectedOnly($event, target)" />Save only selected files</label>
               @if (selectedOnly()) {
                 <p class="hint">Unselected files remain untouched.
-                  @if (git.repository()?.status?.entriesTruncated) { This list contains loaded files only. Turn off selection to let Git use the full scope of this stash mode. }
+                  @if (git.repository()?.status?.entriesTruncated) { Load more files to extend this list, or turn off selection to let Git use the full scope of this stash mode. }
                 </p>
                 @if (eligibleFiles().length) {
+                  <label>Filter files to stash
+                    <input type="search" name="stashFileFilter" placeholder="Filter by path" [ngModel]="fileFilter()"
+                      (ngModelChange)="fileFilter.set($event)" (keydown.escape)="clearFileFilter($event)" />
+                  </label>
+                  @if (fileFilter().trim()) {
+                    <p class="hint">Showing {{ visibleEligibleFiles().length }} of {{ eligibleFiles().length }} paths.
+                      Filtering does not change selections or the scope of Select all.</p>
+                  }
                   <div class="file-selection" role="group" aria-label="Stash file selection">
                     <button type="button" [disabled]="git.busy()" [attr.aria-disabled]="selectedEligiblePaths().length === eligibleFiles().length"
-                      (click)="chooseAllPaths(true, target)">Select all eligible files</button>
+                      (click)="chooseAllPaths(true, target)">{{ git.repository()?.status?.entriesTruncated ? 'Select all loaded eligible files' : 'Select all eligible files' }}</button>
+                    @if (fileFilter().trim() && visibleEligibleFiles().length) {
+                      <button type="button" [disabled]="git.busy()" [attr.aria-disabled]="allVisibleFilesSelected()"
+                        (click)="selectMatchingPaths(target)">Select matching files</button>
+                    }
                     <button type="button" [disabled]="git.busy()" [attr.aria-disabled]="!selectedEligiblePaths().length"
                       (click)="chooseAllPaths(false, target)">Clear selection</button>
-                    <small aria-live="polite">{{ selectedEligiblePaths().length }} of {{ eligibleFiles().length }} eligible files selected</small>
+                    <small aria-live="polite">{{ selectedEligiblePaths().length }} of {{ eligibleFiles().length }} {{ git.repository()?.status?.entriesTruncated ? 'loaded eligible files' : 'eligible files' }} selected</small>
                   </div>
                 }
                 <div class="files">
-                  @for (file of eligibleFiles(); track file.path) {
+                  @for (file of visibleEligibleFiles(); track file.path) {
                     <label class="check"><input type="checkbox" [attr.aria-label]="'Stash ' + file.path"
-                      [disabled]="git.busy()" [checked]="selectedPaths().includes(file.path)" (change)="togglePath(file.path, target)" /><code>{{ file.path }}</code></label>
+                      [disabled]="git.busy()" [checked]="selectedPathSet().has(file.path)" (change)="togglePath(file.path, target)" /><code>{{ file.path }}</code></label>
                   } @empty {
-                    <p class="hint">No listed files match these stash options.</p>
+                    <p class="hint">{{ fileFilter().trim() ? 'No loaded eligible paths match the filter.' : 'No listed files match these stash options.' }}</p>
                   }
                 </div>
+                @if (git.repository()?.status?.entriesTruncated) {
+                  <button #moreStashFiles type="button"
+                    [attr.aria-disabled]="git.changesLoading() || git.busy() ? 'true' : null"
+                    (click)="loadMoreStashFiles(target, moreStashFiles)">
+                    {{ git.changesLoading() ? 'Loading more files…' : 'Load more files to select' }}
+                  </button>
+                }
               }
             </details>
             @if (git.repository()?.status?.conflicted) {
@@ -164,9 +183,17 @@ export class StashOptionsDialogComponent {
   readonly message = signal('');
   readonly selectedOnly = signal(false);
   readonly selectedPaths = signal<string[]>([]);
+  readonly fileFilter = signal('');
+  readonly selectedPathSet = computed(() => new Set(this.selectedPaths()));
   readonly eligibleFiles = computed(() => (this.git.repository()?.status.entries ?? []).filter(file =>
     !file.conflicted && file.indexStatus !== '!'
     && (file.indexStatus === '?' ? this.includeUntracked() : this.mode() !== 'staged-only' || file.indexStatus !== ' ')));
+  readonly visibleEligibleFiles = computed(() => {
+    const query = this.fileFilter().trim().toLowerCase();
+    return query ? this.eligibleFiles().filter(file => file.path.toLowerCase().includes(query)) : this.eligibleFiles();
+  });
+  readonly allVisibleFilesSelected = computed(() =>
+    this.visibleEligibleFiles().every(file => this.selectedPathSet().has(file.path)));
   private readonly eligiblePaths = computed(() => new Set(this.eligibleFiles().map(file => file.path)));
   readonly selectedEligiblePaths = computed(() => this.selectedPaths().filter(path => this.eligiblePaths().has(path)));
   readonly hasWholeScopeChanges = computed(() => {
@@ -217,6 +244,7 @@ export class StashOptionsDialogComponent {
       this.message.set(target.message ?? '');
       this.selectedOnly.set(false);
       this.selectedPaths.set([]);
+      this.fileFilter.set('');
       this.restoreIndex.set(true);
       this.branchName.set('');
       setTimeout(() => {
@@ -245,6 +273,13 @@ export class StashOptionsDialogComponent {
     if (this.owns(target) && !this.git.busy()) this.selectedOnly.set(value);
   }
 
+  clearFileFilter(event: Event): void {
+    if (!this.fileFilter()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.fileFilter.set('');
+  }
+
   changeRestoreIndex(value: boolean, target: StashDialogRequest): void {
     if (this.owns(target) && !this.git.busy()) this.restoreIndex.set(value);
   }
@@ -268,6 +303,23 @@ export class StashOptionsDialogComponent {
     if (!this.owns(target) || this.git.busy() || !this.selectedOnly()) return;
     if (this.selectedEligiblePaths().length === (select ? this.eligibleFiles().length : 0)) return;
     this.selectedPaths.set(select ? [...this.eligiblePaths()] : []);
+  }
+
+  selectMatchingPaths(target: StashDialogRequest): void {
+    if (!this.owns(target) || this.git.busy() || !this.selectedOnly() || !this.fileFilter().trim()
+      || this.allVisibleFilesSelected()) return;
+    this.selectedPaths.set([...new Set([
+      ...this.selectedEligiblePaths(), ...this.visibleEligibleFiles().map(file => file.path),
+    ])]);
+  }
+
+  async loadMoreStashFiles(target: StashDialogRequest, trigger: HTMLButtonElement): Promise<void> {
+    if (!this.owns(target) || !this.selectedOnly() || this.git.busy() || this.git.changesLoading()) return;
+    await this.git.loadMoreChanges();
+    if (!this.owns(target) || !this.selectedOnly() || this.git.repository()?.status.entriesTruncated) return;
+    if (document.activeElement === trigger || (!trigger.isConnected && document.activeElement === document.body)) {
+      this.dialog()?.nativeElement.querySelector<HTMLInputElement>('[name=stashSelectedOnly]')?.focus();
+    }
   }
 
   async confirm(target = this.request()): Promise<void> {

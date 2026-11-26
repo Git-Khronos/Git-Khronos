@@ -20,6 +20,7 @@ import { GitKhronosService } from './git-khronos.service';
 import { GitDocumentationService } from './git-documentation.service';
 import { IconComponent } from './icon.component';
 import { IntegrityPanelComponent } from './integrity-panel.component';
+import { lfsCheckoutSummary } from './lfs-checkout-summary';
 import { PatchExchangePanelComponent } from './patch-exchange-panel.component';
 
 type PreferenceSection = 'general' | 'graph' | 'git' | 'editor' | 'terminal';
@@ -67,6 +68,7 @@ const PREFERENCE_SEARCH_ENTRIES: readonly PreferenceSearchEntry[] = [
   styleUrl: './preferences-dialog.component.scss',
 })
 export class PreferencesDialogComponent {
+  protected readonly lfsCheckoutSummary = lfsCheckoutSummary;
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly git = inject(GitKhronosService);
   protected readonly documentation = inject(GitDocumentationService);

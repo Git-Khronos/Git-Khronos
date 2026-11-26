@@ -6,6 +6,87 @@ from native_setup_keyboard_scenarios import _chord
 from native_worktree_scenarios import checkout_footprint
 
 
+def stash_untracked_whole_checkout(driver, fixtures, report):
+    """Whole-checkout save honors untracked inclusion without saving ignored files."""
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('stash-untracked-whole-checkout', commits=2)
+    note = repository / 'new note.txt'
+    ignored = repository / 'ignored.txt'
+    (repository / '.git/info/exclude').write_text('/ignored.txt\n')
+    note.write_bytes(b'Owned untracked contents\n')
+    ignored.write_bytes(b'Owned ignored contents\n')
+    open_ui(driver, repository)
+    index = fixtures.git(repository, 'write-tree')
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    driver.click_visible('[aria-label="Stash options"]')
+    driver.click_visible('#stash-options-menu button[role=menuitem]',
+                         'Stash with options…Choose which changes and files to save')
+    modal = 'gk-stash-options-dialog [role=dialog]'
+    checkbox = modal + ' input[name=stashUntracked]'
+    confirm = modal + ' footer .primary'
+    driver.wait(f"return !!document.querySelector({checkbox!r})")
+    if driver.script("return document.querySelector(arguments[0]).checked", checkbox):
+        driver.click_visible(checkbox)
+    driver.wait(f"return document.querySelector({confirm!r})?.disabled === true")
+    assert note.exists() and not fixtures.git(repository, 'stash', 'list')
+    driver.click_visible(checkbox)
+    driver.wait(f"return document.querySelector({confirm!r})?.disabled === false")
+    driver.click_visible(confirm, 'Create stash')
+    driver.wait(f"return !document.querySelector({modal!r})")
+    stash = fixtures.git(repository, 'rev-parse', 'refs/stash')
+    assert fixtures.git(repository, 'rev-parse', stash + '^1') == head
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == head
+    assert fixtures.git(repository, 'write-tree') == index
+    assert fixtures.git(repository, 'ls-tree', '-r', '--name-only', stash + '^3') == note.name
+    assert fixtures.git(repository, 'show', stash + '^3:' + note.name) == 'Owned untracked contents'
+    assert not note.exists() and ignored.read_bytes() == b'Owned ignored contents\n'
+    report['scenarios'].append('native-whole-checkout-stash-only-saves-untracked-files-when-included')
+
+
+def stash_selection_pagination(driver, fixtures, report):
+    """Reach a later native status page without widening the stash scope."""
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('stash-selection-paginated', commits=2)
+    for index in range(1001):
+        (repository / f'a-{index:04}.txt').touch()
+    (repository / 'z-last.txt').write_text('Selected from the next page\n')
+    open_ui(driver, repository)
+    before = checkout_footprint(fixtures, repository, ('a-0000.txt', 'a-0001.txt', 'z-last.txt'))
+    driver.click_visible('[aria-label="Stash options"]')
+    driver.click_visible('#stash-options-menu button[role=menuitem]',
+                         'Stash with options…Choose which changes and files to save')
+    modal = 'gk-stash-options-dialog [role=dialog]'
+    driver.click_scrolled_text(modal + ' summary', 'Choose specific files', wait_for_ready=True)
+    driver.click_scrolled_text(modal + ' label.check', 'Save only selected files', wait_for_ready=True)
+    first = modal + ' [aria-label="Stash a-0000.txt"]'
+    last = modal + ' [aria-label="Stash z-last.txt"]'
+    driver.wait(f"return !!document.querySelector({first!r}) && !document.querySelector({last!r})")
+    driver.click_scrolled_text(first, '', wait_for_ready=True)
+    driver.click_scrolled_text(modal + ' button', 'Load more files to select', wait_for_ready=True)
+    driver.wait(f"""return document.querySelector({first!r})?.checked
+      && document.querySelector({last!r})?.checked === false
+      && ![...document.querySelectorAll({(modal + ' button')!r})].some(button => button.textContent.includes('Load more files to select'))""")
+    assert checkout_footprint(fixtures, repository, ('a-0000.txt', 'a-0001.txt', 'z-last.txt')) == before
+    filter_field = modal + ' input[name=stashFileFilter]'
+    driver.script(f"document.querySelector({filter_field!r}).focus()")
+    for character in 'Z-LAST':
+        driver.key(character)
+    driver.wait(f"return !document.querySelector({first!r}) && !!document.querySelector({last!r})")
+    driver.click_scrolled_text(modal + ' button', 'Select matching files', wait_for_ready=True)
+    driver.wait(f"return document.querySelector({last!r})?.checked")
+    driver.click_scrolled_text(modal + ' footer .primary', 'Create stash', wait_for_ready=True)
+    driver.wait(f"return !document.querySelector({modal!r})")
+    stash = fixtures.git(repository, 'rev-parse', 'refs/stash')
+    assert fixtures.git(repository, 'ls-tree', '-r', '--name-only', stash + '^3').splitlines() == ['a-0000.txt', 'z-last.txt']
+    assert (repository / 'a-0001.txt').exists()
+    assert not (repository / 'a-0000.txt').exists() and not (repository / 'z-last.txt').exists()
+    report['scenarios'].append('native-stash-selection-loads-more-files-and-saves-only-explicit-paths')
+    report['scenarios'].append('native-stash-path-filter-keeps-hidden-selection-in-exact-stash')
+    report['scenarios'].append('native-stash-select-matching-adds-only-filtered-loaded-paths')
+
+
 def stash_selection_scope(driver, fixtures, report):
     """The scoped stash must match the eligible paths visible at confirmation."""
     from native_acceptance import open_ui
@@ -333,7 +414,7 @@ def stash_review_workflows(driver, fixtures, report):
     inline_hook = inline / '.git/hooks/pre-commit'
     inline_hook.write_text('#!/bin/sh\nprintf attempted > "$(git rev-parse --git-path inline-stash-commit-attempted)"\nexit 1\n')
     inline_hook.chmod(0o700)
-    open_ui(driver, inline)
+    inline_repo_id = open_ui(driver, inline)
     driver.wait("return !!document.querySelector('#commit-summary')")
     driver.script('''const field = document.querySelector('#commit-summary');
       field.value = arguments[0]; field.dispatchEvent(new Event('input', { bubbles: true }));''', draft)
@@ -374,3 +455,4 @@ def stash_review_workflows(driver, fixtures, report):
         'savedStash': inline_stash, 'savedIndexTree': inline_index_tree,
         'savedWorkingBlob': working_oid, 'savedUntrackedBlob': untracked_oid,
         'commitAttempted': inline_marker.exists()}
+    return inline, inline_repo_id

@@ -5,10 +5,26 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 from native_gitlab_ssh_scenarios import wait_for_ssh_clone_outcome
-from native_gitlab_ssh_fixture import accepted_upload, serve_upload, sshd_helper_config, VIRTUAL_REPOSITORY
+from native_gitlab_ssh_fixture import accepted_upload, resolve_sshd, serve_upload, sshd_helper_config, VIRTUAL_REPOSITORY
 
 
 class GitLabSshFixtureTests(unittest.TestCase):
+    def test_requires_absolute_executable_server_and_explains_https_only_alternative(self):
+        with tempfile.TemporaryDirectory() as directory:
+            server = Path(directory) / "sshd"
+            with patch.dict(os.environ, {"GIT_KHRONOS_SSHD": str(server)}):
+                with self.assertRaisesRegex(RuntimeError, "openssh-server.*gitlab-fork-ui"):
+                    resolve_sshd()
+                server.touch()
+                server.chmod(0o600)
+                with self.assertRaisesRegex(RuntimeError, "executable OpenSSH server"):
+                    resolve_sshd()
+                server.chmod(0o700)
+                self.assertEqual(resolve_sshd(), server)
+            with patch.dict(os.environ, {"GIT_KHRONOS_SSHD": "relative/sshd"}):
+                with self.assertRaisesRegex(RuntimeError, "absolute path"):
+                    resolve_sshd()
+
     def test_selects_both_helpers_from_an_extracted_server_prefix(self):
         with tempfile.TemporaryDirectory(prefix="sshd fixture ") as directory:
             prefix = Path(directory) / "usr"
@@ -44,6 +60,24 @@ class GitLabSshFixtureTests(unittest.TestCase):
             self.assertNotIn("Private fixture noise", str(caught.exception))
             self.assertEqual(len(driver.method_calls), 1)
             self.assertFalse(journal.exists())
+
+    def test_native_clone_failure_distinguishes_transport_from_unreached_owned_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            journal = Path(directory) / "uploads.jsonl"
+            log = journal.parent / "server.log"
+            driver = Mock()
+            driver.wait.return_value = {"kind": "error", "message": "Git transport failed"}
+            for record, diagnostic in (
+                (b"Connection closed before authentication", "No accepted key or owned Git operation"),
+                (b"error while loading shared libraries: private-fixture.so", "could not load its shared libraries"),
+                (b"Accepted publickey with private fixture details", "accepted a key.*did not reach its journal"),
+            ):
+                with self.subTest(diagnostic=diagnostic):
+                    log.write_bytes(record)
+                    with self.assertRaisesRegex(AssertionError, diagnostic) as caught:
+                        wait_for_ssh_clone_outcome(driver, journal)
+                    self.assertNotIn(record.decode(), str(caught.exception))
+                    self.assertFalse(journal.exists())
 
     def test_accepts_only_the_literal_owned_upload(self):
         self.assertTrue(accepted_upload("git-upload-pack '" + VIRTUAL_REPOSITORY + "'"))

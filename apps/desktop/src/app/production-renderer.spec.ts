@@ -8,7 +8,7 @@ const directories: string[] = [];
 function fixture(): string {
   const directory = mkdtempSync(join(tmpdir(), 'git-khronos-production-renderer-'));
   directories.push(directory);
-  writeFileSync(join(directory, 'index.html'), '<script type="module" src="main.js"></script>');
+  writeFileSync(join(directory, 'index.html'), '<gk-root></gk-root><script type="module" src="main.js"></script>');
   return directory;
 }
 
@@ -51,6 +51,32 @@ describe('production renderer preview exclusion', () => {
     mkdirSync(join(directory, 'chunks'));
     writeFileSync(join(directory, 'chunks', 'dialog.js'), 'export const dialog = true;');
     expect(checkProductionRenderer(directory)).toEqual({ files: 2 });
+  });
+
+  it('refuses a missing or legacy app mount in the shipped document', () => {
+    const directory = fixture();
+    writeFileSync(join(directory, 'main.js'), 'export const application = true;');
+    for (const html of ['<main></main>', '<gc-root></gc-root>', '<gk-root></gk-root><gc-app></gc-app>']) {
+      writeFileSync(join(directory, 'index.html'), html);
+      expect(() => checkProductionRenderer(directory)).toThrow('must mount the application at <gk-root>');
+    }
+  });
+
+  it('rejects a legacy lazy app selector without banning unrelated Git gc text', () => {
+    const directory = fixture();
+    writeFileSync(join(directory, 'main.js'), 'export const name = "git gc-prune";');
+    expect(checkProductionRenderer(directory)).toEqual({ files: 1 });
+    writeFileSync(join(directory, 'lazy.js'), 'export const selector = "gc-app";');
+    expect(() => checkProductionRenderer(directory)).toThrow('legacy application selector remains in lazy.js');
+  });
+
+  it('rejects legacy app selectors in packaged stylesheets', () => {
+    const directory = fixture();
+    writeFileSync(join(directory, 'main.js'), 'export const application = true;');
+    writeFileSync(join(directory, 'styles.css'), 'gk-root { display: block; }');
+    expect(checkProductionRenderer(directory)).toEqual({ files: 1 });
+    writeFileSync(join(directory, 'styles.css'), 'gc-root { display: block; }');
+    expect(() => checkProductionRenderer(directory)).toThrow('legacy application selector remains in styles.css');
   });
 
   for (const query of ['ghost-branch', 'multi-commit-menu', 'commit-file-menu']) {

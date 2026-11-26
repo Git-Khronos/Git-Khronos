@@ -297,18 +297,35 @@ class ObservedTlsServer(http.server.ThreadingHTTPServer):
     """Record the handshake boundary without logging socket or request data."""
 
     def get_request(self):
+        accepted = super().get_request()
+        # One byte per accepted socket. Do not retain addresses or data.
+        with (root / 'tcp-accepts').open('ab') as stream:
+            stream.write(b'R' if self is other else b'M')
+        return accepted
+
+    def process_request_thread(self, request, client_address):
+        # Keep accept independent of negotiation: an idle TCP connection
+        # must not block the next owned client from starting its handshake.
+        request.settimeout(5)
         try:
-            request = super().get_request()
+            secure = context.wrap_socket(request, server_side=True)
         except ssl.SSLError as error:
             reason = getattr(error, 'reason', None)
             safe_reason = reason if isinstance(reason, str) and re.fullmatch(r'[A-Z0-9_]{1,80}', reason) else None
             self.record_tls('tls-error', safe_reason)
-            raise
+            self.close_request(request)
+            return
+        except TimeoutError:
+            self.record_tls('handshake-timeout', None)
+            self.close_request(request)
+            return
         except OSError:
             self.record_tls('socket-error', None)
-            raise
+            self.close_request(request)
+            return
         self.record_tls('negotiated', None)
-        return request
+        secure.settimeout(None)
+        super().process_request_thread(secure, client_address)
 
     def record_tls(self, outcome, reason):
         with (root / 'tls-observations.jsonl').open('a') as stream:
@@ -322,7 +339,6 @@ other = ObservedTlsServer(('127.0.0.1', 0), Handler)
 main_origin = f'https://{advertised_host}:{main.server_port}'
 for server in (main, other):
     server.daemon_threads = True
-    server.socket = context.wrap_socket(server.socket, server_side=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
 print(json.dumps({'origin': main_origin}), flush=True)
 threading.Event().wait()

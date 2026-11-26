@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { watch } from 'node:fs';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isCliEntry } from './cli-entry.mjs';
 
 // Tauri watches the Cargo manifest even during a non-interactive build.
 // Probe the same file in this build environment without leaving a watcher
@@ -22,7 +21,7 @@ export function checkLinuxPackageWatcher(manifest, openWatch = watch) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isCliEntry(import.meta)) {
   try {
     if (!process.argv[2]) throw new Error('Expected the package Cargo manifest path.');
     checkLinuxPackageWatcher(process.argv[2]);

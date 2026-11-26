@@ -4,6 +4,8 @@ import { events, ipc, type ApplicationUpdateStatus } from '@git-khronos/contract
 
 const STATUS_READ_TIMEOUT_MS = 6_000;
 const STATUS_READ_TIMEOUT = Symbol('application-update-status-timeout');
+const STATUS_RETRY_DELAY_MS = 3_000;
+const STATUS_RETRY_MAX_DELAY_MS = 30_000;
 
 @Injectable({ providedIn: 'root' })
 export class ApplicationUpdatesService {
@@ -21,6 +23,8 @@ export class ApplicationUpdatesService {
   private unlisten: (() => void) | null = null;
   private refreshing: Promise<void> | null = null;
   private statusPollingPaused = false;
+  private statusRetryDelay = 0;
+  private nextStatusPollAt = 0;
   private acceptedStatusGeneration = 0;
 
   constructor() {
@@ -64,6 +68,8 @@ export class ApplicationUpdatesService {
     if (previous && previous.offerId !== value.offerId) this.error.set('');
     this.acceptedStatusGeneration++;
     this.statusPollingPaused = false;
+    this.statusRetryDelay = 0;
+    this.nextStatusPollAt = 0;
     this.statusError.set('');
     this.state.set(value);
   }
@@ -79,7 +85,7 @@ export class ApplicationUpdatesService {
   private readStatus(explicit: boolean): Promise<void> {
     if (!this.native() || this.disposed) return Promise.resolve();
     if (this.refreshing) return this.refreshing;
-    if (!explicit && this.statusPollingPaused) return Promise.resolve();
+    if (!explicit && (this.statusPollingPaused || performance.now() < this.nextStatusPollAt)) return Promise.resolve();
     const generation = this.acceptedStatusGeneration;
     let timer!: ReturnType<typeof setTimeout>;
     const deadline = new Promise<typeof STATUS_READ_TIMEOUT>(resolve => {
@@ -100,6 +106,10 @@ export class ApplicationUpdatesService {
       },
       () => {
         if (!this.disposed && generation === this.acceptedStatusGeneration) {
+          // Keep recovering from transient bridge failures, without sending
+          // another request on every tick while the bridge is unavailable.
+          this.statusRetryDelay = Math.min(this.statusRetryDelay * 2 || STATUS_RETRY_DELAY_MS, STATUS_RETRY_MAX_DELAY_MS);
+          this.nextStatusPollAt = performance.now() + this.statusRetryDelay;
           this.statusError.set('Native update status could not be read. Refresh status before starting a new update.');
         }
       },

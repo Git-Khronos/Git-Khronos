@@ -2,6 +2,64 @@ import { expect, test } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
+  // The startup shell mounts the workspace shortcut listener asynchronously.
+  await expect(page.locator('gk-app .toolbar.workspace-focus-region')).toBeVisible();
+});
+
+test('IME composition and AltGr do not dispatch workspace shortcuts', async ({ page }) => {
+  const filter = page.getByRole('searchbox', { name: 'Filter changed files' });
+  await expect(filter).toBeVisible();
+  const result = await filter.evaluate((input) => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    const operations: string[] = [];
+    git.remote = (operation: string) => { operations.push(operation); };
+    input.focus();
+    const press = (init: KeyboardEventInit) => input.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true, cancelable: true, key: 'l', ctrlKey: true, ...init,
+    }));
+    const composition = press({ isComposing: true });
+    const altGr = press({ altKey: true, modifierAltGraph: true });
+    const ordinaryShortcut = press({});
+    return { composition, altGr, ordinaryShortcut, operations };
+  });
+  expect(result).toEqual({ composition: true, altGr: true, ordinaryShortcut: false, operations: ['fetch_repository'] });
+});
+
+test('editing shortcuts undo and redo text without triggering repository recovery', async ({ page }) => {
+  const filter = page.getByRole('searchbox', { name: 'Filter changed files' });
+  await expect(filter).toBeVisible();
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    const calls: string[] = [];
+    (window as any).__shortcutRecoveryCalls = calls;
+    git.undoLabel = () => 'Undo Discard Unstaged Changes';
+    git.redoLabel = () => 'Redo Discard Unstaged Changes';
+    git.undo = () => { calls.push('undo'); };
+    git.redo = () => { calls.push('redo'); };
+  });
+  await filter.focus();
+  await page.keyboard.insertText('draft');
+  await expect(filter).toHaveValue('draft');
+  await page.keyboard.press('Control+z');
+  await expect(filter).toHaveValue('');
+  await page.keyboard.press('Control+Shift+z');
+  await expect(filter).toHaveValue('draft');
+  await page.keyboard.press('Control+y');
+  expect(await page.evaluate(() => (window as any).__shortcutRecoveryCalls)).toEqual([]);
+
+  await page.getByRole('button', { name: 'Unstaged Files', exact: false }).first().focus();
+  await page.keyboard.press('Control+Alt+z');
+  await page.keyboard.press('Control+Shift+y');
+  expect(await page.evaluate(() => (window as any).__shortcutRecoveryCalls)).toEqual([]);
+
+  await page.keyboard.press('Control+z');
+  await page.keyboard.down('Control');
+  await page.keyboard.down('z');
+  await page.keyboard.down('z'); // Auto-repeat: no second repository mutation.
+  await page.keyboard.up('z');
+  await page.keyboard.up('Control');
+  await page.keyboard.press('Control+y');
+  expect(await page.evaluate(() => (window as any).__shortcutRecoveryCalls)).toEqual(['undo', 'undo', 'redo']);
 });
 
 test('searches shortcut actions and keys without losing the full reference', async ({ page }) => {
@@ -79,13 +137,16 @@ test('keeps keyboard focus inside the shortcut dialog', async ({ page }) => {
 
   await search.press('Shift+Tab');
   await expect(close).toBeFocused();
-  await close.press('Shift+Tab');
+  expect(await close.evaluate(button => !button.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Unidentified', code: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+  })))).toBe(true);
   await expect(dialog.getByRole('button', { name: 'Tabs and view' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(close).toBeFocused();
 });
 
 test('cycles visible workspace regions forward and backward with F6', async ({ page }) => {
+  await expect(page.locator('.commit-row').first()).toBeVisible();
   const toolbar = page.locator('.toolbar.workspace-focus-region');
   const references = page.locator('#repository-reference-panel');
   const history = page.locator('.history-panel.workspace-focus-region');

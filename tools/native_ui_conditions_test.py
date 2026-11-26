@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-from native_ui_conditions import wait_closed_confirmation_refusal
+from native_ui_conditions import wait_closed_confirmation_refusal, wait_git_error_message
 
 
 class ConfirmationRefusalObservationTests(unittest.TestCase):
@@ -21,10 +21,17 @@ class ConfirmationRefusalObservationTests(unittest.TestCase):
         program = r"""
           import { readFileSync } from 'node:fs';
           const { predicate, states } = JSON.parse(readFileSync(0, 'utf8'));
-          const observe = new Function('document', 'getComputedStyle', predicate);
+          const observe = new Function('document', 'getComputedStyle', 'Node', predicate);
           const result = states.map(state => {
             const toast = state.message == null ? null : {
               textContent: state.message,
+              querySelector: selector => {
+                if (selector !== 'p') throw Error('Unexpected toast query: ' + selector);
+                return { childNodes: [
+                  { nodeType: 1, textContent: 'Git needs attention' },
+                  { nodeType: 3, textContent: state.body ?? '' },
+                ] };
+              },
               getClientRects: () => state.layout === false ? [] : [{}],
             };
             const document = { querySelector: selector => {
@@ -33,7 +40,7 @@ class ConfirmationRefusalObservationTests(unittest.TestCase):
               if (selector.includes('Diff viewer')) return state.diff ? {} : null;
               throw Error('Unexpected DOM observation: ' + selector);
             } };
-            return observe(document, () => ({ visibility: state.visibility ?? 'visible' }));
+            return observe(document, () => ({ visibility: state.visibility ?? 'visible' }), { TEXT_NODE: 3 });
           });
           process.stdout.write(JSON.stringify(result));
         """
@@ -61,6 +68,21 @@ class ConfirmationRefusalObservationTests(unittest.TestCase):
             {'confirmation': False, 'message': 'Unrelated'},
             {'confirmation': False, 'message': message},
         ]), [False, True])
+
+    def test_git_error_observation_ignores_heading_only_and_unpainted_bodies(self):
+        driver = SimpleNamespace(wait=Mock(return_value='Actual Git error'))
+        self.assertEqual(wait_git_error_message(driver, timeout=3), 'Actual Git error')
+        predicate, timeout = driver.wait.call_args.args
+        self.assertEqual(timeout, 3)
+        states = [
+            {},
+            {'message': 'Git needs attention'},
+            {'message': 'Git needs attention', 'body': '  '},
+            {'message': 'Git needs attention Actual Git error', 'body': 'Actual Git error', 'layout': False},
+            {'message': 'Git needs attention Actual Git error', 'body': 'Actual Git error', 'visibility': 'hidden'},
+            {'message': 'Git needs attention Actual Git error', 'body': '  Actual Git error  '},
+        ]
+        self.assertEqual(self.evaluate(predicate, states), [None] * 5 + ['Actual Git error'])
 
     def test_empty_feedback_cannot_create_an_always_matching_gate(self):
         driver = SimpleNamespace(wait=Mock())

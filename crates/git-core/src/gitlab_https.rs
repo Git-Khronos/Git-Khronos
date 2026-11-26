@@ -3,7 +3,7 @@
 use super::{AppError, CancellationToken, GitLabInstance, GitLabReadTransport};
 use reqwest::header::{ACCEPT, HeaderValue};
 use serde_json::Value;
-use std::{collections::HashSet, future::Future, task::Poll, time::Duration};
+use std::{collections::HashSet, error::Error, future::Future, io, task::Poll, time::Duration};
 
 const RESPONSE_LIMIT: usize = 1024 * 1024;
 
@@ -57,12 +57,44 @@ fn network_error(error: reqwest::Error) -> AppError {
             Some("Check connectivity before explicitly retrying."),
         )
     } else {
+        let message = if error.is_builder() {
+            "A verified HTTPS read from GitLab could not complete. The HTTPS client could not be initialized."
+        } else if error.is_connect() {
+            connection_failure_message(&error)
+        } else {
+            "A verified HTTPS read from GitLab could not complete. The request or response was interrupted."
+        };
         failure(
             "gitlabConnection",
-            "A verified HTTPS read from GitLab could not complete.",
+            message,
             Some("Check the selected instance, network and trusted certificates."),
         )
     }
+}
+
+fn connection_failure_message(error: &dyn Error) -> &'static str {
+    // Only translate known OS categories. Never format the chain: it can
+    // contain private hostnames, URL queries or implementation details.
+    let mut next = error.source();
+    for _ in 0..16 {
+        let Some(source) = next else { break };
+        if let Some(error) = source.downcast_ref::<io::Error>() {
+            match error.kind() {
+                io::ErrorKind::ConnectionRefused => {
+                    return "A verified HTTPS read from GitLab could not complete. The TCP connection was refused.";
+                }
+                io::ErrorKind::NetworkUnreachable | io::ErrorKind::HostUnreachable => {
+                    return "A verified HTTPS read from GitLab could not complete. The host or network was unreachable.";
+                }
+                io::ErrorKind::PermissionDenied => {
+                    return "A verified HTTPS read from GitLab could not complete. The operating system denied the connection.";
+                }
+                _ => {}
+            }
+        }
+        next = source.source();
+    }
+    "A verified HTTPS read from GitLab could not complete. A verified connection could not be established."
 }
 
 fn status_error(status: reqwest::StatusCode) -> AppError {

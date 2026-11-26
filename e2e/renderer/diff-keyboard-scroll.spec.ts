@@ -37,6 +37,27 @@ test('changing diff layouts keeps the selected later change visible without movi
   }
 });
 
+test('dense diffs bound decorative minimap marks without losing precise hunk navigation', async ({page}) => {
+  await openSeparatedChanges(page);
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    const hunk = (first: number) => `@@ -${first},600 +${first},600 @@\n`
+      + Array.from({length: 600}, (_, index) => `-old ${first + index}\n+new ${first + index}\n`).join('');
+    const patch = 'diff --git a/large.txt b/large.txt\n--- a/large.txt\n+++ b/large.txt\n'
+      + hunk(1) + hunk(1000);
+    app.git.comparisonFileDiff.update((diff: any) => ({...diff, patch}));
+  });
+  const map = page.getByLabel('File change mini-map');
+  await expect(map.locator('i.mixed').first()).toBeAttached();
+  expect(await map.locator('i').count()).toBeLessThanOrEqual(512);
+  await expect(map.getByRole('button', {name: /Jump to change/})).toHaveCount(2);
+  await map.getByRole('button', {name: 'Jump to change 1', exact: true}).click();
+  await expect(page.locator('.diff-hunk-nav')).toContainText('1 / 2');
+  await map.getByRole('button', {name: 'Jump to change 2', exact: true}).click();
+  await expect(page.locator('.diff-hunk-nav')).toContainText('2 / 2');
+  await expect(page.locator('.diff-primary-view [data-diff-hunk="1"]')).toBeInViewport();
+});
+
 test('keyboard diff layout changes preserve the selected change and roving focus', async ({page}) => {
   await openSeparatedChanges(page);
   await page.locator('[data-diff-mode="split"]').focus();

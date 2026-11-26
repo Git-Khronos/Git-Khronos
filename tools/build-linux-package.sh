@@ -8,10 +8,17 @@ tauri_config="${3:-}"
 case "$flavor" in
   local) bundle=deb; extra_config=() ;;
   ubuntu-jammy) bundle=deb; extra_config=(--config packaging/linux/ubuntu-jammy.conf.json) ;;
-  ubuntu-jammy-appimage) bundle=appimage; extra_config=(--config packaging/linux/ubuntu-jammy.conf.json) ;;
+  ubuntu-jammy-appimage)
+    bundle=appimage
+    extra_config=(--config packaging/linux/ubuntu-jammy.conf.json --config packaging/linux/appimage-notices.conf.json)
+    ;;
   *) printf 'Expected local, ubuntu-jammy, or ubuntu-jammy-appimage package flavor.\n' >&2; exit 2 ;;
 esac
 [[ -n "$checksum" && -n "$tauri_config" ]] || { printf 'Missing package checksum or Tauri configuration.\n' >&2; exit 2; }
+if [[ "$bundle" == appimage ]] && ! command -v file >/dev/null; then
+  printf 'Git Khronos: the file command is required by the AppImage packager. Install the Ubuntu file package before rebuilding.\n' >&2
+  exit 1
+fi
 command -v flock >/dev/null || { printf 'Git Khronos: flock (util-linux) is required to build a Linux package.\n' >&2; exit 1; }
 
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"

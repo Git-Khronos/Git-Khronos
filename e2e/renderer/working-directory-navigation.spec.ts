@@ -84,6 +84,42 @@ test('reopens and focuses the full-width working directory inspector from the gr
   await expect(inspector.getByRole('button', { name: 'Close commit panel', exact: true })).toBeFocused();
 });
 
+test('the palette opens and focuses the changed-file filter without losing the draft', async ({ page }) => {
+  await page.goto('/');
+  const inspector = page.locator('.commit-panel');
+  const summary = inspector.getByRole('textbox', { name: 'Commit summary', exact: true });
+  await summary.fill('Keep the working draft');
+  await inspector.getByRole('button', { name: 'Close commit panel', exact: true }).click();
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  const query = page.getByRole('combobox', { name: 'Search commands' });
+  await query.fill('filter changed files');
+  await expect(page.getByRole('option', { name: /^Filter Changed Files/ })).toBeEnabled();
+  await query.press('Enter');
+  const filter = inspector.getByRole('searchbox', { name: 'Filter changed files' });
+  await expect(filter).toBeFocused();
+  await expect(summary).toHaveValue('Keep the working draft');
+});
+
+for (const section of ['Staged', 'Unstaged']) {
+  test(`the palette reopens and focuses ${section.toLowerCase()} files independently`, async ({ page }) => {
+    await page.goto('/');
+    const other = section === 'Staged' ? 'Unstaged' : 'Staged';
+    for (const label of [section, other]) {
+      await page.getByRole('button', { name: new RegExp(`^${label} Files`) }).click();
+    }
+    const list = page.getByRole('region', { name: `${section} files`, exact: true });
+    const otherList = page.getByRole('region', { name: `${other} files`, exact: true });
+    await expect(list).toHaveCount(0);
+    await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+    const query = page.getByRole('combobox', { name: 'Search commands' });
+    await query.fill(`show ${section.toLowerCase()} files`);
+    await expect(page.getByRole('option', { name: new RegExp(`^Show ${section} Files`) })).toBeEnabled();
+    await query.press('Enter');
+    await expect(list).toBeFocused();
+    await expect(otherList).toHaveCount(0);
+  });
+}
+
 test('narrowing the window without a modal focuses the full-width inspector', async ({ page }) => {
   await page.goto('/');
   const row = page.locator('.wip-row').first();

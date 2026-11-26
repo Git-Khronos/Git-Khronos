@@ -86,8 +86,17 @@ def deferred_review_workflows(driver, fixtures, report, *, history_only=False):
     report['scenarios'].append('native-reviewed-fetch-downloads-owned-branch-without-tags-or-local-checkout-changes')
 
     open_fetch(source)
-    choose(fetch_modal + ' input[name=pruneRemoteBranches]')
+    prune = fetch_modal + ' input[name=pruneRemoteBranches]'
+    driver.wait('return document.querySelector(' + json.dumps(prune) + ')?.matches(":enabled:not(:checked)")')
+    # Prove the control changed before sending the one Git write. Use a
+    # trusted key so asynchronous depth feedback cannot move the click target.
+    driver.script('document.querySelector(arguments[0]).focus()', prune)
+    driver.wait('return document.activeElement?.matches(' + json.dumps(prune) + ')')
+    driver.key('\ue00d')  # Space
+    driver.wait('return document.querySelector(' + json.dumps(prune) + ')?.checked === true')
     confirm_fetch('Fetch branches')
+    driver.wait("""return document.querySelector('[data-git-operation-status]')?.textContent
+      .includes('stale remote-tracking branches pruned')""")
     assert 'refs/remotes/origin/obsolete' not in fixtures.git(source, 'for-each-ref', '--format=%(refname)').splitlines()
     after_prune = checkout_footprint(fixtures, source, ('fixture.txt', 'untracked-note.txt'))
     preserved(before, after_prune)

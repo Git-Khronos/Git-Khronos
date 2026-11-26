@@ -1,15 +1,800 @@
 # Linux packaged acceptance
 
+## Renderer recovery evidence
+
+The installed X11 recovery probe requires the replacement renderer to
+respond to Ctrl+P and Escape on a private Xvfb display before inducing
+another crash. A nonblank frame alone is insufficient: X11 can still show
+the previous renderer's frame while WebKit starts its replacement. The
+probe exercises only the read-only command palette, never a Git action.
+
+## Reproduce the reviewed stash workflow
+
+Use the exact fixture-key build or production candidate selected for review.
+Run this focused suite in a prepared Linux acceptance environment:
+
+```sh
+python3 tools/native_acceptance.py --suite stash-review --headless --package "$PACKAGE"
+```
+
+This reuses the toolbar, staged/working/untracked content, and keyboard
+checks from the larger publisher-environment suite; it does not replace
+that required release check. Without `--installed` the harness extracts
+the provided package into its isolated fixtures.
+
+## Latest 0.1.6 local qualification
+
+The newer test-key archive includes the per-file discard button's busy
+state. Its SHA-256 is
+`2fc9a868cfbb1390e37f9728d498631d5e6400f093635795d1a6b63a4550b9d9`.
+It passed all 52 required installed reports in one local run across five
+Linux baselines, including all 329 scenarios in the Ubuntu 22.04 publisher
+lane. The strict package and test-publisher verifiers passed. The focused
+busy-discard test failed on the prior archive on WSLg and passed on the
+new archive on both WSLg and Ubuntu 22.04. The new archive also passed the
+no-install preview check, and a manual APT upgrade from public v0.1.5 on all
+five baselines preserved the dirty checkout and index. Both X11 launch paths
+and repeated renderer recovery passed after these upgrades.
+See `target/local-review/jammy-row-discard-preview.s2HjIw/`
+for receipts and the package and source SBOMs. This archive has not been
+signed for release or published; the offline updater rehearsal below
+applies to the previous archive.
+
+### Previous 0.1.6 local qualification
+
+The test-key archive including the working-tree keyboard and scroll fixes
+and the stash-review refresh fix has SHA-256
+`8ca22c68d893436cb25631d9d94c2ace07b02b1a7aff1f5acbe5b9ef5f55a926`. All 52 installed release checks passed in one local matrix
+across the five Linux baselines, with no report substitutions. The
+required Ubuntu 22.04 environment suite passed all 329 scenarios. The
+package also passed the focused stash review, three live WSLg XWayland
+launch probes, and APT upgrade from public 0.1.5 on all five baselines
+without changing the dirty Git fixture. Both X11 launch paths and three
+responsive renderer recoveries followed by a fresh launch passed on
+each baseline.
+
+Evidence is under `target/local-review/jammy-stash-refresh.tR8W4jlN/`.
+The initial qualification and WSLg and upgrade checks are there. A later
+rerun with the catalogue and editor harness fixes passed all 52 reports
+again, with 329 scenarios in the publisher lane and no report substitutions.
+See the directory named by `repaired-harness-matrix.path` for the exact-package
+and publisher verifier results and `updater-rehearsal-final.log` for the
+offline update check. The interim `latest-harness-matrix.path` run that
+passed 48 of 52 reports remains separate. No production signing, hosted
+qualification, or publication was performed.
+
+## Earlier 0.1.6 keyboard navigation qualification
+
+The Jammy-built test-key archive containing the WSLg fix and the
+expanded file-list Home/End fix has SHA-256
+`312a7de8c679928cf03754a7c9ce57f2154032da1997444da3485294874a4976`. All 52 installed release checks passed across five Linux
+baselines in the selected evidence set; this was **not** one clean matrix
+attempt. The failed Debian 12 incoming-link, Ubuntu 26.04 GitLab and Jammy
+publisher reports are retained alongside their passing isolated reruns.
+The Jammy rerun exercised 328 scenarios, including the stricter reviewed
+prune check. Ubuntu 24.04's 35 review suites passed in three parallel
+groups. Each required suite is backed by one complete passing report;
+none combines scenarios from separate attempts.
+
+Evidence is under `target/local-review/jammy-working-tree-nav.espDUuED/`:
+`current-verified-release-matrix.json` and `selected-report-paths.txt`
+record the selection, and `signed-rehearsal/` records offline signature
+and updater verification with a fixture key. End reproduced the last-row
+failure on the earlier archive; both Home and End passed without writes
+on this archive on Ubuntu 22.04 and 24.04. Three WSLg XWayland launches
+painted with the automatically routed accessibility address. The public
+0.1.5 upgrade preserved a dirty fixture on all five baselines. Both
+launch paths and forced renderer recovery also passed on each baseline,
+with Debian 12's initial parallel recovery failure retained and a
+passing isolated run. This is not production signing or publication.
+
+## Earlier 0.1.6 WSLg release-notes qualification
+
+The archive with the WSLg fix documented in its packaged changelog has
+SHA-256 `2dae2bcb1632957cb6fed701a2717c3f8fa2deabe3f90ecf7034d142c2facd95`.
+All 52 installed reports passed in the same local matrix run across the
+five Linux baselines, with no substituted reports; Ubuntu 22.04 passed
+all 327 environment scenarios. The strict verification, the three
+WSLg XWayland launches, and the fixture-key offline update rehearsal
+are in `target/local-review/jammy-wsl-release-notes.8EXlzRZm/`.
+The executable hash matches the prior WSLg-fixed archive; only the
+changelog and its packaging checksum entry differ in the extracted data
+and control files. With these exact updated bytes, the APT upgrade
+from public 0.1.5 preserved a dirty checkout on all five baselines;
+both X11 launch paths and renderer recovery passed
+(`upgrade-launch-baselines/`). The publication workflow's local
+notes extraction includes the WSLg mitigation
+(`signed-rehearsal/release-notes.md`). No production signing or
+publication was performed.
+
+## Earlier 0.1.6 WSLg mitigation qualification
+
+The Jammy-built test-key archive with the WSLg startup mitigation has
+SHA-256 `9dfa58867a77315399a2531adcc2ee0e371f8865b98e59e2c6f276ee07dc2293`.
+Its passing 52-report matrix is in
+`target/local-review/jammy-wsl-accessibility.teiVXWF6/verified-release-matrix-with-reruns.json`.
+The uninterrupted matrix had two early, unclassified GitLab connection
+failures; both passed when rerun in fresh containers against the identical
+archive. The verifier rejects the original failing set. Both attempts
+and the replacement rule are retained. The Ubuntu 22.04 environment
+suite passed on the first attempt with this archive.
+
+The same bytes passed WSLg XWayland launch with the automatic accessibility
+address, native Wayland and explicit-address controls, fresh install and
+launch on five Linux baselines, the Ubuntu 24.04 manual upgrade and
+renderer recovery, and the offline signed-update rehearsal with a test key.
+The existing Windows pin, production key, and hosted release are not
+qualified by these local tests.
+
+## Earlier 0.1.6 keyboard-focus qualification
+
+The Jammy-built package
+`e62c2674d6be4ada7f957326cc012ea9a48c464251b6db9e7ff8ae2c7058ea61`
+passed the Ubuntu 24.04 installed clipboard checks, including opening a
+branch menu with Shift+F10, navigating with the arrow keys, and pressing
+Enter to copy. Focus returns to the branch. The previous archive failed
+that focus assertion. Both clipboard checks also passed on Ubuntu
+22.04 and 26.04 and Debian 12 and 13 (`reference-copy-baselines/`).
+Evidence is in
+`target/local-review/jammy-ref-copy-focus.duLp0tGX/`.
+The exact archive passed all 52 installed release checks across Ubuntu
+22.04, 24.04, and 26.04 and Debian 12 and 13
+(`verified-release-matrix.json`). The initial Ubuntu 22.04 environment
+run failed while waiting for a configured-tool control; the same archive
+passed all 327 scenarios after the harness waited for that control to
+be ready. Both attempts are retained. Replaying the original report set
+without the replacement fails the strict verifier
+(`original-matrix-rejection.log`); the passing set substitutes only the
+Ubuntu 22.04 environment report. The exact archive also passed the
+APT upgrade from public 0.1.5, both X11 launch paths, and renderer
+recovery on all five baselines (`upgrade-launch/` for Ubuntu 24.04;
+`upgrade-launch-baselines/` for the other four). The upgrade preserved
+the owned dirty checkout, including its branch, index and working files.
+The offline signed-update rehearsal with the fixture key also passed.
+The three installed update-consent scenarios passed per baseline
+(`matrix-noble/reports/application-update-consent-*/` and
+`update-consent-baselines/`). Manual checks worked without automatic
+consent, and opt-in and opt-out persisted after restart. Those isolated
+checks did not contact the production updater endpoint.
+The exact archive passed all 22 installed file-history checks on each
+baseline (`current-file-history/` for Ubuntu 24.04 and
+`file-history-baselines/` elsewhere). The suite covers deleted paths, full
+commit ID copying, starting revision changes, and keyboard navigation.
+All 26 installed working-tree recap checks passed on each baseline
+(`current-working-tree-recaps/` for Ubuntu 24.04 and
+`working-tree-recap-baselines/` elsewhere). They cover index-relative line
+counts, compact bulk actions, and the collapsed Staged header docking at
+the bottom. The four installed large-discard checks passed on each
+baseline, including recovery of CTI-shaped paths and sizes after
+restart and preservation of the staged-only sibling
+(`matrix-noble/reports/discard-large-*/` and `discard-large-baselines/`).
+All seven installed selective-discard checks also passed on each
+baseline, including the tracked nested lockfile, unchanged index and
+sibling edit, and restored working bytes after Undo
+(`matrix-noble/reports/discard-subset-*/` and `discard-subset-baselines/`).
+The nested-deletion, stale-review and size-limit suites passed on all
+five baselines (Ubuntu 24.04 release reports and `discard-safety-baselines/`).
+These checks cover Undo/Redo for a nested deletion, refusing changed
+review scope without discarding, and an actionable size limit without writes.
+The fixtures use synthetic data; the real CTI checkout was not modified.
+All 25 installed worktree checks also passed on each baseline
+(`matrix-resolute/reports/worktrees-*/` and `occupied-worktree-baselines/`).
+They verify that double-clicking an occupied `dev` branch opens its
+registered primary checkout from a linked checkout without detaching HEAD
+or altering dirty work, and that a stale owner is not used as a fallback.
+The same archive also passed fresh APT install, both X11 launch paths,
+and APT removal on all five baselines (`x11-launch-baselines/`). Both
+launches rendered a nonblank window, and removal preserved the test
+user’s file. The initial probe runs lacking Node are retained separately;
+Xvfb does not qualify a Windows-pinned WSLg shortcut.
+A separate local WSLg XWayland command launch of the exact extracted
+executable, with a private profile, rendered a nonblank window
+(`wslg-xwayland-exact/`). The probe matched the window to the owned process
+and counted 544 sampled colors. Launching the unmodified desktop entry
+with a private PATH wrapper pointing to the exact extracted executable
+also rendered a nonblank XWayland window (`wslg-desktop-entry-exact/`). A private-profile native Wayland launch also committed a non-null buffer
+for the app's toplevel and received a compositor frame callback
+(`wslg-native-wayland/`). This is protocol evidence, not a pixel or
+Windows-pinned shortcut check. The user's existing profile was not used.
+A read-only check of the workstation's Start menu and taskbar links
+found identical `wslg.exe` targets and Git Khronos launch arguments
+(`wslg-desktop-entry-exact/windows-shortcut-metadata.json`). Neither
+Windows link was started or modified. A separate launch through the same
+Windows `wslg.exe` target and distribution rendered nonblank XWayland
+pixels from the exact extracted app (`wslg-windows-launch-bridge/`).
+It passed a private test command in place of the original shortcut
+arguments, not a click on the existing pin with the user's profile.
+A follow-up found a visible, nonminimized 1011 × 665 Windows window
+during that launch (`wslg-windows-visible-window/`). An in-memory
+Windows capture of only the owned window found 377 distinct sampled
+colors; no image or full-desktop capture was saved
+(`wslg-windows-window-only-paint/windows-paint.json`).
+The same Windows capture API returned a uniform image for a visible
+native Wayland launch (`wslg-windows-native-wayland-paint/`). A separate
+screen probe checked window ownership at each sampled point and found
+153 colors across 920 visible points of the app window
+(`wslg-native-wayland-screen-sample/`). Only aggregate counts were
+retained. The uniform off-screen capture did not mean the native
+Wayland window was blank on the Windows desktop.
+The two successful XWayland pixel checks emitted the reported DRI3
+warnings. The native Wayland trace emitted the reported Mesa/Zink and
+DRI2 warnings before successful buffer commits and a frame callback.
+These observations show that the warnings alone do not indicate a
+failed launch; they do not prove GPU acceleration or explain a blank
+Windows window.
+Two additional private XWayland launches exited with SIGSEGV before
+window interaction, both after reporting a missing accessibility-bus
+socket (`wslg-owned-window-lifecycle*/`). The matching kernel messages
+placed both faults at the same offset in the workstation's ATK
+accessibility bridge (`libatk-bridge-2.0.so.0`, local symbol
+`spi_register_object_to_path`); this locates the fault, not its cause.
+Supplying the address from the
+test's own D-Bus session preserved accessibility and produced a rendered
+window that Windows resized, minimized, and restored
+(`wslg-owned-window-private-accessibility/windows-lifecycle.json`).
+This isolates a potential test-environment factor; it does not establish
+an application fix or explain the original taskbar-pin incident.
+An isolated Ubuntu 26.04 Xvfb launch with a deliberately missing
+test-owned accessibility socket emitted the same warning but still
+rendered (`owned-x11-accessibility-container/stale.log`). So the warning
+alone is insufficient to reproduce the WSLg crash. The control lane
+lacked an accessibility service in that container and did not qualify
+private-bus routing there.
+A paired WSLg launch check used the live session bus and fresh private
+profiles. The exact app crashed in all three XWayland launches with
+automatic accessibility-bus selection. Passing the accessibility address
+queried from that same session made all three render
+(`wslg-default-session-sample/` and
+`wslg-default-session-explicit-accessibility/`). No accessibility service
+was disabled and no system setting changed.
+The GNOME bridge's published [ATK registration source](https://gnome.pages.gitlab.gnome.org/at-spi2-core/coverage/atk-adaptor/accessible-register.c.html)
+and [bus initialization source](https://gnome.pages.gitlab.gnome.org/at-spi2-core/coverage/atk-adaptor/bridge.c.html)
+are consistent with a failed initialization leaving no bridge state for
+later registration. They are not a backtrace of this particular build.
+For an app-side mitigation, preserve explicit accessibility settings and
+query the live session's accessibility service before GTK on the affected
+WSLg X11 launch path. Bound that query, pass the address only to the app
+process, preserve launch arguments, and do not disable the bridge or write
+the global X11 property. Keep the original launcher and the signed-package
+identity checks intact. Qualification needs a fresh package and controls
+for native Wayland, non-WSL Linux, and an unavailable service.
+The startup mitigation now queries the existing local session over GIO
+with a 600 ms deadline, then re-executes the same app image with the
+resolved address if needed. The WSL X11 debug build rendered in all
+three fresh-profile attempts; the probe verified that the app received
+the live address without a caller override (`wslg-debug-routing-validation/`).
+The follow-up Jammy archive (SHA-256
+`9dfa58867a77315399a2531adcc2ee0e371f8865b98e59e2c6f276ee07dc2293`)
+passed three real WSLg XWayland launches with the live address and original
+argument vector confirmed. On the same archive, native Wayland committed
+its window buffer without the X11 routing, and an explicit caller-supplied
+address was preserved.
+Launching the same archive via the Windows WSLg bridge with its default
+environment selected native Wayland and produced 143 distinct colors
+across 920 sampled Windows points (`wslg-windows-default-backend/`).
+That test used a temporary profile and did not click the existing pin.
+It does not connect the X11 accessibility crash to the original pin issue.
+A Windows bridge launch forced through XWayland also passed with the new
+archive: it obtained the live address without a caller override and drew
+159 colors across 976 owned Windows points
+(`wslg-windows-x11-repaired/`).
+The repaired executable also appeared in the live AT-SPI registry with
+its accessible window under the owned process ID
+(`wslg-accessibility-tree/`). This verifies that accessibility was not
+merely left configured; it does not substitute for screen-reader review. Its evidence is in
+`target/local-review/jammy-wsl-accessibility.teiVXWF6/`. The prior 52-check
+matrix does not qualify these new archive bytes; use the new 52-report matrix above.
+An isolated Ubuntu 26.04 X11 control with the WSL marker and no
+accessibility service still drew a window and did not set an address
+(`wslg-no-accessibility-service-control/`). The new archive, build
+receipt, software inventories and checksums are staged locally for
+verification after the exact-artifact matrix; nothing is signed for
+production or published.
+Fresh install, desktop-entry launch, terminal launch, and removal of the
+new archive passed on all five Linux baselines (`x11-launch-baselines/`).
+Removal preserved the owned user's file. Ubuntu 24.04 also preserved
+a dirty checkout while upgrading from public 0.1.5 and relaunched after
+induced renderer crashes (`upgrade-launch/`).
+No public release or production-key qualification was performed.
+
+## Manual Windows taskbar pin check
+
+Use the installed build and profile you intend to qualify. First compare
+the installed files with the reviewed archive using
+`task install:linux:status -- "$archive"`. Save work, quit Git Khronos,
+then open it from the existing Windows taskbar pin. Verify that the
+window opens, redraws after a resize, and can minimize, restore, and close.
+Repeat from the Windows Start menu and the Linux terminal only if the pin
+fails, closing the app between attempts so an already running process
+does not satisfy a launch check. Record the failing path and whether
+the window was missing, blank, or unresponsive. Collect WSLg transport
+diagnostics before changing the shortcut or restarting WSL.
+
+## GitLab catalogue stale-element regression
+
+The exact archive passed 48 installed GitLab scenarios on each of the
+five baselines. Each report includes three real WebDriver checks: recover
+from an explicit stale-element refusal, ignore a disabled duplicate, and
+wait for delayed navigation before clicking exactly once. The recovery
+is limited to local navigation; it does not replay a provider operation
+or a click whose outcome is unknown. The latest fork catalogue test
+captures ready controls before clicking instead of doing a second lookup.
+All five installed suites passed again after that change
+(`gitlab-single-capture-baselines/`). The strict checker accepted the
+52-check matrix with these five same-archive replacements
+(`verified-release-matrix-latest-gitlab.json`); the original reports
+remain under `matrix-*/reports/gitlab-*/`.
+
+To run the entire suite against an extracted archive in a prepared
+test environment, use `pnpm nx run desktop:native-gitlab -- --package
+"$archive"`. This includes the loopback SSH clone fixture and requires
+a working OpenSSH server executable and helpers. An extracted server also
+needs the helpers' runtime libraries; an executable `sshd` alone does
+not prove its session helper can start. For the original fork catalogue regression, use
+`pnpm nx run desktop:native-gitlab-fork-ui -- --package "$archive"`.
+It exercises the actual catalogue transition and all three WebDriver
+regressions without SSH. The focused target now opens a small owned
+repository directly rather than running the general smoke suite first.
+It passed the same ten fork and WebDriver assertions on the workstation
+(`direct-nx-gitlab-fork-ui-focused/`). The full installed release check
+is unchanged.
+
+## Trying the exact local candidate
+
+`task install:linux` builds from the checkout. To try the exact archive
+from the acceptance run without changing your installed app, set `archive`
+to its absolute path and `reviewed_sha256` to the qualified digest above:
+
+```sh
+bash tools/preview-linux-package.sh "$archive" "$reviewed_sha256"
+```
+
+The preview needs the runtime libraries already on your system. It opens a
+temporary app profile, but it does not isolate Git repositories; use a
+disposable checkout. To test the actual system installation instead:
+
+```sh
+sha256sum "$archive"
+task install:linux:dry-run -- "$archive"
+# Only install if this is the archive you intend to test.
+sudo apt-get install --reinstall --no-remove "$archive"
+# Quit all running Git Khronos windows and relaunch before testing.
+task install:linux:status -- "$archive"
+```
+
+Two local builds may both report `0.1.6`. The status task checks the
+installed files against the selected archive rather than relying on the
+version string. The candidate trusts a test publisher, not the
+production update service.
+
+## Rerun the working-tree and reference regressions
+
+On a disposable Linux test system with the reviewed archive already
+installed, run the affected suites as one batch:
+
+```sh
+GIT_KHRONOS_NATIVE_OUTPUT=/absolute/path/to/new-results \
+  bash tools/run-native-suites.sh "$archive" \
+  working-tree-recaps discard-subset discard-large worktrees reference-copy
+```
+
+The Ubuntu 24.04 batch passed all five suites against the exact archive
+(`user-regressions-batch-with-subset/`). Each suite also passed separately
+on all five baselines. The harness uses owned temporary
+repositories, not the open app or the user's CTI checkout.
+For extracted-package checks from the checkout, the matching Nx targets
+are `desktop:native-working-tree-recaps`, `desktop:native-discard-subset`,
+`desktop:native-discard-busy`,
+`desktop:native-discard-large`, `desktop:native-worktrees`, and
+`desktop:native-reference-copy`.
+
+## Focused configured-tool acceptance
+
+To exercise configured program profiles and custom actions without
+rerunning the full toolkit:
+
+```sh
+pnpm nx run desktop:native-configured-tools
+```
+
+To test an extracted archive, use `python3 tools/native_acceptance.py
+--suite configured-tools --headless --package PATH`. The focused run passed the same
+three configured-tool scenarios on each of the five baselines without
+first running the generic smoke suite (`configured-tools-focused-trimmed/`
+for Ubuntu 22.04 and `configured-tools-baselines/` elsewhere). It covers profile deletion after
+its control becomes ready; it does not replace the full environment suite.
+
+## Earlier 0.1.6 full-ref qualification
+
+The Jammy-built 0.1.6 package with **Copy full ref** has SHA-256
+`731adcc947de13f7caeb56be7b9ee8678b5b420a2def5a4a77809adbbc67744c`.
+The installed `reference-copy` suite opens the real local
+branch, remote-tracking branch, and tag menus with overlapping names,
+pastes each clipboard value into an owned X11 field, and checks that
+HEAD, refs, index, and working state are unchanged. It passed on all
+five Linux baselines. The 78 focused Chromium reference-action tests
+also passed. Evidence is in `target/local-review/jammy-copy-full-ref.z9TkUS7v/`.
+The same archive passed all 22 installed file-history checks on Ubuntu
+24.04, including a real root-commit blame action: **Parent** explains
+that no parent exists and leaves the displayed file, HEAD, and index
+unchanged (`history-root-parent/`).
+Ubuntu 24.04 also upgraded from public 0.1.5, preserved a dirty checkout,
+and passed both X11 launch paths and renderer recovery. The first run
+passed the application checks but reported a cleanup error when a Mesa
+shader-cache write overlapped removal of the private test profile. A
+bounded cleanup retry fixed the harness failure; both logs are retained
+under `upgrade-launch/`.
+The current archive also passed fresh install, desktop-entry and command
+launch, and APT removal on all five baselines. The executable and launcher
+matched the archive before launch; removal left the owned test-user file
+untouched (`x11-launch-baselines/`).
+The same archive passed all 51 checks in the first matrix run. The
+Ubuntu 24.04 clipboard test is now a release requirement; the strict
+verifier accepts all 52 checks with that same-package report
+(`verified-release-matrix-with-ref-copy.json`). To run the focused check:
+
+```sh
+pnpm nx run desktop:native-reference-copy -- --installed --package /path/to/package.deb
+```
+
+The fixture-key rehearsal verified all
+five staged files and the real updater library accepted the signed offer
+in a mock runtime set to 0.1.5. These are local checks, not production
+publication or a live in-app upgrade.
+
+## Earlier Blame input candidate
+
+The local Ubuntu 22.04 package with the Blame line-input fix and updated
+release notes has SHA-256
+`d7aeb70d5809e98be3332d26ddc4114d8a044a6fc9855ac84f0abdeebe65ec13`.
+On Ubuntu 24.04, all 21 installed file-history scenarios passed. The new
+empty-input check keeps focus and the current page, shows an input error
+without offering a retry, and then accepts a valid jump. The previous
+package failed that check. The embedded changelog matches the source and
+the host APT dry run would replace only Git Khronos. In a disposable
+Ubuntu 24.04 install, the upgrade from public 0.1.5 preserved a dirty
+checkout. Both X11 launch paths and bounded renderer recovery passed.
+Fresh installation, both X11 launch paths, and APT removal passed on
+all five Linux baselines without changing an owned file in the test
+user's home (`x11-launch-baselines/`).
+The Ubuntu 24.04 same-version reinstall also proved that the status tool
+identifies the exact still-running old executable by PID; the warning
+clears after exit and both fresh launch paths render the new package
+(`running-same-version-reinstall/`). The command launch still emitted
+DRI3 warnings in this Xvfb setup while rendering a nonblank window. This
+does not qualify WSLg or a Windows taskbar pin.
+All 51 installed release checks passed on the first matrix run across
+Ubuntu 22.04, 24.04, and 26.04 and Debian 12 and 13. The strict verifier
+bound all reports, including the 326 Jammy environment scenarios, to the
+same archive. The fixture-key rehearsal staged and verified all five
+release files; the actual updater library accepted the signed offer in a
+mock runtime set to 0.1.5. A fresh Ubuntu 26.04 worktree run on these bytes
+also proved that double-clicking `dev` from a linked worktree returns to
+the registered primary checkout without detaching or modifying either
+checkout. A focused Ubuntu 24.04 run also confirmed that bulk discard,
+Undo, Redo, and post-restart recovery of the four CTI-sized paths leave a
+staged-only file and the index entries unchanged. The Ubuntu 26.04
+GitLab rerun passed 48 scenarios, including a real WebDriver probe
+that waits for a delayed control and clicks it exactly once. The stricter
+matrix recheck requires these scenarios and incorporates the fresh reports
+(`verified-release-matrix-delayed-navigation.json`).
+These local results are under
+`target/local-review/jammy-blame-input.9c2x7bYY/`. They do not replace a
+hosted production-key candidate or a live update check.
+
+## Earlier minimap candidate
+
+The Ubuntu 22.04 build with the dense-diff minimap cap has SHA-256
+`c9d1a799e54b360164d6086ababb2c300e96d83d397327c3b15afb83a5a71955`.
+The focused native history suite passed 21 checks on Ubuntu 24.04, including
+clicking **Parent** on a line introduced by a rename and verifying that the
+pre-rename path opens at the parent commit without touching the checkout or
+index. The same
+large-diff fixture rendered 512 decorative marks, down from 8,567 on the
+previous package; hunk buttons still navigate to exact changes. The host's
+APT dry run would change only Git Khronos. A separate Ubuntu 24.04
+container upgraded from public 0.1.5 without changing a dirty checkout,
+rendered both X11 launch paths and passed the renderer-recovery check.
+These records are under `target/local-review/jammy-diff-minimap.HX1pBqJW/`.
+The first Ubuntu 26.04 GitLab lane stopped before dispatching the Browse
+GitLab projects click: the Clone tab was visible before its Browse control
+was eligible. The harness now waits for the eligible control and captures
+it in the same read. A fresh smoke and GitLab run using the unchanged
+archive passed after the harness fix; the failing run is retained in
+`matrix-resolute/` and the passing run in `resolute-catalogue-readiness/`.
+This was distinct from the earlier pre-TCP connection failure.
+The strict verifier rejected the original set containing the failure. With
+only that lane replaced by the documented rerun, it verified all 51
+installed checks, including 326 environment scenarios on Ubuntu 22.04.
+`verified-release-matrix.json` binds those reports to the archive. The
+fixture-key rehearsal then staged five verified files, and an offline
+mock 0.1.5 runtime accepted the signed offer using the real updater
+library. No production key, production release, or live updater install
+was used.
+
+## Earlier theme-token candidate
+
+The later theme-token cleanup package, SHA-256
+`96d88cc6ceea47a1292a32c9b0849a5d9e2bfa571bc0ef12dd84abfa4bfe1c94`,
+passed strict verification for all 51 installed lanes. The first run passed
+50 lanes; Ubuntu 26.04 GitLab reported an unclassified connection failure
+before the fixture accepted TCP. A fresh installed run with the same bytes
+and socket-only tracing passed all 47 GitLab scenarios. The failure was not
+a WebDriver stale-click refusal, and its cause is not established.
+`target/local-review/jammy-theme-tokens.uhYhdqAC/test-publisher-verified.json`
+binds the 50 original successful reports and the new GitLab report. The
+initial failure is retained in `matrix-resolute/`; the rerun is in
+`gitlab-connect-diagnostics/`. The exact archive also passed the
+Ubuntu 24.04 APT upgrade and renderer recovery probes in `upgrade-and-render/`.
+Four further Ubuntu 26.04 samples in `gitlab-connect-samples/` exercised
+the first owned connection after smoke under a two-CPU quota. All negotiated
+TLS and recorded exactly one fixture TCP accept and one API request. The
+traces cover only `connect` and `getsockopt` in loopback-only containers;
+the failed connection was not reproduced with tracing enabled.
+Four otherwise comparable runs without tracing also passed
+(`gitlab-connect-untraced/`), with one TCP accept and one API request each.
+This does not isolate tracing or CPU load as the cause of the first failure.
+The fixture-signed assets in `signed-rehearsal/` passed offline updater
+consumption from a mock 0.1.5 runtime and rejected changed package bytes.
+No production signature or hosted update was used.
+Fresh installation, both X11 launch paths and APT removal passed on all
+five baselines for this archive (`exact-launch/`). The workstation dry run
+(`host-apt-dry-run.log`) would replace only `git-khronos`; it neither
+installed the package nor tested the Windows pin.
+In a disposable Ubuntu 24.04 system, `same-version-reinstall/run.log`
+also proves that reinstalling this archive over a different 0.1.6 build
+replaced the executable. The installed-byte checker detected the older
+build beforehand, and both launch paths rendered afterward with the dirty
+fixture checkout unchanged.
+`running-reinstall/run.log` covers a different case: the old app was still
+running during same-version replacement. Its executable was unlinked on
+disk and the status command identified the old process by PID. After
+quitting that owned process, both launch paths rendered the new build.
+`final-release-matrix-replay.json` records a fresh strict verification.
+Separate negative replays refused both a passing report from the previous
+0.1.6 archive and the original failed GitLab report supplied alongside its
+passing rerun. A previous version string or a passing replacement does not
+make the supplied report qualify.
+
+### Previous theme-recap candidate
+
+The portable package with theme-aware recap labels has SHA-256
+`4e84847806319c7c920a66166c797b1319fa40ff3e17b610bdb9bd177dd0fdd8`.
+All 51 installed checks passed on Ubuntu 22.04, 24.04 and 26.04 and Debian
+12 and 13 in the original matrix run. Ubuntu 22.04 passed 325 environment
+scenarios; Ubuntu 24.04 passed 26 recap scenarios including both themes.
+The GitLab catalogue, occupied branch, updater consent and discard checks
+used these same bytes.
+
+In `target/local-review/jammy-theme-recap.MCkDSylQ/`,
+`test-publisher-verified.json` binds the exact package, build receipt and
+fixture key to all reports. `upgrade-and-render/run.log` records the Ubuntu
+24.04 APT replacement of public 0.1.5, both launch paths, renderer recovery
+and unchanged dirty-checkout files. `signed-rehearsal/` contains the locally
+verified release assets. The offline updater library accepted the offer and
+original package, refused corrupted bytes and offered nothing at the
+current version. No production signing, GitHub publication or live
+in-app installation was performed.
+
+`exact-launch/` has fresh-install evidence for the same bytes on all five
+baselines. The desktop entry and terminal command both drew a nonblank
+window. Removal took out the executable and desktop entry and preserved
+the test user's file. This does not verify a Windows taskbar pin.
+
+## Earlier 0.1.6 local qualification
+
+The Ubuntu 22.04 baseline test-publisher package with SHA-256
+`12d5d9a02e7c8f12b8ac3d4d1a2a0bfaa459ffeb48f2489861554969686eba64`
+passed all 49 installed matrix checks on Ubuntu 22.04, 24.04 and 26.04
+and Debian 12 and 13, with no retries. The Ubuntu 22.04 environment lane
+ran 321 scenarios, including the automatic-update consent description
+in the packaged WebKitGTK app. GitLab catalogue and CTI-style discard
+checks used the current harness. The production renderer was 292,329 bytes
+with no budget warning.
+
+Local evidence: `target/local-review/jammy-current-consent.KebefH/`.
+Its `test-publisher-gitlink-gate-verified.json` binds the reports to this
+archive, its build receipt and the fixture public key. The release verifier
+requires explicit evidence of the packaged consent check and of staging and
+unstaging exact binary bytes, executable-bit changes, and a parent gitlink
+without touching a dirty submodule. This is not evidence
+of production publisher signing, public release, or a signed in-app upgrade.
+
+The `apt-upgrade.QVDULY/run.log` in the same evidence directory records an
+offline Ubuntu 24.04 APT upgrade from the checksum-verified public 0.1.5
+asset to that exact candidate. Both launch paths rendered after replacement,
+and the fixture's HEAD, index, unstaged contents and untracked file retained
+their original bytes. This exercised the system package upgrade, not the
+in-app installer.
+
+The later host-local build containing the file-history clipboard fix is a
+different package (`35deb3edd672f094fac7f5c2ad98e30219f4a6377949f632e086169a754b1481`).
+It passed file history (18 scenarios), application updates (23) and discard
+subset (7) when installed on Ubuntu 26.04. The package without the fix fails
+the new clipboard assertion after switching history revisions. Local evidence
+is in `target/local-review/history-feedback-fixed.3ISRj5/`; these focused
+results do not transfer the earlier portable package's matrix qualification.
+
+The subsequent Ubuntu 22.04 baseline package containing that fix
+(`74b42079472fd17ed21e1b8c2d20ced1b72d52a774de134f41fc68b03ade2929`)
+covered all 49 release checks with the receipt selection in
+`target/local-review/jammy-history-feedback.mRldMk/test-publisher-clipboard-gate-verified.json`.
+The standalone signing preflight and the matrix verifier both require the
+installed updater consent scenario. The matrix also requires evidence that
+creating a branch from a stash refuses to overwrite ignored local contents
+and retains the source stash when restoration succeeds.
+The initial reports are retained: Debian 12 incoming-link activation and
+Ubuntu 22.04 GitLab passed on rerun without a verified root cause; the
+Ubuntu 24.04 working-tree and Ubuntu 22.04 environment lanes passed after
+the harness was changed to await Git's authoritative index rather than
+only optimistic UI rows. The focused Ubuntu 24.04 file-history suite also
+passed all 18 scenarios against this same archive.
+Its `apt-upgrade-smoke/run.log` records a fresh check from the public
+0.1.5 package to this exact candidate on Ubuntu 24.04: both launch paths
+rendered and the dirty fixture's HEAD, index and files kept their bytes.
+
+The host-local 0.1.6 build with the expanded Debian changelog is
+`cf5be1c8bc51fef6b4f875ca50aede7ce3f465c5c05746103e7e5b8f230450d4`.
+Compared with the preceding host-local build, the extracted changelog is
+the only changed payload file and `Installed-Size` is the only changed
+control field. The new archive passed 23 installed updater and seven
+discard checks on Ubuntu 26.04. Evidence is under
+`target/local-review/release-notes-local.SfcHzS/`.
+
+The newer host-local build that adds File History's full commit ID action
+(`e7a9132c3729b9bb073078da40afc88c548e4342c263fe07ffa9998cc251c149`)
+passed 56 installed checks across tracked-file search, file history, updater
+and discard on Ubuntu 26.04. Evidence is in
+`target/local-review/history-id-local.Ks9HSq/`.
+
+The matching portable test-publisher build
+(`05bd4248033360044b40631c2bd2945bd574fe85e3cf2bcac82e9c409b061c0b`)
+passed all 49 checks under the gate that now requires the full commit ID
+action. The Ubuntu 22.04 environment lane covered 323 scenarios. Two initial
+failures are retained: Debian 12 GitLab passed after the fixture waited for
+native capture removal; Ubuntu 26.04's TCP refusal check passed on rerun with
+no verified cause for the earlier generic error. See
+`target/local-review/jammy-history-id.oq7Ww4/test-publisher-with-rechecks-verified.json`.
+The same archive passed an Ubuntu 24.04 APT upgrade from the checksum-verified
+public 0.1.5 package, including exact installed executable/launcher matching,
+rendering from both launch paths, and unchanged dirty fixture files and index.
+See `public-apt-upgrade/run.log` in the same evidence directory.
+
+The host-local 0.1.6 package with the clearer **Excluded** line-recap label
+(`516e662e6e366b6ea1735c246b7b51d301df6cd0436ec889ab6478cfc619e557`)
+passed 38 installed checks on Ubuntu 26.04, including visible totals,
+comparison-base tooltips, tracked-file search and discard recovery.
+Evidence is in `target/local-review/recap-label-local.vv7tZ2/`.
+
+The corresponding portable **Excluded** build
+(`0636923d0414c31fd6707304bab671e25a8f239a30555b39cf0e4051796789d1`)
+passed all 49 installed checks on the first attempt. That includes
+323 Ubuntu 22.04 environment scenarios and all 24 Ubuntu 24.04 working-tree
+recap scenarios using the updated label and tooltip checks. Its build
+receipt, test publisher key, and exact reports are bound by
+`target/local-review/jammy-recap-label.WgWuwd/test-publisher-verified.json`.
+The same archive passed an upgrade from the public 0.1.5 package on Ubuntu
+24.04; see `public-apt-upgrade/run.log` in that evidence directory.
+Its `offline-update-consent/` run separately passed a manual check without
+opt-in and verified that both opting in and opting out survive restart.
+It did not exercise signed download or installation.
+On Ubuntu 26.04 the same archive passed 24 focused worktree checks and
+20 performance checks. On the 100,000-commit fixture with 64 branches
+and 36 linked worktrees, the graph opened in 1.75 s and the working-tree
+totals appeared in 2.23 s while renderer tests also ran. At most 57 graph
+rows were rendered. See `focused-worktrees/` and `focused-performance/`.
+After extending stale-element handling to the local Clone and Browse
+GitLab projects controls, the same archive passed all 46 GitLab scenarios
+on each of the five baselines. The harness still sends provider connections,
+reviews and writes only once. The strict
+`test-publisher-catalogue-navigation-verified.json` binds those five fresh
+reports and the 44 unchanged lanes to the same archive.
+The refreshed Ubuntu 24.04 recap lane passed all 25 scenarios, including
+an installed WebKitGTK check at 820 px that keeps the totals, Stage all and
+Discard all visible without overlap or checkout changes.
+`test-publisher-compact-recap-verified.json` binds that updated report,
+the five refreshed GitLab reports and the other 43 lanes to the same archive.
+
+A newer host-local package
+(`f83d331b3e9800b6ecffca6adfee8486a4ffa5d7225c50c8f10e3417b78b2191`)
+adds ellipsis for long File History subjects. All 20 extracted-package
+File History scenarios passed on Ubuntu 26.04 under WSL2, including a real
+commit with a long unbroken subject at 820 px and both copy actions.
+See `test-results/native/file-history-1795558474486384040/report.json`.
+This focused result does not transfer the portable archive's matrix to the
+newer package or verify the pinned shortcut.
+
+The corresponding new portable Ubuntu 22.04 archive
+(`f484d494084faeee98d6bb72b6cb9206f38e4d53d030df809b434a7e0219da2b`)
+requires at most GLIBC_2.34. In an offline Ubuntu 24.04 container, APT
+upgraded the public 0.1.5 package to these exact 0.1.6 bytes. Both installed
+launch paths drew a nonblank X11 window, and the fixture HEAD, index,
+modified file and untracked file still matched their pre-upgrade hashes.
+See `target/local-review/jammy-compact-history.rhdw0RLS/public-apt-upgrade/run.log`.
+Fresh installations of the same archive also rendered from both launch
+paths on all five baselines. APT removal took out the executable and desktop
+entry without removing the test user's marker file. See `exact-x11/`;
+use `jammy-with-harness-path.log` for the Jammy result, since the first
+probe lacked the harness Python path.
+An additional Ubuntu 24.04 experiment used private Xvfb and D-Bus to
+terminate only the freshly launched app's verified WebKit child. After each
+of three crashes the same app process started a replacement renderer and
+drew nonblank content. A fourth crash closed the app, and a new launch drew
+normally. See `native-renderer-recovery/run.log` in the same evidence
+directory. This is not a WSLg compositor or pinned-shortcut test.
+Repeat the experiment with
+`bash tools/check-installed-x11-launch.sh --renderer-recovery PACKAGE.deb`
+as an unprivileged user after installing the exact archive in a disposable
+Linux environment. The probe uses its own profile, display and session bus,
+and signals only a verified WebKit child of the app it starts.
+The Ubuntu 24.04 installed-acceptance job now also runs this probe and
+retains `renderer-recovery.log` with the archive digest.
+This uses a test publisher key and verifies manual APT replacement, not a
+signed in-app update.
+
+The same archive passed all 49 installed matrix checks on the first run,
+including 324 environment scenarios on Ubuntu 22.04 and the compact
+File History check on Ubuntu 24.04. The exact package, build receipt,
+fixture public key and installed results are bound by
+`target/local-review/jammy-compact-history.rhdw0RLS/test-publisher-verified.json`.
+An offline signing rehearsal then staged and reverified the unchanged
+package, canonical manifest, two CycloneDX inventories and checksums.
+Negative checks on those bytes refused a different public key, a
+valid fixture signature for the wrong version, and a changed manifest
+download URL even after updating its checksum. The original set still verified.
+It did not publish assets or test an in-app install.
+The same installed bytes passed all three checks in
+`offline-update-consent/` on Ubuntu 24.04. A manual check ran with
+automatic updates off; an opt-in survived restart and triggered an automatic
+check; and a subsequent opt-out survived restart and kept the manual check
+available. The disposable container had no external network, so it could not
+receive an offer or install an update.
+All 24 focused installed worktree scenarios also passed on Ubuntu 26.04
+(`focused-worktrees/`). Opening an occupied branch went to its registered
+worktree without detaching or modifying either checkout. Cancel and a changed
+owner both left the dirty checkouts intact.
+The Ubuntu 26.04 worktree suite is now a required release lane.
+`test-publisher-worktrees-gate-verified.json` binds all 50 required lanes
+to the same archive and fixture publisher key.
+The Ubuntu 24.04 offline consent suite is also now required for
+publisher-enabled candidates. The hosted lane isolates networking before
+running the app as the unprivileged runner.
+`test-publisher-consent-gates-verified.json` binds all 51 current lanes.
+The hardened initial navigation check also passed in all 47 fresh GitLab
+scenarios on each baseline. `test-publisher-initial-navigation-verified.json`
+binds those five refreshed reports and the 46 unchanged lanes.
+The separate Ubuntu 26.04 installed performance run (`focused-performance/`)
+passed 20 scenarios with a two-CPU container quota. On the fixture with
+100,000 commits, 64 branches and 36 linked worktrees, the graph opened in
+0.99 s, working-tree totals appeared in 1.70 s and at most 57 graph rows
+were rendered. These are local measurements, not hosted-CI timings.
+
 By default, the native acceptance harness tests the production WebKitGTK
 application extracted from the Debian package. It does not install the package, alter a
 personal Git configuration, reuse personal repositories, or expose a
 development-only application endpoint.
+
+The harness inspects, hashes, and extracts one private copy of the selected
+archive. A concurrent rebuild at the original path cannot change the package
+bytes midway through those checks.
+Run the harness with Python assertions enabled. It refuses `-O` or
+`PYTHONOPTIMIZE` rather than treating skipped assertions as passing checks.
 
 The optional `--installed` mode checks both the installed executable and the
 `git-khronos.desktop` launcher against the reviewed package before starting
 WebDriver. It records the installed launcher's SHA-256. This catches a missing
 or stale launcher (including altered link arguments or window identity);
 it does not test host-specific pinned shortcuts.
+
+To verify that both normal launch paths actually draw a window, install the
+reviewed Debian package in a disposable Linux environment and run
+`bash tools/check-installed-x11-launch.sh` as an unprivileged user. It uses
+separate Xvfb displays, D-Bus sessions and temporary homes for the desktop
+entry and direct executable. It samples a rendered window rather than
+relying on a successful launch command, and needs no WebDriver or xauth.
+Pass the reviewed `.deb` as its only argument to first verify that the
+installed executable and desktop entry match that archive (requires Node).
+This is an X11 smoke check, not a WSLg or pinned-shortcut test.
 
 The main-menu smoke journey waits for the actual deferred menu content and its
 focused Manage Repositories action before Tab dismissal. A loading/error escape
@@ -93,10 +878,26 @@ inbox cleanup must not replace the original error with an invalid session ID.
 
 For a long run, read the evidence directory's `progress.json`. It identifies
 the acceptance worker PID in its process namespace, current phase, phase start (seconds into the
-run), and last completed scenario. Phase transitions are not completed
-tests. A failure retains its first failing phase through cleanup, also
+run), and last completed scenario. The full toolkit identifies the active
+group, such as file tools, hosted reviews, Git transport, history, or
+working-tree recovery. `completedPhases` records elapsed wall time and
+scenario counts for phases that have ended, including a phase that failed.
+Phase transitions are not completed tests. A failure retains its first failing phase through cleanup, also
 recorded as `failurePhase` in `report.json`. Only the final report qualifies
 the package; a stale progress file alone is not proof the worker is alive.
+When the run finishes, the console shows elapsed time, scenario count, and
+the three slowest phases. This is diagnostic output, not release evidence.
+Hosted and workspace steps now report fork discovery, branch workflows,
+hosted decisions, and workspace/reference work separately. History pagination,
+stash-stack operations, commit previews, blame, and stash dialogs likewise
+have separate timings. Both the full toolkit and the focused file-history
+suite report responsiveness, output-limit enforcement, and the intentional
+deadline separately. A slow intentional-deadline phase is expected: that
+test holds Git until the application times out and reaps the child.
+Splitting phases does not skip or reorder scenarios.
+To retest branch/tag column hover and focus without running the full toolkit:
+`python3 tools/native_acceptance.py --suite reference-hover --headless --package /path/to/package.deb`.
+It runs the same real-pointer and keyboard-focus checks at all three widths.
 
 Use `--suite checkout-snapshot` to reproduce a same-tip branch switch
 while the application opens a repository. The fixture pauses only the
@@ -119,14 +920,226 @@ keep the uncounted file selectable, and still open the small file's diff
 without modifying Git state or any fixture file.
 
 Use `--suite comparison-responsiveness` to hold Git during the packaged
-commit and working-directory comparisons, at both list and file level.
+commit and working-directory comparisons, at both list and file level,
+and during the commit-count phase of a local branch comparison.
 An unrelated native status query must finish before the held comparison
 is released, and the finished comparison must still return the correct
-file or patch without changing the repository.
+file, patch, or branch tips and counts without changing the repository.
+The Ubuntu 24.04 installed-package release check requires both results.
+The optimized branch counter and unknown LFS toolbar badge passed the
+comparison and LFS-timeout suites against extracted local package
+`660ea2422d781e56f8e690d0b201955540287b8cec71a8eddf640e118ec27dca`
+(`test-results/native/comparison-responsiveness-1795517672155477041/report.json`
+and `test-results/native/lfs-snapshot-timeout-1795517677073296969/report.json`).
+Both comparisons passed in an offline Ubuntu 24.04 installation of
+`827a2780486716684474c8f01d8edcf733990ff5176191f7d8419891d5db3f88`,
+alongside the four merge-preserving rebase checks. See
+`target/local-review/noble-branch-comparison.s0OW6arn/reports/`.
 
 `--suite stash-responsiveness` uses the same check for stash details and
 an individual saved file. It verifies the exact saved patch while both
 the stash ref and the different live working changes remain untouched.
+
+`--suite checkout-responsiveness` holds Git separately during local branch
+switching, explicit remote-tracking branch creation, and reviewed detached
+checkout. Native status must respond while each switch is paused. The suite
+also verifies the resulting HEAD and tree, upstream, and unrelated local
+file against Git.
+The Ubuntu 24.04 release check requires this result separately from
+detached-checkout safety and snapshot coherence. All three passed after
+offline APT installation of
+`7f27ceb3685085535da9222066409815226353198ace26ba5f5afb5bf757a9f6`;
+see `target/local-review/noble-checkout-responsiveness.lkrnflb1/verified.json`.
+
+`--suite history-control-responsiveness` uses the same held-Git check for
+interactive rebase preparation and replay, as well as Continue and Abort
+for both rebase and merge. It checks branch, commit parents and working
+tree after Git settles. The detached-checkout safety suite separately
+exercises ignored-file obstructions during rebase Skip and Abort.
+
+`--suite local-mutation-responsiveness` holds stash save, apply and pop,
+then cherry-pick and revert, while an unrelated native status request runs.
+It checks the exact restored file bytes, stash retention versus removal,
+and the resulting Git history and trees.
+
+`--suite commit-responsiveness` also holds message-only amendment and
+ancestor editing at their real Git commands. Native status must respond
+before the hold is released. Both operations preserve staged and
+unstaged contents, the existing commit trees, and the sibling branch.
+The Ubuntu 24.04 installed gate requires commit responsiveness separately
+from the commit editor's stale-review and rewrite correctness checks.
+The old local package needed the watchdog to release the held Git command
+before native status could respond. Package
+`fca18fa7966c7cda2e0088c0abd78311e6392a18fa5ec78594abe94b41a86fd7`
+passed both commit suites, all five scenarios, after offline installation
+on Ubuntu 26.04. Each held mutation left native status responsive without
+the watchdog. Evidence is in
+`target/local-review/commit-rewrite-responsive.ZsCTuj/`.
+The Ubuntu 22.04-built test-key archive
+`9f41ae58b44d48ec6280735e59a4ca1b90fa3f75c86343d0d5335b7740e4da63`
+also passed both focused installed gates on Ubuntu 24.04. Its receipt
+is under `target/local-review/jammy-direct-commit.yyAzpE/noble-focused-commit/owned/run/`.
+The same archive satisfied all 48 installed matrix checks after an Ubuntu
+26.04 GitLab rerun with socket tracing. Both earlier failures are retained
+in `release-progress-all-attempts.json`; the strict
+`test-publisher-verified.json` selects the passing evidence and verifies
+the exact archive, build receipt, and test public key.
+
+For GitLab connection triage, use `--suite gitlab-connect` for only the
+private TLS Connect flow, or `--suite gitlab-connect-after-smoke` to run it
+after the smoke and SSH setup that precede it in full GitLab acceptance.
+`--suite gitlab-connect-refused` instead reserves a loopback port without
+listening. It checks for the specific TCP-refused diagnostic, a cleared
+token, no HTTP requests, and unchanged Git state. A passing refusal test
+does not establish the cause of a prior intermittent failure. Ubuntu 26.04
+release qualification now requires this refusal test separately from the
+full GitLab suite.
+The local package
+`d39cdc90e190c274590c8b03e4f49193845306265df8477bcec130a0c681319c`
+passed both the refusal test and all 19 Connect-after-smoke scenarios
+after installation in offline Ubuntu 26.04 with a 1.5 CPU limit.
+See `target/local-review/gitlab-connect-diagnostics.MlQQRK/offline-installed.OzaxM5/`.
+This is focused evidence, not a new portable release-matrix result.
+
+On the subsequent portable candidate
+`43b2fb1fe32567c156963224e1bf931d5e465b4a1de99105633c4f96ced5f59a`,
+Debian 13 reported `connect-unclassified` with zero fixture TCP accepts
+and zero HTTP requests; an independent TLS handshake immediately afterward
+succeeded. A socket-traced rerun of the same package passed all 45 GitLab
+scenarios, including one accepted TCP connection and one authenticated
+request on its initial Connect. The tracing covered only `connect` and
+`getsockopt`; it did not reproduce the failure or identify its cause.
+Both attempts are retained under
+`target/local-review/jammy-connection-stage.xwCMYI/`.
+The same archive satisfied all 49 installed checks across five Linux
+distributions. In that directory, `expanded-release-progress.json`
+retains the failed attempt, and `expanded-test-publisher-verified.json`
+binds the selected passing reports and build receipt to the exact archive
+and disposable publisher key. This verifies the test-key candidate only;
+it does not qualify an actual production-signed upgrade.
+The same package passed 20 performance and three update-consent scenarios
+after offline installation on Ubuntu 24.04. With 100,000 commits, 64
+branches and 36 linked worktrees, the graph opened in 797 ms and working-tree
+recaps were ready in 1.67 seconds; at most 57 rows were rendered. The consent
+tests verified manual checks and durable opt-in and opt-out across restart
+without any installable offer. See `installed-extra.Y53kmb/verified.json`
+under the same evidence directory.
+
+The Ubuntu 22.04-built test-key package
+`09ac6dce1a155300340b899ccb8b500f1ba30060621c981fa92856d0016852e9`
+passed the installed performance suite with 20,000 and 100,000 commits,
+64 branches and 36 linked worktrees per fixture. With other acceptance
+containers running, both graphs opened within 1.74 seconds, working-tree
+recaps within 2.26 seconds, and no more than 57 rows were rendered.
+See `target/local-review/jammy-local-mutations.GZVhMo0V/installed-performance/`.
+The same archive passed the full 47-check installed matrix on its first run,
+including 316 Jammy environment scenarios. The strict
+`target/local-review/jammy-local-mutations.GZVhMo0V/test-publisher-verified.json`
+binds the matrix, archive and build receipt to the fixture public key.
+The separate offline consent suite passed all three checks; it did not
+offer or install an update. These are not production-signing or publication
+results.
+
+The next portable test-key package,
+`49318f97a076904bc3bd419b427a76fad5879cb11727676480995725b857e3e4`,
+was built offline on Ubuntu 22.04 with the selected-file discard fixes.
+The ELF requires glibc symbols through 2.34, below the declared 2.35
+baseline. The installed offline consent suite passed all three checks
+against these exact bytes again. The build, checksum, snapshot, ABI check,
+and consent run are under `target/local-review/jammy-discard-scope.skNzLH/`.
+The same archive passed all 47 installed matrix checks after the successful
+Ubuntu 24.04 GitLab rerun. The strict `test-publisher-verified.json` binds
+the passing reports to the exact archive, build receipt, and test public
+key. `release-progress-all-attempts.json` retains both initial GitLab
+failures; they were not treated as passing reports. This package predates
+the renderer's rejected-status retry backoff and the per-path oversized
+discard labels.
+
+Its successor `fe1936f835d964d0b536c2635f1e8199e2369ff0b2443712007042d4bd6d6aad`
+passed all 20 installed performance scenarios on Ubuntu 22.04. In the
+20,000- and 100,000-commit fixtures (64 branches and 36 linked worktrees
+each), history opened in 1.37 s and 1.01 s, and working-tree recaps became
+ready in 2.14 s and 1.79 s. No more than 57 graph rows were rendered.
+These are observations from this exact run, not timing guarantees.
+See `target/local-review/jammy-oversized-discard.A9HBeW/installed-performance/`.
+The same portable archive passed all 47 installed matrix checks on the
+first attempt. The strict `test-publisher-verified.json` binds those
+reports to this archive, the build receipt, and the test public key.
+The newer commit-rewrite worker change was verified only on the separate
+local package above.
+
+## Experimental AppImage launch
+
+The already-built Ubuntu 22.04 candidate executable was bundled separately
+through Tauri after provisioning the builder's `file` package. The resulting
+86 MiB amd64 Type 2 AppImage
+`34f4a96655bf27cfbf408d600a95f78b1c92ffe49866ffce339b85586228900a`
+mapped a 1440 × 900 Git Khronos window in offline Ubuntu 22.04 using
+extract-and-run and a disposable unprivileged profile. Evidence is under
+`target/local-review/jammy-appimage.Eor485hB/`. This was a window startup
+check only, not full runtime qualification. The bundler warned about missing
+copyright files for some bundled libraries; review redistribution and
+notices before distribution.
+
+A read-only audit of the extracted archive matched all 174 ELF files under
+`usr/lib` to the Jammy build packages by ELF build ID. There were 161 files
+with the owning package's copyright notice present and 13 from 10 packages
+whose notices were present on the builder but missing from the archive.
+`payload-notice-audit.tsv` in the evidence directory records the file paths,
+build IDs, package versions, and notice results. This is scoped to that
+payload directory; it neither covers every non-ELF asset nor clears the
+AppImage for distribution.
+
+The rebuilt AppImage
+`77ece1e770e9ad910ad5868c629fd6b323fb3a7da2d47284bef17fdc9945689b`
+includes the ten missing Ubuntu notices and all four project notice files
+through `packaging/linux/appimage-notices.conf.json`. It mapped a
+1440 × 900 Git Khronos window in the same offline Ubuntu 22.04 environment.
+The extracted archive had 176 regular ELF files: all 174 library and
+helper files from the original audit retained their build IDs and now had
+byte-matched Ubuntu copyright notices. The other two, `AppRun.wrapped`
+and `usr/bin/git-khronos`, are listed separately in
+`notices-elf-inventory.tsv`; the AppImage runtime itself is outside the
+embedded filesystem. See `notices-verified.tsv` and
+`notices-appimage-window.log` in the evidence directory. This closes the
+known library notice gaps, not the review of redistribution obligations
+for the runtime, launcher, and non-ELF assets.
+
+The packaged `AppRun.wrapped` is byte-identical to the cached Tauri
+`AppRun-x86_64` downloaded from the `apprun-old` release, as recorded in
+`retry-build.log`. The outer runtime came from the AppImage Type 2
+`continuous` download, as recorded in `notices-build.log`, and its ELF
+contains a reference to upstream revision `fedfad5`. The file hashes and
+ELF build IDs are in `launcher-provenance.txt`. These observations identify
+the bytes in this build, but they do not verify upstream signatures or pin
+either download. Keep AppImage distribution experimental until the launcher
+and runtime sources, redistribution requirements, and pinned build inputs
+are verified.
+
+A later read-only audit matched the embedded runtime to the
+[upstream continuous asset](https://github.com/AppImage/type2-runtime/releases/tag/continuous)
+for commit `fedfad51acc2860b2916a1eef32ba4a500ff31ef`. The downloaded
+asset matched GitHub's reported SHA-256; all 16 bytes that differed from
+the embedded runtime were inside the ELF `.digest_md5` section.
+The [Tauri mirror](https://github.com/tauri-apps/binary-releases/releases/tag/apprun-old)
+also reports the exact SHA-256 of the embedded `AppRun.wrapped`. Both
+release records are mutable. The Tauri release names the upstream
+project but does not identify the launcher's source revision.
+These comparisons establish byte provenance for this test artifact, not
+pinned downloads, upstream signature verification, or redistribution clearance.
+
+The detached signature of the downloaded Type 2 runtime was subsequently
+verified against the [public key committed at that same upstream revision](https://github.com/AppImage/type2-runtime/blob/fedfad51acc2860b2916a1eef32ba4a500ff31ef/signing-pubkey.asc),
+using a fresh local GPG keyring. The signer fingerprint was
+`570C77ACEA40C0F1B758902CBF96CCA56490F695`. This proves the original
+runtime asset verifies against the project's published key, not an
+independently certified identity or a signature on our AppImage. The
+[upstream license file](https://github.com/AppImage/type2-runtime/blob/fedfad51acc2860b2916a1eef32ba4a500ff31ef/LICENSE)
+lists the MIT-licensed runtime and its statically linked dependencies
+separately, including libfuse under LGPL terms. Review those components'
+distribution requirements separately from the runtime's MIT notice.
+The Tauri launcher mirror and a pinned build remain open.
+Evidence: `target/local-review/appimage-runtime-audit.PEdvsX6b/`.
 
 Use `--suite commit-coauthors` to add a suggested and a manual co-author
 through the installed composer. The scenario verifies that editing the
@@ -138,8 +1151,94 @@ without running all setup workflows. It checks the displayed counts and
 their accessible labels together, including singular counts and exclusions.
 It covers staging, rename previews, and updates after an external edit with
 unchanged porcelain status.
+The suite also checks discard selection guidance when Unstaged Files is
+collapsed or a filter hides all loaded unstaged files, without changing Git
+state. The previous portable package timed out at the missing guidance;
+the rebuilt local Debian package passed all 22 recap scenarios and five
+discard-subset scenarios after offline installation on Ubuntu 26.04. See
+`target/local-review/discard-selection-guidance.lQp8xh/` for the exact
+package checksum and both runs.
+
+The portable test-key package
+`eb958f51abb7aa5f7c64f8f0e9f56b71b0c151fd9a44b7d15b05aced82325037`
+also passed the discard guidance check on Ubuntu 24.04 and satisfied all
+49 installed matrix checks across five distributions. A Debian 12 GitLab
+rerun passed all 45 scenarios. The original unclassified connection
+failure had no accepted TCP connection or HTTP request, and an independent
+TLS probe succeeded immediately afterward. Three socket-traced follow-up
+trials passed and did not reproduce it. See the all-attempts and strict
+publisher reports under `target/local-review/jammy-discard-guidance.4t239p/`.
+This package predates the Updates dialog keyboard fix.
 
 ## Focused offline update consent check
+
+The separate `application-updates` suite checks keyboard recovery in the
+Updates dialog without contacting an update feed. The rebuilt local package
+`9ec4da38b0c1103ce691e9da7c0abe8f45f51a81a3a4fd19a0149ccac9733aee`
+passed all 22 installed scenarios in offline Ubuntu 26.04. WebKitGTK reported
+Shift+Tab with `key: Unidentified` and `code: Tab`; focus reached the last
+enabled action without changing Git state. The preceding local build let
+focus leave the dialog on that same input. See
+`target/local-review/updater-webkit-tab.U6Z3WN/` for the passing report.
+
+The portable candidate
+`162c7a8ff663788c91ff0c14816768fc0558aedfcfd967eb8a71e4a208ca6768`
+passed all 49 installed release checks on the first attempt, with no
+rejected reports. The 318 Ubuntu 22.04 environment scenarios include the
+keyboard fix and discard guidance. The same candidate passed 24 focused
+Updates and offline consent scenarios on Ubuntu 22.04. See
+`target/local-review/jammy-updater-webkit.3dqDw0/test-publisher-verified.json`
+and `jammy-focused-updates.1JLhSe/verified.json` under that directory.
+This qualifies the exact disposable test-key build, not a production-signed
+upgrade.
+
+A follow-up local package
+`4d89383816ffa2acbd523cd3b9477270f7a4ad51993bce55817b7e2e8a31f1ce`
+extended the WebKitGTK Shift+Tab fix to the shortcut reference and shared
+confirmations. Offline Ubuntu 26.04 passed 76 setup-keyboard and six
+discard-subset scenarios. The tests preserved the repository and commit
+draft, and moving focus to a discard action did not apply it or create a
+capture. See `target/local-review/shared-webkit-tab.FUQlW5/verified.json`.
+This follow-up is not part of the portable candidate above.
+
+The subsequent portable package
+`ef5a72e1db985a29edd22a3d2dcd450676ae75ffaabd6aa6921d08908054c026`
+passed all 49 installed release checks on the first attempt across five
+distributions, including 320 Ubuntu 22.04 environment scenarios. The
+occupied-branch review, discard confirmation, and shortcut reference each
+verified the Shift+Tab behavior. The same archive passed the focused
+installed worktrees and 20-scenario performance suites on Ubuntu 26.04.
+With 100,000 commits, 64 branches and 36 linked worktrees, the graph
+opened in 1.96 seconds and working-tree totals in 2.33 seconds while
+other qualification lanes were running. See
+`target/local-review/jammy-shared-webkit.A2fc6Y/` for the strict test-key
+publisher report and focused evidence. There were no GitLab retries or
+rejected reports.
+
+For the same portable archive, independent X11 window checks in disposable
+Ubuntu 24.04 and 26.04 containers rendered the installed desktop entry
+via `gio launch` and the installed executable directly. APT removal
+removed both the launcher and executable in each container. See
+`desktop-entry-launch.UrGSOC/` in the same evidence directory. These checks
+do not exercise WSLg or Windows pinned shortcuts.
+The equivalent launch and removal checks also passed on Ubuntu 22.04 and
+Debian 12 and 13; see `desktop-launch-baselines.GSNT7B/`. Those containers
+needed an explicitly managed Xvfb rather than assuming `xauth` was installed.
+
+A separate offline Ubuntu 24.04 run replaced the preceding portable
+0.1.6 package with this build using APT. Both archives have the same
+version but different executable bytes. The installed executable and
+desktop entry matched the replacement, its launcher rendered a window,
+and an owned repository kept its staged index, HEAD and working file
+byte-for-byte. See `apt-replacement.DDtSzY/run.log`. This is a same-version
+APT replacement, not a cross-version or signed in-app upgrade.
+
+After adding the real stale-element probe to the release gate, all five
+installed GitLab lanes passed 46 scenarios each against the same archive.
+The strict verifier combined those new reports with the retained passing
+reports for the other 44 checks. All 49 checks passed with no failures or
+rejections. See `stale-gate-requalification.HR5ut1/verified.json` inside
+the same evidence directory.
 
 In a disposable Linux container with only the loopback interface (for
 example Docker `--network none`), run a test-publisher installer with
@@ -151,6 +1250,38 @@ restore opt-out across a second restart, leaving the scheduler idle past
 its first startup tick without removing manual checks.
 There is no installable offer, no installer is invoked, and the owned
 Git checkout is unchanged.
+
+The local Jammy build with a disposable test publisher key (SHA-256
+`b0d13fa9b646ed445fb688a8b79c349e92f66b41ede4ea10f73a4490b7f97a5f`)
+passed the ABI gate and this three-scenario installed consent suite
+(`target/local-review/jammy-test-publisher.7UueOv/evidence/application-update-consent-1795478483451823651/`).
+The temporary private key was removed before the build; only its public
+key was embedded. This package is not intended for distribution or
+production updater qualification.
+The later fixture-public-key Jammy archive
+(`5c978e6f5014e9512d98456e9a3308dad2c6bbb4c1c3c48f9095d9781b336c2d`)
+also passed all three installed offline consent checks. See
+`target/local-review/jammy-fixture-trust-current.avXgjjEA/offline-consent/run.log`.
+No production key or installable offer was used.
+The same archive satisfied every installed release-matrix lane (42 of 42).
+The installed Jammy inherited-environment run passed 316 scenarios, and
+the strict verifier matched its raw report, the exact archive, and the
+fixture public key to the build receipt. See
+`target/local-review/jammy-fixture-trust-current.avXgjjEA/test-publisher-verified.json`.
+This qualifies the fixture build only, not a production publisher,
+production release manifest, or installer download.
+The installed Jammy performance suite also passed on those exact bytes:
+the dirty 20,000- and 100,000-commit fixtures opened in 463 ms and 443 ms,
+with working-tree recaps ready in 1.31 s and 1.29 s respectively. In each
+fixture the graph rendered at most 57 rows. These are local fixture
+measurements, not a performance promise. See
+`target/local-review/jammy-fixture-trust-current.avXgjjEA/installed-performance/run.log`.
+The same installed package also passed all 304 inherited-Git environment
+scenarios (`environment-1795478498532508715`), including the default-off
+publisher-trust check. The strict evidence preflight matched the package,
+its build receipt, the installed report, and the disposable public key.
+These receipts cannot be combined with the unsigned package's matrix
+because the packages have different checksums.
 
 ## Focused wrapped diff rendering check
 
@@ -278,14 +1409,259 @@ and does not touch Git data. The exact-artifact Ubuntu 24.04 CI job runs it.
 ## Focused selection from a blocked discard review
 
 Use `--suite discard-subset --headless` to exercise the native preview and
-recovery path with staged and unstaged content, a blocked nested file, and an
-unselected root file. Returning to the blocked review must clear the selection
+recovery path with staged and unstaged content, a blocked nested symbolic
+link, and unselected root and nested tracked files. Returning to the blocked review must clear the selection
 and restore keyboard focus. The selected preview must name only the chosen
 root file; confirming restores its staged contents and leaves the other paths
 unchanged. Undo must restore the files and effective Git state, including staged
 entries, flags, refs, and config. Discard and undo must both preserve staging.
 The report retains raw index hashes and diagnostics when they differ; Git can
 refresh cache metadata without changing staged entries or flags.
+
+The same suite tests the direct **Select files for discard** entry point
+against a real nested tracked edit. Cancel returns focus to **Discard
+selected…** and keeps the selection. Confirm discards only the reviewed
+path, leaves the adjacent symbolic link and unrelated root files intact,
+and saves an exact recovery capture. Undo restores the original state.
+The Ubuntu 26.04 local package
+`c9ba02638822af2ed4fa8ad88651e53a2dfde519aeb14579ace6aed9b38d119b`
+passed all five scenarios both from extracted package bytes and after
+installation in an offline, disposable Ubuntu 26.04 container. Evidence is
+under `target/local-review/discard-scope-local.Ef5Do5/`; the previous
+package reproduced the focus failure in the same test. The release evidence
+checker now requires the direct-selection scenario on Ubuntu 24.04 as part
+of the portable installed matrix. The Ubuntu 26.04 run is not a substitute
+for that matrix check.
+
+The suite also checks both bulk and single-file discard and Undo on a tracked
+path with spaces and non-ASCII text. Use `--suite discard-deletion --headless`
+to exercise the single-file action on a deleted nested lockfile with an intact
+parent directory. Confirm must restore the index version, Undo must reinstate
+the deletion, and Redo must restore the file again, without changing staging
+or HEAD.
+After bulk discard leaves only staged changes, the trash control is disabled
+and keyboard focus returns to **Unstaged Files**. The renderer also checks
+that completion does not take focus back after the user moves elsewhere.
+
+Use `--suite discard-stale-review --headless` to check the single-file
+confirmation against an external edit made after preview. The newer edit
+must survive, staging and HEAD must remain unchanged, and the stale
+attempt must not save a recovery capture. The installed Ubuntu 24.04 release gate also
+requires a subsequent fresh review to succeed and Undo to restore the newer
+edit. The suite also opens an unsupported nested symbolic link's discard
+action by keyboard. The app must return focus to the file, keep the
+refusal visible, and not change the checkout or save a capture.
+
+The extracted package with prepared single-file reviews passed both
+stale-review scenarios (`discard-stale-review-1795447846986203281`), all four
+subset scenarios (`discard-subset-1795447328250276073`), deletion and Redo
+(`discard-deletion-1795447342773632872`), and all 18 smoke scenarios
+(`smoke-1795447349865517618`). All four reports use package SHA-256
+`29ced81f11cc9fd7dbc12b5f59da684019e0fa68d99eaa7100ed786723e26a9c`.
+The same extracted artifact also passed all 25 GitLab fork UI scenarios
+(`gitlab-fork-ui-1795447413820771654`).
+The two `file-review-scope` scenarios also passed: an external checkout to
+the same commit blocked the old review, and a fresh review affected only
+the newly selected edit (`file-review-scope-1795447543758088136`).
+The artifact passed all 303 scenarios in the full extracted-package suite
+(`full-1795447384269485830`). This is not evidence for a system installation
+or the hosted release matrix.
+
+The later CTI discard candidate (SHA-256
+`0c4ce6e54f1f466e2cedb1179cee22f1c48e2d7d96ef7a70451a427c51e59de0`)
+passed the native trash-button check: a nested untracked file was discarded
+and restored through Undo without changing the index or HEAD
+(`discard-deletion-1795463977822584808`). The same artifact passed
+`discard-subset`, `discard-stale-review`, and `smoke` for 27 scenarios
+across the four suites, and all 303 scenarios in the full extracted-package
+suite (`full-1795464015281898663`). `task install:linux:dry-run` offered to reinstall
+only Git Khronos. The separate core test
+`discard_large_nested_untracked_batch_and_recover_exact_bytes` verified
+discard and byte-for-byte recovery on the four CTI file sizes using
+disposable files, not the user's checkout. The Linux source-check workflow
+runs that test separately with one test thread because of its larger
+memory and disk footprint.
+After the package was installed locally, the harness verified the installed
+executable and desktop entry against the same installer, then passed both
+`discard-deletion` scenarios and all three `discard-stale-review` scenarios
+using a private profile and disposable repositories
+(`discard-deletion-1795464285217644911` and
+`discard-stale-review-1795464292344902396`). This did not test a pinned
+shortcut or touch the CTI checkout.
+The same installed executable passed all 25 GitLab fork UI scenarios against
+the local HTTPS fixture (`gitlab-fork-ui-1795464328757616970`); no hosted
+workflow was rerun.
+An installed rerun also verified that, after discarding the untracked file,
+the trash button was disabled and the staged lockfile still appeared in
+**Staged Files** (`discard-deletion-1795464906964818050`).
+
+The later memory-bounded serializer build (SHA-256
+`aab390222d460db2e8ad0bd8b12b97475d6e55bd0504495ca85b46b50a8a668c`)
+passed 27 extracted-package scenarios across
+`discard-deletion-1795465178696734516`, `discard-subset-1795465188698207340`,
+`discard-stale-review-1795465201163717588`, and `smoke-1795465209497683565`.
+The renderer accessibility and confirmation-keyboard suites also passed
+all 85 cases locally. None of these checks installed this package.
+The same optimized artifact passed all 303 scenarios in the full extracted
+suite (`full-1795465253058034448`, 379.1 seconds locally). Phase timing
+identified hosted/workspace reviews, file tools, and history/stashes as the
+three longest groups in that run.
+For a larger scenario, run `--suite discard-large --headless`. It creates
+68,584,155 bytes at the four CTI file sizes in a disposable checkout, uses
+the trash button, and verifies every SHA-256 after Undo plus unchanged
+staging and HEAD. The same extracted artifact passed
+(`discard-large-1795465284799313567`); the scenario phase took 17.3 seconds
+on this host, including fixture setup and verification. The installed Ubuntu
+24.04 lane requires this scenario from the exact release package.
+It also requires the same capture to remain discoverable and recoverable
+after a real application restart. That round trip passed on the optimized
+package (`discard-large-1795465505997031168`).
+The installed CTI fix without the serializer optimization also passed
+the scenario on this host (`discard-large-1795465345238569898`, package
+`0c4ce6e54f1f466e2cedb1179cee22f1c48e2d7d96ef7a70451a427c51e59de0`).
+
+Use `--suite discard-limit --headless` to verify that both a single nested
+untracked file just above 64 MiB and a bulk selection containing only
+oversized files report the per-file limit. Neither opens a confirmation
+or changes the repository or capture store. The installed Ubuntu 24.04
+lane requires both scenarios from the release package. The test uses
+sparse disposable files and a separately staged edit.
+
+For a mixed request containing otherwise eligible changes, the review
+labels each known oversized path and leaves confirmation disabled. The
+previous local package did not show those labels. Its replacement,
+`8ac462f068de8c18caf78a9b82e7622840fdcb6d080bcd96ab1f71ffda68cbab`,
+passed the extracted-package test and all four `discard-limit` scenarios
+after installation in a disposable Ubuntu 26.04 container. It also passed
+the 21 working-tree recap and 21 unconfigured updater scenarios there.
+See `target/local-review/oversized-discard-local.ZD83AT/`. This local
+package is not publisher-configured or qualified across the portable
+release matrix. The Ubuntu 24.04 installed release gate now requires the
+mixed-request scenario in addition to the size-specific refusals.
+The portable Ubuntu 22.04-built test-key package
+`fe1936f835d964d0b536c2635f1e8199e2369ff0b2443712007042d4bd6d6aad`
+passed that exact four-scenario requirement after offline installation on
+Ubuntu 24.04; see the focused installed receipt in
+`target/local-review/jammy-oversized-discard.A9HBeW/noble-focused-discard/owned/run/`.
+The same archive also passed all three installed offline consent checks on
+Ubuntu 22.04. The build includes the renderer's rejected-status retry
+backoff, but the offline scenario tests manual dispatch and persisted
+consent, not transport rejection of status reads. The frozen source and
+`snapshot-delta.tsv` show that the newer native commit-rewrite changes
+were not part of this archive.
+
+The local package with SHA-256
+`f3b3e64986719905e0a426a5be7ee6767cc8dba7e07739e151066c3c9e561ce9`
+passed 25 extracted-package scenarios before the bulk limit check was added, across
+`discard-limit-1795468324506668628`, `discard-large-1795468333599054722`,
+`discard-deletion-1795468366319035074`, `file-menu-copy-1795468377025272393`,
+and `smoke-1795468386105488791`. The installation dry run planned to
+upgrade only `git-khronos`; it did not install the package.
+The same extracted package also passed the 25-scenario GitLab fork UI
+suite (`gitlab-fork-ui-1795468517175157824`) and the 45-scenario GitLab
+suite with loopback SSH (`gitlab-1795468539013648712`). The latter used a
+privately extracted OpenSSH server and its required libraries.
+Two later regression checks intentionally failed against that older
+artifact: bulk oversized discard returned the generic nested-path
+refusal (`discard-limit-1795469566014293064`), and Ctrl+Z in the file
+filter triggered repository Undo (`discard-deletion-1795469510502202395`).
+The newer source fixes both; qualification requires passing results
+against a rebuilt package.
+
+The rebuilt local Debian package (SHA-256
+`ebc8d411c0c47fbbba2e4b376ad70184f367f3363b4402ffe53f81e3267369d6`)
+passed both size-limit checks (`discard-limit-1795471667565125435`),
+both CTI-sized recovery checks (`discard-large-1795471678184736059`),
+all three deletion and keyboard checks
+(`discard-deletion-1795471801212335714`), and 18 smoke cases
+(`smoke-1795471814268437036`). The keyboard check uses a real
+Ctrl+Z event and confirms the app does not consume it or mutate Git; the
+Chromium test separately verifies the actual text Undo and Redo behavior.
+This is extracted-package evidence on Ubuntu 26.04/WSL2, not the
+system-installed Ubuntu 24.04 release lane. The install dry run planned
+to update only `git-khronos`.
+The same rebuilt package also passed 25 GitLab fork UI cases
+(`gitlab-fork-ui-1795471870447396710`) and 45 GitLab cases
+with loopback SSH (`gitlab-1795471935569381305`).
+All 303 scenarios in the full extracted-package suite also passed
+(`full-1795472032151361835`).
+The same exact local package was installed in a disposable, network-isolated
+Ubuntu 24.04 container and passed seven installed checks across
+`discard-limit`, `discard-deletion`, and `discard-large`
+(`test-results/native-noble-local.N21Mlk/`). APT's dependency check passed,
+and the harness verified the installed executable and desktop entry against
+the package before launch. This qualifies those local compatibility
+scenarios only: this package declares glibc 2.39, so it is not the Jammy
+release artifact required for the GitHub Actions matrix.
+
+A separate unsigned local candidate built in Ubuntu 22.04
+(`target/local-review/jammy-discard-candidate.fP5Brj/`) passed the glibc
+2.35 ABI gate. The unchanged package SHA-256
+`f7bf6a773f4901f9ae01818a94cbf037e86eebf0b7b3a5a5232b795d71b580bb`
+passed 70 installed checks each in disposable Ubuntu 22.04 and 24.04
+containers. The `installed-jammy/` and `installed-noble/` directories
+retain the exact-package receipts for `smoke`, `discard-limit`,
+`discard-deletion`, `discard-large`, and `gitlab`. This is partial
+local release evidence, not a signed updater build or a completed
+GitHub Actions release matrix.
+On Ubuntu 24.04, another 89 scenarios passed across 24 review suites.
+The original tracked-file-search suite failed at a WebDriver click on an
+unscrolled File History action; after changing the harness to scroll and
+wait for the real hit target, all five cases passed on the same installed
+package. The original and focused rerun reports remain in
+`installed-noble-reviews/` and `installed-noble-tracked-retest/`.
+The unchanged Jammy-built package also passed 63 installed cases on
+Ubuntu 26.04, 69 on Debian 12, and 63 on Debian 13. Each platform ran
+GitLab with loopback SSH; Ubuntu 26.04 and Debian 13 also ran smoke,
+while Debian 12 ran the incoming-link suite. See `installed-ubuntu26/`,
+`installed-debian12/`, and `installed-debian13/`.
+Debian 12 also passed the required incoming-link variant with deliberately
+inherited Git context (`installed-debian12-inherited/`); an ordinary
+incoming-link run does not satisfy that requirement. Jammy passed 58
+additional watcher and Git LFS tests with the pinned Git LFS 3.7.1 binary
+(`installed-jammy-extended/`).
+The first full Jammy environment run stopped after 274 cases at a worktree
+repair dialog. The focused setup suite passed all 63 cases, and a separate
+full rerun of the same installed package passed all 305 cases with
+inherited Git context (`installed-jammy-environment-retest/`). The captured
+`local-release-progress.json` still accepts only 41 of 42 release checks:
+the successful unsigned run lacks the required publisher-trusted startup
+scenario. No signing or release publication was performed.
+
+## Copying a path from a file menu
+
+Use `--suite file-menu-copy --headless` to exercise the actual clipboard
+write from working-tree and commit menus. The fixture uses spaces, brackets,
+and accented characters and checks that copying leaves HEAD, the index,
+and the working files unchanged. Renderer tests check the exact clipboard
+argument, keyboard focus, clipboard refusal, and out-of-order feedback.
+The extracted Debian build at SHA-256
+`5e2e65a808668dd9ed4e4b7c7f75463d742a7d00cc49770f603adf170c90530d`
+passed both file-menu clipboard scenarios
+(`file-menu-copy-1795466241819729205`), both large-discard scenarios
+(`discard-large-1795466248211180086`), and all 18 smoke scenarios
+(`smoke-1795466269745656101`). Ubuntu 24.04 installed acceptance requires
+both clipboard scenarios for the exact release package.
+
+The broad run on this artifact exposed a timing failure: it queried
+**Branch workflows** before the deferred workspace menu made that control
+visible (`full-1795466327922033574`). The harness now waits for a visible,
+enabled hit target and sends one click. The focused suites passed on the
+same package (`branch-workflow-ui-1795466565210836978` and
+`branch-workflow-recovery-1795466585928724293`); these do not replace the
+original failed broad result. A new full run on the unchanged artifact
+passed all 303 scenarios (`full-1795466627874107572`).
+
+The subsequent discard completion-focus build, SHA-256
+`a4ed4091c042debe5abcb0a05229fca981bfe53bec464802a388a1a060426233`,
+passed 25 focused scenarios in `discard-deletion-1795467030431781591`,
+`discard-stale-review-1795467041141688375`, `file-menu-copy-1795467050868963175`,
+and `smoke-1795467061919563665`. The deletion suite checks that focus returns
+to the Unstaged Files heading when the trash button becomes disabled.
+The same package passed all 303 scenarios in the full extracted run
+(`full-1795467124615800292`, 349.3 seconds). The harness also uses the
+readiness-aware single click for **Repository overview** and **Reviews and
+checks**, which are deferred in the same workspace menu.
 
 ## Focused initialization of one submodule
 
@@ -374,7 +1750,60 @@ review must still discard the intended edit and create one recovery capture.
 Both scenarios are required by the Ubuntu 24.04 workflow and exact-package
 release checklist.
 
+## Focused hosted fork attachment
+
+To isolate the hosted fork attachment journey from the long environment run,
+use `--suite hosted-fork-remote`. It uses a local provider fixture, verifies
+the separate review and confirmation, and checks that attachment did not
+create a remote fork or alter the checkout.
+
 ## Focused feature rebase review
+
+Use `--suite merge-rebase-review` to exercise the separate **Rebase
+preserving merges** workflow from a local branch menu. The owned fixture
+checks the native review against Git's exact source, destination, common
+base, and both merge parents. Cancel must leave the checkout and all refs
+unchanged. The suite also advances the destination externally to verify that
+stale execution is refused before writing, then executes a fresh review and
+checks both rebased parents, the untouched side refs, and the recovery tip.
+The suite holds the real Git replay while checking that an unrelated native
+status request still completes. The Ubuntu 24.04 installed-package release
+check requires all five results, including dismissing a held preview.
+The first three passed in an offline Ubuntu 24.04 container after APT installed
+the existing portable test-key package
+`5c978e6f5014e9512d98456e9a3308dad2c6bbb4c1c3c48f9095d9781b336c2d`;
+`target/local-review/noble-merge-rebase.92oRAt3V/verified.json` binds the
+focused result to those exact package bytes. This does not qualify a
+production signing key or a newer package.
+All four passed against the newer local Debian package
+`ba4fd6793348f8b0a07eb07db406934a5927965ed1527dcd76b0fabcaca04bb1`
+in extracted-package mode
+(`test-results/native/merge-rebase-review-1795515659672489098/report.json`).
+The held Git replay blocked the status request on the older package,
+confirming that the new runtime check detects the freeze.
+The same newer archive also passed the four rebase checks, 21 working-tree
+recap checks, and three stale-discard checks after APT installed it in an
+offline Ubuntu 24.04 container. Exact-archive focused verification:
+`target/local-review/noble-background-rebase.6yopYQng/verified.json`.
+The newer archive
+`0a368f487e52ad89da22c4ed0cd5a30deb073cdff2dae7fbe13574f218d91462`
+also passed all five extracted-package scenarios, including Escape during a
+held native preview and the absence of any late review dialog or Git writes
+(`test-results/native/merge-rebase-review-1795517018086063786/report.json`).
+The exact same archive passed both installed comparison scenarios and all
+five installed rebase scenarios in offline Ubuntu 24.04. See
+`target/local-review/noble-rebase-dismissal.QLkEeyIC/verified.json`.
+
+The later Ubuntu 22.04-built test-key candidate
+`dafbf25852bc115d449ccadaf5d8b84df8e660d2810a6ada24cb742271988b5f`
+passed all 44 required installed checks across the five Linux userspaces.
+The Jammy environment retry passed 316 scenarios with the guarded fork
+navigation; the Noble GitLab retry passed 45. Both original failed reports
+remain in `target/local-review/jammy-current-reviews.JzKGNW9M/`.
+Its `test-publisher-verified.json` binds the passing matrix to this package,
+build receipt, and fixture key. The separate `offline-consent/` report
+records three passing manual and automatic update consent scenarios, not
+an actual signed upgrade.
 
 Use `--suite feature-rebase` to verify that Branch workflows opens a
 separate rebase review against the configured development branch. The
@@ -391,13 +1820,33 @@ The exact-artifact Ubuntu 24.04 CI job also runs this suite.
 The renderer suite uses Chromium with an isolated development server and mocked
 IPC where applicable. It tests UI behavior, focus, and lifecycle decisions. It
 does not replace the separate packaged WebKitGTK or installed Linux checks.
+For a quick local check, pass a spec or Playwright filter through Task:
+
+```sh
+task test:e2e -- e2e/renderer/keyboard-shortcuts.spec.ts --workers=1
+```
+
+For a focused cross-browser check, install Playwright WebKit with
+`pnpm exec playwright install webkit` if needed. Use a test environment
+with the browser's required system libraries, then opt in explicitly:
+
+```sh
+GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run desktop:e2e -- \
+  --project=webkit e2e/renderer/history-search.spec.ts -g 'blame jump'
+```
+
+This adds a local browser project; it does not change the default Chromium
+shards or test the packaged app's system WebKitGTK and native bridge.
 
 Desktop CI runs four Playwright shards on independent Ubuntu 24.04 runners.
 Each uses one browser worker and no retries. Failure in one shard does not
 cancel the other shards; each failed shard uploads any available report, traces,
 and screenshots under `renderer-failure-<run>-attempt-<attempt>-shard-<shard>`.
 The existing **Checks and renderer acceptance** status passes only after the
-Linux TypeScript/Rust/harness checks and all renderer shards succeed. Packaged
+Linux production renderer build, TypeScript/Rust/harness checks, and all
+renderer shards succeed. The production build runs before the Rust tests
+and retains its initial-asset report when available, including a recorded
+budget failure. Packaged
 native and exact-installer acceptance continue in their separate jobs.
 
 Reproduce one shard on a machine with the lockfile dependencies and Chromium
@@ -413,8 +1862,458 @@ CI=true NX_DAEMON=false NX_ISOLATE_PLUGINS=false NODE_OPTIONS=--max-old-space-si
 
 Use a different `PLAYWRIGHT_PORT` and output/report directory for each
 simultaneous local run. The Playwright-managed server builds once without
-file watching. Use `CI=true` as above to require a fresh server rather than
-reusing anything already listening on the selected port.
+file watching. By default, local runs also require a fresh server rather than
+silently testing anything already listening on the selected port. Set
+`PLAYWRIGHT_REUSE_SERVER=1` only when you intentionally want to reuse the
+known application server at the selected port; `CI=true` always requires a
+fresh server.
+Use the Node version pinned in `.nvmrc` (`nvm use`) when reproducing CI.
+One local run on Node 26.13.1 hit a V8 abort in the Angular server
+(`Lazy deopt after a fast API call with return value is unsupported`).
+If the server exits mid-run and subsequent tests report connection refused,
+preserve the log and rerun with the pinned version in a separate results
+directory. Those connection errors do not establish renderer regressions.
+
+Local renderer checkpoint on Node 24.21.0: the full run in
+`test-results/renderer-current.5cLzs7/` finished with 2,771 passes and one
+failure. The failure expected regular nested files to be blocked by the
+browser discard preview. The corrected test now distinguishes eligible
+regular nested files from blocked type changes; the entire file-operation
+spec passed (22 tests, `test-results/renderer-file-lifecycle.TZLlAH/`).
+The 10 keyboard tests, including changes made after the full run started,
+passed separately (`test-results/renderer-recovery-shortcuts.AxpOA4/`).
+These runs do not convert the original full result into a pass.
+
+The next full run (`target/validation-runs/renderer-final-1795472569259974852/`)
+reported 2,768 passes, five failures and one timeout. It included the
+corrected discard preview and keyboard cases. The deferred-menu harness
+now drains outstanding routes before teardown; all 28 focused cases passed.
+The graph resize fixture now tests flexible and narrow messages separately.
+Both variants and the three other affected workspace tests passed three
+focused repetitions; the hover case then passed five repetitions with a
+controlled clock. The full run overlapped packaged WebKit and Rust work
+and the host exhausted swap; prefer running broad suites separately on
+this host. No clean full run of these later test changes is claimed.
+
+Local Ubuntu 26.04/WSL2 checkpoint: Debian 0.1.6 amd64, SHA-256
+`781eb9bd918dfbf04d5bcb63a1d14de9e5d3a4213675c4a97787917db443c9a2`,
+passed package verification and these extracted-package suites:
+`smoke` (18 scenarios), `file-history` (16), `gitlab-fork-ui` (25), and
+`full` (303).
+Their reports are under `test-results/native/` in
+`smoke-1795430092845542225`, `file-history-1795430228515747593`, and
+`gitlab-fork-ui-1795430417354700883`, and `full-1795430521066694405`,
+respectively. The scenario totals overlap. On the same host, the installed
+`/usr/bin/git-khronos` also passed all 18 smoke scenarios after the harness
+verified the executable and desktop entry against the package
+(`test-results/native/smoke-1795438509183321885/report.json`). The same
+installed artifact passed all 10 working-tree recap scenarios
+(`test-results/native/working-tree-recaps-1795438578236021055/report.json`).
+Installed File History also passed all 17 scenarios, including WebKit's
+successful clipboard write for a deleted path without a HEAD, index, or
+working-file change
+(`test-results/native/file-history-1795439218694712576/report.json`).
+These focused runs do not qualify the full suite against the system installation, host-specific
+pinned shortcuts, or a hosted CI run.
+
+The subsequent extracted Debian build with nested-file discard and the
+eligible-file chooser (SHA-256
+`5c94ff3df500bc568be59cefaffc3d0876fb01f54e28510c8969a12b458870d2`)
+passed all 25 GitLab fork UI scenarios again
+(`test-results/native/gitlab-fork-ui-1795445561478311434/report.json`).
+The harness reacquires catalogue navigation controls after a confirmed
+WebDriver stale-element refusal; it does not replay fork submissions or
+clicks with uncertain outcomes.
+The same extracted artifact passed `detached-checkout` (28 scenarios) and
+`worktree-reservation` (1 scenario), including guidance for a reserved
+branch without changes to either checkout
+(`detached-checkout-1795445652343155082` and
+`worktree-reservation-1795445702084541374` under `test-results/native/`).
+
+The extracted Debian build that adds discard of deleted nested files
+(SHA-256
+`4e447edcacd8bc254349fa98b78c8d9b2d80556b6436579e89b333674f3b9b3f`)
+passed `discard-deletion` (1), `discard-subset` (4), `smoke` (18),
+`application-updates` (20), `working-tree-recaps` (10), `file-history`
+(17), and `full` (303). See `discard-deletion-1795445796825116566`,
+`discard-subset-1795445805185205289`, `smoke-1795445821629681682`, and
+`application-updates-1795445917332431919`,
+`working-tree-recaps-1795445991232896285`, and
+`file-history-1795446011624829028`, and `full-1795445878903713900` under
+`test-results/native/`. Counts overlap across suites.
+The updater check used the unconfigured-trust mode, not a publisher-signed
+release. `task install:linux:dry-run` reused the verified build and offered
+to upgrade only `git-khronos`; no installation was performed.
+
+The newer extracted Debian build (SHA-256
+`352cc46e302ecc9e59e047250a5ae34b990315ba56e57de9e08888673452356e`)
+passed `full` (305), `working-tree-recaps` (11), `application-updates` (21),
+and `discard-limit` (2). This covers collapsing Staged Files without changing
+the checkout, opening Updates from the command palette without changing
+consent, and the large-file discard limit. See
+`working-tree-recaps-1795482771581334695`,
+`application-updates-1795482782978589331`, and
+`discard-limit-1795482804235290981`, plus `full-1795482839887114658` under
+`test-results/native/`. The same archive passed the three focused suites
+(34 scenarios per distribution) after APT installation in disposable,
+network-isolated Ubuntu 24.04 and 26.04 containers. These reports verify
+`/usr/bin/git-khronos` against the exact archive; see
+`test-results/staged-layout-installed.0MnADn53/`. Both distributions also
+passed all 45 installed GitLab scenarios, including the catalogue and
+loopback SSH, against the same package
+(`test-results/staged-layout-installed-gitlab.XqYe9ptg/`). This is not a
+publisher-signed release, and it does not qualify a host's pinned shortcut.
+
+A separate offline Ubuntu 22.04 build from the updated source passed the
+glibc 2.35 ABI gate (archive SHA-256
+`af6e014906d9bf0cac14ea589fc0a7082791485a9aa2a65cb1fc3062ae28663c`).
+The exact unsigned archive passed the same four installed suites (79
+scenarios per distribution) in isolated Ubuntu 22.04, 24.04, and 26.04,
+and Debian 12 and 13 containers. See `target/local-review/jammy-current.JDhP32pK/`,
+including the ABI result in `build.log` and installed reports for `jammy-retest`,
+`noble`, `resolute`, `bookworm`, and `trixie`. These results do not qualify the different
+glibc 2.39 archive or a future publisher-signed artifact.
+The release evidence verifier accepted 41 of its then-required 42 checks for this archive
+with no failed or rejected reports. The remaining Ubuntu 22.04 environment
+check requires the native updater to recognize an embedded publisher key;
+the passing unsigned environment report cannot establish that scenario.
+The inherited-environment run completed all 307 scenarios applicable to the
+unsigned build. The local verifier output is in `current-release-progress.json`
+beside the build log; `--release-matrix` returned exit 1 because the required
+publisher-trust scenario is absent.
+In a separate isolated Ubuntu 24.04 check, `gio launch` opened the
+APT-installed desktop entry from that same archive. X11 pixel sampling
+confirmed that the window rendered despite a DRI3 warning, without any
+WebKit compositing override. See `launcher-noble/default.log` alongside
+the portable build. This does not reproduce WSLg or validate Windows pinning.
+
+The later local Debian build with the bulk-discard palette entry (SHA-256
+`dc2c5ca52d5bf759185754a54b5a2366d2403ad6b0185e18250a4aad4bfac798`)
+passed all four extracted `discard-deletion` scenarios. This includes opening
+the bulk review by keyboard while a filter hides an untracked file, then
+cancelling and restoring focus without changing the checkout. See
+`test-results/native/discard-deletion-1795485790604513728/`.
+The same package passed 12 installed discard scenarios across
+`discard-deletion`, `discard-subset`, `discard-limit`, and `discard-large` on
+isolated Ubuntu 24.04 (`target/local-review/palette-discard-dc2c5ca5/noble-installed/`).
+The complete renderer discard-recovery spec passed all 50 cases.
+The subsequent keyboard-focus build (`56c16c8bbff1b98a3ee81063e374c7b0a6b3ce45b5219b192b80c896eacb6a8d`)
+passed seven installed checks on isolated Ubuntu 24.04, including both the
+successful palette preview/cancel and the oversized-file refusal paths. The
+release gate now requires both palette scenarios. This local package has
+a glibc 2.39 floor and does not qualify the portable release matrix.
+
+The newer Ubuntu 22.04 portable archive
+(`a9ee8e8be03eccb4bb9cedd8becd2dad34d5b7817bb823682fe115ce12b4927a`)
+passed the glibc 2.35 gate and 41 of 42 exact-package installed checks across
+the five-distribution matrix, including both new keyboard scenarios. Its
+Ubuntu 22.04 environment run passed all 307 scenarios applicable to the
+unsigned build. The verifier recorded no failed or rejected reports and
+identified only the absent publisher-trust scenario. See
+`target/local-review/jammy-palette.otam6d9M/current-release-progress.json`
+and the raw reports in its `installed/` directory.
+
+The later local archive with the bulk-index pagination fix
+(`b014a2b29c4e96aa7e06015a87a1b53d6e77e29d9a2e3027cd8bf804275a64cd`)
+passed all 13 extracted `working-tree-recaps` scenarios. The new checks
+verify both bulk actions against real changes beyond the initial 1,000
+status rows while preserving working files, HEAD, and refs. See
+`test-results/native/working-tree-recaps-1795488757138501575/`.
+The same archive passed 20 installed working-tree and discard scenarios on
+isolated Ubuntu 24.04 (`target/local-review/paged-index-b014a2b2/noble-installed/`).
+Its full extracted-package run also passed all 307 scenarios
+(`test-results/native/full-1795488998318369806/report.json`).
+The combined renderer run for discard recovery, conflict safety, and
+application updates passed all 83 cases.
+
+The subsequent full renderer run for the checkout-bound palette actions
+passed all 2,783 cases (Node 24.21.0, two workers;
+`target/validation-runs/renderer-whole-tree-1795489775417433376/result.json`).
+This is renderer evidence, not an installed-package result. It used the
+original graph test setup; the optimized setup has a separate run.
+The Debian archive with the checkout guard
+(`22087b40843289e768c2091eb370682d7f7144859ac96146e1ea9ecbc8defc73`)
+passed the extracted `working-tree-recaps` (13), `discard-deletion` (4),
+and `discard-limit` (3) runs. See
+`working-tree-recaps-1795493036887238169`,
+`discard-deletion-1795493049173102525`, and
+`discard-limit-1795493058461436040` under `test-results/native/`.
+
+The portable build of the same application changes with the **test publisher
+public key** embedded
+(`ef1f8d525c0e68fd80571f5d923e8b4a5c4bd7376408bbc5a03eebaa001067ff`)
+passed all 42 installed matrix checks. The full Ubuntu 22.04 environment
+run passed all 308 scenarios, including configured trust with automatic
+updates off and no installable offer. The strict verifier matched the ABI,
+exact archive, build receipt, installed reports, and test key. See
+`target/local-review/jammy-guard-trust.FA0UrGiW/test-publisher-verified.json`.
+This qualifies the test-key artifact only; it was not signed or published.
+The same installed archive passed three separate offline consent scenarios:
+manual checking without automatic consent, opt-in surviving a process
+restart and scheduling a check, and opt-out surviving a restart while
+manual checks remain available. See `consent-installed/` beside that report.
+
+The later local pagination-focus package
+(`3c01952966652fb1254de6f7f4946ba6c8217c358e08440613efb81edfc41eec`)
+passed all 14 extracted working-tree scenarios, including keyboard focus
+return after loading the final page and no change to the fixture checkout.
+See `test-results/native/working-tree-recaps-1795495972172898851/report.json`.
+It predates the separate guard for a late pagination result after switching tabs.
+The later archive with that guard
+(`41d840918358c29dfe39ed1ee9cfafaa158b8504b21f4d7998b5936054da5579`)
+passed 43 installed checks in isolated Ubuntu 24.04: 28 detached-checkout,
+one worktree-reservation, and 14 working-tree pagination and recap checks.
+See `target/local-review/pagination-checkout-41d84091/noble-installed/`.
+
+The later build with one status-page request per checkout
+(`8cc4ff5bf359d216e7555c6fe56e3e111ad8c49e07cf7fcf1ec9aff3cb74f398`)
+passed 35 installed checks on isolated Ubuntu 24.04, covering working-tree
+recaps and keyboard paging, coherent checkout snapshots, and LFS count
+and lock workflows. See
+`target/local-review/independent-pagination-8cc4ff5b/noble-installed/`.
+The 22-case renderer status-pagination and working-tree lifecycle run
+separately exercised overlapping requests in distinct tabs.
+
+The first-status diagnostics regression reproduced a stall with
+`8cc4ff5b…`: the fixture began writing 2 MiB to Git's diagnostic pipe but
+did not reach the status gate
+(`test-results/native/first-status-1795497967766862376/report.json`).
+The fixed archive
+(`e0e5def4496cb35e07071cee991258ddb8a9878caf2bf2011071afa0357af092`)
+passed 18 extracted checks across first status, working-tree recaps, and
+checkout snapshots. The exact-packaged first-status report is
+`test-results/native/first-status-1795498374880559597/report.json`.
+It also passed those 18 checks after APT installation in isolated
+Ubuntu 24.04 (`target/local-review/bounded-status-e0e5def4/noble-installed/`).
+In a separate network-isolated Ubuntu 24.04 container, the installed-status
+checker ran as an ordinary user against that same APT-installed archive.
+It produced no advisory for the normal command path, warned about both a
+shadowing executable and an older per-user desktop entry, and did not
+execute the shadowing file. A symlink to the packaged executable cleared
+only the command-path warning. This does not qualify Windows shortcut
+resolution or a separate desktop session's environment.
+The subsequent local package (SHA-256
+`54d55c986e06ef3a578e349cd59e3d2a042ea4d114f3555f1445e303fb090a8c`)
+passed all 14 working-tree recap checks both extracted and APT-installed
+in isolated Ubuntu 24.04. The staged disclosure test now checks Enter and
+Space, retained focus, valid control targets when expanded, and an unchanged
+checkout. See `working-tree-recaps-1795501141919357805` under
+`test-results/native/` and
+`target/local-review/disclosure-54d55c98/noble-installed/run-with-driver.log`.
+That package also passed all 308 full extracted scenarios
+(`test-results/native/full-1795501167529451434/report.json`). The release
+matrix now requires the whole-checkout stash untracked-inclusion scenario
+in the focused installed `stash-selection` report.
+The next local package (SHA-256
+`c420a5ee268e8ed2333cdb680fab53b2ce981bb5957de3f5cec9ef392a25225a`)
+contains the count-only preflight for whole-checkout stash. It passed
+`stash-selection` (5 scenarios) and `working-tree-recaps` (14 scenarios) after
+APT installation in isolated Ubuntu 24.04. See
+`target/local-review/stash-c420a5ee/noble-installed/run.log`.
+The subsequent stash pagination package (`dc5a8838…`) passed all six
+`stash-selection` scenarios both extracted and APT-installed in isolated
+Ubuntu 24.04. The release gate now also requires the pagination scenario:
+the test selects across two real status pages, verifies loading changes
+nothing, and reads the stash tree to confirm it contains only the two
+selected paths. See `test-results/native/stash-selection-1795502391636243986/`
+and `target/local-review/stash-pagination/noble-installed/run.log`.
+The same package passed the full extracted run (308 scenarios, 336.6 s).
+The slowest phases were integrity and file tools (64.6 s), history previews
+and blame (52.1 s), and workspace and references (44.9 s). These are
+local wall times, not CI targets. See
+`test-results/native/full-1795502510960089525/`.
+With the faster initial WebDriver read-only polling, the same archive
+passed extracted `gitlab-fork-ui` (25 scenarios) and APT-installed `gitlab`
+(45 scenarios) in network-isolated Ubuntu 24.04. The full GitLab suite
+used OpenSSH inside the container, not a host SSH server. See
+`test-results/native/gitlab-fork-ui-1795503124108100598/` and
+`target/local-review/stash-pagination/noble-gitlab-fast-poll/run.log`.
+The next local archive (`d89a8fb794d010b35b07b78364d0f12deb86ff2b7e3df0d8e26ba7317e26f3c8`)
+contains the stash dialog's single error announcement. It passed all six
+extracted stash checks and 22 installed stash and discard checks, including
+the large nested files, stale review, and recovery limits, in isolated
+Ubuntu 24.04. See `test-results/native/stash-selection-1795503435989198065/`
+and `target/local-review/stash-alert-d89a8fb7/noble-installed/run.log`.
+The next archive (`eaf26033036cec579927df9e01a53ba7a337004f85cd4d71c1d4a28f33ca185e`)
+passed all 15 working-tree recap checks both extracted and APT-installed in
+isolated Ubuntu 24.04. Installed release evidence now requires the added
+check that the staged disclosure and extra unstaged space survive a reload
+without changing the checkout. See
+`test-results/native/working-tree-recaps-1795503959741841312/` and
+`target/local-review/disclosure-persistence-eaf26033/noble-installed/run.log`.
+The subsequent archive (`3491f3b5264229095c96c4e58786c33dc01ebde652989c55e9caef7e94293f39`)
+passed all 16 working-tree checks extracted and APT-installed in isolated
+Ubuntu 24.04. The release gate additionally checks that collapsing Unstaged
+Files expands the staged viewport and reopening it restores the previous
+height without writing to the checkout. See
+`test-results/native/working-tree-recaps-1795504668646887892/` and
+`target/local-review/symmetric-file-sections-3491f3b5/noble-installed/run.log`.
+The stash-filter archive (`8be74c45091fd9038a5e282e3afdce700421741d7f6de1e4d873ba1343f37c4e`)
+passed all seven installed stash checks in isolated Ubuntu 24.04.
+Release qualification now distinguishes pagination from filter safety:
+the latter must show that a hidden selection stays in the exact stash while
+an unselected path is left alone. See
+`target/local-review/stash-path-filter/noble-installed/run.log`.
+The same exact archive passed all 310 full extracted scenarios in 325.6 s.
+See `test-results/native/full-1795505327519880371/report.json`. The two
+additional full-run scenarios cover retained staged disclosure and the
+staged viewport expanding when unstaged files are collapsed. The focused
+installed stash suite remains the evidence for filtering hidden selections.
+The next local archive (`8f9d36cee5333df172ecf3c1dcb5961e200100835b0984701157124dc72ddff9`)
+passed eight stash and 16 working-tree checks after APT installation in
+isolated Ubuntu 24.04. The stash gate now explicitly requires that selecting
+matching paths adds only loaded matches and retains earlier selections.
+See `target/local-review/stash-matching-8f9d36ce/noble-installed.log`.
+The next archive (`56cb5421fc052c4234d7c07ccfba5b7ac2233ba83ad289da1a93ee6afd09e0be`)
+passed 17 working-tree checks and eight stash checks after APT installation
+in isolated Ubuntu 24.04. The release gate now checks that **Filter Changed
+Files** opens the inspector, focuses the filter and leaves the draft and
+checkout intact. See
+`target/local-review/palette-file-filter-56cb5421/noble-installed.log`.
+The next archive (`c4eaf04fcda1f2ec81504d5fc2fdda9857a71b7722804be385af57baf9d4bf1b`)
+passed 18 working-tree, eight stash, 45 GitLab, and 21 application-update
+checks after APT installation in isolated Ubuntu 24.04. The working-tree
+gate now requires the palette's two section-specific focus commands.
+The update run uses unconfigured publisher trust; it does not verify a
+live signed release. See
+`target/local-review/palette-file-sections-c4eaf04f/noble-installed.log`.
+The next archive (`2567b42419dd099f0a2d1ba4ded0873bd4f9198d6b33867215483dbdac3f7824`)
+passed 19 working-tree and 16 discard checks after APT installation in
+isolated Ubuntu 24.04. The working-tree gate now also checks that opening
+and cancelling the discard picker works with a collapsed unstaged list
+and leaves the checkout untouched. See
+`target/local-review/discard-picker-2567b424/noble-installed.log`.
+The next archive (`7fd07578c7692c037ee5280a1efba47cc1cb589f8b180491d948dd9b29aaf20c`)
+passed 20 working-tree and nine discard checks after APT installation in
+isolated Ubuntu 24.04. The release gate also checks disclosure of selections
+hidden by the filter and keyboard focus after cancelling. See
+`target/local-review/discard-count-7fd07578/noble-installed.log`.
+The next archive (`ea9017ef83000f723c1b7cc19ce4a5f1be416e299ccf8bd28c02f2be4fb56143`)
+passed 21 working-tree and eight stash checks after APT installation in
+isolated Ubuntu 24.04. The gate now covers the loaded match counts on
+collapsed working-tree sections. See
+`target/local-review/section-matches-ea9017ef/noble-installed.log`.
+The portable archive built from the retained current development snapshot
+(`3ae112598478d4384aa172216a7890d68cbc5278fab4e3cfe21999f4b5c1c6e6`)
+declares the Jammy glibc 2.35 floor and passed smoke (18), working-tree
+recaps (21), and stash selection (8) after APT installation on each of
+Ubuntu 22.04, 24.04, 26.04, Debian 12, and Debian 13. The images were
+network-isolated; Jammy used the separately supplied Git in the test image.
+The initial Jammy attempt did not dispatch tests because its versioned
+Python was not on PATH. See `target/local-review/jammy-current.2EG27MFM/`
+for the ABI result, source snapshot digest, and successful installed logs
+(`installed-jammy-retry` for Jammy). This unsigned archive has focused
+cross-distribution evidence, not complete release or publisher qualification.
+The expanded run against those same bytes satisfies 41 of 42 installed
+release-matrix checks (`latest-release-progress.json` in the same directory).
+Debian 12 incoming links needed the inherited Git environment; Jammy LFS
+counts needed the separately supplied JSON-capable Git LFS. Passing retries
+are retained alongside the original diagnostics. The missing Jammy
+environment lane requires configured publisher trust. The unsigned variant
+of that installed suite passed 317 scenarios with inherited Git context,
+but the verifier identifies the configured-publisher scenario as the sole
+missing case. The unsigned archive is not eligible for publisher
+qualification. See `unsigned-environment/run.log`.
+The subsequent local LFS-preferences build
+(`87e406e6bec05d2000d2ebfe3599308c36f457a4d093ed0be11f1aa5d24b1404`)
+passed the installed count/preferences suite (20 scenarios) and the
+snapshot-timeout suite (19 scenarios) in isolated Ubuntu 24.04.
+The count fixture verifies both displayed totals without a checkout write;
+renderer tests separately cover the unavailable-count display.
+See `target/local-review/lfs-preferences-87e406e6/noble-installed.log`.
+The next local build (`da42a5e9ff5629f402a7f0db97beabc133b6ff8788933e6eb19a635478472866`)
+extends the optional LFS deadline to attribute discovery. The owned stalled
+scan delayed the earlier build by 12.05 s; the fixed extracted build opened
+in 2.03 s, stopped the owned process, and did not report invented counts or
+change the checkout. The same archive passed 20 timeout-suite checks
+APT-installed on isolated Ubuntu 24.04. This new scenario is required for
+the next Jammy release gate; the earlier 41-of-42 result predates it. See
+`test-results/native/lfs-snapshot-timeout-1795510993871387946/`,
+`test-results/native/lfs-snapshot-timeout-1795511311159713705/`, and
+`target/local-review/lfs-attributes-da42a5e9/noble-installed.log`.
+The same archive passed all 315 scenarios in the full extracted run
+(`test-results/native/full-1795511417947923212/report.json`, 323.5 s).
+The next local build (`ca65b85dc8514d5b76b1747f70260fbd94b46d6afea622f051a49e9e7beb6d5d`)
+also bounds the version probe before LFS actions. The extracted object-review
+test returned the inspection timeout in 2.01 s, stopped its owned helper
+and preserved the checkout. The same archive passed 20 count and 21
+timeout checks APT-installed on isolated Ubuntu 24.04. The next Jammy
+timeout lane requires the new probe check as well. See
+`test-results/native/lfs-snapshot-timeout-1795512132370261354/` and
+`target/local-review/lfs-version-ca65b85d/noble-installed.log`.
+The next local build (`776ecd27c98ae325ce74341638058839bff7e09fdaf32b7223a7cad10ffdda8b`)
+bounds LFS Pull's eligibility check, too. The extracted fixture timed out
+in 2.02 s before any transfer and retained the exact checkout. All 22
+timeout-suite checks passed after APT installation in isolated Ubuntu
+24.04. The next Jammy timeout lane includes this scenario. See
+`test-results/native/lfs-snapshot-timeout-1795512583130251458/` and
+`target/local-review/lfs-pull-preflight-776ecd27/noble-installed.log`.
+On the same bytes, explicitly cancelling a running LFS Pull eligibility
+check returned `operationCancelled`, stopped the owned scanner before
+transfer, and preserved the checkout. All 23 checks passed extracted and
+APT-installed on isolated Ubuntu 24.04. The release gate requires this
+separately from the timeout. See
+`target/local-review/lfs-pull-preflight-776ecd27/noble-cancel.log`.
+The earlier `e0e5def4…` archive passed all 308 scenarios in the full extracted run
+(`test-results/native/full-1795498473848245981/report.json`).
+It also passed the large-history suite
+(`test-results/native/performance-1795500149041061614/report.json`).
+In this local headless run, the 20,000- and 100,000-commit fixtures opened
+in 499 ms and 491 ms, with at most 57 rendered rows and a 96 ms maximum
+renderer heartbeat gap in both. These are fixture measurements, not a
+startup time guarantee for other repositories or systems.
+The richer benchmark records history opening and working-tree readiness
+separately. With both a staged and an unstaged edit, the same two fixtures
+opened in 511 ms and 497 ms; their exact staged/unstaged totals were visible
+in 1.37 s and 1.34 s respectively, with no checkout changes. See
+`test-results/native/performance-1795500216294688249/report.json`.
+The release gate now requires this diagnostics check and the staged-collapse,
+bulk-action pagination, and final-page keyboard checks. Earlier artifacts
+do not qualify the expanded gate.
+The portable test-key archive with the fix
+(`cf641d6777d8438e2aab9879e28240f33c1b3dddd34bd1cdb3b53740cf98c3b2`)
+passed all 42 installed checks under the expanded gate. The Ubuntu 22.04
+environment run passed all 309 scenarios. The strict verifier matched the
+fixture publisher key to the build receipt and exact installed reports:
+`target/local-review/jammy-bounded-status.CXoAE62V/test-publisher-verified.json`.
+This is an unsigned test-key build, not a production update.
+The same archive passed the dirty large-history benchmark after APT
+installation on isolated Ubuntu 22.04. Its two fixtures opened in 461 ms
+and 447 ms, with exact working-tree totals visible in 1.30 s and 1.40 s.
+The run rendered at most 57 rows and did not modify either checkout. See
+`performance-installed/` beside the test-key verification report.
+
+Local renderer checkpoint on Node 24.21.0: the full run reported
+2,752 passes and nine non-passing cases. The log is
+`test-results/renderer-ci-node.J33uDX/run.log`. The two File History
+status assertions and six workspace readiness cases passed focused reruns
+after test-only fixes. The graph-column resize timeout did not reproduce
+in three focused repetitions without a test change. These reruns do not
+constitute a clean full run of the updated tests.
+
+The next full run (`test-results/renderer-final.7xYSQt/run.log`) reported
+2,751 passes, one failure and nine timeouts. A serial rerun of the rebase
+split, reference action and remote cleanup review specs passed all 58
+cases without changes to those specs. The Windows launcher and inspector
+tests passed three repetitions each after adding explicit mount checks.
+The full-run result remains non-green; the focused logs are
+`test-results/renderer-timeout-triage.jK9lcr/run.log` and
+`test-results/renderer-late-fixes.ttegXX/run.log`.
+
+In renderer tests, navigation completing does not mean the lazy workspace
+is mounted. Before sending a page-level shortcut, wait for a control from
+the relevant workspace region. Before collecting layout geometry, use a
+locator that waits for the measured element to attach. Scope loading and
+clipboard assertions to their own status messages rather than assuming
+the panel has only one live region.
+
+The subsequent single-worker run on Node 24.21.0 passed all 2,761
+renderer tests in 87 minutes, with no retries, failures, or timeouts.
+The run log, final progress record, starting HEAD and tracked-worktree
+diff are in `test-results/renderer-serial.XkoRze/`. This validates the
+renderer and tests loaded at launch; it does not qualify nested discard
+or attest to a hosted release run.
+
 For a cold build on a busy machine, set `PLAYWRIGHT_SERVER_TIMEOUT_MS=300000`
 to allow up to five minutes for the server to start. This does not change
 browser test timeouts or retry counts; the default startup limit is two minutes.
@@ -504,6 +2403,28 @@ both descriptor exhaustion and its per-user inotify instance limit as
 watchers or review resource limits in the disposable build runner. The
 preflight does not change user or system resource limits.
 
+### Jammy runner retirement
+
+The Jammy userspace is the Debian package's build baseline; the hosted
+runner label is not part of the package ABI. GitHub
+[plans to retire `ubuntu-22.04` on April 17, 2027](https://github.com/actions/runner-images/issues/14254),
+with brownouts starting March 23. At present, **Desktop CI**, **Qualify
+Debian release candidate**, and the Jammy runtime/publisher lanes in the
+shared acceptance workflow still use that label. Migrate all three
+before the first brownout, rather than replacing only the build job.
+
+Use a supported hosted runner to run an Ubuntu 22.04 build environment,
+then preserve the existing checks for the exact archive: actual Jammy
+userspace, amd64, declared libc at most 2.35, imported GLIBC symbols at
+most 2.35, and the same installed package hash in every lane. The local
+candidate already built and passed the installed suite under Docker
+with Jammy userspace, including the publisher qualification. That is
+not proof of hosted orchestration. Rehearse the pinned build image,
+unprivileged Xvfb/DBus execution, Git and LFS tool versions, artifact
+transfer, and publisher checks on GitHub before removing the old jobs.
+Do not silently build on a newer userspace and lower its package
+dependency metadata in place of the ABI check.
+
 CI and release builds use Ubuntu 22.04 with official updates/Universe enabled
 for WebKitGTK 4.1. `desktop:package-ubuntu` first requires an Ubuntu 22.04 amd64
 build host, then merges `packaging/linux/ubuntu-jammy.conf.json` over the normal
@@ -563,10 +2484,18 @@ same commands.
 Installed runners provision the standard sticky `/tmp/.X11-unix` directory
 before starting Xvfb as an unprivileged fixture user. Minimal containers may
 not have it even after installing Xvfb.
+On WSLg with a read-only `/tmp/.X11-unix` mount, the headless native
+harness uses `xauth` and a separate high-numbered Linux abstract display without enabling
+TCP or touching the workstation's display socket. The headless run still
+uses a private app profile and owned repository fixtures.
 
 Jammy's standard smoke and GitLab checks keep the distro's Git LFS. The full
 signed-release qualification uses a checksum-pinned upstream Git LFS fixture
 on PATH because Jammy's stock 3.0.2 doesn't support `ls-files --json`.
+The full, environment, and LFS-count suites probe this capability in a
+disposable Git repository before launching the app. The probe records the
+resolved tool version and an actionable failure without counting it as a
+scenario.
 The same installed candidate must also pass the focused LFS count and
 timeout regressions. The fixture is not bundled in the package and does not
 change the app's behavior on installations where counts are unavailable.
@@ -629,6 +2558,9 @@ With no completed reports the result shows the requested lanes as missing.
 The output is labeled `focused-installed-acceptance`, includes the exact
 package digest and the matched report for each check, and is not a release
 qualification or publisher receipt.
+Focused checks can also use a local Debian build on a compatible system.
+They still verify the exact archive, executable and desktop-entry hashes.
+Release matrix and publisher verification continue to require the Jammy ABI.
 
 Inside a disposable, already provisioned Linux runner with the reviewed
 package installed, the same plan can drive both dispatch and verification:
@@ -640,14 +2572,54 @@ node tools/run-focused-installed-acceptance.mjs focused-plan.json "$PACKAGE" "$N
 
 If the prepared image provides a versioned Python executable but no
 `python3` on PATH, set `GIT_KHRONOS_ACCEPTANCE_PYTHON` to its absolute path
-(for example, `/usr/bin/python3.11`). The runner uses that same interpreter
-for capability discovery and every suite.
+(for example, `/usr/bin/python3.11`). Both installed test runners accept
+this override. The focused runner uses it for capability discovery as well
+as every suite.
+In a shell batch, add `:inherited` to any lane that needs the inherited Git
+fixture, for example `bash tools/run-native-suites.sh "$PACKAGE" smoke
+incoming-links:inherited`. The other suites retain their normal context
+unless they explicitly require inherited Git settings.
+After an ordinary failure, the batch keeps testing the other lanes and
+prints a command for rerunning just the failed lanes in the same shell
+environment. A rerun helps diagnose a failure; it does not replace the
+original batch's result.
+
+To check Git transport error wording without running the full toolkit, use
+`bash tools/run-native-suites.sh "$PACKAGE" transport-error-guidance`.
+This runs the standard smoke checks, then uses disposable local repositories
+and a fixture askpass prompt. It does not authenticate to a hosted provider.
+
+To rerun the full working-file editor scenario, including the Markdown
+preview-to-edit transition and unsaved draft, use
+`bash tools/run-native-suites.sh "$PACKAGE" working-file-editor`. This is a
+focused check, not a substitute for the publisher lane.
+
+For portable Git artifacts, run these suites against an already installed
+archive in a disposable test system:
+
+```sh
+bash tools/run-native-suites.sh "$PACKAGE" \
+  patch-export bundle-incremental-export commit-source-zip comparison-patch
+```
+
+The v0.1.6 test-key archive passed all 11 checks on Debian 12 with Git
+2.39.5. A comparison patch reconstructed the target tree, an incremental
+bundle required its advertised base and imported only the new recovery tip,
+and the ZIP contained committed files only. Cancelling the save dialogs did
+not create files. This tests local artifact exchange, not remote publication.
 
 Use one distribution per plan. Before starting any suite, the runner refuses
-an unknown suite, a different distribution, or an impossible Git environment.
+an unknown suite, a different distribution, an impossible Git environment,
+or an archive whose resolved filename does not match the workspace version.
+Keep the original installer filename when copying it to a test runner.
+The runner also refuses a missing installation or mismatched system files
+before dispatch, even if the installed version number matches.
 It never installs or publishes a package. It requires a new output directory,
 retains the validated plan and each lane's evidence, and writes `run.json`
-with the package digest, process results and scenario verification. A green
+with the package digest, process results, wall-clock durations and scenario
+verification. During execution, `progress.json` identifies the active lane,
+its evidence directory, and completed lane count. It is diagnostic only
+and does not prove the runner is still alive. A green
 process exit alone does not satisfy a requested scenario. For example,
 `branch-workflow-ui` checks setup/start/finish, whereas
 `branch-workflow-recovery` checks a paused merge, conflicts, restart and stop.
@@ -668,11 +2640,25 @@ To check whether the retained reports cover every required Linux runtime
 suite for one release candidate, add `--release-matrix` before the package
 path. The JSON lists the matching report or `null` for each required
 distribution and suite; any missing or failed check causes a nonzero exit.
+An isolated lane needs a report that explicitly used isolated Git
+configuration. A run with inherited configuration, or one that does not
+say which mode it used, cannot qualify that lane.
+In `--release-progress` output, an unsatisfied check can include
+`closestPassingReport`. It identifies one validated receipt and lists
+its missing scenario names and whether its inherited Git context matches.
+This is a diagnostic only; separate passing reports still cannot be
+combined to satisfy a required suite.
 To see the current checklist without building an installer or collecting
 reports, run `node tools/report-installed-acceptance.mjs --list-release-matrix`.
 The JSON lists each distribution, suite and required scenario. It includes
 the focused Ubuntu 24.04 workspace and Git workflow reviews as well as
-package startup and GitLab catalogue checks. The listing is not acceptance
+package startup and GitLab catalogue checks. CI runs the Ubuntu 24.04
+workspace, file, and history review groups on separate runners, alongside
+the main runtime lane. Each group installs the same checksummed archive
+and uploads its own reports under the same workflow attempt. The release
+verifier still requires every suite; sharding does not add retries or
+allow a partial matrix. This reduces serial wait at the cost of three
+additional runner setups. The listing is not acceptance
 evidence.
 Use the original `report.json` from each passing job. The command does not
 check the publisher key or authorize publication.
@@ -698,18 +2684,47 @@ node tools/report-installed-acceptance.mjs --plan-release-lane ubuntu 24.04 \
   "$PACKAGE" --reports-dir "$OLD_RESULTS" > noble-retry.json
 ```
 
-Without an installer, the plan contains every check for that distribution.
+Without an installer or a suite filter, the plan contains every check
+for that distribution. Repeat `--suite NAME` before the optional package
+path to request only selected release suites; names not required on that
+distribution are refused instead of yielding an empty plan. For a
+focused working-tree check on Ubuntu 24.04:
+
+```sh
+node tools/report-installed-acceptance.mjs --plan-release-lane ubuntu 24.04 \
+  --suite working-tree-recaps --suite discard-large > noble-working-tree.json
+```
+
 With an installer and retained reports, it skips only checks satisfied by a
 passing installed report for those exact package bytes. Failed, incomplete,
 and missing checks remain in the plan. Malformed or mismatched reports stop
 planning; keep reports for different installers in separate directories.
 
-If `checks` is empty, there is nothing to rerun for this distribution. Otherwise,
+If `checks` is empty, there is nothing to rerun in the requested selection. Otherwise,
 in a disposable runner for that distribution with the same package installed,
 run `node tools/run-focused-installed-acceptance.mjs noble-retry.json "$PACKAGE" "$NEW_RESULTS"`.
 Keep the original passing reports and the passing retry reports for the final
 handoff; don't submit superseded failures. An empty plan does not qualify any
 other distribution or replace `--verify-release`.
+
+If an all-attempts progress file contains superseded failures, keep it for
+diagnosis and use its exact matched report paths for handoff. In Bash, with
+the progress JSON saved from the same archive:
+
+```bash
+jq -e '
+  (.rejectedReports | length) == 0
+  and (.releaseProgress.totalChecks > 0)
+  and all(.releaseProgress.checks[]; .state == "satisfied" and (.report | type) == "string")
+' "$PROGRESS_JSON" >/dev/null
+mapfile -d '' -t passing_reports < <(jq -j '.releaseProgress.checks[].report + "\u0000"' "$PROGRESS_JSON")
+node tools/report-installed-acceptance.mjs --verify-release \
+  "$BUILD_RECEIPT" "$PUBLISHER_PUBLIC_KEY_FILE" "$PACKAGE" "${passing_reports[@]}"
+```
+
+Run this in a shell that stops on errors (or stop if the first command
+fails). The strict verifier reopens the reports and validates the package
+and publisher evidence; the progress file itself is not proof.
 
 For a strict offline handoff, check the full matrix and publisher preflight
 in one command. Supply the original installed reports, not a prior summary:
@@ -765,10 +2780,63 @@ local release matrix requires both checks in one passing Jammy watcher
 report. The fixture does not modify Git on the host.
 
 The GitLab suite's initial Connect action is clicked once. A refusal records
-the rendered error category, owned HTTPS fixture request counters, and
-whether the fixture saw a TLS handshake. Evidence includes only a bounded
+the rendered error category, the number of TCP sockets the fixture accepted,
+owned HTTPS request counters, and whether the fixture saw a TLS handshake.
+Evidence includes only aggregate TCP counts and a bounded
 handshake outcome and SSL reason identifier, never credentials or raw
-request data. The connection is not retried.
+request data. A refusal also triggers one credential-free TLS handshake
+against the owned loopback listener to distinguish a fixture outage from
+an app-side failure. The app's connection and HTTP request are not retried.
+The application distinguishes initialization failure, selected OS
+connection failures, and otherwise unclassified connection or response
+errors using fixed messages. The report records only the corresponding
+allowlisted stage label, not the transport error chain.
+Use `--suite gitlab-connect --headless` for that exact UI connection
+without the preceding toolkit work or SSH fixture. It checks private TLS,
+account identity, token clearing and unchanged Git data. It is a diagnostic
+shortcut, not release evidence for the full `gitlab` suite.
+Use `--suite gitlab-connect-after-smoke` to preserve the full GitLab
+suite's smoke and SSH setup but stop after the first Connect result.
+Use `--suite gitlab-connect-refused` to exercise the real native refusal
+path against a reserved loopback port with no listener. It requires the
+specific TCP message, a cleared token, no HTTP request, and unchanged Git
+data. Unlike the intermittent symptom, this test's refusal is intentional.
+On Ubuntu 26.04 the installed `9f41ae58` archive passed three fresh
+Connect-only runs in 5.3–5.9 seconds each. It also passed both
+Connect-after-smoke runs (one socket-traced), so these faster probes did
+not reproduce the previous refusal. Their reports are under
+`target/local-review/jammy-direct-commit.yyAzpE/`.
+An additional traced Connect-after-smoke run with the Ubuntu 26.04
+container limited to 1.5 CPUs also passed all 19 scenarios. CPU
+contention alone did not reproduce the refusal in this run.
+The fixture negotiates TLS in a bounded per-connection worker. A TCP
+connection that never starts TLS can no longer stall accepts for other
+clients. A local harness regression reproduced the stall with the previous
+fixture and verifies that a second, credential-free handshake now succeeds.
+This does not establish the cause of the separate Ubuntu 24.04 app refusal.
+Against portable build `49318f97a076904bc3bd419b427a76fad5879cb11727676480995725b857e3e4`,
+the previous fixture's Ubuntu 24.04 runs failed at initial Connect twice.
+A clean run of the same installed package with per-connection TLS passed
+all 45 GitLab scenarios. Both failures and the successful run are retained
+under `target/local-review/jammy-discard-scope.skNzLH/`.
+The next frozen package,
+`fe1936f835d964d0b536c2635f1e8199e2369ff0b2443712007042d4bd6d6aad`,
+passed all 45 installed GitLab scenarios on the first attempt on every
+matrix distribution (Ubuntu 22.04, 24.04 and 26.04; Debian 12 and 13).
+See the five matrix logs in `target/local-review/jammy-oversized-discard.A9HBeW/`.
+On the subsequent `9f41ae58` build, the two Ubuntu 26.04 refusals had
+zero TCP accepts and zero API requests; a later credential-free handshake
+still succeeded. The traced rerun passed all 45 scenarios and therefore
+did not establish why the earlier attempts failed. These logs are under
+`target/local-review/jammy-direct-commit.yyAzpE/`. This archive predates
+the application-side error-stage descriptions.
+
+Splitting the inherited Ubuntu 22.04 environment suite into its own
+container reduced the measured initial-attempt matrix wall time from
+820.2 to 685.4 seconds across these two local runs. No required scenarios
+were removed, although the isolated environment suite itself took longer
+under contention. `matrix-wall-timing.json` excludes build and retry time;
+this comparison is neither a controlled benchmark nor a release ETA.
 
 For Pull scope, Ubuntu 24.04 qualification runs two independent suites
 against the installed package:
@@ -826,8 +2894,16 @@ Unicode, a tab, an embedded newline and a trailing space. A real Git ownership c
 after review must be refused, without a fallback checkout. Retained evidence
 includes both checkouts' HEAD/ref/config/index/file hashes and before/after Git
 status, resolving each linked checkout's actual index rather than treating its
-`.git` pointer file as a directory. No personal repository or installed app is
-used, and the default driver still uses one private Xvfb display and session bus.
+`.git` pointer file as a directory. No personal repository is used, and the
+driver uses a private Xvfb display and session bus. The installed Jammy
+`environment` release gate now requires all four branch-navigation
+receipts, including the graph double-click assertion, from the exact
+candidate package.
+
+Local package `8ac462f068de8c18caf78a9b82e7622840fdcb6d080bcd96ab1f71ffda68cbab`
+passed all 23 extracted-package `worktrees` scenarios, including
+opening the registered owner by double-click without detaching either HEAD.
+The run is under `target/local-review/commit-rewrite-responsive.ZsCTuj/baseline-worktree-results/`.
 
 The separate `first-status` suite holds Git's first complete file scan in an
 owned checkout. It checks that history is usable while file counts remain
@@ -908,6 +2984,14 @@ remaining and reject a late positive reply. Opening repository management
 from the restored toolbar uses the same deadline for readiness and click.
 Only a structured stale-element refusal permits a fresh lookup and click;
 a timed-out or lost click reply is never replayed.
+For explicit catalogue navigation, the harness waits for one visible,
+enabled replacement within the remaining deadline after that refusal.
+It does not dispatch another click if multiple controls match. Provider
+connections, reconciliation, and fork submissions do not use this recovery.
+Both the release `gitlab` suite and the focused `gitlab-fork-ui` suite
+detach a harness-owned inert button and check that the real WebDriver stale
+response leads to exactly one click on its replacement. This probe never
+calls GitLab.
 
 Linux bundling also prepares `rust-dependency-notices.json.gz` from locked,
 offline Cargo metadata for Tauri's explicit target triple. It includes the
@@ -956,6 +3040,7 @@ For a long-running Linux validation command, run the existing Nx targets through
 the owned-process wrapper from the repository root:
 
 ```sh
+mkdir -p target/validation-runs
 node tools/run-validation.mjs start target/validation-runs/my-source-check run-many --targets=test,check --projects=desktop --parallel=1 --skipNxCache --output-style=static
 ```
 
@@ -966,14 +3051,114 @@ after the worker exclusively creates the directory and writes
 worker goes on to record `started.json`, `output.log`, and a terminal
 `result.json`. Use `node tools/run-validation.mjs status <run-directory>`
 to distinguish preparation, a running command, and a finished run.
+See `node tools/run-validation.mjs --help` for examples. A leading
+`desktop:e2e` is shorthand for `run desktop:e2e`; the receipt records the
+expanded command.
+Use `node tools/run-validation.mjs wait <run-directory>` to wait for an
+existing run and return its exit code. Interrupting this observer does not
+cancel the detached run. A missing or unverifiable run is not a pass. A stopped
+run without a result reports whether the boot differs, the process is no
+longer live, or its PID has been reused. It does not infer why it stopped.
 
-A direct `desktop:e2e` invocation also writes optional
+For uncommitted changes, opt in to an end-to-end checkout comparison:
+
+```sh
+node tools/run-validation.mjs start target/validation-runs/guarded-renderer \
+  --guard-source desktop:e2e -- --workers=3
+```
+
+Use a run directory outside the checkout or ignored by Git. The guard
+compares Git-visible file paths and bytes, executable bits, symlink text,
+HEAD, and branch at the start and end. A different or unreadable final
+fingerprint prevents an otherwise passing command from being reported as
+a pass. Ignored files and edits reverted before the final check are not
+covered; use `--snapshot REF` for a run isolated from live checkout edits.
+
+A named validation that includes `desktop:e2e` (directly or via an explicit
+`run-many --targets` list) also writes optional
 `renderer-progress.json` once Playwright knows the test plan. The status
 command reports how many distinct tests have returned a result, total
 attempts including retries, and the latest outcome for each counted test.
-These are live observations, not a percentage of release readiness or
-a prediction of the end time. `result.json` and the retained test report
-remain the authority. A custom `--reporter` override can omit this file.
+Use `testsRemainingToReport` and `reportedPercent` for case-count
+progress; a reported test can have failed or be awaiting a retry.
+`reportedPercent` is null when no tests were planned. This is not an
+ETA or a pass result.
+The wrapper chooses an available loopback port for these renderer runs
+unless `PLAYWRIGHT_PORT` is set, and records the chosen port in the receipt.
+Named validation never reuses an already running server, even if the parent
+shell has `PLAYWRIGHT_REUSE_SERVER=1` set for interactive testing.
+Parallel runs therefore need not share the default Playwright port.
+Port isolation does not isolate CPU or memory. On a busy WSL2 host,
+complete the optimized Rust package build before running a broad renderer
+suite. If the development server misses its startup deadline or tests time
+out during setup, retain that failed run and rerun in a separate evidence
+directory with `--workers=1` after the build ends. Increasing
+`PLAYWRIGHT_SERVER_TIMEOUT_MS` only changes the server startup deadline,
+not individual test timeouts.
+Use `activeAttempts` and `oldestActiveAttempts` to tell what is still running
+before the next test result arrives. The latter lists up to five spec
+basenames with attempt start times; it does not include test titles or
+absolute paths.
+These are observations, not a percentage of release readiness or a
+prediction of the end time. If the runner stops without a result, status
+keeps its last valid snapshot for diagnosis; any active attempts shown
+there were active at the snapshot time, not necessarily still running.
+`result.json` and the retained test report remain the authority. A custom
+`--reporter` override can omit this file.
+
+To investigate slow runs, inspect `slowestSpecsByAttemptTime` in
+`renderer-progress.json`. It lists up to five spec files ranked by the
+sum of their completed test-attempt durations, including retries. These
+times can overlap across workers and exclude server startup, so they are
+useful for profiling, not as elapsed time or a release ETA.
+Each listed spec also reports its number of timed attempts, longest
+attempt, and that attempt's source line when available. This distinguishes
+a large group of ordinary tests from one slow case. To rerun a case by
+that location, use:
+
+```sh
+pnpm nx run desktop:e2e -- e2e/renderer/branch-panel-interactions.spec.ts:381 --workers=1
+```
+
+The source line belongs to the tested checkout and may move after edits.
+The latest full three-worker run passed 2,816 cases in 40 minutes 37 seconds;
+the top two specs by summed attempt time were `graph-columns.spec.ts` and
+`workspace.spec.ts`. The four CI lists resolve to 704 cases each and cover
+the same suite without overlap (`renderer-shard-resolution/` in the local
+qualification evidence). That shows balanced case counts, not equal shard
+runtimes or a hosted CI speedup.
+
+The graph-column suite now seeds the initial layout before the first app
+navigation, without reseeding on a persistence reload. All 270 cases
+still ran and passed. Its summed attempt time dropped from 1,091 seconds
+in the two-worker full renderer run to 910 seconds in the two-worker
+isolated rerun. Those are different run scopes, so the observed reduction
+is not a guaranteed speedup for the entire renderer suite.
+The layout probe also measures each heading and row cell once per check,
+then reuses the rectangle for visibility and alignment. All 270 column
+cases and four layout-readiness cases passed a guarded three-worker run
+(`graph-layout-single-snapshot/`), including the negative geometry checks.
+The graph-column cases used 1,052 seconds in aggregate across the workers;
+this focused run was not a controlled speed comparison with the full suite.
+
+A subsequent isolated run identified the partial-column assertion as its
+longest test attempt (31.4 seconds). The eight independent column orders
+now run separately while each still changes between both scroll modes and
+checks every separator. All eight passed in 14.1 seconds of test time with
+three workers. The updated CI lists cover 2,823 cases without overlap; each
+shard gets two of the partial-column cases and 705 or 706 total cases
+(`renderer-partial-columns-split/`, `renderer-shard-resolution-after-column-split/`).
+The four window-resize orders in both scroll modes were also split into
+eight independent cases. The combined graph-column suite passed all 284
+cases in a guarded three-worker run (`renderer-graph-column-split-full/`).
+The longest attempt was 16.7 seconds, down from 31.4 in the earlier
+isolated run. These observations show smaller individual cases, not a
+reduction in total graph-suite or hosted CI runtime.
+The final CI test lists resolve all 2,830 cases exactly once, with
+707–708 tests per shard. Each shard receives two partial-column cases
+and two window-resize cases (`renderer-shard-resolution-after-resize-split/`).
+
+
 
 SIGINT or SIGTERM to that verified runner interrupts its owned command group,
 waits for cleanup, and records the interruption instead of abandoning children.
@@ -1032,7 +3217,10 @@ credentials. It requires `sshd` (`openssh-server`) in addition to the client;
 set `GIT_KHRONOS_SSHD` to an absolute private server path when it is not installed
 at `/usr/sbin/sshd`. For OpenSSH builds with separate `sshd-session` and
 `sshd-auth` executables, keep both under the same extracted prefix's
-`usr/lib/openssh`; the fixture selects them automatically:
+`usr/lib/openssh`; the fixture selects them automatically. The server
+and both helpers must be able to load their distribution libraries (check
+each with `ldd` when extracting without installing). To reproduce only the
+fork catalogue UI and its HTTPS fixture without SSH, use `--suite gitlab-fork-ui`.
 
 ```sh
 package=$(task --silent package:deb:path)

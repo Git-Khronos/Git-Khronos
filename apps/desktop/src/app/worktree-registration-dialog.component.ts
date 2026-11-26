@@ -4,6 +4,7 @@ import type { WorktreeRegistration, WorktreeRegistrationPruneResult, WorktreeReg
 import { GitKhronosService } from './git-khronos.service';
 import { GitHelpComponent } from './git-help.component';
 import { SubmoduleStateReviewComponent } from './submodule-state-review.component';
+import { isTabKey } from './tab-key';
 
 export interface SubmoduleReviewTarget {
   path: string;
@@ -210,7 +211,7 @@ export class WorktreeRegistrationDialogComponent {
 
   handleKey(event: KeyboardEvent): void {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); return; }
-    if (event.key !== 'Tab') return;
+    if (!isTabKey(event)) return;
     const controls = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled)') ?? [])];
     if (!controls.length) return;
     const index = controls.indexOf(document.activeElement as HTMLElement);

@@ -1,0 +1,7 @@
+name: Run Debian packaging regressions
+description: Run fixture transactions without the hosted runner's dpkg hooks
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: bash "$GITHUB_ACTION_PATH/run.sh"

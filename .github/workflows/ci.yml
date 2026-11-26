@@ -91,6 +91,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl libssl-dev pkg-config
       - run: pnpm install --frozen-lockfile
+      - name: Check production renderer budgets
+        run: pnpm nx run desktop:build:production --output-style=static
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && hashFiles('dist/apps/desktop/initial-renderer.json') != '' }}
+        with:
+          name: initial-renderer-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: dist/apps/desktop/initial-renderer.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify generated IPC, TypeScript, Rust, and harness tests
         run: |
           mkdir -p "$RUNNER_TEMP/git-khronos-tests"
@@ -100,6 +109,12 @@ jobs:
           TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test-lfs --output-style=static
           TMPDIR=/tmp pnpm nx run desktop:test-signing --output-style=static
           pnpm nx run desktop:native-harness-test --output-style=static
+      - name: Verify large nested discard and byte-for-byte recovery
+        run: >-
+          TMPDIR="$RUNNER_TEMP/git-khronos-tests"
+          pnpm exec nx exec -p desktop --excludeTaskDependencies --
+          cargo test -p git-khronos-git-core --lib discard_large_nested_untracked_batch_and_recover_exact_bytes
+          -- --ignored --test-threads=1
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -128,6 +143,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium and system dependencies
         run: pnpm exec playwright install --with-deps chromium
+      - name: Verify Chromium can launch before loading renderer tests
+        run: node tools/check-renderer-browser.mjs chromium
       - name: Run the renderer acceptance shard
         env:
           NODE_OPTIONS: --max-old-space-size=2048
@@ -135,9 +152,24 @@ jobs:
           SHARD_TOTAL: ${{ strategy.job-total }}
           GIT_KHRONOS_RENDERER_OUTPUT_DIR: test-results/renderer/shard-${{ matrix.shard }}
           GIT_KHRONOS_RENDERER_REPORT_DIR: test-results/renderer-report/shard-${{ matrix.shard }}
+          GIT_KHRONOS_RENDERER_PROGRESS_FILE: test-results/renderer-progress/shard-${{ matrix.shard }}.json
         run: |
+          set -euo pipefail
+          mkdir -p -- "$(dirname -- "$GIT_KHRONOS_RENDERER_PROGRESS_FILE")"
+          plan="$(mktemp -d "$RUNNER_TEMP/renderer-shard.XXXXXX")"
+          pnpm exec playwright test --list --reporter=line > "$plan/all"
+          node tools/plan-renderer-shard.mjs "$plan/all" "$SHARD" "$SHARD_TOTAL" > "$plan/selected"
+          pnpm exec playwright test --list --reporter=line --test-list "$plan/selected" > "$plan/resolved"
+          diff -u "$plan/selected" <(sed -n '/^  \[chromium\] › /p' "$plan/resolved")
           pnpm nx run desktop:e2e --output-style=static --skipNxCache -- \
-            --shard="$SHARD/$SHARD_TOTAL" --workers=1 --retries=0
+            --test-list "$plan/selected" --workers=1 --retries=0
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: renderer-progress-${{ github.run_id }}-attempt-${{ github.run_attempt }}-shard-${{ matrix.shard }}
+          path: test-results/renderer-progress/shard-${{ matrix.shard }}.json
+          if-no-files-found: ignore
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -200,30 +232,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install pinned Tauri WebDriver bridge
         run: cargo install tauri-driver --locked --version 2.0.6
-      - name: Run packaging regressions
-        run: |
-          # Private dpkg databases still read host invocation hooks. Keep the
-          # runner's known hooks out of fixture transactions and restore them
-          # before building or installing the application package.
-          hooks=(needrestart pkg-config-hook-config pkgconf-hook-config)
-          backup=$(mktemp -d)
-          restore_hook() {
-            status=$?
-            for hook in "${hooks[@]}"; do
-              if [ -e "$backup/$hook" ]; then
-                sudo mv -- "$backup/$hook" "/etc/dpkg/dpkg.cfg.d/$hook" || status=1
-              fi
-            done
-            rmdir -- "$backup" || status=1
-            exit "$status"
-          }
-          trap restore_hook EXIT
-          for hook in "${hooks[@]}"; do
-            if [ -e "/etc/dpkg/dpkg.cfg.d/$hook" ]; then
-              sudo mv -- "/etc/dpkg/dpkg.cfg.d/$hook" "$backup/$hook"
-            fi
-          done
-          pnpm nx run desktop:package-test --output-style=static
+      - uses: ./.github/actions/debian-package-regressions
       - name: Build and verify Debian package
         id: package
         run: |
@@ -256,6 +265,7 @@ jobs:
           pnpm nx run desktop:native-conflict-navigation --output-style=static
           pnpm nx run desktop:native-file-tools --output-style=static
           pnpm nx run desktop:native-working-tree-recaps --output-style=static
+          pnpm nx run desktop:native-discard-busy --output-style=static
           pnpm nx run desktop:native-integrity-ui --output-style=static
       - name: Run focused packaged GitLab fork navigation acceptance
         run: |

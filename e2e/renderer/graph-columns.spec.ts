@@ -22,15 +22,34 @@ function permutations<T>(items: T[]): T[][] {
     permutations([...items.slice(0, index), ...items.slice(index + 1)]).map((rest) => [item, ...rest]));
 }
 
-async function openWithLayout(page: Page, order: Column[], options: { scroll?: boolean; sha?: boolean } = {}) {
-  await page.evaluate(({ key, order, options }) => {
-    localStorage.clear();
-    const hidden = (['branch', 'graph', 'message', 'author', 'date', 'sha'] as const).filter((column) => !order.includes(column));
-    localStorage.setItem(`${key}.column.order`, JSON.stringify([...order, ...hidden]));
-    if (options.sha) localStorage.setItem(`${key}.column.sha.visible`, 'true');
-    if (options.scroll === false) localStorage.setItem('git-khronos.graph.horizontal-scroll', 'false');
-  }, { key: REPOSITORY_KEY, order, options });
-  await page.reload();
+type LayoutOptions = { scroll?: boolean; sha?: boolean };
+
+function seedLayout({ key, order, options, firstNavigation }: {
+  key: string; order: Column[]; options: LayoutOptions; firstNavigation: boolean;
+}) {
+  if (firstNavigation) {
+    const marker = 'gk-test:initial-graph-layout';
+    if (location.origin === 'null' || window !== window.top || sessionStorage.getItem(marker)) return;
+    sessionStorage.setItem(marker, '1');
+  }
+  localStorage.clear();
+  const hidden = (['branch', 'graph', 'message', 'author', 'date', 'sha'] as const).filter((column) => !order.includes(column));
+  localStorage.setItem(`${key}.column.order`, JSON.stringify([...order, ...hidden]));
+  if (options.sha) localStorage.setItem(`${key}.column.sha.visible`, 'true');
+  if (options.scroll === false) localStorage.setItem('git-khronos.graph.horizontal-scroll', 'false');
+}
+
+async function openWithLayout(page: Page, order: Column[], options: LayoutOptions = {}, firstNavigation = false) {
+  const fixture = { key: REPOSITORY_KEY, order, options, firstNavigation };
+  if (firstNavigation) {
+    // Seed before the app starts instead of booting the default layout first.
+    // The session marker prevents reseeding on a later persistence check.
+    await page.addInitScript(seedLayout, fixture);
+    await page.goto('/');
+  } else {
+    await page.evaluate(seedLayout, fixture);
+    await page.reload();
+  }
   await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
 }
 
@@ -62,8 +81,7 @@ for (const order of allOrders) {
   test(`keeps column order ${order.join(',')} aligned while resizing`, async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1920, height: 900 });
-    await page.goto('/');
-    await openWithLayout(page, order);
+    await openWithLayout(page, order, {}, true);
     await expectLayout(page, order, `${order.join()} initial`);
     await exerciseSeparators(page, order, order.join(), false);
   });
@@ -71,8 +89,7 @@ for (const order of allOrders) {
   test(`fits column order ${order.join(',')} when horizontal scrolling is off`, async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1600, height: 900 });
-    await page.goto('/');
-    await openWithLayout(page, order, { scroll: false });
+    await openWithLayout(page, order, { scroll: false }, true);
     await expectLayout(page, order, `${order.join()} fitted initial`, true);
     await exerciseSeparators(page, order, `${order.join()} fitted`, true);
   });
@@ -85,8 +102,7 @@ for (const base of [DEFAULT_VISIBLE, [...DEFAULT_VISIBLE].reverse()]) {
       test(`keeps SHA aligned in column order ${order.join(',')} with scroll=${scroll}`, async ({ page }) => {
         test.setTimeout(60_000);
         await page.setViewportSize({ width: 1920, height: 900 });
-        await page.goto('/');
-        await openWithLayout(page, order, { sha: true, scroll });
+        await openWithLayout(page, order, { sha: true, scroll }, true);
         await expectLayout(page, order, `${order.join()} scroll=${scroll}`, !scroll);
         await exerciseSeparators(page, order, `${order.join()} scroll=${scroll}`, !scroll);
       });
@@ -94,15 +110,16 @@ for (const base of [DEFAULT_VISIBLE, [...DEFAULT_VISIBLE].reverse()]) {
   }
 }
 
-test('keeps orderings aligned with only some columns shown', async ({ page }) => {
-  test.setTimeout(240_000);
-  await page.setViewportSize({ width: 1920, height: 900 });
-  await page.goto('/');
-  const subsets: Column[][] = [
-    ['message'], ['graph', 'message'], ['message', 'graph'], ['author', 'message'], ['message', 'date'],
-    ['date', 'branch'], ['graph', 'author', 'date'], ['sha', 'branch', 'message'],
-  ];
-  for (const order of subsets) {
+const subsets: Column[][] = [
+  ['message'], ['graph', 'message'], ['message', 'graph'], ['author', 'message'], ['message', 'date'],
+  ['date', 'branch'], ['graph', 'author', 'date'], ['sha', 'branch', 'message'],
+];
+// Keep both scroll modes in each case, but let independent subsets shard separately.
+for (const order of subsets) {
+  test(`keeps partial column order ${order.join(',')} aligned`, async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await page.goto('/');
     for (const scroll of [true, false]) {
       await page.evaluate(({ key, order, scroll }) => {
         localStorage.clear();
@@ -116,22 +133,20 @@ test('keeps orderings aligned with only some columns shown', async ({ page }) =>
       await expectLayout(page, order, `${order.join()} scroll=${scroll}`, !scroll);
       await exerciseSeparators(page, order, `${order.join()} scroll=${scroll}`, !scroll);
     }
-  }
-});
+  });
+}
 
-test('keeps column layouts intact across window resizes', async ({ page }) => {
-  test.setTimeout(240_000);
-  const orders: Column[][] = [
-    DEFAULT_VISIBLE,
-    ['branch', 'graph', 'message', 'date', 'author'],
-    ['author', 'date', 'message', 'graph', 'branch'],
-    ['graph', 'branch', 'date', 'author', 'message'],
-  ];
-  for (const order of orders) {
-    for (const scroll of [true, false]) {
+const windowResizeOrders: Column[][] = [
+  DEFAULT_VISIBLE,
+  ['branch', 'graph', 'message', 'date', 'author'],
+  ['author', 'date', 'message', 'graph', 'branch'],
+  ['graph', 'branch', 'date', 'author', 'message'],
+];
+for (const order of windowResizeOrders) {
+  for (const scroll of [true, false]) {
+    test(`keeps column layout ${order.join(',')} through window resizes with scroll=${scroll}`, async ({ page }) => {
       await page.setViewportSize({ width: 1920, height: 900 });
-      await page.goto('/');
-      await openWithLayout(page, order, { scroll });
+      await openWithLayout(page, order, { scroll }, true);
       // Freeze the message width with a real resize, then widen a middle column.
       await page.getByRole('separator', { name: SEPARATORS[order[1]], exact: true }).focus();
       await page.keyboard.press('Shift+ArrowRight');
@@ -139,9 +154,9 @@ test('keeps column layouts intact across window resizes', async ({ page }) => {
         await page.setViewportSize({ width, height: 900 });
         await expectLayout(page, order, `${order.join()} scroll=${scroll} at ${width}px`, !scroll);
       }
-    }
+    });
   }
-});
+}
 
 test('keeps graph settings controls reachable in a compact window', async ({ page }) => {
   await page.setViewportSize({ width: 820, height: 640 });
@@ -267,8 +282,7 @@ test('resizes the last column from its right edge without moving columns to its 
 test('reorders columns by dragging headings in both directions and persists the order', async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1920, height: 900 });
-  await page.goto('/');
-  await openWithLayout(page, DEFAULT_VISIBLE);
+  await openWithLayout(page, DEFAULT_VISIBLE, {}, true);
   const heading = (column: Column) => page.locator('.graph-columns > .draggable-column').filter({ hasText: HEADINGS[column] }).first();
   let order = [...DEFAULT_VISIBLE];
   const moves: [Column, Column][] = [

@@ -141,7 +141,9 @@ test('registration review remains keyboard-contained in a compact window and con
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('button', { name: 'Remove with recovery…', exact: true })).toBeFocused();
   await dialog.getByRole('button', { name: 'Reload review', exact: true }).focus();
-  await page.keyboard.press('Shift+Tab');
+  expect(await page.evaluate(() => !document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'Unidentified', code: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+  })))).toBe(true);
   await expect(help).toBeFocused();
   await help.click();
   const documentation = page.getByRole('dialog', { name: 'Git command reference', exact: true });

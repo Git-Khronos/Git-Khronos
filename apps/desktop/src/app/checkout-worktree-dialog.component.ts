@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, afterNextRender, inject, input, output, signal, viewChild } from '@angular/core';
 import { GitKhronosService, type OpenRepositoryResult } from './git-khronos.service';
 import { branchCheckoutOwner } from './repository-location';
+import { isTabKey } from './tab-key';
 
 export interface CheckoutWorktreeRequest {
   scope: string;
@@ -124,7 +125,7 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   handleKey(event: KeyboardEvent): void {
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); this.close(); }
-    if (event.key !== 'Tab') return;
+    if (!isTabKey(event)) return;
     event.preventDefault();
     const buttons = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
     if (!buttons.length) return;

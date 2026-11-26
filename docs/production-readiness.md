@@ -5,6 +5,191 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## 0.1.6 release handoff — 2026-11-25
+
+User-visible changes to call out in the release notes:
+
+- Unstaged Files shows additions and deletions. Collapsing Staged Files docks
+  its header at the bottom to give Unstaged Files more room. Recaps label
+  uncounted files as excluded from line totals.
+- The Unstaged Files trash action reviews the full discard scope. Safe nested
+  files on Linux can be discarded with a recovery capture, and the dialog
+  reports unsupported paths rather than implying they were changed.
+- Opening a branch already checked out in a registered worktree offers to
+  open that worktree instead of detaching the current checkout.
+- The Updates menu offers a manual check and optional automatic updates.
+  Automatic updates are off by default; supported installers verify publisher
+  trust before installation. Windows still requires manual installation.
+- File history clears copy feedback when the search revision changes.
+  The short hash also copies the full commit ID.
+- Large diffs draw fewer decorative minimap marks while keeping each
+  change's jump target exact.
+- Blame shows an input error for invalid line numbers instead of retrying
+  the previous read.
+- Branch and tag menus copy the full Git ref so overlapping short names
+  remain unambiguous.
+
+The latest portable test-publisher package includes the WSLg startup
+mitigation, the working-tree keyboard and scroll fixes, and the toolbar
+stash-review refresh fix. The exact archive passed all 52 installed
+release checks in one run across five baselines, three WSLg XWayland
+launches, and the offline signed-update rehearsal. Both X11 launch paths
+and responsive renderer recovery passed after upgrading from public
+0.1.5 on each baseline, without changing the dirty checkout. The actual
+Windows taskbar pin has not been exercised.
+See [the package evidence](linux-acceptance.md#latest-016-local-qualification).
+The test publisher key does not qualify production signing. Public release
+still requires a production-key build from the release tag, exact-artifact
+qualification, offline signing, and the protected publication workflow.
+After updating the two Copy full ref menu assertions, the full Chromium
+suite passed all 2,816 tests with no retries, timeouts, or skips. Its
+source guard reported unchanged tracked and Git-visible untracked inputs
+(`renderer-full-after-copy-tests/` in the candidate evidence). The
+guarded `desktop:check` and `desktop:test` runs passed against the same
+source fingerprint.
+
+Before the Copy full ref change, the Chromium suite passed all 2,812 tests with three workers,
+with no retries, timeouts, or skips. The owned receipt is in
+`target/local-review/jammy-blame-input.9c2x7bYY/renderer-full-current/`.
+It was a live checkout run, not a committed snapshot. The follow-up passed
+78 focused Chromium tests for context menus and reference actions.
+
+The exact candidate's production build emitted 292,374 initial bytes
+under the unchanged 900,000-byte warning budget. The retained earlier
+build from the renderer audit had 1,273,707 initial bytes; the difference
+is 981,333 raw bytes and 170,239 independently compressed Brotli bytes.
+These are asset sizes, not startup timings. The production asset check
+also confirmed the `gk-root` mount and found no legacy app selectors or
+development preview initialization in the emitted assets. See
+`initial-renderer-baseline-comparison.json` in the same candidate directory.
+The production Nx build now treats a renderer above that same 900,000-byte
+warning threshold as a failed build. It still writes `initial-renderer.json`
+so the eager assets that contributed to the overage can be inspected.
+Angular now rejects an individual component stylesheet over 76,000 bytes
+instead of warning at 76,000 and waiting until 80,000 to fail.
+
+An actual production-signed in-app upgrade has not been demonstrated. If
+this is the first public build to pin the production key, installations
+without that key need a one-time manual upgrade; the offline fixture-key
+test cannot establish their trust in the production publisher.
+
+### Release operator checklist
+
+Read-only hosted preflight on 2026-11-25: public latest is still `v0.1.5`;
+no remote `v0.1.6` tag exists. The repository variables endpoint listed
+no variables, and looking up `signed-release` returned HTTP 404 to the
+checking account. Treat the publisher key and environment protections as
+unverified until a repository administrator confirms them. Before
+enabling publication, confirm that `signed-release` has required
+reviewers and only allows deployment from the protected `main` branch.
+In the environment settings, choose **Selected branches and tags**, add
+one **Branch** rule named exactly `main`, and leave the tag rules empty.
+**Protected branches only** is not equivalent: it can allow other
+protected branches too. The environment rule is separate from the
+repository's branch protection for `main`. An operator can inspect the
+configured rules without changing them:
+
+```sh
+gh api repos/Git-Khronos/Git-Khronos/environments/signed-release
+gh api --paginate repos/Git-Khronos/Git-Khronos/environments/signed-release/deployment-branch-policies
+```
+
+Treat an unavailable policy response as unverified, not as confirmation.
+To check these settings together, run
+`bash tools/check-hosted-debian-release.sh` from the checkout with a GitHub
+CLI login that can read the repository configuration. It prints the public
+release tag, checks the publisher key format without printing the key, and
+reports which settings are unconfirmed. Pass `v0.1.6` to also check for
+that exact tag. It makes no remote writes. The
+publication switch should remain off for an offline rehearsal; a successful
+preflight is not evidence of hosted qualification or signature verification.
+See GitHub's [deployment branch policy API](https://docs.github.com/en/rest/deployments/branch-policies#list-deployment-branch-policies).
+The workflow variable alone does not enforce reviewer approval. GitHub can
+[create missing environments without protection](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
+When publication is enabled, the workflow now checks for required
+reviewers before candidate verification and rechecks before writing the
+release. Dry-run verification does not need the environment. The remote
+`main` tip is an ancestor of the local `dev` tip, but neither that
+relationship nor the locally qualified archive publishes the working-tree
+changes. No remote state was changed during this check.
+
+1. Review and commit the candidate, land it on `main`, and tag that exact
+   commit `v0.1.6`. Set the repository Actions variable
+   `GIT_KHRONOS_UPDATER_PUBLIC_KEY` to the production **public** key;
+   the private signing key stays offline. The tag must match the versions
+   in the package manifest, Tauri config, Debian changelog and Rust crates.
+   Qualification rejects malformed
+   Tauri public keys before the build starts. Validate the format locally
+   using the public file, without printing its contents:
+
+   ```sh
+   GIT_KHRONOS_UPDATER_PUBLIC_KEY="$(cat ./publisher.key.pub)" \
+     node tools/check-debian-update-evidence.mjs --check-publisher-key
+   ```
+
+   This only checks the format; compare the key with the production
+   publisher's trusted copy before qualifying a candidate.
+2. Dispatch **Qualify Debian release candidate** on `main` for that tag.
+   Record its successful run ID and download the candidate artifact from
+   the successful attempt. Sign the qualified Debian package without
+   rebuilding it. See [the offline signing procedure](specifications/application-updates.md).
+3. Use the **Publish signed Debian release** workflow on `main` with the
+   tag, candidate run ID, and public signature. With
+   `GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED` unset, the workflow verifies
+   and retains the signed assets without publishing. It rechecks all
+   installed reports from that same candidate attempt against the exact
+   archive before staging. Before retaining the signed assets,
+   it also checks that the updater library accepts the exact staged offer
+   in a mock runtime set to the previous stable version. This does not run
+   the previous public app. To publish, set the variable
+   to `true` and approve the protected `signed-release` environment.
+   Keep that approval separate from candidate qualification.
+   Public release notes use the matching version's changelog from the
+   verified installer, so update `packaging/debian/changelog` before tagging.
+   The local candidate produced ten change bullets, including the WSLg
+   startup fix, and included the
+   one-time manual upgrade instructions
+   (`signed-rehearsal/release-notes.md` in the candidate evidence).
+4. Smoke-test the released update from a disposable installation that
+   already trusts the same production key. Check that the default remains
+   off, a manual check offers the expected version, and installation leaves
+   the expected version running after restart. If the available older public
+   build lacks that key, verify the manual bootstrap and record the signed
+   in-app upgrade as unverified until a suitable trusted upgrade pair exists.
+   The public `v0.1.5` source does not include the updater integration, so
+   that release is a manual-install baseline, not an in-app upgrade baseline.
+
+The renderer before the full commit ID action passed all **2,808** browser cases in a clean run with
+no retries, timeouts, or skips (`target/local-review/renderer-clean.N7Jz0B/`).
+It includes the accessibility and delayed-history test timing fixes that
+were not present in the preceding full run. The full commit ID action passed
+all 31 focused history browser tests.
+The later full run on the current renderer, including commit ID copying
+and the clearer line recaps, passed all **2,809** cases with no failures,
+timeouts, skips or retries in 45.4 minutes. See
+`target/local-review/renderer-recap.r191k3/`.
+`task check` and `task fmt:check` passed on the current checkout. A byte
+comparison matched all 515 Git-visible files checked across the Angular
+app, native runtime sources, Git core, libraries and packaging directories
+with the portable build snapshot. This comparison does not replace
+exact-artifact checks or qualify CI and release tooling changed afterward.
+
+### Follow-up: renderer theme tokens
+
+A follow-up changed the remaining fallback-free references to existing font,
+motion, hover, scrollbar and diff colors, and defined the Updates dialog
+shadow. The advisory scan is now empty. All 82 focused browser tests passed,
+including the computed Updates shadow in both themes and the existing
+history, diff and keyboard coverage, followed by 100 browser tests for
+adjacent surfaces. The theme cleanup is included in the latest locally
+qualified archive.
+
+Re-run the advisory source audit from the repository root with
+`node tools/report-renderer-css-tokens.mjs`; it lists each reference with
+its file and line number. The desktop `check` target runs the same audit
+in strict mode: an externally assigned token needs an explicit fallback
+if its definition cannot be found in the renderer sources.
+
 ## Installed workspace editing and live recaps — 2026-11-21
 
 The Jammy-built candidate at `c6a1edf` completed **189 installed checks** on

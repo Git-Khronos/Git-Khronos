@@ -34,7 +34,7 @@ async function installHistoryFixture(page: Page): Promise<void> {
         if (command === 'inspect_commit_file') return Promise.resolve({ oid: args.oid, path: args.path, patch: '+historical source\n', truncated: false });
         if (command === 'inspect_file_history_page') {
           state.filePages++;
-          return Promise.resolve({ entries: [{ ...entry, oid: state.filePages === 1 ? oldOid : parentOid, path: state.filePages === 1 ? 'new.txt' : 'old.txt', previousPath: state.filePages === 1 ? 'old.txt' : null }],
+          return Promise.resolve({ entries: [{ ...entry, oid: state.filePages === 1 ? oldOid : parentOid, path: state.filePages === 1 ? args.path : 'old.txt', previousPath: state.filePages === 1 ? 'old.txt' : null }],
             cursor: state.filePages === 1 ? { revision: args.revision, path: args.path, historicalPath: 'old.txt', offset: 100 } : null, complete: state.filePages > 1 });
         }
         if (command === 'inspect_blame_navigation') return Promise.resolve({ oid: oldOid, path: 'old.txt', parents: [parentOid], parentPath: 'before.txt' });
@@ -86,6 +86,87 @@ test('an exact path absent at HEAD opens its deletion and then the historical di
   await expect.poll(() => page.evaluate(() => (window as any).__historyFixture.calls.find((call: any) =>
     call.command === 'inspect_commit_file')?.args)).toMatchObject({ oid: expected.deleted, path, previousPath: null });
   await expect(page.getByRole('region', { name: 'Diff viewer' })).toContainText('last saved contents');
+});
+
+test('a long file history subject keeps both copy actions available in a narrow window', async ({ page }) => {
+  const subject = 'unbroken-commit-subject-'.repeat(25).replaceAll('-', '');
+  const path = 'docs/notes.md';
+  await page.setViewportSize({ width: 820, height: 800 });
+  await page.evaluate(({ subject, path }) => {
+    const { app, entry } = (window as any).__historyFixture;
+    entry.subject = subject;
+    return app.openTrackedFileInsight(path, 'history');
+  }, { subject, path });
+  const history = page.getByRole('region', { name: 'File history', exact: true });
+  const title = history.getByRole('button', { name: subject, exact: true });
+  await expect(title).toHaveAttribute('title', subject);
+  const copyPath = history.getByRole('button', { name: `Copy path: ${path}`, exact: true });
+  const copyId = history.getByRole('button', { name: 'Copy commit ID: aaaaaaaa', exact: true });
+  await expect(copyPath).toBeInViewport();
+  await expect(copyId).toBeInViewport();
+  expect(await title.evaluate(button => {
+    const { overflowX, textOverflow } = getComputedStyle(button);
+    return { overflowX, textOverflow, clipped: button.scrollWidth > button.clientWidth };
+  })).toEqual({ overflowX: 'hidden', textOverflow: 'ellipsis', clipped: true });
+});
+
+test('file history copies the exact path and full commit ID without Git mutations', async ({ page }) => {
+  const path = 'docs/Release notes/naïve résumé.md';
+  await page.evaluate(() => {
+    const state = (window as any).__historyFixture;
+    state.copyAttempts = [];
+    state.rejectCopy = false;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (value: string) => {
+        state.copyAttempts.push(value);
+        if (state.rejectCopy) throw new Error('Clipboard denied');
+      } },
+    });
+  });
+  await page.evaluate((path) => (window as any).__historyFixture.app.openTrackedFileInsight(path, 'history'), path);
+
+  const history = page.getByRole('region', { name: 'File history', exact: true });
+  const copy = history.getByRole('button', { name: `Copy path: ${path}`, exact: true });
+  await expect(copy).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__historyFixture.calls.some((call: any) =>
+    call.command === 'inspect_file_history_page'))).toBe(true);
+  await expect(copy).toBeVisible();
+
+  const before = await page.evaluate(() => {
+    const state = (window as any).__historyFixture;
+    return { head: state.app.git.repository().headOid, calls: state.calls.length, oid: state.entry.oid };
+  });
+  // The desktop refreshes read-only status when the user refocuses its window.
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect.poll(() => page.evaluate((offset) => (window as any).__historyFixture.calls
+    .slice(offset).some((call: { command: string }) => call.command === 'refresh_repository_status'), before.calls)).toBe(true);
+  await copy.click();
+  await expect(history.getByRole('status')).toHaveText(`Copied file path: ${path}`);
+  await expect(history.getByRole('status')).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__historyFixture.copyAttempts)).toEqual([path]);
+
+  const commit = history.getByRole('button', { name: `Copy commit ID: ${before.oid.slice(0, 8)}`, exact: true });
+  await commit.focus();
+  await commit.press('Enter');
+  await expect(history.getByRole('status')).toHaveText(`Copied commit ID: ${before.oid}`);
+  await expect(commit).toBeFocused();
+
+  await page.evaluate(() => { (window as any).__historyFixture.rejectCopy = true; });
+  await copy.click();
+  await expect(history.getByRole('status')).toHaveText(`Could not copy file path: ${path}. Clipboard access is unavailable.`);
+  await expect(history.getByRole('status')).toBeVisible();
+  const after = await page.evaluate((offset) => {
+    const state = (window as any).__historyFixture;
+    return {
+      head: state.app.git.repository().headOid,
+      commands: state.calls.slice(offset).map((call: { command: string }) => call.command),
+      copyAttempts: state.copyAttempts,
+    };
+  }, before.calls);
+  expect(after.head).toBe(before.head);
+  expect(after.copyAttempts).toEqual([path, before.oid, path]);
+  expect(after.commands.filter((command: string) => command !== 'refresh_repository_status')).toEqual([]);
 });
 
 test('a retired exact path action cannot look up history on a different HEAD', async ({ page }) => {
@@ -167,10 +248,37 @@ test('file history can start from another local ref without switching the checko
   await pane.getByRole('button', { name: 'Reload file history' }).click();
   await expect(pane.getByRole('button', { name: 'Older release edit' })).toHaveCount(0);
   expect((await reads()).at(-1)).toMatchObject({ revision: tag, path, cursor: null });
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true, value: { writeText: async () => undefined },
+    });
+  });
+  await pane.getByRole('button', { name: `Copy path: ${path}`, exact: true }).click();
+  await expect(pane.getByRole('status')).toHaveText(`Copied file path: ${path}`);
+  await page.evaluate(() => {
+    const state = (window as any).__historyFixture;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => new Promise<void>(resolve => { state.finishCopy = resolve; }) },
+    });
+  });
+  await pane.getByRole('button', { name: `Copy path: ${path}`, exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__historyFixture.finishCopy)).toBe('function');
   await pane.getByRole('button', { name: 'Use diff revision' }).click();
   await expect(pane).toContainText('No history was found');
+  await expect(pane.getByRole('status')).toBeEmpty();
   await expect(startingPoint).toHaveText('Starting point: Diff revision');
   expect((await reads()).at(-1)).toMatchObject({ revision: head, path, cursor: null });
+  // Reopen the same matching row before the clipboard reply. Comparing only
+  // the current commit/path would incorrectly accept the retired operation.
+  await ref.fill(tag);
+  await ref.press('Enter');
+  await expect(pane.getByRole('button', { name: 'Release-only change' })).toBeVisible();
+  await page.evaluate(async () => {
+    (window as any).__historyFixture.finishCopy();
+    await Promise.resolve();
+  });
+  await expect(pane.getByRole('status')).toBeEmpty();
   expect(await page.evaluate(() => {
     const { app, calls } = (window as any).__historyFixture;
     return { head: app.git.repository().headOid, checkouts: calls.filter((call: any) => call.command.includes('checkout')) };
@@ -222,12 +330,19 @@ test('closing history search does not take focus back from another control', asy
 
 test('cancelling the delayed history loader restores the compact opener', async ({ page }) => {
   let release!: () => void;
+  let intercepted = false;
+  let fulfilled = false;
   const held = new Promise<void>(resolve => { release = resolve; });
   await page.route('**/chunk-*.js', async route => {
     const response = await route.fetch();
     const body = await response.text();
-    if (body.includes('Search repository history') && body.includes('Compare two revisions')) await held;
+    const historyChunk = body.includes('Search repository history') && body.includes('Compare two revisions');
+    if (historyChunk) {
+      intercepted = true;
+      await held;
+    }
     await route.fulfill({ response, body });
+    if (historyChunk) fulfilled = true;
   });
   try {
     await page.setViewportSize({ width: 700, height: 720 });
@@ -236,13 +351,18 @@ test('cancelling the delayed history loader restores the compact opener', async 
     await page.locator('.graph-search-advanced').click();
     const loading = page.getByRole('dialog', { name: 'Loading history search', exact: true });
     await expect(loading.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+    await expect.poll(() => intercepted).toBe(true);
     await expect(compact).toHaveAttribute('aria-expanded', 'false');
     await page.keyboard.press('Escape');
     await expect(loading).toHaveCount(0);
     await expect(compact).toBeFocused();
     release();
+    await expect.poll(() => fulfilled).toBe(true);
     await expect(page.getByRole('dialog', { name: 'Search repository history', exact: true })).toHaveCount(0);
-  } finally { release(); }
+  } finally {
+    release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
 });
 
 test('cancelled history chunk loading does not open late or issue a search', async ({ page }) => {
@@ -339,7 +459,15 @@ test('opens contextual native history search with keyboard focus and progressive
   await expect.poll(() => page.evaluate(() => (window as any).__historyFixture.calls.find((call: any) => call.command === 'search_repository_history').args.query.scope)).toBe('main..topic');
   await dialog.getByRole('button', { name: 'Continue searching older history' }).click();
   await expect(dialog).toContainText('1 results · search complete');
-  await dialog.getByRole('button', { name: /Older than every loaded/ }).click();
+  const result = dialog.getByRole('button', { name: /Older than every loaded/ });
+  for (const [theme, color] of [['khronos', 'rgb(43, 43, 64)'], ['midnight', 'rgb(35, 49, 72)']]) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await result.hover();
+    await expect(result).toHaveCSS('background-color', color);
+    await page.mouse.move(0, 0);
+    await expect(result).not.toHaveCSS('background-color', color);
+  }
+  await result.click();
   await expect(dialog).not.toBeVisible();
   await expect(page.locator('.commit-panel')).toContainText('Older than every loaded graph page');
   const selected = await page.evaluate(() => (window as any).__historyFixture.app.selectedCommitData().oid);
@@ -422,6 +550,46 @@ test('file pagination opens historical renamed paths and blame can open the firs
   });
   await page.getByRole('button', { name: 'Parent', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__historyFixture.calls.findLast((call: any) => call.command === 'inspect_commit_file')?.args.path)).toBe('before.txt');
+});
+
+test('blame jump validates locally without offering to retry an unrelated read', async ({ page }) => {
+  await page.evaluate(() => {
+    const { app, oldOid } = (window as any).__historyFixture;
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    native.invoke = (command: string, args: any) => {
+      if (command !== 'inspect_file_blame_page') return invoke(command, args);
+      (window as any).__historyFixture.calls.push({ command, args });
+      return Promise.resolve({
+        lines: [{ lineNumber: args.firstLine, oid: oldOid, path: 'source.txt', authorName: 'Fixture', authorEmail: 'fixture@example.test', authoredAt: 1, summary: 'Source', text: 'source line' }],
+        nextLine: null,
+      });
+    };
+    app.changesOpen.set(false);
+    app.git.commitFileDiff.set({ oid: oldOid, path: 'source.txt', patch: '+line', truncated: false });
+    app.openDiffViewer();
+  });
+  await page.getByRole('button', {name: 'Blame', exact: true}).click();
+  const blame = page.getByRole('region', {name: 'File blame', exact: true});
+  const line = blame.getByRole('spinbutton', {name: 'Go to line'});
+  const go = blame.getByRole('button', {name: 'Go', exact: true});
+  const requests = () => page.evaluate(() => (window as any).__historyFixture.calls
+    .filter((call: any) => call.command === 'inspect_file_blame_page').map((call: any) => call.args.firstLine));
+  await expect(blame).toContainText('Lines 1–1');
+  for (const invalid of ['', '0', '1.5', '4294967196']) {
+    await line.fill(invalid);
+    await go.click();
+    await expect(line).toBeFocused();
+    await expect(line).toHaveAttribute('aria-invalid', 'true');
+    await expect(blame.getByRole('alert')).toHaveText('Enter a positive whole line number.');
+    await expect(blame.getByRole('button', {name: 'Retry blame page'})).toHaveCount(0);
+    expect(await requests()).toEqual([1]);
+  }
+  await line.fill('101');
+  await expect(blame.getByRole('alert')).toHaveCount(0);
+  await line.press('Enter');
+  await expect(blame).toContainText('Lines 101–101');
+  expect(await requests()).toEqual([1, 101]);
 });
 
 for (const change of ['repository', 'closed viewer', 'newer navigation']) {
@@ -512,7 +680,7 @@ test('file history keeps its scroll position when returning from Diff', async ({
     history.files.set(Array.from({length: 100}, (_, i) => ({...entry, oid: (i + 1).toString(16).padStart(40, '0'), path: 'new.txt', previousPath: null})));
   });
   const viewport = page.locator('gk-file-history .history-list');
-  const commitButton = viewport.locator('.history-entry button').first();
+  const commitButton = viewport.locator('.history-entry > div > button').first();
   await expect(commitButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(commitButton).toHaveCSS('text-align', 'left');
   await expect(commitButton).toHaveCSS('font-size', '13px');

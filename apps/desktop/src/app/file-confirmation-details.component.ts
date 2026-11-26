@@ -1,4 +1,4 @@
-import { afterRenderEffect, ChangeDetectionStrategy, Component, input, output, untracked } from '@angular/core';
+import { afterRenderEffect, ChangeDetectionStrategy, Component, computed, input, output, untracked } from '@angular/core';
 import type { DiscardPreview, DiscardRecovery } from '@git-khronos/contracts';
 import { displayRecoveryPath } from './discard-recovery-display';
 
@@ -35,6 +35,7 @@ export class FileConfirmationDetailsComponent {
   readonly togglePath = output<string>();
   readonly selectAllChanged = output<boolean>();
   protected readonly displayRecoveryPath = displayRecoveryPath;
+  protected readonly oversizedPaths = computed(() => new Set(this.action().preview?.oversizedPaths ?? []));
 
   constructor() {
     afterRenderEffect(() => {

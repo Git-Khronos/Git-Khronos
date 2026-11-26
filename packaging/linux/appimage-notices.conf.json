@@ -1,0 +1,24 @@
+{
+  "bundle": {
+    "linux": {
+      "appimage": {
+        "files": {
+          "/usr/share/doc/git-khronos/LICENSE": "../../../LICENSE",
+          "/usr/share/doc/git-khronos/THIRD_PARTY_NOTICES.md": "../../../THIRD_PARTY_NOTICES.md",
+          "/usr/share/doc/git-khronos/rust-dependency-notices.json.gz": "../../../target/package-assets/rust-dependency-notices.json.gz",
+          "/usr/share/doc/git-khronos/frontend-dependency-notices.txt.gz": "../../../target/package-assets/frontend-dependency-notices.txt.gz",
+          "/usr/share/doc/dconf-gsettings-backend/copyright": "/usr/share/doc/dconf-gsettings-backend/copyright",
+          "/usr/share/doc/glib-networking/copyright": "/usr/share/doc/glib-networking/copyright",
+          "/usr/share/doc/libbz2-1.0/copyright": "/usr/share/doc/libbz2-1.0/copyright",
+          "/usr/share/doc/libcap2/copyright": "/usr/share/doc/libcap2/copyright",
+          "/usr/share/doc/libdbus-1-3/copyright": "/usr/share/doc/libdbus-1-3/copyright",
+          "/usr/share/doc/libkeyutils1/copyright": "/usr/share/doc/libkeyutils1/copyright",
+          "/usr/share/doc/liblzma5/copyright": "/usr/share/doc/liblzma5/copyright",
+          "/usr/share/doc/libpcre3/copyright": "/usr/share/doc/libpcre3/copyright",
+          "/usr/share/doc/librsvg2-common/copyright": "/usr/share/doc/librsvg2-common/copyright",
+          "/usr/share/doc/libselinux1/copyright": "/usr/share/doc/libselinux1/copyright"
+        }
+      }
+    }
+  }
+}

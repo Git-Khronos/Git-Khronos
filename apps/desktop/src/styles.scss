@@ -97,6 +97,7 @@
   --zoom-select-text: #cbc9d6;
   --overlay-backdrop: #070710b8;
   --overlay-surface: #242335;
+  --overlay-shadow: 0 28px 90px #000d;
   --overlay-border: #4a4962;
   --overlay-header-border: #3d3c52;
   --overlay-icon: #34334a;
@@ -497,7 +498,7 @@ code, kbd { font-family: var(--font-mono); }
 .tab-list-toggle:hover { background: var(--chrome-control-hover); color: white; }
 .tab-list-menu { position: absolute; z-index: 28; top: 32px; right: 0; width: min(310px, calc(100vw - 12px)); max-height: min(430px, calc(100vh - 50px)); display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--overlay-border); border-radius: 5px; background: var(--overlay-surface); box-shadow: 0 16px 46px #000a; }
 .tab-list-heading { display: flex; justify-content: space-between; padding: 10px 14px 8px; border-bottom: 1px solid var(--overlay-border); color: var(--overlay-muted-low); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-.tab-list-scroll { min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 5px; overscroll-behavior: contain; scrollbar-color: var(--border-strong) transparent; scrollbar-gutter: stable; scrollbar-width: thin; }
+.tab-list-scroll { min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 5px; overscroll-behavior: contain; scrollbar-color: var(--overlay-control-border) transparent; scrollbar-gutter: stable; scrollbar-width: thin; }
 .tab-list-scroll > button { width: 100%; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 3px; background: transparent; color: var(--overlay-list-text); text-align: left; }
 .tab-list-scroll > button:hover, .tab-list-scroll > button.active { background: var(--overlay-list-hover); color: white; }
 .tab-list-scroll > button:focus-visible { outline: 2px solid color-mix(in srgb, var(--purple) 72%, white); outline-offset: -3px; background: var(--overlay-list-hover); color: white; }
@@ -1056,8 +1057,8 @@ button.ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--purp
 .commit-row input, .commit-row textarea { user-select: text; }
 /* Reserve space for the panel splitter without overlapping the marker or row-action targets. */
 .history-panel > .graph-header, .history-panel > .commit-list-shell { margin-right: 12px; }
-.graph-header { position: relative; min-width: 0; flex: none; }
-.graph-columns { height: 28px; align-items: center; overflow: hidden; padding: 0 calc(42px + var(--graph-scrollbar-gutter, 0px)) 0 6px; scroll-padding-inline-end: calc(48px + var(--graph-scrollbar-gutter, 0px)); border-bottom: 1px solid var(--graph-header-border); background: var(--graph-header); color: var(--graph-header-text); font-size: 12px; font-weight: 800; }
+.graph-header { --graph-settings-lane: calc(24px + var(--graph-scrollbar-gutter, 0px)); position: relative; min-width: 0; flex: none; background: var(--graph-header); }
+.graph-columns { height: 28px; align-items: center; overflow: hidden; margin-right: var(--graph-settings-lane); padding: 0 18px 0 6px; scroll-padding-inline-end: 4px; border-bottom: 1px solid var(--graph-header-border); background: var(--graph-header); color: var(--graph-header-text); font-size: 12px; font-weight: 800; }
 .commit-list-shell::before, .commit-list-shell::after { content: ''; position: absolute; z-index: 7; top: 0; bottom: 10px; width: 16px; opacity: 0; pointer-events: none; transition: opacity var(--motion-disclosure) var(--ease-out); }
 .commit-list-shell::before { left: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--graph-scroll-shadow) 90%, transparent), transparent); }
 .commit-list-shell::after { right: 0; background: linear-gradient(270deg, color-mix(in srgb, var(--graph-scroll-shadow) 90%, transparent), transparent); }
@@ -1081,17 +1082,12 @@ button.ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, var(--purp
 .graph-columns .date-column-heading .column-heading-icon { justify-content: center; margin-left: -6px; }
 /* Center the Author icon across the whole heading; the filter toggle stays on the right. */
 .graph-columns .author-column-heading .column-heading-icon { position: absolute; inset: 0; align-items: center; justify-content: center; pointer-events: none; }
-.graph-columns.has-trailing-column { padding-right: calc(24px + var(--graph-scrollbar-gutter, 0px)); scroll-padding-inline-end: calc(24px + var(--graph-scrollbar-gutter, 0px)); }
-/* Columns are never pinned, so one heading can never cover another: every heading keeps its own grid
-   track and scrolls with the history. The trailing column spans its own track and the settings lane,
-   keeping the settings button rightmost inside it. */
+.graph-columns.has-trailing-column { padding-right: 0; }
+/* Preserve the header/row track geometry, but clip the scrolling headings before the
+   separate settings lane so a heading control cannot sit underneath its button. */
 .graph-columns > .trailing-column { grid-column: -3 / -1; grid-row: 1; padding-right: 32px; border-right: 0; }
-.graph-columns > .trailing-column::after { content: ''; position: absolute; top: 0; bottom: 0; left: 100%; width: calc(24px + var(--graph-scrollbar-gutter, 0px)); background: var(--graph-header); pointer-events: none; }
 .graph-columns button { order: 99; background: transparent; color: var(--graph-header-text); }
-/* While columns continue past the right edge, an opaque strip behind the settings button marks the
-   header's visible edge, so headings end there instead of passing under the button. */
-.history-panel:has(.commit-list-shell.can-scroll-right) .graph-header::after { content: ''; position: absolute; z-index: 5; top: 0; right: 0; bottom: 1px; width: calc(42px + var(--graph-scrollbar-gutter, 0px)); border-left: 1px solid var(--graph-header-divider); background: var(--graph-header); pointer-events: none; }
-.graph-header > .graph-settings-toggle { position: absolute; z-index: 6; top: 2px; right: calc(22px + var(--graph-scrollbar-gutter, 0px)); width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--graph-header-divider); border-radius: 3px; background: color-mix(in srgb, var(--graph-header-hover) 28%, var(--graph-header)); color: var(--graph-header-hover-text); box-shadow: 0 1px 2px rgb(0 0 0 / .18); }
+.graph-header > .graph-settings-toggle { position: absolute; z-index: 6; top: 2px; right: var(--graph-scrollbar-gutter, 0px); width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--graph-header-divider); border-radius: 3px; background: color-mix(in srgb, var(--graph-header-hover) 28%, var(--graph-header)); color: var(--graph-header-hover-text); box-shadow: 0 1px 2px rgb(0 0 0 / .18); }
 .graph-header > .graph-settings-toggle:hover, .graph-header > .graph-settings-toggle:focus-visible, .graph-header > .graph-settings-toggle[aria-expanded='true'] { border-color: color-mix(in srgb, var(--graph-header-hover-text) 30%, var(--graph-header-divider)); background: var(--graph-header-hover); color: var(--graph-header-hover-text); }
 .graph-settings-hidden-count { position: absolute; top: -5px; right: -6px; min-width: 14px; height: 14px; display: grid; place-items: center; padding: 0 3px; border: 2px solid var(--graph-header); border-radius: 8px; background: var(--graph-count-badge); color: white; font-size: 9px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; pointer-events: none; }
 .graph-settings-toggle:hover .graph-settings-hidden-count, .graph-settings-toggle:focus-visible .graph-settings-hidden-count, .graph-settings-toggle[aria-expanded='true'] .graph-settings-hidden-count { border-color: var(--graph-header-hover); }

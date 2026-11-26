@@ -42,10 +42,19 @@ def sshd_helper_config(sshd):
     return ""
 
 
-def start_gitlab_ssh(fixtures, gate, children, report):
+def resolve_sshd():
     sshd = Path(os.environ.get("GIT_KHRONOS_SSHD", "/usr/sbin/sshd"))
-    if not sshd.is_absolute() or not sshd.is_file():
-        raise RuntimeError("Native GitLab SSH acceptance requires GIT_KHRONOS_SSHD or /usr/sbin/sshd")
+    if not sshd.is_absolute() or not sshd.is_file() or not os.access(sshd, os.X_OK):
+        raise RuntimeError(
+            "Native GitLab acceptance needs an executable OpenSSH server. "
+            "Install openssh-server or set GIT_KHRONOS_SSHD to an absolute path "
+            "to an extracted sshd. The gitlab-fork-ui suite does not require SSH."
+        )
+    return sshd
+
+
+def start_gitlab_ssh(fixtures, gate, children, report):
+    sshd = resolve_sshd()
     real_ssh = shutil.which("ssh", path=fixtures.env["PATH"])
     git = shutil.which("git", path=fixtures.env["PATH"])
     if not real_ssh or not git:

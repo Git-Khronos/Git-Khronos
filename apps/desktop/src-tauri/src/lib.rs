@@ -133,6 +133,8 @@ mod repository_watcher;
 mod terminal_profile_commands;
 mod windows_launcher;
 mod working_file_commands;
+#[cfg(target_os = "linux")]
+mod wsl_accessibility;
 
 #[derive(Default)]
 struct AppState {
@@ -1135,14 +1137,14 @@ async fn commit_changes(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn update_head_message(
+async fn update_head_message(
     repo_id: String,
     checkout: git_khronos_git_core::CommitRewriteCheckout,
     message: String,
     skip_hooks: bool,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_update_head_message(
             path,
             &checkout.head_oid,
@@ -1151,20 +1153,21 @@ fn update_head_message(
             skip_hooks,
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn edit_commit(
+async fn edit_commit(
     repo_id: String,
     checkout: git_khronos_git_core::CommitRewriteCheckout,
     target_oid: String,
     message: String,
     author: CommitAuthorInput,
     skip_hooks: bool,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_edit_commit(
             path,
             &checkout.head_oid,
@@ -1175,32 +1178,35 @@ fn edit_commit(
             skip_hooks,
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn checkout_branch(
+async fn checkout_branch(
     repo_id: String,
     name: String,
     review: Option<BranchIntegrationReview>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| match review.as_ref() {
+    mutate_and_refresh_background(repo_id, app, move |path| match review.as_ref() {
         Some(review) => git_checkout_branch_for_integration(path, &name, review),
         None => git_checkout_branch(path, &name),
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn checkout_remote_branch(
+async fn checkout_remote_branch(
     repo_id: String,
     name: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_checkout_remote_branch(path, &name)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1666,14 +1672,14 @@ async fn update_all_submodules(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn checkout_commit(
+async fn checkout_commit(
     repo_id: String,
     oid: String,
     expected_head_oid: Option<String>,
     expected_branch: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_checkout_commit_reviewed(
             path,
             &oid,
@@ -1681,6 +1687,7 @@ fn checkout_commit(
             expected_branch.as_deref(),
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1740,33 +1747,27 @@ async fn integrate_branch(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn continue_merge(
-    repo_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, git_continue_merge)
+async fn continue_merge(repo_id: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_background(repo_id, app, git_continue_merge).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn abort_merge(
-    repo_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, git_abort_merge)
+async fn abort_merge(repo_id: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_background(repo_id, app, git_abort_merge).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn prepare_interactive_rebase(
+async fn prepare_interactive_rebase(
     repo_id: String,
     source: String,
     target: String,
     selection_oids: Option<Vec<String>>,
     root: Option<bool>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<InteractiveRebasePlan, AppError> {
-    with_repository(&repo_id, &state, |path| {
+    with_repository_background(repo_id, app, move |path| {
         git_prepare_interactive_rebase(
             path,
             &source,
@@ -1775,12 +1776,13 @@ fn prepare_interactive_rebase(
             root.unwrap_or(false),
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
 #[allow(clippy::too_many_arguments)]
-fn execute_interactive_rebase(
+async fn execute_interactive_rebase(
     repo_id: String,
     source: String,
     target: String,
@@ -1789,9 +1791,9 @@ fn execute_interactive_rebase(
     root: Option<bool>,
     onto_oid: Option<String>,
     reviewed_tips: git_khronos_git_core::InteractiveRebaseTips,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_execute_interactive_rebase(
             path,
             &source,
@@ -1803,18 +1805,20 @@ fn execute_interactive_rebase(
             &reviewed_tips,
         )
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn begin_rebase_split(
+async fn begin_rebase_split(
     repo_id: String,
     expected_head: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_begin_rebase_split(path, &expected_head)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1882,40 +1886,43 @@ async fn preview_merge(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn compare_branches(
+async fn compare_branches(
     repo_id: String,
     target: String,
     source: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<git_khronos_git_core::BranchComparison, AppError> {
-    with_repository(&repo_id, &state, |path| {
+    with_repository_background(repo_id, app, move |path| {
         git_khronos_git_core::compare_branches(path, &target, &source)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn prepare_merge_rebase(
+async fn prepare_merge_rebase(
     repo_id: String,
     source: String,
     target: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<git_khronos_git_core::MergeRebasePlan, AppError> {
-    with_repository(&repo_id, &state, |path| {
+    with_repository_background(repo_id, app, move |path| {
         git_khronos_git_core::prepare_merge_rebase(path, &source, &target)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn execute_merge_rebase(
+async fn execute_merge_rebase(
     repo_id: String,
     request: git_khronos_git_core::MergeRebaseRequest,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_khronos_git_core::execute_merge_rebase(path, &request)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2128,29 +2135,20 @@ fn control_mail_patch(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn continue_rebase(
-    repo_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, git_continue_rebase)
+async fn continue_rebase(repo_id: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_background(repo_id, app, git_continue_rebase).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn skip_rebase(
-    repo_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, git_skip_rebase)
+async fn skip_rebase(repo_id: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_background(repo_id, app, git_skip_rebase).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn abort_rebase(
-    repo_id: String,
-    state: tauri::State<'_, AppState>,
-) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, git_abort_rebase)
+async fn abort_rebase(repo_id: String, app: AppHandle) -> Result<RepositorySnapshot, AppError> {
+    mutate_and_refresh_background(repo_id, app, git_abort_rebase).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2678,89 +2676,98 @@ fn remove_remote(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn stash_changes(
+async fn stash_changes(
     repo_id: String,
     message: Option<String>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| git_stash(path, message.as_deref()))
+    mutate_and_refresh_background(repo_id, app, move |path| {
+        git_stash(path, message.as_deref())
+    })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn pop_stash(
+async fn pop_stash(
     repo_id: String,
     expected_oid: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_pop_stash_entry(path, "stash@{0}", &expected_oid)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn apply_stash(
+async fn apply_stash(
     repo_id: String,
     reference: String,
     expected_oid: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_apply_stash(path, &reference, &expected_oid)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn pop_stash_entry(
+async fn pop_stash_entry(
     repo_id: String,
     reference: String,
     expected_oid: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_pop_stash_entry(path, &reference, &expected_oid)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn drop_stash(
+async fn drop_stash(
     repo_id: String,
     reference: String,
     expected_oid: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_drop_stash(path, &reference, &expected_oid)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn clear_stashes(
+async fn clear_stashes(
     repo_id: String,
     expected_oids: Vec<String>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_clear_stashes_checked(path, &expected_oids)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn rename_stash(
+async fn rename_stash(
     repo_id: String,
     reference: String,
     expected_oid: String,
     message: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_rename_stash(path, &reference, &expected_oid, &message)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -2779,29 +2786,30 @@ fn create_tag(
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn cherry_pick_commits(
+async fn cherry_pick_commits(
     repo_id: String,
     oids: Vec<String>,
     mainline: Option<u32>,
     no_commit: Option<bool>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_cherry_pick_commits(path, &oids, mainline, no_commit.unwrap_or(false))
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn revert_commit(
+async fn revert_commit(
     repo_id: String,
     oid: String,
     mainline: Option<u32>,
     oids: Option<Vec<String>>,
     no_commit: Option<bool>,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         if let Some(oids) = &oids {
             if mainline.is_some() || oids.first() != Some(&oid) {
                 return Err(AppError {
@@ -2815,32 +2823,35 @@ fn revert_commit(
             git_revert_commit(path, &oid, mainline, no_commit.unwrap_or(false))
         }
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn reset_to_commit(
+async fn reset_to_commit(
     repo_id: String,
     oid: String,
     mode: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_reset_to_commit(path, &oid, &mode)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn control_history_operation(
+async fn control_history_operation(
     repo_id: String,
     operation: String,
     action: String,
-    state: tauri::State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<RepositorySnapshot, AppError> {
-    mutate_and_refresh(&repo_id, &state, |path| {
+    mutate_and_refresh_background(repo_id, app, move |path| {
         git_control_history_operation(path, &operation, &action)
     })
+    .await
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -4267,6 +4278,8 @@ fn default_shell() -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    wsl_accessibility::route_before_gtk(display_environment::running_under_wsl());
     let bindings = ipc_registry();
     let state = AppState::default();
     // Capture before saved tabs can restore, so their reads remain guarded.

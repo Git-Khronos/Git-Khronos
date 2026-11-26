@@ -5,6 +5,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, type ElementRef, Inject
 import { FormsModule } from '@angular/forms';
 import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
+import { isTabKey } from './tab-key';
 
 export type RepositoryDialogMode = 'manager' | 'clone' | 'init';
 
@@ -292,7 +293,7 @@ export class RepositoryDialogComponent {
       event.preventDefault();
       return;
     }
-    if (event.key !== 'Tab') return;
+    if (!isTabKey(event)) return;
     const dialog = event.currentTarget as HTMLElement;
     const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
       'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, mkdtempSync, openSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isCliEntry } from './cli-entry.mjs';
 
 const baseline = '2.35';
 const compare = (left, right) => {
@@ -53,13 +53,23 @@ function payloadDigest(path, limit) {
 }
 
 export function checkPackage(packagePath) {
+  return inspectPackage(packagePath, true);
+}
+
+// For local installed QA only. Still hash the exact archive and validate both
+// payload files and the executable architecture; never claim release ABI.
+export function checkPackageIdentity(packagePath) {
+  return inspectPackage(packagePath, false);
+}
+
+function inspectPackage(packagePath, releaseAbi) {
   const run = (command, args) => execFileSync(command, args, {
     encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }, maxBuffer: 8 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const field = name => run('dpkg-deb', ['--field', packagePath, name]).trim();
   if (field('Package') !== 'git-khronos' || field('Architecture') !== 'amd64') {
-    throw new Error('The Ubuntu release gate requires the git-khronos amd64 Debian package.');
+    throw new Error('Expected the git-khronos amd64 Debian package.');
   }
   const depends = field('Depends');
   const version = field('Version');
@@ -75,7 +85,7 @@ export function checkPackage(packagePath) {
     if (!/Class:\s+ELF64\b/.test(header) || !/Machine:\s+Advanced Micro Devices X86-64\b/.test(header)) {
       throw new Error('The packaged executable is not an amd64 ELF64 binary.');
     }
-    const glibc = verifyGlibcBaseline(depends, run('readelf', ['--version-info', '--wide', executable]));
+    const glibc = releaseAbi ? verifyGlibcBaseline(depends, run('readelf', ['--version-info', '--wide', executable])) : null;
     const dynamic = run('readelf', ['--dynamic', '--wide', executable]);
     return {
       package: resolve(packagePath),
@@ -88,7 +98,7 @@ export function checkPackage(packagePath) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isCliEntry(import.meta)) {
   try {
     if (process.argv.length !== 3) throw new Error('Usage: node tools/check-linux-abi.mjs PACKAGE.deb');
     console.log(JSON.stringify(checkPackage(resolve(process.argv[2])), null, 2));

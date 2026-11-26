@@ -189,6 +189,16 @@ state or bulk-operation scope. A new request starts with empty filters.
 An open confirmation disables filtering so the reviewed entry cannot
 disappear before confirmation or cancellation.
 
+### Prepared single-file discard
+
+Single-file discard from the row or context menu prepares a native token for
+the exact selected path before opening the confirmation. A token that names
+a different path, has exclusions or has a changed tracked/untracked status
+does not open a confirmable review. Confirmation sends the token, not a path
+to rediscover on disk. If working bytes or the index changed, native code
+refuses the stale review instead of capturing and discarding the new edit.
+The renderer keeps the checkout-visit and review-generation checks.
+
 ### Blocked discard subset review
 
 The root owns file-action identity, preview requests and confirmation; the
@@ -197,19 +207,35 @@ active checkout visit, branch and HEAD. A stale review explains why it cannot
 be confirmed, even when a revisit still has the same repo ID and patch.
 Rendered controls identify the review they belong to; a retired control
 cannot submit, dismiss or change a replacement. A delayed bulk preview is
-discarded if another review opened in the meantime. The root-level subset
+discarded if another review opened in the meantime. The eligible-file subset
 chooser cannot start until the matching first review has rendered. Returning
 from the chooser
 discards the selection and restores focus only after that review is rendered
 again. Choosing a subset still requires a fresh native preview before any
 destructive confirmation. The Select all eligible and Clear selection controls
 only update the current candidate list; neither starts a preview or touches
-excluded paths. `discard-recovery.spec.ts` holds the review chunk,
+excluded paths. Eligibility comes from native preview, not from the presence
+of a slash in a path. `discard-recovery.spec.ts` holds the review chunk,
 asserts that no second preview starts during loading, and checks focus and
 the exact subset sent after the chunk is released.
 `diff-action-lifecycle.spec.ts` checks same-tip branch changes, return visits
 and retired submit controls. Native exact-patch and recovery checks remain
 authoritative when working bytes change independently.
+
+Bulk discard carries a stable focus target through preview and review.
+Closing the working-directory menu uses its toggle as the return target;
+selected-file review uses the Discard selected button. A refused preview
+only returns focus when it would otherwise be lost, and never takes focus
+from another control or a different checkout.
+If the user cancels selection while a preview is running, the late result
+cannot open a review. For an active selection, every returned path must be
+in scope and every selected row must be accounted for (including blocked
+or skipped results). A selected untracked directory summary may expand to
+its descendants, but never to a sibling directory.
+When native metadata identifies an oversized file in a mixed blocked
+review, that path is labeled as too large to save for recovery. Other
+blocked paths keep the general explanation; the label never makes a path
+eligible or changes what gets captured.
 
 ### Ignore rule review
 
@@ -911,7 +937,10 @@ history. Native rewrite commands check both the reviewed branch (or detached
 HEAD) and its expected tip. Ancestor edits recheck after building replacement
 objects and only then ask Git to compare-and-swap the original ref. The
 checkout recheck occurs before Git's ref transaction; it is not an atomic
-lock on HEAD across independent Git processes. A successful rewrite
+lock on HEAD across independent Git processes. The native rewrite and
+its snapshot refresh hold the repository operation lock on a worker.
+That keeps independent native commands responsive without admitting
+competing mutations of the same checkout. A successful rewrite
 reconciles the repository through the service, but only the same active
 editor may navigate to the replacement commit. Leaving the editor does not
 undo or discard an already-dispatched mutation.
@@ -1734,7 +1763,7 @@ coverage, not proof of all transitions.
 | F03 Open/init/clone | `repository-dialog.component.ts` | Closed -> local/init/provider selection -> destination -> submitting -> opened/error/cancelled; keep drafts independent. | `clone-options.spec.ts`, `welcome-launcher.spec.ts` |
 | F04 Snapshot reconciliation | `GitKhronosService`, `scheduleRepositoryRefresh` | Scheduled -> reading -> accepted/stale/failed/deferred; per-repository mutation/status/history generations. | `background-status.spec.ts`, `snapshot-concurrency.spec.ts`, `snapshot-mutation-lifecycle.spec.ts` |
 | F05 History pagination | `GitKhronosService`, native cursor registry | Idle -> barrier -> page pending -> appended/exhausted/stale/error; close invalidates session cursor. | `history-pagination.spec.ts`, `history-review-loading.spec.ts` |
-| F06 Status paging/file search | `GitKhronosService`, native repository reads | Debounced query/page -> reading -> accepted/complete/stale/error; search and authoritative status differ. | `status-pagination.spec.ts`, `working-tree-lifecycle.spec.ts` |
+| F06 Status paging/file search | `GitKhronosService`, native repository reads | Debounced query/page -> reading -> accepted/complete/stale/error; search and authoritative status differ. One page read at a time per repository; a late error does not follow the user into another checkout. Native status retains a page of rows, counts overflow, and concurrently drains bounded diagnostics. | `status-pagination.spec.ts`, `working-tree-lifecycle.spec.ts`, `bounded_status_drains_diagnostics_before_parsing_records` |
 | F07 Details/diff/comparison | `GitKhronosService` | Unselected -> details pending -> selected details -> file diff pending -> loaded/error; new identity invalidates old request. | `history-comparison-lifecycle.spec.ts`, `stash-preview-lifecycle.spec.ts`, `diff-action-lifecycle.spec.ts` |
 | F08 Whole-history search | `history-search.service.ts` | Prompt -> searching -> partial/complete/error; stopping -> acknowledgement -> incomplete; preserve prior results. | `history-search-lifecycle.spec.ts`, `history-search.spec.ts` |
 | F09 File history/blame | `GitKhronosService`, `file-blame.component.ts` | Unbound -> captured target read -> page/more/error -> source navigation; target includes revision/path/line. | `blame-pages.spec.ts`, `file-content-entry.spec.ts` |
@@ -1965,8 +1994,10 @@ An explicit refresh or accepted native status can resume a paused poller,
 and the retired reply can no longer change the view. In particular, an
 obsolete deadline cannot freeze a live install blocker when Git finishes
 without changing the updater revision. A read timeout never retries an
-update operation or changes consent. Reopening the dialog can retry a failed
-event subscription.
+update operation or changes consent. Rejected status reads use a separate
+automatic retry backoff from three to thirty seconds; an explicit refresh
+bypasses the delay, and any accepted native status resets it. Reopening the
+dialog can retry a failed event subscription.
 
 Coverage: native `application_update` policy, signature/version binding, bounded
 transport, real signed inert package metadata and receipt/worker fault tests;

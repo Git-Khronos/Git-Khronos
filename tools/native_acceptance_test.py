@@ -5,6 +5,7 @@ import select
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 from contextlib import ExitStack
@@ -21,34 +22,76 @@ from unittest.mock import ANY, MagicMock, call, patch
 from urllib.error import HTTPError, URLError
 
 from native_acceptance import (
-    Driver, Fixtures, checkpoint_fixture, checkpoint_refs, expected_debian_package, linux_distribution, main, run,
-    start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
-    verified_installed_file, menu_tab_focus, probe_git_toolchain, seed_commit_draft,
+    Driver, Fixtures, checkpoint_fixture, checkpoint_refs, default_debian_archive, expected_debian_package, linux_distribution, main, run,
+    start_abstract_xvfb, start_private_dbus, stop_owned_process_group, terminal_csp_rendering, verified_installed_executable,
+    verified_installed_file, menu_tab_focus, probe_git_toolchain, probe_lfs_count_toolchain, seed_commit_draft,
     wait_webdriver_ready, webdriver_ports, probe_signed_tag_toolchain, probe_signed_commit_toolchain,
 )
 
 
+class AbstractDisplayTests(unittest.TestCase):
+    def test_requires_xauth_before_starting_any_server(self):
+        with patch('native_acceptance.shutil.which', return_value=None), patch('native_acceptance.subprocess.Popen') as launch:
+            with self.assertRaisesRegex(RuntimeError, 'requires xauth'):
+                start_abstract_xvfb(MagicMock(), [], None, Path('/tmp/.X11-unix'))
+            launch.assert_not_called()
+
+    def test_honors_display_readiness_and_keeps_cookie_out_of_arguments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixtures = SimpleNamespace(root=root, env={})
+            server = MagicMock()
+            server.stdout = BytesIO(b'100\n')
+            server.poll.return_value = None
+            children = []
+            with patch('native_acceptance.shutil.which', return_value='/usr/bin/xauth'), \
+                    patch('native_acceptance.Path.exists', return_value=False), \
+                    patch('native_acceptance.select.select', return_value=([server.stdout], [], [])), \
+                    patch('native_acceptance.secrets.token_hex', return_value='a' * 32), \
+                    patch('native_acceptance.subprocess.run') as auth, \
+                    patch('native_acceptance.subprocess.Popen', return_value=server) as launch:
+                number, owned, authority = start_abstract_xvfb(fixtures, children, None, root)
+            self.assertEqual((number, owned, children), ('100', server, [server]))
+            self.assertEqual(stat.S_IMODE(Path(authority).stat().st_mode), 0o600)
+            self.assertNotIn('a' * 32, auth.call_args.args[0])
+            self.assertIn('a' * 32, auth.call_args.kwargs['input'])
+            self.assertEqual(launch.call_args.args[0][-6:], ['-nolisten', 'tcp', '-nolisten', 'unix', '-auth', authority])
+            self.assertTrue(launch.call_args.kwargs['start_new_session'])
+
+
 class InstalledSuiteBatchTests(unittest.TestCase):
-    def run_batch(self, suites, *, have_package=True, separate_output=False):
+    def run_batch(self, suites, *, have_package=True, separate_output=False, python_override=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             package = root / 'owned fixture.deb'
             if have_package:
                 package.touch()
             log = root / 'calls'
-            python = root / 'python3'
+            python = root / ('python fixture' if python_override == 'valid' else 'python3')
             python.write_text(
                 '#!/bin/sh\n'
+                'if [ "$2" = --describe-runner ]; then\n'
+                '  shift 2\n'
+                '  while [ "$#" -gt 0 ]; do\n'
+                '    test "$1" = --suite || exit 99\n'
+                '    case "$2" in smoke|broken|gitlab|interrupted|incoming-links) ;;\n'
+                '      *) printf "unknown suite: %s\\n" "$2" >&2; exit 2;; esac\n'
+                '    shift 2\n'
+                '  done\n'
+                '  exit 0\n'
+                'fi\n'
                 'test "${1##*/}" = native_acceptance.py && test "$2" = --suite && '
                 'test "$4" = --headless && test "$5" = --installed && test "$6" = --package && '
                 'test "$7" = "$OWNED_PACKAGE" || exit 99\n'
+                'suite="$3"; shift 7\n'
+                'if [ "${1:-}" = --inherited-git-environment ]; then suite="$suite:inherited"; shift; fi\n'
                 'if [ -n "$GIT_KHRONOS_NATIVE_OUTPUT" ]; then\n'
-                '  test "$#" = 9 && test "$8" = --output && test "$9" = "$GIT_KHRONOS_NATIVE_OUTPUT" || exit 99\n'
+                '  test "$#" = 2 && test "$1" = --output && test "$2" = "$GIT_KHRONOS_NATIVE_OUTPUT" || exit 99\n'
                 'else\n'
-                '  test "$#" = 7 || exit 99\n'
+                '  test "$#" = 0 || exit 99\n'
                 'fi\n'
-                'printf "%s\\n" "$3" >> "$OWNED_CALLS"\n'
-                'case "$3" in broken) exit 7;; interrupted) exit 130;; esac\n'
+                'printf "%s\\n" "$suite" >> "$OWNED_CALLS"\n'
+                'case "$suite" in broken*) exit 7;; interrupted*) exit 130;; esac\n'
                 'exit 0\n'
             )
             python.chmod(0o700)
@@ -57,7 +100,9 @@ class InstalledSuiteBatchTests(unittest.TestCase):
                 ['bash', str(runner), str(package), *suites],
                 env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
                      'OWNED_PACKAGE': str(package), 'OWNED_CALLS': str(log),
-                     'GIT_KHRONOS_NATIVE_OUTPUT': str(root / 'separate results') if separate_output else ''},
+                     'GIT_KHRONOS_NATIVE_OUTPUT': str(root / 'separate results') if separate_output else '',
+                     'GIT_KHRONOS_ACCEPTANCE_PYTHON': {'valid': str(python),
+                          'missing': str(root / 'missing python'), 'relative': 'python3.11'}.get(python_override, '')},
                 capture_output=True, text=True, timeout=10,
             )
             return result, log.read_text().splitlines() if log.exists() else []
@@ -67,25 +112,69 @@ class InstalledSuiteBatchTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result)
         self.assertEqual(calls, ['smoke', 'broken', 'gitlab'])
         self.assertIn('Installed native suite passed: gitlab', result.stdout)
+        self.assertIn('Installed native suite summary: 2/3 passed.', result.stdout)
         self.assertIn('Failed installed native suites (suite:exit): broken:7', result.stderr)
+
+    def test_rerun_hint_preserves_package_quoting_and_exact_failed_lanes(self):
+        result, calls = self.run_batch(['smoke', 'broken:inherited', 'gitlab', 'broken'])
+        self.assertEqual(result.returncode, 1, result)
+        self.assertEqual(calls, ['smoke', 'broken:inherited', 'gitlab', 'broken'])
+        command = result.stderr.splitlines()[-1].strip()
+        shell, runner, archive, *lanes = shlex.split(command)
+        self.assertEqual(shell, 'bash')
+        self.assertEqual(Path(runner).name, 'run-native-suites.sh')
+        self.assertEqual(Path(archive).name, 'owned fixture.deb')
+        self.assertEqual(lanes, ['broken:inherited', 'broken'])
 
     def test_interrupted_harness_does_not_start_the_next_suite(self):
         result, calls = self.run_batch(['interrupted', 'gitlab'])
         self.assertEqual(result.returncode, 130, result)
         self.assertEqual(calls, ['interrupted'])
+        self.assertNotIn('Installed native suite summary:', result.stdout)
+        self.assertNotIn('Rerun only failed suites', result.stderr)
 
     def test_all_suites_can_pass(self):
         result, calls = self.run_batch(['smoke', 'gitlab'])
         self.assertEqual(result.returncode, 0, result)
         self.assertEqual(calls, ['smoke', 'gitlab'])
+        self.assertIn('Installed native suite summary: 2/2 passed.', result.stdout)
 
+    def test_batch_honors_versioned_python_override_and_refuses_bad_paths_before_dispatch(self):
+        result, calls = self.run_batch(['smoke', 'gitlab'], python_override='valid')
+        self.assertEqual(result.returncode, 0, result)
+        self.assertEqual(calls, ['smoke', 'gitlab'])
+        for override, code in [('missing', 127), ('relative', 2)]:
+            with self.subTest(override=override):
+                result, calls = self.run_batch(['smoke', 'gitlab'], python_override=override)
+                self.assertEqual(result.returncode, code, result)
+                self.assertEqual(calls, [])
+                self.assertIn('GIT_KHRONOS_ACCEPTANCE_PYTHON', result.stderr)
     def test_read_only_source_can_use_a_separate_output_directory(self):
         result, calls = self.run_batch(['smoke', 'gitlab'], separate_output=True)
         self.assertEqual(result.returncode, 0, result)
         self.assertEqual(calls, ['smoke', 'gitlab'])
 
+    def test_particular_lane_can_use_inherited_git_without_affecting_its_siblings(self):
+        result, calls = self.run_batch(['smoke', 'incoming-links:inherited', 'incoming-links'], separate_output=True)
+        self.assertEqual(result.returncode, 0, result)
+        self.assertEqual(calls, ['smoke', 'incoming-links:inherited', 'incoming-links'])
+        self.assertIn('Installed native suite passed: incoming-links:inherited', result.stdout)
+
+    def test_batch_help_does_not_require_an_archive_or_python(self):
+        runner = Path(__file__).with_name('run-native-suites.sh')
+        result = subprocess.run(
+            ['bash', str(runner), '--help'],
+            env={**os.environ, 'GIT_KHRONOS_ACCEPTANCE_PYTHON': '/nonexistent/owned/python'},
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result)
+        self.assertIn('already installed package', result.stdout)
+        self.assertIn('GIT_KHRONOS_NATIVE_OUTPUT', result.stdout)
+        self.assertEqual(result.stderr, '')
+
     def test_bad_batch_never_runs_a_partial_plan(self):
-        for suites in ([], ['smoke', 'smoke'], ['smoke', '--installed']):
+        for suites in ([], ['smoke', 'smoke'], ['smoke', '--installed'],
+                       ['smoke', 'smoke:inherited', 'smoke:inherited'], ['smoke:invalid']):
             with self.subTest(suites=suites):
                 result, calls = self.run_batch(suites)
                 self.assertEqual(result.returncode, 2, result)
@@ -93,6 +182,12 @@ class InstalledSuiteBatchTests(unittest.TestCase):
         result, calls = self.run_batch(['smoke'], have_package=False)
         self.assertEqual(result.returncode, 2, result)
         self.assertEqual(calls, [])
+
+    def test_unknown_suite_at_the_end_does_not_start_earlier_lanes(self):
+        result, calls = self.run_batch(['smoke', 'gitlab', 'unknown-owned-suite:inherited'])
+        self.assertEqual(result.returncode, 2, result)
+        self.assertEqual(calls, [])
+        self.assertIn('unknown-owned-suite', result.stderr)
 
 
 class CommitDraftReadinessTests(unittest.TestCase):
@@ -146,6 +241,22 @@ class LinuxDistributionTests(unittest.TestCase):
 
 
 class GitToolchainPreflightTests(unittest.TestCase):
+    def test_lfs_count_preflight_checks_capability_not_version(self):
+        repo = Path('/owned/lfs-probe')
+        fixtures = MagicMock()
+        fixtures.repository.return_value = repo
+        fixtures.git.side_effect = ['git-lfs/test', '{"files":null}']
+        report = {"scenarios": []}
+        probe_lfs_count_toolchain(fixtures, report)
+        self.assertTrue(report["lfsCountToolchainPreflight"]["passed"])
+        self.assertEqual(fixtures.git.call_args_list, [call(repo, "lfs", "version"), call(repo, "lfs", "ls-files", "--json")])
+        self.assertEqual(report["scenarios"], [])
+        fixtures.git.side_effect = ['git-lfs/test', RuntimeError("unknown flag: --json")]
+        with self.assertRaisesRegex(RuntimeError, "ls-files --json"):
+            probe_lfs_count_toolchain(fixtures, report)
+        self.assertFalse(report["lfsCountToolchainPreflight"]["passed"])
+        self.assertIn("unknown flag", report["lfsCountToolchainPreflight"]["diagnostic"])
+
     def test_preflight_uses_a_healthy_owned_git_repository(self):
         with tempfile.TemporaryDirectory() as directory:
             fixtures = Fixtures(directory)
@@ -282,14 +393,62 @@ class PackageIdentityTests(unittest.TestCase):
 
     def test_runner_description_needs_no_package_or_webdriver(self):
         with patch("sys.argv", ["native_acceptance.py", "--describe-runner"]), \
-                patch("native_acceptance.expected_debian_package") as package, \
+                patch("native_acceptance.expected_debian_package",
+                      return_value=("2.3.4", "Git-Khronos_2.3.4_amd64.deb")) as package, \
                 patch("native_acceptance.Driver") as driver, patch("builtins.print") as output:
             self.assertIsNone(main())
-        package.assert_not_called()
+        package.assert_called_once_with()
         driver.assert_not_called()
         description = json.loads(output.call_args.args[0])
         self.assertIn("branch-workflow-recovery", description["suites"])
         self.assertEqual(description["forcedInheritedGitEnvironment"], ["environment"])
+        self.assertEqual(description["expectedPackageName"], "Git-Khronos_2.3.4_amd64.deb")
+
+    def test_optimized_python_cannot_announce_or_run_native_acceptance(self):
+        script = Path(__file__).with_name("native_acceptance.py")
+        with tempfile.TemporaryDirectory() as directory:
+            reports = Path(directory) / "unexpected-evidence"
+            env = os.environ.copy()
+            env.pop("PYTHONOPTIMIZE", None)
+            for options, extra, args in (
+                (["-O"], {}, ["--describe-runner"]),
+                ([], {"PYTHONOPTIMIZE": "1"}, ["--output", str(reports)]),
+            ):
+                with self.subTest(options=options, extra=extra):
+                    result = subprocess.run([sys.executable, *options, str(script), *args],
+                                            env={**env, **extra}, capture_output=True, text=True, timeout=10)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("Native acceptance requires Python assertions", result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertFalse(reports.exists())
+
+    def test_default_archive_uses_the_same_cargo_target_as_packaging(self):
+        name = "Git-Khronos_2.3.4_amd64.deb"
+        suffix = Path("release/bundle/deb") / name
+        for env, target in (
+            ({}, Path("/owned workspace/target")),
+            ({"CARGO_TARGET_DIR": ""}, Path("/owned workspace/target")),
+            ({"CARGO_TARGET_DIR": "build artifacts"}, Path("/owned caller/build artifacts")),
+            ({"CARGO_TARGET_DIR": "/owned output"}, Path("/owned output")),
+        ):
+            with self.subTest(env=env), patch.dict(os.environ, env, clear=True), \
+                    patch("native_acceptance.ROOT", Path("/owned workspace")), \
+                    patch("native_acceptance.Path.cwd", return_value=Path("/owned caller")):
+                self.assertEqual(default_debian_archive(name), target / suffix)
+
+    def test_unusable_output_reports_how_to_fix_evidence_preflight(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "not-a-directory"
+            output.touch()
+            args = SimpleNamespace(package=root / expected_debian_package()[1], output=output,
+                                   suite="smoke", describe_runner=False, headless=False,
+                                   inherited_git_environment=False, installed=False)
+            with patch("native_acceptance.argparse.ArgumentParser.parse_args", return_value=args), \
+                    patch("native_acceptance.Driver") as driver, patch("builtins.print") as printed:
+                self.assertEqual(main(), 1)
+            driver.assert_not_called()
+            self.assertIn("Use --output with a directory writable and traversable", printed.call_args.args[0])
 
     def test_package_with_wrong_version_is_rejected_before_launch(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -315,7 +474,9 @@ class PackageIdentityTests(unittest.TestCase):
     def test_full_suite_requires_git_lfs_before_starting_webdriver(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            args = SimpleNamespace(package=root / "not-built.deb", output=root / "evidence", suite="full",
+            package = root / expected_debian_package()[1]
+            package.touch()
+            args = SimpleNamespace(package=package, output=root / "evidence", suite="full",
                                    describe_runner=False, headless=True,
                                    inherited_git_environment=False, installed=False)
             def tool_path(name):
@@ -330,6 +491,31 @@ class PackageIdentityTests(unittest.TestCase):
             self.assertFalse(report["passed"])
             self.assertIn("Missing git-lfs", report["failure"])
             self.assertEqual(report["failurePhase"], "package-preflight")
+
+    def test_invalid_package_path_is_reported_before_runtime_tool_discovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            filename = expected_debian_package()[1]
+            missing = root / "missing" / filename
+            not_file = root / filename
+            not_file.mkdir()
+            for archive, expected in (
+                (missing, "Debian package not found:"),
+                (not_file, "needs a regular Debian package file:"),
+            ):
+                with self.subTest(archive=archive):
+                    args = SimpleNamespace(package=archive, output=root / archive.parent.name,
+                                           suite="smoke", describe_runner=False, headless=True,
+                                           inherited_git_environment=False, installed=False)
+                    with patch("native_acceptance.argparse.ArgumentParser.parse_args", return_value=args), \
+                            patch("native_acceptance.shutil.which") as which, \
+                            patch("native_acceptance.Driver") as driver, patch("builtins.print"):
+                        self.assertEqual(main(), 1)
+                    which.assert_not_called()
+                    driver.assert_not_called()
+                    report = json.loads(next(args.output.glob("*/report.json")).read_text())
+                    self.assertEqual(report["failurePhase"], "package-preflight")
+                    self.assertIn(expected, report["failure"])
 
 
 class ReadOnlyWebDriverPollTests(unittest.TestCase):
@@ -369,16 +555,24 @@ class ReadOnlyWebDriverPollTests(unittest.TestCase):
                 server.shutdown()
                 thread.join()
 
+    def test_wait_polls_quickly_then_returns_to_the_regular_cadence(self):
+        driver = Driver(1)
+        with patch.object(driver, 'script', side_effect=[False] * 5 + [True]), \
+                patch('native_acceptance.time.sleep') as sleep:
+            self.assertTrue(driver.wait('return true'))
+        self.assertEqual(sleep.call_args_list, [call(.025), call(.025), call(.05), call(.1), call(.1)])
+
     def test_result_parse_refusal_can_repoll_the_predicate_but_not_direct_scripts(self):
         error = RuntimeError(json.dumps({'value': {
             'error': 'unknown error', 'message': 'Could not parse script result', 'stacktrace': '',
         }}))
         driver = Driver(1)
         expression = 'return !!document.querySelector("#repository-tab-clone")'
-        with patch.object(driver, 'script', side_effect=[error, True]) as read, patch('native_acceptance.time.sleep'):
+        with patch.object(driver, 'script', side_effect=[error, True]) as read, patch('native_acceptance.time.sleep') as sleep:
             self.assertTrue(driver.wait(expression))
             self.assertEqual(read.call_args_list, [call(expression, timeout=ANY)] * 2)
             self.assertTrue(all(0 < request.kwargs['timeout'] <= 30 for request in read.call_args_list))
+            sleep.assert_called_once_with(.1)
         with patch.object(driver, 'request', side_effect=error) as request:
             with self.assertRaises(RuntimeError):
                 driver.script('document.querySelector("button").click()')
@@ -1079,6 +1273,16 @@ class FixtureTests(unittest.TestCase):
             def private_bus(_fixtures, children, _log):
                 children.append(bus)
                 return {'pid': 123, 'private': True, 'hostServiceActivation': False}
+            def package_command(*command):
+                if command[0] == "dpkg-deb":
+                    staged = Path(command[2])
+                    self.assertNotEqual(staged, package)
+                    self.assertEqual(staged.read_bytes(), b"package fixture")
+                    if command[-1] == "Package":
+                        replacement = root / "replacement"
+                        replacement.write_bytes(b"concurrent package build")
+                        replacement.replace(package)
+                return {"Package": "git-khronos", "Architecture": "amd64", "Version": version}.get(command[-1], "fixture")
             args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke", describe_runner=False,
                                    headless=False, inherited_git_environment=False, installed=False)
             with ExitStack() as mocks:
@@ -1094,9 +1298,7 @@ class FixtureTests(unittest.TestCase):
                     "native_acceptance.platform.platform": "fixture-platform",
                 }.items():
                     mocks.enter_context(patch(target, return_value=value))
-                mocks.enter_context(patch("native_acceptance.run", side_effect=lambda *command: {
-                    "Package": "git-khronos", "Architecture": "amd64", "Version": version,
-                }.get(command[-1], "fixture")))
+                mocks.enter_context(patch("native_acceptance.run", side_effect=package_command))
                 mocks.enter_context(patch("native_acceptance.start_private_dbus", side_effect=private_bus))
                 mocks.enter_context(patch("builtins.print"))
                 shutdown = mocks.enter_context(patch("native_acceptance.stop_owned_process_group",
@@ -1106,6 +1308,9 @@ class FixtureTests(unittest.TestCase):
             self.assertEqual(shutdown.call_args_list, [call(process), call(bus)])
             evidence = json.loads(next((root / "evidence").glob("*/report.json")).read_text())
             self.assertFalse(evidence["passed"])
+            self.assertEqual(evidence["package"], str(package))
+            self.assertEqual(evidence["packageSha256"], hashlib.sha256(b"package fixture").hexdigest())
+            self.assertEqual(package.read_bytes(), b"concurrent package build")
             if shutdown_fails:
                 scratch.cleanup.assert_not_called()
                 scratch._finalizer.detach.assert_called_once()

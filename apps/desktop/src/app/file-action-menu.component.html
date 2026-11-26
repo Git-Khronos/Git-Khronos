@@ -16,6 +16,7 @@
     <div class="context-divider"></div>
     <button type="button" role="menuitem" (click)="choose('lfs')"><span><gk-icon name="server" [size]="13" /></span>Configure Git LFS for this file type…</button>
   }
+  <button type="button" role="menuitem" (click)="choose('copy-path')"><span><gk-icon name="copy" [size]="13" /></span>Copy file path</button>
   @if (!menu.conflicted && !menu.staged) {
     <div class="context-divider"></div>
     <button class="danger-item" type="button" role="menuitem" [disabled]="busy()" (click)="choose('discard')"><span><gk-icon name="trash" [size]="13" /></span>Discard changes…</button>
@@ -32,6 +33,7 @@
   <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gk-icon name="file" [size]="13" /></span>Preview file content</button>
   <button type="button" role="menuitem" (click)="choose('history')"><span><gk-icon name="history" [size]="13" /></span>View file history</button>
   <button type="button" role="menuitem" (click)="choose('blame')"><span><gk-icon name="git-commit" [size]="13" /></span>Blame file</button>
+  <button type="button" role="menuitem" (click)="choose('copy-path')"><span><gk-icon name="copy" [size]="13" /></span>Copy file path</button>
   <div class="context-divider"></div>
   @if (stash()) {
     <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('apply-stash')"><span><gk-icon name="archive-restore" [size]="13" /></span>Apply stashed changes for this file…</button>

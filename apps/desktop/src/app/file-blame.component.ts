@@ -12,15 +12,20 @@ import { shouldDecorateDiff } from './diff-rendering';
     <section class="file-insight-panel blame-insight" aria-label="File blame" [attr.aria-busy]="git.fileInsightBusy()" [style.--blame-line-number-width]="lineNumberWidth()">
       <header><div><strong>Blame</strong><small>{{ path() }} · line-by-line ownership</small></div>
         <b aria-live="polite">{{ rangeLabel() }}</b></header>
-      <form class="blame-pagination" aria-label="Blame line navigation" (ngSubmit)="git.loadFileBlamePage(jumpLine())">
+      <form class="blame-pagination" aria-label="Blame line navigation" (ngSubmit)="submitJump(lineInput)">
         <button type="button" (click)="git.loadFileBlamePage(previousLine())" [disabled]="git.fileInsightBusy() || git.fileBlameStart() <= 1">Previous lines</button>
         <button type="button" (click)="git.loadFileBlamePage(git.fileBlameNext()!)" [disabled]="git.fileInsightBusy() || git.fileBlameNext() === null">Next lines</button>
-        <label>Go to line <input type="number" name="line" min="1" max="4294967195" step="1" [ngModel]="jumpLine()" (ngModelChange)="jumpLine.set($event)" [disabled]="git.fileInsightBusy()" /></label>
+        <label>Go to line <input #lineInput type="number" name="line" min="1" max="4294967195" step="1" required
+          [ngModel]="jumpLine()" (ngModelChange)="editJump($event)" [disabled]="git.fileInsightBusy()"
+          [attr.aria-invalid]="invalidJump() ? 'true' : null" [attr.aria-describedby]="invalidJump() ? 'blame-jump-error' : null" /></label>
         <button type="submit" [disabled]="git.fileInsightBusy()">Go</button>
         <button type="button" [disabled]="git.fileInsightBusy()" (click)="git.loadFileBlamePage(git.fileBlameStart())">Refresh blame page</button>
         @if (git.fileInsightBusy()) { <small role="status">Reading blame information…</small> }
       </form>
       <div class="blame-feedback">
+        @if (invalidJump()) {
+          <p id="blame-jump-error" role="alert">Enter a positive whole line number.</p>
+        }
         @if (git.fileBlameError(); as error) {
           <div role="alert"><p>{{ error }}</p><button type="button" (click)="git.retryFileBlame()" [disabled]="git.fileInsightBusy()">Retry blame page</button></div>
         }
@@ -65,7 +70,8 @@ export class FileBlameComponent {
   readonly path = input.required<string>();
   readonly tokenize = input.required<(text: string, path: string) => {text: string; kind: string}[]>();
   readonly navigate = output<{ oid: string; path: string; parent: boolean }>();
-  readonly jumpLine = signal(1);
+  readonly jumpLine = signal<number | null>(1);
+  readonly invalidJump = signal(false);
   readonly previousLine = computed(() => Math.max(1, this.git.fileBlameStart() - 100));
   readonly lineNumberWidth = computed(() => `${Math.max(43, String(this.git.fileBlame()?.at(-1)?.lineNumber ?? 1).length * 9 + 14)}px`);
   readonly rangeLabel = computed(() => {
@@ -78,5 +84,26 @@ export class FileBlameComponent {
     const decorate = shouldDecorateDiff(lines.reduce((length, line) => length + line.text.length, 0), lines.length);
     return lines.map(line => ({ ...line, tokens: decorate ? this.tokenize()(line.text, this.path()) : [{text: line.text, kind: 'plain'}] }));
   });
-  constructor() { effect(() => this.jumpLine.set(this.git.fileBlameStart())); }
+  constructor() {
+    effect(() => {
+      this.jumpLine.set(this.git.fileBlameStart());
+      this.invalidJump.set(false);
+    });
+  }
+
+  editJump(value: number | null): void {
+    this.jumpLine.set(value);
+    this.invalidJump.set(false);
+  }
+
+  submitJump(input: HTMLInputElement): void {
+    if (this.git.fileInsightBusy()) return;
+    if (!input.validity.valid) {
+      this.invalidJump.set(true);
+      input.focus();
+      return;
+    }
+    this.invalidJump.set(false);
+    void this.git.loadFileBlamePage(input.valueAsNumber);
+  }
 }

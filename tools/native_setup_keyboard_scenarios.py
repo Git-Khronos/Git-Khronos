@@ -5,17 +5,7 @@ from native_worktree_scenarios import checkout_footprint
 
 
 def _chord(driver, key, shift=False):
-    actions = [{'type': 'keyDown', 'value': '\ue009'}]
-    if shift:
-        actions.append({'type': 'keyDown', 'value': '\ue008'})
-    actions.extend([{'type': 'keyDown', 'value': key}, {'type': 'keyUp', 'value': key}])
-    if shift:
-        actions.append({'type': 'keyUp', 'value': '\ue008'})
-    actions.append({'type': 'keyUp', 'value': '\ue009'})
-    # A key chord can mutate Git on a regressed build. Send it once, no replay.
-    driver.request('POST', driver.path('actions'), {'actions': [
-        {'type': 'key', 'id': 'native-keyboard', 'actions': actions},
-    ]})
+    driver.key(key, modifiers=('\ue009', '\ue008') if shift else ('\ue009',))
 
 
 def setup_keyboard_isolation(driver, fixtures, report):
@@ -38,6 +28,24 @@ def setup_keyboard_isolation(driver, fixtures, report):
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt'))
     observed = {}
     report['setupKeyboardIsolation'] = {'before': before, 'after': observed}
+    driver.click_visible('[aria-label="Main menu"]')
+    driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Keyboard Shortcuts')
+    shortcuts = 'gk-keyboard-shortcuts-dialog'
+    close = shortcuts + ' [aria-label="Close keyboard shortcuts"]'
+    driver.wait(f"return document.activeElement?.matches({(shortcuts + ' [role=searchbox]')!r})")
+    driver.key('\ue004', modifiers=('\ue008',))  # Shift+Tab
+    driver.wait(f"return document.activeElement?.matches({close!r})")
+    driver.key('\ue004', modifiers=('\ue008',))
+    driver.wait(f"""return document.querySelector({shortcuts!r})?.contains(document.activeElement)
+      && document.activeElement.textContent.trim() === 'Tabs and view'""")
+    driver.key('\ue004')  # Tab wraps forward to Close.
+    driver.wait(f"return document.activeElement?.matches({close!r})")
+    driver.key('\ue00c')  # Escape
+    driver.wait(f"return !document.querySelector({shortcuts!r})")
+    assert checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt')) == before
+    assert not marker.exists()
+    assert driver.script('return document.querySelector(\'[aria-label="Commit summary"]\').value') == draft
+    report['scenarios'].append('native-shortcut-reference-wraps-shift-tab-without-changing-git-or-draft')
     for kind, opener, modal, field in (
         ('worktree', '[aria-label="Create worktree"]', '.worktree-dialog', 'worktreeBranch'),
         ('submodule', '[aria-label="Add submodule"]', '.submodule-dialog', 'submoduleUrl'),

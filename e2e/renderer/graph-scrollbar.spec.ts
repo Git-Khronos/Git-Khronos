@@ -28,8 +28,8 @@ test('keeps the last graph column aligned with the settings button at its right 
   const expectAligned = async () => {
     await expect.poll(async () => {
       const { headerRight, rowRight, buttonLeft, rowCovers } = await geometry();
-      // The settings button stays rightmost, inside the trailing column's right end.
-      return rowCovers && Math.abs(headerRight - rowRight) <= 1 && buttonLeft >= headerRight - 32 && buttonLeft < headerRight;
+      // The settings button has a separate lane after the trailing column.
+      return rowCovers && Math.abs(headerRight - rowRight) <= 1 && buttonLeft >= headerRight - 1;
     }).toBe(true);
   };
   await expectAligned();
@@ -93,7 +93,7 @@ test('never lets graph headings or row cells overlap while columns overflow', as
     expect(cells, `cells at ${scrollLeft}`).toBeLessThanOrEqual(1);
   }
   // Scrolled to the end, the last column and row actions end before the 24px
-  // marker rail. The settings button stays inside the trailing heading.
+  // marker rail. The settings button stays outside the scrolling heading viewport.
   const geometry = () => page.evaluate(() => {
     const heading = document.querySelector<HTMLElement>('.graph-columns > .trailing-column')!.getBoundingClientRect();
     const row = document.querySelector('.commit-row:not(.wip-row)')!;
@@ -110,11 +110,11 @@ test('never lets graph headings or row cells overlap while columns overflow', as
     return {
       aligned: Math.abs(headingRight - cellRight) <= 1,
       cellEndInset: Math.round(listRight - cellRight),
-      settingsInside: buttonLeft >= headingRight - 32 && buttonLeft < headingRight,
+      settingsSeparate: buttonLeft >= headingRight - 1,
       menuEndInset: Math.round(listRight - menuRight),
       scrollAtEnd,
     };
-  }).toEqual({ aligned: true, cellEndInset: 24, settingsInside: true, menuEndInset: 24, scrollAtEnd: true });
+  }).toEqual({ aligned: true, cellEndInset: 24, settingsSeparate: true, menuEndInset: 24, scrollAtEnd: true });
   await expect(page.locator('.graph-columns > .trailing-column')).toHaveAttribute('title', /Date/);
 });
 

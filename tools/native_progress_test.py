@@ -10,6 +10,20 @@ from native_progress import ScenarioProgress, write_native_receipt
 
 
 class ScenarioProgressTest(unittest.TestCase):
+    def test_full_toolkit_enters_first_phase_before_initial_integrity_read(self):
+        from native_scenarios import full_toolkit
+
+        observed = []
+
+        class Driver:
+            def invoke(self, command, **kwargs):
+                observed.append(command)
+                raise RuntimeError('owned failure before first result')
+
+        with self.assertRaisesRegex(RuntimeError, 'owned failure'):
+            full_toolkit(Driver(), None, None, 'repo', {}, observed.append)
+        self.assertEqual(observed, ['toolkit-integrity-and-file-tools', 'inspect_repository_integrity'])
+
     def test_report_discovery_cannot_see_partial_final_json(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -49,7 +63,8 @@ class ScenarioProgressTest(unittest.TestCase):
             scenarios = ScenarioProgress(root, 'environment', clock=lambda: clock[0], stream=log)
             status = lambda: json.loads((root / 'progress.json').read_text())
             self.assertEqual(status(), {'suite': 'environment', 'state': 'running', 'processId': os.getpid(),
-                                        'phase': 'package-preflight', 'phaseStartedAtSeconds': 0.0, 'failurePhase': None,
+                                        'phase': 'package-preflight', 'phaseStartedAtSeconds': 0.0, 'completedPhases': [],
+                                        'failurePhase': None,
                                         'completedScenarios': 0, 'lastCompletedScenario': None, 'elapsedSeconds': 0.0})
             clock[0] = 41.0
             scenarios.append('first')
@@ -63,15 +78,21 @@ class ScenarioProgressTest(unittest.TestCase):
             self.assertFalse((root / 'report.json').exists())
 
             clock[0] = 52.5
+            self.assertEqual(scenarios.report_timing(), {
+                'elapsedSeconds': 42.5,
+                'phases': [{'phase': 'package-preflight', 'durationSeconds': 42.5, 'scenariosCompleted': 3}],
+            })
+            self.assertEqual(status()['state'], 'running')
             scenarios.finish(False)
             self.assertEqual((status()['state'], status()['elapsedSeconds']), ('failed', 42.5))
             self.assertEqual(sorted(path.name for path in root.iterdir()), ['progress.json'])
 
     def test_phases_never_inflate_completed_coverage_and_failure_survives_cleanup(self):
         clock = [10.0]
+        log = io.StringIO()
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            progress = ScenarioProgress(root, 'environment', clock=lambda: clock[0], stream=io.StringIO())
+            progress = ScenarioProgress(root, 'environment', clock=lambda: clock[0], stream=log)
             progress.append('smoke-passed')
             clock[0] = 55.2
             progress.enter_phase('full-toolkit')
@@ -80,6 +101,10 @@ class ScenarioProgressTest(unittest.TestCase):
             self.assertEqual(snapshot['phaseStartedAtSeconds'], 45.2)
             self.assertEqual(snapshot['lastCompletedScenario'], 'smoke-passed')
             self.assertEqual(snapshot['completedScenarios'], 1)
+            self.assertEqual(snapshot['completedPhases'], [
+                {'phase': 'package-preflight', 'durationSeconds': 45.2, 'scenariosCompleted': 1},
+            ])
+            progress.append('toolkit-passed-before-failure')
             progress.note_failure()
             clock[0] = 56.0
             progress.enter_phase('cleanup')
@@ -88,7 +113,14 @@ class ScenarioProgressTest(unittest.TestCase):
             snapshot = json.loads((root / 'progress.json').read_text())
             self.assertEqual((snapshot['state'], snapshot['phase']), ('failed', 'cleanup'))
             self.assertEqual(snapshot['failurePhase'], 'full-toolkit')
-            self.assertEqual(progress, ['smoke-passed'])
+            self.assertEqual(snapshot['completedPhases'][1:], [
+                {'phase': 'full-toolkit', 'durationSeconds': 0.8, 'scenariosCompleted': 1},
+                {'phase': 'cleanup', 'durationSeconds': 0.0, 'scenariosCompleted': 0},
+            ])
+            self.assertEqual(progress, ['smoke-passed', 'toolkit-passed-before-failure'])
+            self.assertIn('environment failed; 2 scenarios in 46.0s; failed in full-toolkit; '
+                          'slowest phases: package-preflight 45.2s, full-toolkit 0.8s, cleanup 0.0s',
+                          log.getvalue())
 
     def test_unavailable_progress_file_does_not_change_scenario_evidence(self):
         log = io.StringIO()

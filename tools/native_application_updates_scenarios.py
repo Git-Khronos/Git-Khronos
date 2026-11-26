@@ -17,13 +17,87 @@ def application_updates_workflow(driver, fixtures, report):
     driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Updates')
     modal = 'gk-application-updates-dialog [role=dialog]'
     expect_trust = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST') == '1'
+
+    def verify_palette_entry():
+        origin = 'input[aria-label="Filter changed files"]'
+        search = 'gk-command-palette input[aria-label="Search commands"]'
+        driver.click_visible(origin)
+        before_status = driver.invoke('application_update_status')
+        driver.key('p', modifiers=('\ue009',))
+        driver.wait(f"return document.activeElement?.matches({search!r})")
+        driver.script("""const field = document.activeElement;
+          field.value = 'check for updates'; field.dispatchEvent(new Event('input', {bubbles: true}));""")
+        driver.click_scrolled_text('gk-command-palette [role=option] strong',
+                                   'Application Updates', wait_for_ready=True)
+        driver.wait(f"return document.querySelector({modal!r})?.textContent.includes('Running version')")
+        assert driver.invoke('application_update_status') == before_status
+        driver.key('\ue00c')  # Escape
+        driver.wait(f"return !document.querySelector({modal!r}) && document.activeElement?.matches({origin!r})")
+        assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
+        report['scenarios'].append('native-updates-palette-opens-without-checking-or-changing-consent')
+
     driver.wait('return document.querySelector(' + json.dumps(modal) + ')?.textContent.includes("Running version")')
-    state = driver.script('''const dialog = document.querySelector(arguments[0]);
+    shadows = driver.script("""const root = document.documentElement;
+      const dialog = document.querySelector(arguments[0]);
+      const previous = root.getAttribute('data-theme');
+      try {
+        return ['khronos', 'midnight'].map(theme => {
+          root.setAttribute('data-theme', theme);
+          return getComputedStyle(dialog).boxShadow;
+        });
+      } finally {
+        if (previous === null) root.removeAttribute('data-theme');
+        else root.setAttribute('data-theme', previous);
+      }""", modal)
+    assert len(shadows) == 2 and all(shadow and shadow != 'none' for shadow in shadows), shadows
+    report['applicationUpdateThemeShadows'] = shadows
+    report['scenarios'].append('native-updates-dialog-has-theme-shadow-without-changing-preferences')
+    # A disabled or removed focused action can leave focus on the body. Lose
+    # focus deliberately without a network request; navigate with real keys.
+    def clear_dialog_focus():
+        assert driver.script("""const dialog = document.querySelector(arguments[0]);
+          if (!dialog?.contains(document.activeElement)) return false;
+          document.activeElement.blur();
+          return !dialog.contains(document.activeElement);""", modal)
+
+    driver.wait(f"return document.querySelector({modal!r})?.contains(document.activeElement)")
+    clear_dialog_focus()
+    driver.key('\ue004')  # Tab
+    driver.wait(f"return document.querySelector({modal!r})?.contains(document.activeElement) && document.activeElement.textContent.trim() === 'Close'")
+    clear_dialog_focus()
+    driver.script("""const probe = window.__updaterTabProbe = {keys: [], stop: new AbortController()};
+      document.addEventListener('keydown', event => { if (probe.keys.length < 4)
+        probe.keys.push({key: event.key, code: event.code, keyCode: event.keyCode, shift: event.shiftKey}); },
+        {capture: true, signal: probe.stop.signal});""")
+    try:
+        driver.key('\ue004', modifiers=('\ue008',))  # Shift+Tab
+        driver.wait(f"return document.querySelector({modal!r})?.contains(document.activeElement) && document.activeElement.textContent.trim() === 'Refresh status'",
+                    timeout=5)
+    finally:
+        report['applicationUpdateKeyboard'] = driver.script("""const probe = window.__updaterTabProbe;
+          probe.stop.abort(); delete window.__updaterTabProbe;
+          return {keys: probe.keys, active: document.activeElement?.matches('button')
+            ? document.activeElement.textContent.trim() : document.activeElement?.tagName};""")
+    assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
+    report['scenarios'].append('native-updates-tab-recovers-to-first-or-last-action-without-changing-git')
+    state = driver.script(r'''const dialog = document.querySelector(arguments[0]);
       const automatic = dialog.querySelector('input[type=checkbox]');
+      const helpId = automatic.getAttribute('aria-describedby');
+      const help = helpId && document.getElementById(helpId);
       const check = [...dialog.querySelectorAll('button')].find(b => b.textContent.trim() === 'Check for updates');
       return {text: dialog.textContent, automatic: automatic.checked,
+        consentHelp: help && dialog.contains(help) ? help.textContent.trim().replace(/\s+/g, ' ') : '',
         automaticDisabled: automatic.disabled, checkDisabled: check.disabled,
         installButtons: [...dialog.querySelectorAll('button')].filter(b => b.textContent.includes('Install verified')).length};''', modal)
+    consent_help = state['consentHelp']
+    for fragment in (
+        'Off by default.',
+        'downloads and verifies packages from the trusted publisher',
+        'when no Git operation, terminal session or editor is active',
+        'does not stop an installer that has already started',
+    ):
+        assert fragment in consent_help, consent_help
+    report['scenarios'].append('native-updates-automatic-setting-describes-download-and-install-consent')
     if expect_trust:
         status = driver.request('POST', driver.path('execute/async'), {'script': """
           const done = arguments[arguments.length - 1];
@@ -41,6 +115,7 @@ def application_updates_workflow(driver, fixtures, report):
         driver.wait('return document.activeElement?.getAttribute("aria-label") === "Main menu"')
         assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
         report['scenarios'].append('native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer')
+        verify_palette_entry()
         return
 
     assert state['automatic'] is False and state['automaticDisabled']
@@ -65,6 +140,7 @@ def application_updates_workflow(driver, fixtures, report):
     driver.wait('return document.activeElement?.getAttribute("aria-label") === "Main menu"')
     assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
     report['scenarios'].append('native-updater-refuses-manual-check-and-automatic-consent-without-trust-and-preserves-owned-git-data')
+    verify_palette_entry()
 
 
 def application_update_consent(driver, fixtures, report):

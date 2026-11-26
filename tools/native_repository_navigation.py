@@ -39,3 +39,12 @@ def open_repository_dialog(driver, timeout=30):
         if remaining > 0:
             time.sleep(min(0.1, remaining))
     raise TimeoutError('Restored repository dialog entry control did not remain available for a click')
+
+
+def open_gitlab_catalogue(driver):
+    """Enter the catalogue without connecting to or writing to a provider."""
+    open_repository_dialog(driver)
+    driver.click_navigation('#repository-tab-clone', 'Clone', wait_for_ready=True, timeout=15)
+    driver.click_navigation('gk-repository-dialog button', 'Browse GitLab projects',
+                            scroll=True, wait_for_ready=True, timeout=15)
+    driver.wait("""return !!document.querySelector('#gitlab-origin:not(:disabled)')""")

@@ -1,12 +1,16 @@
 use git_khronos_git_core::clone_repository;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CHILD: &str = "GIT_KHRONOS_OWNED_CLONE_POLICY_FIXTURE";
 const REMOTE: &str = "https://example.test/repository.git";
 const UNSAFE_RULE: &str = "[url \"https://fixture-user:fixture-not-a-secret@example.test/\"]\n\tinsteadOf = https://example.test/\n";
+
+static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
 
 struct Fixture(PathBuf);
 
@@ -15,6 +19,44 @@ impl Drop for Fixture {
         // This directory was exclusively created by this test, never user data.
         fs::remove_dir_all(&self.0).unwrap();
     }
+}
+
+fn new_fixture(id: u128) -> Fixture {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    let temporary = std::env::temp_dir();
+    (0..32)
+        .find_map(|_| {
+            let serial = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+            let root = temporary.join(format!(
+                "khronos-clone-policy-{}-{id}-{serial}",
+                std::process::id()
+            ));
+            match builder.create(&root) {
+                Ok(()) => Some(Fixture(root)),
+                Err(error) if error.kind() == ErrorKind::AlreadyExists => None,
+                Err(error) => panic!("Could not create owned clone fixture: {error}"),
+            }
+        })
+        .expect("Could not allocate a unique clone policy fixture directory")
+}
+
+#[test]
+fn concurrent_fixtures_can_share_a_clock_tick() {
+    let fixtures: Vec<_> = (0..8)
+        .map(|_| std::thread::spawn(|| new_fixture(1234)))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|worker| worker.join().unwrap())
+        .collect();
+    let paths: std::collections::HashSet<_> = fixtures.iter().map(|fixture| &fixture.0).collect();
+    assert_eq!(paths.len(), fixtures.len());
+    assert!(paths.iter().all(|path| path.is_dir()));
 }
 
 fn isolated(name: &str, check: impl FnOnce(&Path)) {
@@ -26,17 +68,7 @@ fn isolated(name: &str, check: impl FnOnce(&Path)) {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root =
-        std::env::temp_dir().join(format!("khronos-clone-policy-{}-{id}", std::process::id()));
-    let mut builder = fs::DirBuilder::new();
-    builder.recursive(false);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
-    builder.create(&root).unwrap();
-    let fixture = Fixture(root);
+    let fixture = new_fixture(id);
     let global = fixture.0.join("global");
     let system = fixture.0.join("system");
     fs::write(&global, b"").unwrap();

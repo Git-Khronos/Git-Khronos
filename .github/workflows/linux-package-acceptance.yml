@@ -18,11 +18,16 @@ permissions:
 
 jobs:
   runtime:
-    name: Installed package on Ubuntu ${{ matrix.ubuntu }}
+    name: Installed package on Ubuntu ${{ matrix.ubuntu }} (${{ matrix.lane }})
     strategy:
       fail-fast: false
       matrix:
         ubuntu: ["22.04", "24.04", "26.04"]
+        lane: [runtime]
+        include: >-
+          ${{ fromJSON(inputs.expect-update-trust
+            && '[{"ubuntu":"24.04","lane":"workspace-review"},{"ubuntu":"24.04","lane":"file-review"},{"ubuntu":"24.04","lane":"history-review"},{"ubuntu":"22.04","lane":"publisher"}]'
+            || '[{"ubuntu":"24.04","lane":"workspace-review"},{"ubuntu":"24.04","lane":"file-review"},{"ubuntu":"24.04","lane":"history-review"}]') }}
     runs-on: ubuntu-${{ matrix.ubuntu }}
     timeout-minutes: 45
     steps:
@@ -53,6 +58,8 @@ jobs:
       - name: Install runtime acceptance prerequisites
         env:
           UBUNTU_RELEASE: ${{ matrix.ubuntu }}
+          EXPECT_UPDATE_TRUST: ${{ inputs.expect-update-trust }}
+          ACCEPTANCE_LANE: ${{ matrix.lane }}
         run: |
           set -euo pipefail
           case "$UBUNTU_RELEASE" in
@@ -60,8 +67,12 @@ jobs:
             26.04) webdriver_package=webkitgtk-webdriver ;;
             *) echo "Unsupported Ubuntu release: $UBUNTU_RELEASE" >&2; exit 1 ;;
           esac
+          consent_prerequisites=()
+          if [[ "$UBUNTU_RELEASE" == 24.04 && "$ACCEPTANCE_LANE" == runtime && "${EXPECT_UPDATE_TRUST:-false}" == true ]]; then
+            consent_prerequisites=(iproute2 util-linux)
+          fi
           sudo apt-get update
-          sudo apt-get install --yes "$webdriver_package" libwebkit2gtk-4.1-0 xvfb libxtst6 git-lfs openssh-client openssh-server desktop-file-utils libglib2.0-bin openssl dbus libssl-dev pkg-config
+          sudo apt-get install --yes "$webdriver_package" libwebkit2gtk-4.1-0 xvfb xauth libxtst6 git-lfs openssh-client openssh-server desktop-file-utils libglib2.0-bin openssl dbus libssl-dev pkg-config "${consent_prerequisites[@]}"
           sudo install -d -m 1777 /tmp/.X11-unix
           for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
             command -v "$tool"
@@ -85,18 +96,55 @@ jobs:
           sudo apt-get check
           printf 'PACKAGE=%s\n' "$package" >> "$GITHUB_ENV"
       - name: Exercise the installed executable with isolated repositories and profile
+        if: matrix.lane == 'runtime'
         run: bash tools/run-native-suites.sh "$PACKAGE" smoke gitlab
-      - name: Verify installed workspace and Git workflow reviews
-        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '24.04' }}
+      - name: Verify the installed desktop entry and command both render
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.lane == 'runtime' }}
+        run: |
+          set -o pipefail
+          { sha256sum -- "$PACKAGE" && bash tools/check-installed-x11-launch.sh "$PACKAGE"; } \
+            2>&1 | tee ubuntu-package/installed-launch.log
+      - name: Verify the installed app recovers from renderer crashes
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '24.04' && matrix.lane == 'runtime' }}
+        run: |
+          set -o pipefail
+          { sha256sum -- "$PACKAGE" && bash tools/check-installed-x11-launch.sh --renderer-recovery "$PACKAGE"; } \
+            2>&1 | tee ubuntu-package/renderer-recovery.log
+      - name: Verify installed GitLab refusal and occupied branch handling
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '26.04' }}
+        run: bash tools/run-native-suites.sh "$PACKAGE" gitlab-connect-refused worktrees
+      - name: Verify installed update consent without external networking
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && inputs.expect-update-trust && matrix.ubuntu == '24.04' && matrix.lane == 'runtime' }}
+        run: |
+          sudo unshare --net -- bash -euc '
+            ip link set lo up
+            exec runuser -u "$1" -- env PATH="$2" GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1 \
+              python3 tools/native_acceptance.py --suite application-update-consent --headless --installed --package "$3"
+          ' bash "$(id -un)" "$PATH" "$PACKAGE"
+      # Keep these independent groups separate so a slow review does not
+      # delay unrelated reviews. Each runner installs the same hashed archive.
+      - name: Verify installed workspace and Git workflow reviews (workspace)
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '24.04' && matrix.lane == 'workspace-review' }}
         run: >-
           bash tools/run-native-suites.sh "$PACKAGE"
           workspace-batch workspace-pull-upstreams pull-submodule-scope
           workspace-saved-removal workspace-locate workspace-bulk-locate workspace-locate-nearby workspace-reopen
-          discard-subset submodule-initialize submodule-update stash-selection patch-export
-          tracked-file-search feature-rebase commit-rewrite file-review-scope repository-creation-scope
-          first-status working-tree-recaps repository-open-scope detached-checkout checkout-snapshot
+          discard-subset discard-deletion discard-stale-review
+      - name: Verify installed workspace and Git workflow reviews (files)
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '24.04' && matrix.lane == 'file-review' }}
+        run: >-
+          bash tools/run-native-suites.sh "$PACKAGE"
+          discard-large discard-limit submodule-initialize submodule-update stash-selection patch-export
+          tracked-file-search file-menu-copy reference-copy feature-rebase comparison-responsiveness merge-rebase-review
+      - name: Verify installed workspace and Git workflow reviews (history)
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '24.04' && matrix.lane == 'history-review' }}
+        run: >-
+          bash tools/run-native-suites.sh "$PACKAGE"
+          commit-rewrite commit-responsiveness file-review-scope repository-creation-scope
+          first-status working-tree-recaps repository-open-scope detached-checkout checkout-snapshot checkout-responsiveness history-control-responsiveness
+          local-mutation-responsiveness
       - name: Verify installed packed-ref refresh under contention
-        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && inputs.expect-update-trust && matrix.ubuntu == '22.04' }}
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' && inputs.expect-update-trust && matrix.ubuntu == '22.04' && matrix.lane == 'runtime' }}
         run: python3 tools/native_acceptance.py --suite watcher-refresh --headless --installed --package "$PACKAGE"
       - name: Provision JSON-capable Git LFS for full Jammy qualification
         id: qualification_lfs
@@ -106,7 +154,7 @@ jobs:
           set -euo pipefail
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$(uname -m)" = x86_64
-          # Stock Jammy Git LFS 3.0.2 remains in use for the smoke checks above.
+          # Stock Jammy Git LFS 3.0.2 remains in use for smoke in the runtime lane.
           # The full suite exercises optional diagnostics that require ls-files --json.
           version=3.7.1
           archive="git-lfs-linux-amd64-v${version}.tar.gz"
@@ -124,11 +172,11 @@ jobs:
           [[ "$installed_version" == "git-lfs/$version "* ]]
           printf '%s\n' "$bin" >> "$GITHUB_PATH"
       - name: Exercise Git LFS snapshots on the exact installed Jammy candidate
-        if: ${{ !cancelled() && steps.qualification_lfs.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.qualification_lfs.outcome == 'success' && matrix.lane == 'runtime' }}
         shell: bash
         run: bash tools/run-native-suites.sh "$PACKAGE" lfs-counts lfs-snapshot-timeout
       - name: Qualify publisher trust on the exact installed Jammy candidate
-        if: ${{ !cancelled() && steps.qualification_lfs.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.qualification_lfs.outcome == 'success' && matrix.lane == 'publisher' }}
         env:
           GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST: "1"
         run: |
@@ -139,19 +187,28 @@ jobs:
           cp -- "${reports[0]}" test-results/native/release-qualification/report.json
       - uses: actions/upload-artifact@v4
         # Keep publisher evidence gated on the entire job's success.
-        if: ${{ success() && inputs.expect-update-trust && matrix.ubuntu == '22.04' }}
+        if: ${{ success() && matrix.lane == 'publisher' }}
         with:
           name: debian-candidate-evidence-${{ github.run_attempt }}
           path: test-results/native/release-qualification/report.json
           if-no-files-found: error
           retention-days: 7
       - uses: actions/upload-artifact@v4
+        if: ${{ success() && inputs.expect-update-trust }}
+        with:
+          name: debian-runtime-reports-${{ github.run_attempt }}-ubuntu-${{ matrix.ubuntu }}-${{ matrix.lane }}
+          path: test-results/native/**/report.json
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ubuntu-${{ matrix.ubuntu }}-runtime-${{ github.run_id }}
+          name: ubuntu-${{ matrix.ubuntu }}-${{ matrix.lane }}-${{ github.run_id }}
           path: |
             test-results/native/
             ubuntu-package/abi-runtime.json
+            ubuntu-package/installed-launch.log
+            ubuntu-package/renderer-recovery.log
           if-no-files-found: warn
           retention-days: 14
 
@@ -205,7 +262,7 @@ jobs:
           test "$(dpkg --print-architecture)" = amd64
           apt-get update
           apt-get install --yes \
-            "$webdriver_package" libwebkit2gtk-4.1-0 xvfb libxtst6 git git-lfs \
+            "$webdriver_package" libwebkit2gtk-4.1-0 xvfb xauth libxtst6 git git-lfs \
             openssh-client openssh-server desktop-file-utils libglib2.0-bin \
             openssl dbus-daemon dbus-bin libssl-dev pkg-config python3 binutils
           install -d -m 0755 /run/sshd
@@ -249,10 +306,24 @@ jobs:
           else
             python3 tools/native_acceptance.py --suite smoke --headless --installed --package "$PACKAGE"
           fi
+      - name: Verify the installed desktop entry and command both render
+        if: ${{ !cancelled() && steps.package_install.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -o pipefail
+          { sha256sum -- "$PACKAGE" && runuser -u nobody -- bash tools/check-installed-x11-launch.sh "$PACKAGE"; } \
+            2>&1 | tee ubuntu-package/installed-launch.log
       - name: Verify installed GitLab workflows independently of smoke
         if: ${{ !cancelled() && steps.package_install.outcome == 'success' }}
         shell: bash
         run: python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE"
+      - uses: actions/upload-artifact@v4
+        if: ${{ success() && inputs.expect-update-trust }}
+        with:
+          name: debian-runtime-reports-${{ github.run_attempt }}-debian-${{ matrix.debian }}
+          path: test-results/native/**/report.json
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -260,5 +331,6 @@ jobs:
           path: |
             test-results/native/**
             ubuntu-package/abi-runtime.json
+            ubuntu-package/installed-launch.log
           if-no-files-found: warn
           retention-days: 14

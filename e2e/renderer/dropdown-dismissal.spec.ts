@@ -46,6 +46,9 @@ const dropdowns: Array<{
       const author = page.getByRole('dialog', { name: 'Graph settings' }).getByLabel('Author', { exact: true });
       if (!(await author.isChecked())) await author.check();
       await settings.click();
+      // The newly shown Author heading can start outside the compact viewport.
+      // Scroll the history (which owns horizontal position), not its mirrored headings.
+      await page.locator('.commit-list').evaluate((list) => { list.scrollLeft = list.scrollWidth; });
     },
     toggle: (page) => page.getByRole('button', { name: 'Filter commits by author', exact: true }), popup: (page) => page.getByRole('dialog', { name: 'Author filter' }) },
   { name: 'working directory options', toggle: (page) => page.getByRole('button', { name: 'Working directory options', exact: true }), popup: (page) => page.getByRole('menu', { name: 'Working directory options' }) },

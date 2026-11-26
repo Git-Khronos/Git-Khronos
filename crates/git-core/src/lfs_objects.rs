@@ -32,10 +32,10 @@ pub struct LfsObjects {
     pub files: Vec<LfsObjectFile>,
 }
 
-fn deserialize_files<'de, D: serde::Deserializer<'de>>(
+fn deserialize_files<'de, D: serde::Deserializer<'de>, T: Deserialize<'de>>(
     deserializer: D,
-) -> Result<Vec<LfsObjectFile>, D::Error> {
-    Option::<Vec<LfsObjectFile>>::deserialize(deserializer).map(Option::unwrap_or_default)
+) -> Result<Vec<T>, D::Error> {
+    Option::<Vec<T>>::deserialize(deserializer).map(Option::unwrap_or_default)
 }
 
 pub fn lfs_objects(path: &Path) -> Result<LfsObjects, AppError> {
@@ -81,9 +81,19 @@ pub(super) fn checkout_counts(path: &Path) -> Option<(usize, usize)> {
 }
 
 fn count_listing(bytes: &[u8]) -> Option<(usize, usize)> {
-    // Just count structured records. Unlike object review, this does not
-    // interpret names as filesystem paths or read the files they identify.
-    let listing: LfsObjects = serde_json::from_slice(bytes).ok()?;
+    // The status badge needs only checkout flags. Do not allocate path,
+    // OID, or version strings, or depend on unrelated inventory fields.
+    #[derive(Deserialize)]
+    struct CheckoutFlag {
+        checkout: bool,
+    }
+    #[derive(Deserialize)]
+    struct CheckoutFlags {
+        // Keep missing distinct from null (Git LFS's empty inventory).
+        #[serde(deserialize_with = "deserialize_files")]
+        files: Vec<CheckoutFlag>,
+    }
+    let listing: CheckoutFlags = serde_json::from_slice(bytes).ok()?;
     Some((
         listing.files.len(),
         listing.files.iter().filter(|file| !file.checkout).count(),
@@ -212,6 +222,20 @@ mod tests {
             None
         );
         assert_eq!(count_listing(br#"{}"#), None);
+    }
+
+    #[test]
+    fn count_only_json_requires_every_flag_but_not_full_object_metadata() {
+        let flags = br#"{"files":[{"checkout":true},{"checkout":false,"extra":{"number":42}}]}"#;
+        assert_eq!(count_listing(flags), Some((2, 1)));
+        assert_eq!(
+            parse_objects(flags).unwrap_err().kind,
+            "unsupportedLfsObjectOutput"
+        );
+        assert_eq!(
+            count_listing(br#"{"files":[{"checkout":true},{"checkout":null}]}"#),
+            None
+        );
     }
 
     #[test]

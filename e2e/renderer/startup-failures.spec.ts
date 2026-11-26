@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.commit-row').first()).toBeVisible();
 });
 
-test('reports native startup failures without presenting sample data', async ({ page }) => {
+test('reports native startup failures without presenting sample data', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   const result = await page.evaluate(async () => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -135,7 +135,7 @@ async function holdSavedRepositoryStartup(page: Page) {
   await expect.poll(() => page.evaluate(() => typeof (window as any).__savedStartup.start)).toBe('function');
 }
 
-test('restores a saved repository without mounting the welcome launcher', async ({ page }) => {
+test('restores a saved repository without mounting the welcome launcher', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   await holdSavedRepositoryStartup(page);
   const startup = page.getByRole('heading', { name: 'Restoring saved repository…' });
   await expect(startup).toBeVisible();
@@ -265,20 +265,63 @@ test('shows LFS entries without full working-tree files in the toolbar and optio
   await expect(page.locator('.lfs-pointer-count')).toHaveText('2');
   await page.getByRole('button', { name: 'Git LFS options', exact: true }).click();
   await expect(page.locator('.lfs-menu-status')).toContainText('2 not materialized');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  await page.getByRole('tab', { name: /^Git Features/ }).click();
+  await expect(page.locator('#preference-lfs')).toContainText('12 tracked files');
+  await expect(page.locator('#preference-lfs')).toContainText('2 not materialized');
 });
 
 test('discloses an unavailable LFS count without reporting zero or blocking LFS work', async ({ page }) => {
   await page.goto('/?lfs-preview');
+  const pull = page.getByRole('button', { name: 'Pull Git LFS objects', exact: true });
   await expect(page.locator('.lfs-pointer-count')).toHaveText('2');
+  await expect(pull).toHaveAccessibleDescription('2 LFS files not materialized');
   await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
     git.repositories.update((repositories: any[]) => repositories.map(repo => ({
-      ...repo, lfs: { ...repo.lfs, trackedFiles: null, pointerFiles: null },
+      ...repo, lfs: { ...repo.lfs, pointerFiles: null },
     })));
   });
   await expect(page.locator('.lfs-pointer-count')).toHaveCount(0);
+  await expect(pull.locator('.lfs-count-unknown')).toHaveText('?');
+  await expect(pull).toHaveAccessibleDescription('LFS file counts unavailable');
+  await expect(pull).toBeEnabled();
   await page.getByRole('button', { name: 'Git LFS options', exact: true }).click();
   await expect(page.locator('.lfs-menu-status')).toContainText('File counts unavailable');
-  await expect(page.locator('.lfs-menu-status')).not.toContainText('0 tracked files');
+  await expect(page.locator('.lfs-menu-status')).not.toContainText('12 tracked files');
   await expect(page.getByRole('menuitem', { name: /Pull LFS objects/ })).toBeEnabled();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  await page.getByRole('tab', { name: /^Git Features/ }).click();
+  const settings = page.locator('#preference-lfs');
+  await expect(settings).toContainText('File counts unavailable');
+  await expect(settings).not.toContainText('12 tracked files');
+  await expect(settings.getByRole('button', { name: 'Manage tracking patterns…' })).toBeEnabled();
+});
+
+test('LFS toolbar distinguishes a measured zero from an unavailable executable', async ({ page }) => {
+  await page.goto('/?lfs-preview');
+  const pull = page.getByRole('button', { name: 'Pull Git LFS objects', exact: true });
+  await expect(pull).toBeEnabled();
+  const setLfs = (available: boolean, pointerFiles: number | null) => page.evaluate(({ available, pointerFiles }) => {
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
+    git.repositories.update((repositories: any[]) => repositories.map(repo => ({
+      ...repo, lfs: { ...repo.lfs, available, pointerFiles },
+    })));
+  }, { available, pointerFiles });
+  await setLfs(true, 0);
+  await expect(pull).toHaveAccessibleDescription('No LFS files to materialize');
+  await expect(pull.locator('.lfs-count-unknown')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Git LFS options', exact: true }).click();
+  await expect(page.locator('.lfs-menu-status')).toContainText('12 tracked files · 0 not materialized');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  await page.getByRole('tab', { name: /^Git Features/ }).click();
+  await expect(page.locator('#preference-lfs')).toContainText('12 tracked files · 0 not materialized');
+  await page.getByRole('button', { name: 'Close preferences', exact: true }).click();
+  await setLfs(false, null);
+  await expect(pull).toHaveAccessibleDescription('Git LFS is not installed or unavailable');
+  await expect(pull).toBeDisabled();
+  await expect(pull.locator('.lfs-count-unknown')).toHaveCount(0);
 });

@@ -4,6 +4,7 @@ import {
   MAX_DETAILED_DIFF_LINES,
   MAX_SYNTAX_LINE_CHARACTERS,
   MAX_SYNTAX_TOKENS_PER_LINE,
+  diffMinimapMarks,
   renderDiffLines,
   shouldDecorateDiff,
   splitRenderedDiff,
@@ -11,6 +12,27 @@ import {
 } from './diff-rendering';
 
 describe('diff presentation', () => {
+  it('keeps exact minimap positions in a small patch and skips unchanged rows', () => {
+    expect(diffMinimapMarks([])).toEqual([]);
+    expect(diffMinimapMarks([{ kind: 'addition' }])).toEqual([{ kind: 'addition', position: 0 }]);
+    expect(diffMinimapMarks(['context', 'deletion', 'addition', 'hunk', 'addition'].map(kind => ({ kind })))).toEqual([
+      { kind: 'deletion', position: 25 },
+      { kind: 'addition', position: 50 },
+      { kind: 'addition', position: 100 },
+    ]);
+  });
+
+  it('bounds decorative marks on large patches without hiding overlapping change kinds', () => {
+    const lines = Array.from({ length: 100_000 }, (_, index) => ({
+      kind: index % 2 === 0 ? 'addition' : 'deletion',
+    }));
+    const marks = diffMinimapMarks(lines);
+    expect(marks).toHaveLength(512);
+    expect(marks[0]).toEqual({ kind: 'mixed', position: 0 });
+    expect(marks.at(-1)).toEqual({ kind: 'mixed', position: 100 });
+    expect(marks.every(({ kind }) => kind === 'mixed')).toBe(true);
+  });
+
   it('assigns source coordinates and edit indices to patch-like lines and compact blank context', () => {
     const patch = [
       'diff --git a/fixture b/fixture', '--- a/fixture', '+++ b/fixture',

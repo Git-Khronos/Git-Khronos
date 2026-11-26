@@ -7,7 +7,7 @@ from urllib.error import URLError
 
 from native_acceptance import Driver
 from native_gitlab_fork_scenarios import click_fork_button
-from native_repository_navigation import open_repository_dialog
+from native_repository_navigation import open_gitlab_catalogue, open_repository_dialog
 
 
 ELEMENT = 'element-6066-11e4-a52e-4f735466cecf'
@@ -32,28 +32,57 @@ class CatalogueEntryTests(unittest.TestCase):
         self.assertNotIn('gk-welcome-launcher', script)
         self.assertNotIn('.click(', script)
 
+    def test_catalogue_entry_waits_for_each_local_step_without_connecting(self):
+        driver = MagicMock()
+        with patch('native_repository_navigation.open_repository_dialog') as opener:
+            open_gitlab_catalogue(driver)
+        opener.assert_called_once_with(driver)
+        self.assertEqual(driver.click_navigation.call_args_list, [
+            call('#repository-tab-clone', 'Clone', wait_for_ready=True, timeout=15),
+            call('gk-repository-dialog button', 'Browse GitLab projects', scroll=True, wait_for_ready=True, timeout=15),
+        ])
+        driver.wait.assert_called_once()
+        self.assertIn('#gitlab-origin:not(:disabled)', driver.wait.call_args.args[0])
+        driver.invoke.assert_not_called()
+
     def test_catalogue_navigation_reacquires_only_after_explicit_stale_refusal(self):
         driver = MagicMock()
-        driver.click_scrolled_text.side_effect = [
+        driver._click_scrolled_element.side_effect = [
             RuntimeError(json.dumps({'error': 'stale element reference', 'message': 'detached'})),
             None,
         ]
-        driver.click_navigation = lambda selector, text, *, scroll: Driver.click_navigation(
-            driver, selector, text, scroll=scroll, timeout=1)
-        with patch('native_acceptance.time.sleep'):
-            click_fork_button(driver, 'gk-repository-dialog button', 'Browse GitLab projects')
-        self.assertEqual(driver.click_scrolled_text.call_count, 2)
-        driver.click_scrolled_text.assert_has_calls([
-            call('gk-repository-dialog button', 'Browse GitLab projects'),
-            call('gk-repository-dialog button', 'Browse GitLab projects'),
+        driver.wait.side_effect = [[{ELEMENT: 'outgoing'}], [{ELEMENT: 'replacement'}]]
+        driver.click_navigation = lambda selector, text, **options: Driver.click_navigation(
+            driver, selector, text, **{**options, 'timeout': 1})
+        click_fork_button(driver, 'gk-repository-dialog button', 'Browse GitLab projects')
+        driver.click_scrolled_text.assert_not_called()
+        self.assertEqual(driver._click_scrolled_element.call_args_list, [
+            call({ELEMENT: 'outgoing'}, deadline=ANY), call({ELEMENT: 'replacement'}, deadline=ANY),
         ])
+        self.assertEqual(driver.wait.call_count, 2)
 
-    def test_fork_submission_controls_never_use_stale_click_replay(self):
-        driver = MagicMock()
-        click_fork_button(driver, 'gk-gitlab-fork-create button', 'Submit reviewed fork request')
-        driver.click_navigation.assert_not_called()
-        driver.click_scrolled_text.assert_called_once_with(
-            'gk-gitlab-fork-create button', 'Submit reviewed fork request')
+    def test_only_local_fork_transitions_use_navigation_recovery(self):
+        for text in ('Browse forks of team/subgroup/owned-project', 'Review a new GitLab fork'):
+            with self.subTest(text=text):
+                driver = MagicMock()
+                click_fork_button(driver, 'gk-gitlab-projects button', text)
+                driver.click_navigation.assert_called_once_with(
+                    'gk-gitlab-projects button', text, scroll=True, wait_for_ready=True, timeout=30)
+                driver.click_scrolled_text.assert_not_called()
+
+    def test_fork_provider_and_record_controls_never_use_stale_click_replay(self):
+        for selector, text in (
+            ('gk-gitlab-fork-create button', 'Submit reviewed fork request'),
+            ('gk-gitlab-projects button', 'Connect to GitLab'),
+            ('gk-gitlab-fork-records button', 'Inspect saved outcome owned-reader/reviewed-project'),
+            ('gk-gitlab-fork-create button', 'Review a new GitLab fork'),
+            ('gk-gitlab-fork-create button', 'Open saved fork outcomes'),
+        ):
+            with self.subTest(text=text):
+                driver = MagicMock()
+                click_fork_button(driver, selector, text)
+                driver.click_navigation.assert_not_called()
+                driver.click_scrolled_text.assert_called_once_with(selector, text, wait_for_ready=True)
 
     def test_navigation_does_not_replay_uncertain_or_intercepted_clicks(self):
         errors = [
@@ -63,14 +92,15 @@ class CatalogueEntryTests(unittest.TestCase):
         for error in errors:
             with self.subTest(error=str(error)):
                 driver = MagicMock()
-                driver.click_scrolled_text.side_effect = error
-                driver.click_navigation = lambda selector, text, *, scroll: Driver.click_navigation(
-                    driver, selector, text, scroll=scroll, timeout=1)
-                with self.assertRaises(type(error)) as failure, patch('native_acceptance.time.sleep'):
+                driver._click_scrolled_element.side_effect = error
+                driver.wait.return_value = [{ELEMENT: 'outgoing'}]
+                driver.click_navigation = lambda selector, text, **options: Driver.click_navigation(
+                    driver, selector, text, **{**options, 'timeout': 1})
+                with self.assertRaises(type(error)) as failure:
                     click_fork_button(driver, 'gk-repository-dialog button', 'Browse GitLab projects')
                 self.assertIs(failure.exception, error)
-                driver.click_scrolled_text.assert_called_once_with(
-                    'gk-repository-dialog button', 'Browse GitLab projects')
+                driver._click_scrolled_element.assert_called_once_with({ELEMENT: 'outgoing'}, deadline=ANY)
+                driver.wait.assert_called_once()
 
     def test_stale_refusal_reacquires_the_current_entry_for_both_error_shapes(self):
         for wrapped in (False, True):

@@ -3,6 +3,41 @@ import { expect, test, type Page } from '@playwright/test';
 const FILES_PER_LIST = 1_200;
 const ROW_HEIGHT = 31;
 
+test('working-tree sections remember their own disclosure state after reload', async ({ page }) => {
+  await page.goto('/');
+  const staged = page.getByRole('button', { name: /^Staged Files/ });
+  const unstaged = page.getByRole('button', { name: /^Unstaged Files/ });
+  await expect(staged).toHaveAttribute('aria-expanded', 'true');
+  await staged.press('Enter');
+  await page.reload();
+  await expect(staged).toHaveAttribute('aria-expanded', 'false');
+  await expect(unstaged).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#staged-files-list')).toHaveCount(0);
+  await expect(page.locator('.working-tree-scroll')).toHaveClass(/expanded-unstaged-layout/);
+  await staged.press('Space');
+  const stagedList = page.locator('#staged-files-list');
+  await expect(stagedList).toBeVisible();
+  const ordinaryStagedHeight = await stagedList.evaluate(list => list.clientHeight);
+  await unstaged.press('Enter');
+  await page.reload();
+  await expect(staged).toHaveAttribute('aria-expanded', 'true');
+  await expect(unstaged).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#unstaged-files-list')).toHaveCount(0);
+  await expect.poll(() => stagedList.evaluate(list => list.clientHeight)).toBeGreaterThan(ordinaryStagedHeight);
+  await expect(page.getByRole('separator', { name: 'Resize Staged Files section' })).toHaveCount(0);
+  await staged.press('Enter');
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click();
+  const preferences = page.getByRole('dialog', { name: 'Preferences' });
+  await preferences.getByRole('searchbox', { name: 'Find a setting' }).fill('restore defaults');
+  await preferences.getByRole('button', { name: /Restore interface defaults/ }).click();
+  await preferences.getByRole('button', { name: 'Restore Defaults', exact: true }).click();
+  await preferences.getByRole('button', { name: 'Restore', exact: true }).click();
+  await preferences.getByRole('button', { name: 'Close preferences' }).click();
+  await page.reload();
+  await expect(staged).toHaveAttribute('aria-expanded', 'true');
+  await expect(unstaged).toHaveAttribute('aria-expanded', 'true');
+});
+
 function filePath(section: 'unstaged' | 'staged', index: number): string {
   const group = String(Math.floor(index / 100)).padStart(2, '0');
   return `${section}/group-${group}/${section === 'unstaged' ? 'u' : 's'}-${String(index).padStart(4, '0')}.ts`;
@@ -85,9 +120,25 @@ test('bounds both working-tree lists while preserving scrolling and filtering', 
   await page.getByRole('button', { name: `Staged Files (${FILES_PER_LIST})`, exact: true }).click();
   await expect(staged.getByRole('button', { name: `Unstage ${filePath('staged', 0)}` })).toBeVisible();
 
+  const unstagedToggle = page.getByRole('button', { name: `Unstaged Files (${FILES_PER_LIST})`, exact: true });
+  await unstagedToggle.click();
+  await expect(resizer).toHaveCount(0);
+  await staged.evaluate((list) => { list.scrollTop = list.scrollHeight; });
+  await expect(staged.getByRole('button', { name: `Unstage ${filePath('staged', FILES_PER_LIST - 1)}` })).toBeInViewport();
+  expect(await staged.locator('.file-row').count()).toBeLessThan(30);
+  await unstagedToggle.click();
+  await expect(resizer).toHaveAttribute('aria-valuenow', '420');
+
   await page.getByRole('searchbox', { name: 'Filter changed files' }).fill('u-0002.ts');
   await expect(unstaged.getByRole('button', { name: `Stage ${filePath('unstaged', 2)}` })).toBeVisible();
   await expect(staged).toContainText('No matching staged files');
+
+  await unstagedToggle.click();
+  await page.getByRole('button', { name: `Staged Files (${FILES_PER_LIST})`, exact: true }).click();
+  await expect(page.locator('.unstaged-section .collapsed-file-matches')).toHaveText('1 loaded match');
+  await expect(page.locator('.staged-section .collapsed-file-matches')).toHaveText('0 loaded matches');
+  await page.getByRole('button', { name: 'Clear file filter' }).click();
+  await expect(page.locator('.collapsed-file-matches')).toHaveCount(0);
 });
 
 test('stages and unstages the correct file after scrolling', async ({ page }) => {
@@ -136,26 +187,28 @@ test('stages and unstages the correct file after scrolling', async ({ page }) =>
   expect(calls).toEqual([{ command: 'stage_path', path }, { command: 'unstage_path', path }]);
 });
 
-test('keeps the working-tree viewport covered during large scroll jumps', async ({ page }) => {
+test('keeps the working-tree viewport covered during large scroll jumps', { tag: '@daily-driver-smoke' }, async ({ page }) => {
   test.setTimeout(60_000);
   await loadLargeWorkingTree(page);
   for (const selector of ['#unstaged-files-list', '#staged-files-list']) {
-    const gaps = await page.locator(selector).evaluate(async (list) => {
-      const gaps: number[] = [];
-      for (const target of [0, 15_500, 31_000, 3_100, 25_575, 0, 36_900]) {
+    const defects = await page.locator(selector).evaluate(async (list) => {
+      const defects: Array<{ target: number; actual: number; gap: boolean }> = [];
+      for (const target of [0, 15_500, 31_000, 3_100, 25_575, 0, 36_900, list.scrollHeight]) {
+        const expected = Math.min(target, list.scrollHeight - list.clientHeight);
         list.scrollTop = target;
         await new Promise<void>((resolve) => requestAnimationFrame(() => queueMicrotask(resolve)));
         const viewport = list.getBoundingClientRect();
         const rows = [...list.querySelectorAll<HTMLElement>('.file-row')]
           .map((row) => row.getBoundingClientRect())
           .filter((row) => row.bottom > viewport.top && row.top < viewport.bottom);
-        if (!rows.length || rows[0].top > viewport.top + 1 || rows.at(-1)!.bottom < viewport.bottom - 1) {
-          gaps.push(target);
+        const gap = !rows.length || rows[0].top > viewport.top + 1 || rows.at(-1)!.bottom < viewport.bottom - 1;
+        if (gap || Math.abs(list.scrollTop - expected) > 1) {
+          defects.push({ target: expected, actual: list.scrollTop, gap });
         }
       }
-      return gaps;
+      return defects;
     });
-    expect(gaps, selector).toEqual([]);
+    expect(defects, selector).toEqual([]);
   }
 });
 

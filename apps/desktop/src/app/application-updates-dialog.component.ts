@@ -1,6 +1,7 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { ipc, type ApplicationUpdateStatus } from '@git-khronos/contracts';
 import { ApplicationUpdatesService } from './application-updates.service';
+import { isTabKey } from './tab-key';
 
 export interface ApplicationUpdatesRequest { readonly id: number; readonly returnFocus: HTMLElement | null }
 
@@ -26,15 +27,25 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
             <p id="application-update-install-blocker" class="help" role="status">{{ state.installBlocker }}</p>
           }
           @if (state.phase === 'downloading') {
-            <p role="status">Downloaded {{ megabytes(state.downloadedBytes) }} MB@if (state.totalBytes !== null) { of {{ megabytes(state.totalBytes) }} MB }</p>
-            <progress aria-label="Update download" [attr.value]="state.totalBytes === null ? null : state.downloadedBytes" [attr.max]="state.totalBytes ?? null"></progress>
+            @let total = state.totalBytes !== null && state.totalBytes > 0 ? state.totalBytes : null;
+            <p id="application-update-download-size">Downloaded {{ formatBytes(state.downloadedBytes) }}@if (total !== null) { of {{ formatBytes(total) }} }</p>
+            <progress aria-label="Update download" aria-describedby="application-update-download-size"
+              [attr.value]="total === null ? null : state.downloadedBytes" [attr.max]="total"></progress>
           }
           @if (state.notes) { <section class="notes" aria-label="Release notes"><h3>Release notes</h3><p>{{ state.notes }}</p></section> }
           <label class="automatic"><input type="checkbox" [checked]="state.automatic"
+            aria-describedby="application-automatic-update-help"
             [disabled]="updates.settingPending() || ((!state.configured || !!state.storageError || !!updates.statusError()) && !state.automatic)"
             (change)="automatic($event, target)" />Enable automatic updates</label>
-          <p class="help">Off by default. Automatic checks and verified downloads use the same publisher trust as manual updates. Installation waits for Git work, terminal sessions and editors to finish; OS authorization may be required. Turning this off does not cancel an installer that has already started.</p>
-          @if (state.packageFormat === 'msi' || state.packageFormat === 'nsis') { <p class="help">Windows currently supports checks and verified downloads only. Self-installation awaits a safe restart flow.</p> }
+          <p id="application-automatic-update-help" class="help">
+            Off by default. When enabled, the app checks for updates and downloads and verifies packages from the trusted publisher.
+            @if (state.packageFormat === 'msi' || state.packageFormat === 'nsis') {
+              On Windows, you must install the update yourself.
+            } @else {
+              Where self-installation is supported, the app installs updates when no Git operation, terminal session or editor is active.
+              Your system may ask for authorization. Turning this off does not stop an installer that has already started.
+            }
+          </p>
           @if (updates.settingPending()) { <p role="status">Saving automatic-update preference…</p> }
           @if (state.storageError) { <p role="alert">{{ state.storageError }} The saved preference or installer receipt may be unconfirmed.</p> }
         } @else if (!updates.statusError()) { <p role="status">Reading native update status…</p> }
@@ -122,7 +133,23 @@ export class ApplicationUpdatesDialogComponent {
       if (this.owns(target) && input.isConnected) input.checked = this.updates.state()?.automatic ?? false;
     });
   }
-  megabytes(bytes: number): string { return (bytes / (1024 * 1024)).toFixed(1); }
+  formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes % 1024 ? 1 : 0)} KiB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+  }
+
+  private keyboardControls(): HTMLElement[] {
+    return [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled)') ?? [])]
+      .filter(element => element.getClientRects().length);
+  }
+
+  focusKeyboardEdge(backwards: boolean): void {
+    if (!this.owns(this.request())) return;
+    const controls = this.keyboardControls();
+    (controls[backwards ? controls.length - 1 : 0] ?? this.dialog()?.nativeElement)?.focus();
+  }
+
   key(event: KeyboardEvent, target: ApplicationUpdatesRequest): void {
     if (!this.owns(target)) return;
     event.stopPropagation();
@@ -130,10 +157,11 @@ export class ApplicationUpdatesDialogComponent {
       event.preventDefault(); return;
     }
     if (event.key === 'Escape') { event.preventDefault(); this.close(target); }
-    if (event.key !== 'Tab') return;
-    const controls = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled)') ?? [])].filter(element => element.getClientRects().length);
-    if (!controls.length) return;
-    event.preventDefault(); const index = controls.indexOf(document.activeElement as HTMLElement);
+    if (!isTabKey(event)) return;
+    event.preventDefault();
+    const controls = this.keyboardControls();
+    if (!controls.length) { this.dialog()?.nativeElement.focus(); return; }
+    const index = controls.indexOf(document.activeElement as HTMLElement);
     controls[event.shiftKey ? (index <= 0 ? controls.length - 1 : index - 1) : (index + 1) % controls.length].focus();
   }
 }

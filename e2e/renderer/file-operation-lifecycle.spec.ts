@@ -64,13 +64,14 @@ test('bulk discard browser preview keeps staging intact without a native mutatio
   expect(result.nativeCalls).toEqual([]);
 });
 
-test('browser discard preview blocks nested files but keeps root files eligible', async ({ page }) => {
+test('browser discard preview allows regular nested files but blocks type changes', async ({ page }) => {
   await prepare(page);
   const preview = await page.evaluate(async () => {
     const state = (window as any).__fileOperation;
     const entries = [
       { path: 'root.txt', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },
       { path: 'nested/file.txt', indexStatus: ' ', worktreeStatus: 'M', conflicted: false },
+      { path: 'nested/type-changed.txt', indexStatus: ' ', worktreeStatus: 'T', conflicted: false },
     ];
     const repository = { ...state.repository,
       status: { ...state.repository.status, entries, entryCount: entries.length } };
@@ -79,9 +80,9 @@ test('browser discard preview blocks nested files but keeps root files eligible'
     return state.git.previewDiscard(null);
   });
   expect(preview).toMatchObject({
-    paths: ['root.txt'],
+    paths: ['root.txt', 'nested/file.txt'],
     skippedPaths: [],
-    blockedPaths: ['nested/file.txt'],
+    blockedPaths: ['nested/type-changed.txt'],
   });
 });
 

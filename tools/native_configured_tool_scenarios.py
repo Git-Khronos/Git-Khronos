@@ -99,7 +99,9 @@ for line in sys.stdin:
         preferences()
         driver.click_scrolled_text('gk-configured-tools-panel button', 'Use system shell for new terminal tabs')
         driver.click_visible('gk-configured-tools-panel .profiles button')
-        driver.click_scrolled_text('gk-configured-tools-panel button', 'Delete program profile')
+        # The profile click opens an editor asynchronously. Capture the
+        # enabled Delete control when it is ready, then dispatch once.
+        driver.click_scrolled_text('gk-configured-tools-panel button', 'Delete program profile', wait_for_ready=True)
         driver.wait("return document.querySelectorAll('gk-configured-tools-panel .profiles button').length === 0")
         driver.click('[aria-label="Close preferences"]')
         report['scenarios'].append('native-ui-configured-program-persistence-default-explicit-launch-close-and-delete')
