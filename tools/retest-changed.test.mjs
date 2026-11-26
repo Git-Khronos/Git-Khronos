@@ -49,6 +49,14 @@ test('removing a spec falls back rather than silently dropping coverage', t => {
   assert.match(f.run(), /desktop:check[\s\S]*desktop:test[\s\S]*desktop:e2e/);
 });
 
+test('does not launch broad validation without explicit opt-in', t => {
+  const f = fixture(t);
+  f.write('shared.ts');
+  const result = spawnSync(process.execPath, ['tools/retest-changed.mjs', '--run'], { cwd: f.cwd, encoding: 'utf8' });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--run --allow-full/);
+});
+
 test('execution preserves argument boundaries and stops at the first failure', { skip: process.platform === 'win32' }, t => {
   const f = fixture(t);
   const bin = mkdtempSync(join(tmpdir(), 'gk-retest-bin-'));
@@ -56,7 +64,7 @@ test('execution preserves argument boundaries and stops at the first failure', {
   const path = join(bin, 'pnpm');
   writeFileSync(path, '#!/bin/sh\nprintf "invoked <%s>\\n" "$@"\nexit 17\n', { mode: 0o700 });
   f.write('shared.ts');
-  const result = spawnSync(process.execPath, ['tools/retest-changed.mjs', '--run'], {
+  const result = spawnSync(process.execPath, ['tools/retest-changed.mjs', '--run', '--allow-full'], {
     cwd: f.cwd, encoding: 'utf8', env: { ...process.env, PATH: bin + delimiter + process.env.PATH },
   });
   assert.equal(result.status, 17);

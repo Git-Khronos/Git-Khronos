@@ -20,6 +20,7 @@ const prefix = 'apps/desktop/src/app/';
 const { values } = parseArgs({ options: {
   base: { type: 'string', default: 'HEAD' },
   run: { type: 'boolean' },
+  'allow-full': { type: 'boolean' },
 } });
 
 const base = git('rev-parse', '--verify', '--end-of-options', values.base + '^{commit}').trim();
@@ -60,7 +61,10 @@ const commands = broad
 for (const command of commands) console.log('pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
 if (!commands.length) console.log('No test-relevant changes selected.');
 else if (!values.run) console.log('Plan only. Add --run to execute.');
-else {
+else if (broad && !values['allow-full']) {
+  console.error('Broad validation requires --run --allow-full. Review the plan above first.');
+  process.exitCode = 2;
+} else {
   // Use the workspace package manager; each target must succeed before the next.
   for (const args of commands) {
     const result = spawnSync('pnpm', ['nx', 'run', ...args], { cwd, stdio: 'inherit' });

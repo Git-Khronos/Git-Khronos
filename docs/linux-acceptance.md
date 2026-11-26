@@ -3283,7 +3283,8 @@ It defaults to `HEAD` (staged, unstaged and untracked changes); use
 `--base origin/dev` to include differences against that local tracking ref.
 Add `--run` to execute. Recognized renderer components select their profile,
 and changed renderer specs run directly. Shared or unmapped files fall back
-to the full desktop check, test and renderer targets. This is a local aid,
+to the full desktop check, test and renderer targets; use `--run --allow-full`
+to execute that broader plan. This is a local aid,
 not a release gate or a complete dependency analysis.
 
 For a broader local pass, run `pnpm nx run desktop:e2e-quick`. This skips
