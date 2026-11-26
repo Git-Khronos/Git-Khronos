@@ -585,6 +585,10 @@ Focus a local branch in the graph, reference sidebar, or commit inspector and
 press **Shift+Enter** to check it out. Plain Enter still views the branch tip.
 If the branch belongs to another worktree, the shortcut opens the same
 existing-checkout review as a double-click instead of forcing a switch.
+Use **Open existing checkout** to go there, or **Copy owning path** to take
+the path to another tool. If Git reports that the checkout is unavailable,
+**Review registrations…** opens the read-only worktree report without
+repairing or removing anything.
 Double-click a remote branch, press Enter, or choose **Fetch and check out local
 branch** from its menu to fetch that branch and check out its local counterpart.
 The action creates a tracking branch when needed and otherwise updates only by
@@ -757,6 +761,9 @@ local URL that differs from an absolute declared URL. A configured
 `submodule.<name>.ignore` setting does not hide changes in this review. Relative
 declared URLs are reported without resolution. Reviews are bounded to 500 paths;
 bare repositories are refused.
+Use **Show full commit IDs** to inspect the exact index and checkout commits.
+You can filter by either full ID or a prefix of at least seven hexadecimal
+characters. Filtering changes the list, not the scope of bulk actions.
 
 The manager keeps bulk initialization and remote updating separate. **Initialize
 missing** checks out every missing submodule at the commits recorded by the
@@ -1041,7 +1048,9 @@ or reinstates the deletion without changing what is staged.
 Regular untracked files in subdirectories can also be discarded and recovered.
 Nested symbolic links and hunk or line discard are not supported. If an unsupported path blocks a bulk request, nothing is
 discarded. Use **Choose eligible files** to select the files you want and
-review a fresh preview before confirming. Changed files or index contents
+review a fresh preview before confirming. If every path is blocked, the
+read-only review lists the blockers and offers **Recheck eligibility** instead.
+Changed files or index contents
 invalidate a prepared single-file or bulk preview. Discard is not yet available
 on other operating systems or in linked worktrees.
 
