@@ -83,6 +83,9 @@ for (const review of reviews) {
   for (const change of ['repository', 'path']) {
     test(`${review} refuses an outgoing confirmation after a ${change} switch`, async ({ page }) => {
       const modal = await open(page, review);
+      // A deferred review shell can be visible before its action is wired.
+      // Capture an actionable control so the stale click exercises the guard.
+      await expect(page.locator(selector(review))).toBeEnabled();
       await page.evaluate(({ change, control }) => {
         const button = document.querySelector<HTMLButtonElement>(control)!;
         (window as any).__changeRemoteScope(change);
