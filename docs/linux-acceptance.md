@@ -3267,6 +3267,7 @@ For a feature that spans multiple specs, use
 | `working-files` | File editing, working-tree actions, discard and recovery |
 | `branches` | Branch navigation, scoped reference actions, branch workflows |
 | `stash` | Stash creation, review, restoration and deletion |
+| `transport` | Fetch, pull, push, remote cleanup and authentication UI |
 | `gitlab` | Catalogue, clone, fork browsing and creation |
 | `graph` | Representative graph layout, connectivity, scrolling and virtualization |
 | `history` | History search, paging, blame, comparison and replay |

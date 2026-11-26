@@ -178,6 +178,7 @@
         "working-files": { "command": "playwright test 'e2e/renderer/(working-(tree|file|directory)|discard-recovery)'" },
         "branches": { "command": "playwright test 'e2e/renderer/(branch-|context-branch-|previous-branch|reference-actions)'" },
         "stash": { "command": "playwright test 'e2e/renderer/(stash-|inline-stash-)'"},
+        "transport": { "command": "playwright test 'e2e/renderer/(authentication[.-]|fetch-|pull-strategies|push-sync|remote-cleanup-review-scope)'" },
         "gitlab": { "command": "playwright test 'e2e/renderer/gitlab-'"},
         "graph": { "command": "playwright test 'e2e/renderer/graph-' --grep-invert @exhaustive-layout" },
         "history": { "command": "playwright test 'e2e/renderer/(history-|blame-pages|operation-history-lifecycle)'" },

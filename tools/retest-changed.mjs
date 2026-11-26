@@ -14,6 +14,7 @@ const profiles = [
   [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'working-files'],
   [/^stash-(?:options|delete|clear)-dialog\.component\.(?:ts|html|scss)$/, 'stash'],
   [/^history-search\.component\.(?:ts|html|scss)$/, 'history'],
+  [/^fetch-options-dialog\.component\.(?:ts|html|scss)$/, 'transport'],
   [/^application-updates-dialog\.component\./, 'updates'],
 ];
 const prefix = 'apps/desktop/src/app/';
