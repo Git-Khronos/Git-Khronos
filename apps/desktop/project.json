@@ -159,6 +159,21 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite discard-large --headless" }
     },
+    "native-discard-limit": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite discard-limit --headless" }
+    },
+    "native-discard-deletion": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite discard-deletion --headless" }
+    },
+    "native-discard-stale-review": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite discard-stale-review --headless" }
+    },
     "native-environment": {
       "executor": "nx:run-commands",
       "cache": false,

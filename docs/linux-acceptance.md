@@ -1487,7 +1487,7 @@ of the portable installed matrix. The Ubuntu 26.04 run is not a substitute
 for that matrix check.
 
 The suite also checks both bulk and single-file discard and Undo on a tracked
-path with spaces and non-ASCII text. Use `--suite discard-deletion --headless`
+path with spaces and non-ASCII text. Use `desktop:native-discard-deletion`
 to exercise the single-file action on a deleted nested lockfile with an intact
 parent directory. Confirm must restore the index version, Undo must reinstate
 the deletion, and Redo must restore the file again, without changing staging
@@ -1573,12 +1573,19 @@ The installed CTI fix without the serializer optimization also passed
 the scenario on this host (`discard-large-1795465345238569898`, package
 `0c4ce6e54f1f466e2cedb1179cee22f1c48e2d7d96ef7a70451a427c51e59de0`).
 
-Use `--suite discard-limit --headless` to verify that both a single nested
-untracked file just above 64 MiB and a bulk selection containing only
-oversized files report the per-file limit. Neither opens a confirmation
-or changes the repository or capture store. The installed Ubuntu 24.04
-lane requires both scenarios from the release package. The test uses
-sparse disposable files and a separately staged edit.
+Use `desktop:native-discard-limit` to check both size-limit paths. A single
+nested untracked file just above 64 MiB is refused before confirmation.
+A bulk request containing only oversized files opens a read-only review
+that lists the blockers and can recheck eligibility. Neither changes the
+repository or capture store. The fixture uses sparse disposable files and
+a separately staged edit.
+
+```sh
+pnpm nx run desktop:native-discard-limit --output-style=stream -- --package "$archive"
+```
+
+Use `desktop:native-discard-stale-review` with the same archive argument
+to check that an intervening file edit invalidates an old preview.
 
 For a mixed request containing otherwise eligible changes, the review
 labels each known oversized path and leaves confirmation disabled. The
