@@ -3355,6 +3355,14 @@ recaps (28), discard subset (7), and large discard (4). The reports are in
 and `discard-large-1795714873612561145`. This predates the Nx 24 update and
 does not qualify a system install, production signature, or hosted run.
 
+The Nx 24 rebuild from `6ae7a38`, SHA-256
+`4d47dbd5c90dfcfce9505ee0aa6ee35b577626708e194dd70d28ba6ab2870bd4`,
+passed extracted-package smoke (19 scenarios), GitLab fork/catalogue (11),
+and large discard (4) on Ubuntu 26.04. Reports under `test-results/native/`:
+`smoke-1795715312251253602`, `gitlab-fork-ui-1795715330668269925`, and
+`discard-large-1795715356509820951`. These reports apply only to the exact
+local archive, not an installed or signed production candidate.
+
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
