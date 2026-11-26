@@ -4,7 +4,7 @@
       [attr.aria-label]="menu.label" [attr.aria-describedby]="menu.kind === 'pull' && menu.hasSubmodules ? 'pull-submodule-scope' : null"
       (keydown)="handleToolbarActionMenuKeydown($event)">
       @defer (on immediate) {
-        <div gkToolbarOptions [class]="menu.className + ' toolbar-menu-items'"
+        <div gkToolbarOptions class="toolbar-menu-items" [class.fetch-menu-items]="menu.kind === 'fetch'"
           [view]="menu" (activate)="runToolbarOptionsAction(menu, $event)" (ready)="toolbarOptionsReady(menu, $event)"></div>
       } @placeholder {
         <ng-container [ngTemplateOutlet]="toolbarOptionsFallback" [ngTemplateOutletContext]="{ failed: false }" />

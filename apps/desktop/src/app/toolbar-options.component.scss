@@ -1,6 +1,6 @@
-:host(.fetch-menu) .toolbar-menu-context { grid-template-columns: 22px minmax(0, 1fr); }
-:host(.fetch-menu) .toolbar-menu-context > gk-icon { grid-row: 1 / span 2; }
-:host(.fetch-menu) .toolbar-menu-context > b { grid-column: 2; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+:host(.fetch-menu-items) .toolbar-menu-context { grid-template-columns: 22px minmax(0, 1fr); }
+:host(.fetch-menu-items) .toolbar-menu-context > gk-icon { grid-row: 1 / span 2; }
+:host(.fetch-menu-items) .toolbar-menu-context > b { grid-column: 2; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pull-strategy-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px; align-items: stretch; border-radius: 3px; }
 .pull-strategy-row:hover { background: var(--overlay-hover); }
 .pull-strategy-row > button:not(:focus) { background: transparent; }
