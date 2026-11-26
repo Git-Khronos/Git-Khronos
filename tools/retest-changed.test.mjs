@@ -125,3 +125,12 @@ test('does not schedule a second browser run for a spec covered by the selected 
   assert.ok(plan.includes('application-updates[.]spec[.]ts$'));
   assert.ok(!plan.includes('worktree-move[.]spec[.]ts$'));
 });
+
+test('WebKit opt-in applies only to selected browser targets', t => {
+  const f = fixture(t);
+  f.write('tools/retest-changed.test.mjs');
+  f.write('e2e/renderer/application-updates.spec.ts');
+  const plan = f.run('--webkit');
+  assert.match(plan, /GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run "desktop:e2e"[^\n]*"--project=webkit"/);
+  assert.doesNotMatch(plan, /GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run "desktop:owned-process-test"/);
+});

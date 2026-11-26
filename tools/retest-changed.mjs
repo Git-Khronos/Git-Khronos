@@ -23,18 +23,19 @@ const { values } = parseArgs({ options: {
   base: { type: 'string', default: 'HEAD' },
   staged: { type: 'boolean' },
   workers: { type: 'string' },
+  webkit: { type: 'boolean' },
   run: { type: 'boolean' },
   'allow-full': { type: 'boolean' },
 } });
 
 if (values.help) {
-  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--run [--allow-full]]
+  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--run [--allow-full]]
 
 Preview checks for staged, unstaged and untracked changes against HEAD by default.
 Use --base to compare against another local commit, for example origin/dev.
 Use --staged to select only changes in the index relative to the base.
 Tests still run against your working files, not an isolated staged snapshot.
-Use --workers to override the browser worker count.
+Use --workers to override the browser worker count and --webkit to select WebKit.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
 This command does not fetch or replace the release test suite.`);
   process.exit(0);
@@ -110,14 +111,15 @@ const commands = broad
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
      ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
-if (values.workers) {
-  for (const command of commands) {
-    if (command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:')) {
-      command.push('--workers=' + values.workers);
-    }
-  }
+const isBrowser = command => command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:');
+for (const command of commands.filter(isBrowser)) {
+  if (values.workers) command.push('--workers=' + values.workers);
+  if (values.webkit) command.push('--project=webkit');
 }
-for (const command of commands) console.log('pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
+for (const command of commands) {
+  const envPrefix = values.webkit && isBrowser(command) ? 'GIT_KHRONOS_RENDERER_WEBKIT=1 ' : '';
+  console.log(envPrefix + 'pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
+}
 if (!commands.length) console.log('No test-relevant changes selected.');
 else if (!values.run) console.log('Plan only. Add --run to execute.');
 else if (broad && !values['allow-full']) {
@@ -125,8 +127,16 @@ else if (broad && !values['allow-full']) {
   process.exitCode = 2;
 } else {
   // Use the workspace package manager; each target must succeed before the next.
+  if (values.webkit && commands.some(isBrowser)) {
+    const check = spawnSync(process.execPath, ['tools/check-renderer-browser.mjs', 'webkit'], { cwd, stdio: 'inherit' });
+    if (check.error) throw check.error;
+    if (check.status !== 0) process.exit(check.status ?? 1);
+  }
   for (const args of commands) {
-    const result = spawnSync('pnpm', ['nx', 'run', ...args], { cwd, stdio: 'inherit' });
+    const env = values.webkit && isBrowser(args)
+      ? { ...process.env, GIT_KHRONOS_RENDERER_WEBKIT: '1' }
+      : process.env;
+    const result = spawnSync('pnpm', ['nx', 'run', ...args], { cwd, env, stdio: 'inherit' });
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
   }
