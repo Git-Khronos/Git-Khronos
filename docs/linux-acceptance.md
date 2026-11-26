@@ -3290,8 +3290,17 @@ For a feature that spans multiple specs, use
 | `keyboard` | Command palette, shortcut reference and review-dialog keyboard handling |
 | `updates` | Application updater UI |
 
-Add `--list` to see the selected tests or `--grep='test title'` to narrow
-further. Profiles group renderer specs, not all dependencies of a code change.
+Pass Playwright options after `--`; otherwise Nx can consume options such as
+`--project`. For example, list the working-files cases or run only that profile
+in WebKit:
+
+```sh
+pnpm nx run desktop:e2e:working-files -- --list
+GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run desktop:e2e:working-files -- --project=webkit --workers=4
+```
+
+Use `-- --grep='test title'` to narrow further. Profiles group renderer specs,
+not all dependencies of a code change.
 For shared UI or IPC changes, include adjacent specs or use the full suite.
 
 To plan or run checks based on changed files:
