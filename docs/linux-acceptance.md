@@ -3380,6 +3380,10 @@ recorded and checked-out commit IDs against Git, then filters by the new
 checkout ID without modifying the parent or either child. Reports:
 `test-results/native/submodule-initialize-1795722022322838731` and
 `test-results/native/submodule-update-1795722028728461827`.
+The same archive passed all 332 full extracted-package native scenarios
+(`test-results/native/full-1795722237227528021`). This run overlapped the
+full Chromium suite, so its 970.3-second elapsed time is not comparable to
+the standalone native checkpoint.
 
 Local Ubuntu 26.04 checkpoint: the archive built from `ef415ca` with SHA-256
 `48692296e3ef2d05654eee55b7b4c98fa5ea297ab3199e249ce60cfa7a41466e`
