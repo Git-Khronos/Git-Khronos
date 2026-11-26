@@ -1414,7 +1414,7 @@ def main():
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close", "working-file-editor",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
         "workspace-pull-upstreams", "pull-submodule-scope", "merge-preview", "reference-hover", "reference-copy",
-        "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "merge-rebase-review", "discard-subset", "discard-busy", "discard-deletion", "discard-stale-review", "discard-large", "discard-limit", "submodule-initialize", "submodule-update",
+        "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "merge-rebase-review", "discard-subset", "discard-busy", "discard-deletion", "discard-stale-review", "discard-large", "discard-limit", "submodule-initialize", "submodule-update", "sparse-checkout",
         "stash-review", "stash-selection", "stash-clear", "autosquash-amend", "signed-tag", "signed-commit", "empty-commit", "lfs-lock-actions", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection", "diff-rendering",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "checkout-responsiveness", "worktree-reservation",
@@ -1780,6 +1780,9 @@ def main():
             elif args.suite == "submodule-initialize":
                 from native_submodule_initialize_scenarios import initialize_one_submodule
                 repository, repo_id = initialize_one_submodule(driver, fixtures, report)
+            elif args.suite == "sparse-checkout":
+                from native_sparse_checkout_scenarios import disable_sparse_checkout
+                repository, repo_id = disable_sparse_checkout(driver, fixtures, report)
             elif args.suite == "submodule-update":
                 from native_submodule_update_scenarios import update_one_submodule
                 repository, repo_id = update_one_submodule(driver, fixtures, report)

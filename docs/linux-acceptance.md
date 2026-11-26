@@ -4231,3 +4231,22 @@ package in WebKitGTK. It does not prove system installation, desktop-entry
 integration, distribution-specific packaging beyond the runner, hardware-key
 interaction, or a real hosted Git service. Those remain separate manual or
 environment-specific acceptance steps.
+
+### Focused packaged sparse checkout
+
+Run this when changing the sparse-checkout toolbar, its confirmation dialog,
+or native sparse-checkout commands, without running the full acceptance suite:
+
+```sh
+pnpm nx run desktop:native-sparse-checkout --output-style=stream -- --package "$archive"
+```
+
+The owned fixture starts in cone mode with a sparse index, an excluded tracked
+file, and an unstaged edit. Preview and Cancel must leave that state intact and
+return focus to the menu button. Confirming **Restore All Files** must
+materialize the excluded file without changing HEAD, staged content, or the
+unstaged edit.
+
+Both scenarios passed in 4.6 seconds on Ubuntu 26.04 under WSL2 using the
+Debian archive built from `99016b7` (SHA-256
+`a32d8bcb6b1419456acd24a7b1371980b098a4a83838a278c9a3dcda40cc5790`).

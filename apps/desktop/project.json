@@ -154,6 +154,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite submodule-initialize --headless" }
     },
+    "native-sparse-checkout": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite sparse-checkout --headless" }
+    },
     "native-submodule-update": {
       "executor": "nx:run-commands",
       "cache": false,
