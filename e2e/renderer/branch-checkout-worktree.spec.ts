@@ -355,6 +355,15 @@ for (const mode of ['changed', 'missing', 'failRefresh'] as const) {
     await expect(page.locator('.status-repository-path')).toHaveText(fixture.sourcePath);
     expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
       .filter((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toEqual([]);
+    const reviewRegistrations = dialog.getByRole('button', { name: 'Review registrations…' });
+    if (mode === 'missing') {
+      await expect(dialog.getByRole('alert')).toContainText('became unavailable during review');
+      await reviewRegistrations.click();
+      await expect(page.getByRole('dialog', { name: 'Review worktree registrations', exact: true }))
+        .toContainText(fixture.ownerPath);
+    } else {
+      await expect(reviewRegistrations).toHaveCount(0);
+    }
   });
 }
 

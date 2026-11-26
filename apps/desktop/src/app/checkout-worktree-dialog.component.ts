@@ -22,7 +22,7 @@ export interface CheckoutWorktreeRequest {
         (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
         <h2 id="checkout-worktree-title">Branch is open in another checkout</h2>
         <p id="checkout-worktree-scope">
-          @if (request().prunable) {
+          @if (unavailable()) {
             <strong>{{ request().branch }}</strong> is registered to a checkout that cannot be opened.
             Copy its path or review the worktree registrations.
           } @else {
@@ -32,8 +32,8 @@ export interface CheckoutWorktreeRequest {
         </p>
         <p>Current checkout: <code>{{ request().repositoryPath }}</code></p>
         <p>Owning checkout: <code>{{ request().worktreePath }}</code></p>
-        @if (request().prunable) {
-          <p role="alert">No repair or pruning has been performed.</p>
+        @if (unavailable()) {
+          <p>No repair or pruning has been performed.</p>
         }
         @if (error(); as message) { <p role="alert" tabindex="-1">{{ message }}</p> }
         @if (copyStatus(); as message) { <p role="status">{{ message }}</p> }
@@ -43,7 +43,7 @@ export interface CheckoutWorktreeRequest {
         <footer>
           <button type="button" (click)="close()">{{ error() ? 'Close' : 'Cancel' }}</button>
           <button type="button" (click)="copyOwningPath()">Copy owning path</button>
-          @if (request().prunable) {
+          @if (unavailable()) {
             <button type="button" [disabled]="git.busy()" (click)="reviewRegistrations()">Review registrations…</button>
           } @else {
             <button type="button" [disabled]="phase() !== 'idle' || git.busy() || !!error()" (click)="confirm()">Open existing checkout</button>
@@ -74,6 +74,10 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   readonly phase = signal<'idle' | 'checking' | 'opening'>('idle');
   readonly error = signal<string | null>(null);
   readonly copyStatus = signal<string | null>(null);
+  private readonly unavailableRequest = signal<CheckoutWorktreeRequest | null>(null);
+  protected unavailable(): boolean {
+    return this.request().prunable || this.unavailableRequest() === this.request();
+  }
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
   private destroyed = false;
   private closing = false;
@@ -104,7 +108,7 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
 
   reviewRegistrations(): void {
     const request = this.request();
-    if (!request.prunable || this.git.busy() || !this.owns(request)) return;
+    if (!this.unavailable() || this.git.busy() || !this.owns(request)) return;
     this.registrationsRequested.emit(request);
   }
 
@@ -118,6 +122,11 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
       const current = this.git.repository();
       if (!current || !this.owns(request)) return;
       const owner = branchCheckoutOwner(current, request.branch);
+      if (refresh.status === 'success' && owner?.path === request.worktreePath && owner.prunable) {
+        this.unavailableRequest.set(request);
+        this.showError(request, 'The owning checkout became unavailable during review. No checkout was opened.');
+        return;
+      }
       if (refresh.status !== 'success' || !owner || owner.path !== request.worktreePath || owner.prunable) {
         this.showError(request, refresh.error
           ?? 'Branch ownership changed or the checkout is unavailable. Close this review and select the branch again.');
