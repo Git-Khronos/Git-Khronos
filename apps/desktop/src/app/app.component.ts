@@ -1188,6 +1188,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly repositoryAlias = signal('');
   protected readonly repositoryAliasEditing = signal(false);
   protected readonly preferencesOpen = signal(false);
+  protected readonly preferencesFocusSparseEditor = signal(false);
   protected readonly preferencesSection = signal<PreferencesSection>('general');
   protected readonly resetUiConfirmation = signal(false);
   protected readonly identityPopoverOpen = signal(false);
@@ -6048,7 +6049,7 @@ export class AppComponent implements OnInit, OnDestroy {
     else this.closePreferences();
   }
 
-  protected openPreferences(section: PreferencesSection = 'general', returnFocus?: HTMLElement | null): void {
+  protected openPreferences(section: PreferencesSection = 'general', returnFocus?: HTMLElement | null, focusSparseEditor = false): void {
     let opener = returnFocus === undefined && document.activeElement instanceof HTMLElement
       ? document.activeElement
       : returnFocus ?? null;
@@ -6057,6 +6058,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.identityPopoverOpen.set(false);
     this.resetUiConfirmation.set(false);
     this.preferencesSection.set(section);
+    this.preferencesFocusSparseEditor.set(focusSparseEditor);
     this.loadSparseCheckoutDraft();
     this.preferencesOpen.set(true);
   }
@@ -6530,6 +6532,15 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.pendingSparseCheckoutReview() !== expected) return;
     this.pendingSparseCheckoutReview.set(null);
     if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
+  }
+
+  protected editReviewedSparseCheckout(expected: SparseCheckoutReview | null): void {
+    if (!expected || expected.action !== 'set' || this.pendingSparseCheckoutReview() !== expected
+      || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    this.closeSparseCheckoutConfirmation(false, expected);
+    this.openPreferences('git', expected.returnFocus, true);
+    this.sparseCheckoutPaths.set(expected.paths.join('\n'));
+    this.sparseCheckoutIndex.set(expected.sparseIndex);
   }
 
   protected async confirmSparseCheckoutAction(expected = this.pendingSparseCheckoutReview()): Promise<void> {

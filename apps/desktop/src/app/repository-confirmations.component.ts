@@ -49,6 +49,7 @@ export class RepositoryConfirmationsComponent {
   readonly remoteConfirmed = output<void>();
   readonly sparseClosed = output<void>();
   readonly sparseConfirmed = output<void>();
+  readonly sparseEditRequested = output<void>();
   readonly forcePushClosed = output<void>();
   readonly forcePushConfirmed = output<void>();
   readonly worktreeClosed = output<void>();

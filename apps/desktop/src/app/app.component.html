@@ -255,7 +255,7 @@
           <button #preferencesToggle class="chrome-icon" type="button" title="Preferences" aria-label="Preferences" (click)="togglePreferences($event)" [attr.aria-expanded]="preferencesOpen()"><gk-icon name="settings" [size]="15" /></button>
           @if (preferencesOpen()) {
             @defer (on immediate) {
-              <gk-preferences-dialog [repository]="repo" [view]="preferencesDialogView()" (closed)="closePreferences()" />
+              <gk-preferences-dialog [repository]="repo" [view]="preferencesDialogView()" [focusSparseEditor]="preferencesFocusSparseEditor()" (closed)="closePreferences()" />
             } @loading {
               <div class="preferences-backdrop" aria-hidden="true"></div>
               <section class="preferences-popover preference-loader" role="dialog" aria-modal="true" aria-label="Loading preferences">
@@ -1712,7 +1712,7 @@
         [forcePush]="forceReview" [forcePushDestination]="forcePushDestination()" [forcePushRepositoryPath]="forceReview?.repositoryPath ?? null" [worktree]="worktreeReview" [worktreeRepositoryPath]="worktreeReview?.repositoryPath ?? null" [forceWorktreeRemoval]="forceWorktreeRemoval()"
         [publishBranch]="publishReview?.branch ?? null" [publishRepositoryPath]="publishReview?.repositoryPath ?? null" [publishRemote]="publishRemote()"
         (remoteClosed)="closeRemoteRemoval(true, removalOwner)" (remoteConfirmed)="confirmRemoteRemoval(removalOwner)"
-        (sparseClosed)="closeSparseCheckoutConfirmation(true, sparseReview)" (sparseConfirmed)="confirmSparseCheckoutAction(sparseReview)"
+        (sparseClosed)="closeSparseCheckoutConfirmation(true, sparseReview)" (sparseEditRequested)="editReviewedSparseCheckout(sparseReview)" (sparseConfirmed)="confirmSparseCheckoutAction(sparseReview)"
         (worktreeClosed)="closeWorktreeRemoval(true, worktreeReview)" (worktreeConfirmed)="confirmWorktreeRemoval(worktreeReview)" (worktreeForceChanged)="setWorktreeRemovalForce($event, worktreeReview)"
         (forcePushClosed)="closeForcePush(true, forceReview)" (forcePushConfirmed)="confirmForcePush(forceReview)"
         (publishClosed)="closePublishBranch(true, publishReview)" (publishConfirmed)="confirmPublishBranch(publishReview)"

@@ -76,6 +76,7 @@ export class PreferencesDialogComponent {
   protected readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
   readonly repository = input.required<RepositorySnapshot>();
   readonly view = input.required<PreferencesDialogView>();
+  readonly focusSparseEditor = input(false);
   readonly closed = output<void>();
   protected readonly searchQuery = signal('');
   protected readonly searchResults = computed(() => {
@@ -88,7 +89,12 @@ export class PreferencesDialogComponent {
   });
 
   constructor() {
-    afterNextRender(() => this.closeButton()?.nativeElement.focus());
+    afterNextRender(() => {
+      const sparseEditor = this.focusSparseEditor()
+        ? this.element.nativeElement.querySelector<HTMLElement>('#preference-sparse-checkout textarea')
+        : null;
+      (sparseEditor ?? this.closeButton()?.nativeElement)?.focus();
+    });
   }
 
   protected selectSearchResult(entry: PreferenceSearchEntry): void {

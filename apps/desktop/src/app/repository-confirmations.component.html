@@ -22,7 +22,7 @@
           <p class="sparse-index-review">Index: {{ sparseIndex() ? 'Sparse' : 'Full' }}</p>
         }
       </div>
-      <footer><button type="button" (click)="sparseClosed.emit()">Cancel</button><button class="confirm-action" type="button" [disabled]="git.busy()" (click)="sparseConfirmed.emit()">{{ action === 'disable' ? 'Restore All Files' : 'Apply Selection' }}</button></footer>
+      <footer><button type="button" (click)="sparseClosed.emit()">Cancel</button>@if (action === 'set') { <button type="button" [disabled]="git.busy()" (click)="sparseEditRequested.emit()">Back to Edit</button> }<button class="confirm-action" type="button" [disabled]="git.busy()" (click)="sparseConfirmed.emit()">{{ action === 'disable' ? 'Restore All Files' : 'Apply Selection' }}</button></footer>
     </section>
   } @else if (worktree(); as action) {
     <section #dialog class="confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="remove-worktree-title" (click)="$event.stopPropagation()" (keydown)="handleKey($event)">

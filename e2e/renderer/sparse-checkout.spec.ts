@@ -62,6 +62,18 @@ test('reviews the exact directory list and full-index choice by keyboard before 
   await expect.poll(() => list.evaluate(e => e.scrollHeight > e.clientHeight)).toBe(true);
   await page.keyboard.press('End');
   await expect.poll(() => list.evaluate(e => e.scrollTop)).toBeGreaterThan(0);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await expect(review.getByRole('button', { name: 'Back to Edit' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(review).toBeHidden();
+  const editor = page.getByLabel('Sparse checkout directories');
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue(paths.join('\n'));
+  await expect(page.getByLabel('Use sparse index for large repositories')).not.toBeChecked();
+  await page.getByRole('button', { name: 'Update Directories' }).click();
+  await expect(review.getByRole('list', { name: 'Selected directories' }).getByRole('listitem')).toHaveText(paths);
+  await expect(review.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(review).toBeHidden();
 
