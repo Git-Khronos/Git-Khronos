@@ -3296,7 +3296,10 @@ node tools/report-initial-renderer.mjs --compare "$BASELINE_DIST" "$CANDIDATE_DI
 ```
 
 This measures the actual initial files in both builds and prints candidate
-minus baseline for raw, JavaScript, stylesheet, gzip and Brotli bytes. The
+minus baseline for raw, JavaScript, stylesheet, gzip and Brotli bytes. If
+both builds identify the immediate workspace import, it also compares
+workspace startup, including bootstrap. If only one identifies it, the
+other side and the workspace delta are unavailable, not zero. The
 compressed sizes describe encoding the emitted assets independently, not
 network transfer timing. It does not change budgets or write receipts.
 

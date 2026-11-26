@@ -140,18 +140,34 @@ function readRendererBuild(directory, budget) {
   return { browser, report };
 }
 
-function measureRendererBuild(directory, budget) {
-  const { browser, report } = readRendererBuild(directory, budget);
-  const sizes = { initialBytes: report.initialBytes, javascriptBytes: 0, stylesheetBytes: 0, gzipBytes: 0, brotliBytes: 0 };
-  for (const asset of report.assets) {
+function measureAssets(browser, assets) {
+  const sizes = { bytes: 0, javascriptBytes: 0, stylesheetBytes: 0, gzipBytes: 0, brotliBytes: 0 };
+  for (const asset of assets) {
     const data = readFileSync(join(browser, asset.path));
     if (data.length !== asset.bytes) throw new Error(`Build asset changed while being measured: ${asset.path}`);
+    sizes.bytes += data.length;
     if (/\.(?:m?js)$/.test(asset.path)) sizes.javascriptBytes += data.length;
     else if (asset.path.endsWith('.css')) sizes.stylesheetBytes += data.length;
     sizes.gzipBytes += gzipSync(data, { level: 9 }).length;
     sizes.brotliBytes += brotliCompressSync(data).length;
   }
   return sizes;
+}
+
+function measureRendererBuild(directory, budget) {
+  const { browser, report } = readRendererBuild(directory, budget);
+  const { bytes: initialBytes, ...encodings } = measureAssets(browser, report.assets);
+  let workspace = null;
+  if (report.workspaceStartup) {
+    const { bytes, ...additional } = measureAssets(browser, report.workspaceStartup.additionalAssets);
+    workspace = { totalBytes: initialBytes + bytes, additionalBytes: bytes,
+      ...Object.fromEntries(Object.keys(encodings).map(key => [key, encodings[key] + additional[key]])) };
+  }
+  return { initial: { initialBytes, ...encodings }, workspace };
+}
+
+function difference(baseline, candidate) {
+  return Object.fromEntries(Object.keys(baseline).map(key => [key, candidate[key] - baseline[key]]));
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
@@ -167,10 +183,17 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
     const angular = JSON.parse(readFileSync(new URL('../angular.json', import.meta.url), 'utf8'));
     const budget = angular.projects.desktop.architect.build.configurations.production.budgets.find(item => item.type === 'initial');
     if (compare) {
-      const baseline = measureRendererBuild(resolve(args[1]), budget);
-      const candidate = measureRendererBuild(resolve(args[2]), budget);
-      const delta = Object.fromEntries(Object.keys(baseline).map(key => [key, candidate[key] - baseline[key]]));
-      console.log(JSON.stringify({ baseline, candidate, delta, warningBytes: budgetBytes(budget.maximumWarning),
+      const before = measureRendererBuild(resolve(args[1]), budget);
+      const after = measureRendererBuild(resolve(args[2]), budget);
+      const baseline = before.initial;
+      const candidate = after.initial;
+      const workspaceStartup = before.workspace || after.workspace ? {
+        baseline: before.workspace,
+        candidate: after.workspace,
+        delta: before.workspace && after.workspace ? difference(before.workspace, after.workspace) : null,
+      } : undefined;
+      console.log(JSON.stringify({ baseline, candidate, delta: difference(baseline, candidate),
+        workspaceStartup, warningBytes: budgetBytes(budget.maximumWarning),
         errorBytes: budgetBytes(budget.maximumError) }, null, 2));
     } else {
       const directory = resolve(args[0]);

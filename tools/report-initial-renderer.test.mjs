@@ -205,3 +205,42 @@ test('also verifies on-disk bytes for the workspace startup chunks', t => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /asset size differ: workspace.js/);
 });
+
+test('compares workspace startup across builds without treating missing graphs as zero', t => {
+  const root = mkdtempSync(join(tmpdir(), 'khronos-workspace-compare-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const makeBuild = (name, size) => {
+    const directory = join(root, name);
+    const browser = join(directory, 'browser');
+    mkdirSync(browser, { recursive: true });
+    writeFileSync(join(browser, 'index.html'), '<script src="main.js"></script>');
+    writeFileSync(join(browser, 'main.js'), 'main');
+    const metadata = { outputs: {
+      'main.js': { bytes: 4, imports: [] },
+    } };
+    if (size !== null) {
+      metadata.outputs['main.js'].imports.push({ kind: 'dynamic-import', path: 'workspace.js' });
+      metadata.outputs['workspace.js'] = {
+        bytes: size, entryPoint: 'apps/desktop/src/app/app.component.ts', imports: [],
+      };
+      writeFileSync(join(browser, 'workspace.js'), 'w'.repeat(size));
+    }
+    writeFileSync(join(directory, 'browser-stats.json'), JSON.stringify(metadata));
+    return directory;
+  };
+  const before = makeBuild('before', 120);
+  const after = makeBuild('after', 100);
+  const legacy = makeBuild('legacy', null);
+  const cli = fileURLToPath(new URL('./report-initial-renderer.mjs', import.meta.url));
+  const compare = baseline => JSON.parse(execFileSync(process.execPath, [cli, '--compare', baseline, after], { encoding: 'utf8' }));
+  const report = compare(before);
+  assert.equal(report.delta.initialBytes, 0);
+  assert.equal(report.workspaceStartup.baseline.totalBytes, 124);
+  assert.equal(report.workspaceStartup.candidate.totalBytes, 104);
+  assert.equal(report.workspaceStartup.delta.totalBytes, -20);
+  assert.equal(report.workspaceStartup.delta.additionalBytes, -20);
+  assert.equal(report.workspaceStartup.delta.gzipBytes,
+    report.workspaceStartup.candidate.gzipBytes - report.workspaceStartup.baseline.gzipBytes);
+  assert.equal(compare(legacy).workspaceStartup.baseline, null);
+  assert.equal(compare(legacy).workspaceStartup.delta, null);
+});
