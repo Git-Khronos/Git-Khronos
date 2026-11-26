@@ -426,3 +426,12 @@ test('workspace relocation changes select the owned native folder chooser with a
   assert.match(plan, /"desktop:native-workspace-bulk-locate"/);
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
 });
+
+test('archive cleaner edits run the cleanup safety tests without browser validation', t => {
+  const f = fixture(t);
+  f.write('tools/prune_local_build_caches.py');
+  f.write('tools/prune_local_build_caches_test.py');
+  const plan = f.run();
+  assert.equal([...plan.matchAll(/"desktop:archive-cache-test"/g)].length, 1);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check|desktop:native-harness-test/);
+});

@@ -250,6 +250,11 @@
         "env": { "GIT_KHRONOS_RENDERER_WEBKIT": "1" }
       }
     },
+    "archive-cache-test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 -m unittest discover -s tools -p 'prune_local_build_caches_test.py'" }
+    },
     "native-harness-test": {
       "executor": "nx:run-commands",
       "cache": false,

@@ -136,6 +136,7 @@ let retestTools = false;
 const packageSpecs = new Set();
 let authenticationTests = false;
 let nativeHarnessTests = false;
+let archiveCacheTests = false;
 let unmappedNativeSource = false;
 let graphTypecheck = false;
 let broad = false;
@@ -156,6 +157,9 @@ for (const path of changed) {
   } else if (/^tools\/retest-changed(?:\.test)?\.mjs$/.test(path) && existsSync(join(cwd, path))) {
     retestTools = true;
     plan = 'test selection and local process checks';
+  } else if (/^tools\/prune_local_build_caches(?:_test)?\.py$/.test(path) && existsSync(join(cwd, path))) {
+    archiveCacheTests = true;
+    plan = 'archive cache cleanup safety tests';
   } else if (/^tools\/native_[a-z0-9_]+_test\.py$/.test(path) && existsSync(join(cwd, path))) {
     nativeHarnessTests = true;
     plan = 'native harness unit tests';
@@ -232,6 +236,7 @@ const directSpecs = [...specs].filter(path => !filters.some(filter => filter.tes
 const extraChecks = [
   ...(packageSpecs.size ? [broad ? ['desktop:package-test'] : ['desktop:package-test:focused', '--', ...packageSpecs]] : []),
   ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
+  ...(archiveCacheTests ? [['desktop:archive-cache-test']] : []),
   ...(nativePackage ? [...nativeSuites].map(suite => ['desktop:' + suite, '--', '--package', nativePackage]) : []),
 ];
 const commands = broad

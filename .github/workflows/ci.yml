@@ -109,6 +109,7 @@ jobs:
           TMPDIR="$RUNNER_TEMP/git-khronos-tests" pnpm nx run desktop:test-lfs --output-style=static
           TMPDIR=/tmp pnpm nx run desktop:test-signing --output-style=static
           pnpm nx run desktop:native-harness-test --output-style=static
+          pnpm nx run desktop:archive-cache-test --output-style=static
       - name: Verify large nested discard and byte-for-byte recovery
         run: >-
           TMPDIR="$RUNNER_TEMP/git-khronos-tests"
