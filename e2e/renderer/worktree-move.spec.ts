@@ -88,6 +88,8 @@ test('canceling or escaping the worktree lock review leaves Git unchanged and re
   await page.getByRole('menuitem', { name: 'Lock this worktree…', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Lock linked worktree' });
   await dialog.getByRole('textbox', { name: 'Reason (optional)' }).fill('temporary backup');
+  await page.keyboard.press('Control+p');
+  await expect(page.getByRole('combobox', { name: 'Search commands' })).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();

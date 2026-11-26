@@ -5012,7 +5012,7 @@ export class AppComponent implements OnInit, OnDestroy {
     // Independent review requests own keyboard intent before their first render/focus.
     // Keep native text editing, plain Enter and the local Tab trap intact, but
     // never let a review dispatch ambient Git or navigation commands.
-    const setupReview = this.worktreeDialogOpen() || this.submoduleDialogOpen() || this.remoteDialog() || this.pendingRemoteRemoval();
+    const setupReview = this.worktreeLockRequest() || this.worktreeDialogOpen() || this.submoduleDialogOpen() || this.remoteDialog() || this.pendingRemoteRemoval();
     const confirmationReview = this.pendingForcePush() || this.pendingWorktreeAction() || this.pendingSparseCheckoutAction()
       || this.pendingPublishBranch() || this.pendingWorkspaceDelete() || this.pendingLfsPrune()
       || this.pendingFileAction() || this.pendingBranchAction() || this.pendingStoredReferenceDelete()
