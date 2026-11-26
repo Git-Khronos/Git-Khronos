@@ -3069,6 +3069,27 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
   await expect(page.locator('body')).toHaveAttribute('data-copied-submodule-path', expectedSubmodulePath);
   await expect(submoduleActions).toBeFocused();
   await page.evaluate(() => {
+    const pending: { resolve: () => void; reject: (reason: Error) => void }[] = [];
+    (window as any).__sidebarClipboardWrites = pending;
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: () => new Promise<void>((resolve, reject) => pending.push({ resolve, reject })),
+    });
+  });
+  for (let count = 1; count <= 2; count++) {
+    await submoduleActions.press('Enter');
+    await menu.getByRole('menuitem', { name: 'Copy submodule path' }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).__sidebarClipboardWrites.length)).toBe(count);
+    await expect(submoduleActions).toBeFocused();
+  }
+  await page.evaluate(async () => {
+    const [older, newer] = (window as any).__sidebarClipboardWrites;
+    newer.resolve();
+    older.reject(new Error('Older sidebar clipboard write failed'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  await expect(page.locator('gk-error-toast').filter({ hasText: 'Could not copy the sidebar item.' })).toHaveCount(0);
+  await page.evaluate(() => {
     Object.defineProperty(navigator.clipboard, 'writeText', {
       value: async () => { throw new Error('Clipboard denied'); },
     });
