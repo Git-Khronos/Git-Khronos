@@ -106,4 +106,20 @@ def update_one_submodule(driver, fixtures, report):
     assert parent_state() == before and child_state(sibling_checkout) == sibling_before
     evidence['remoteOidAfterSuccess'] = chosen_after['remote']
     report['scenarios'].append('native-submodule-remote-update-moves-only-selected-checkout-and-preserves-parent-index')
+
+    # The selected checkout advanced but the parent still records its old
+    # commit. Both exact values must be visible and searchable without a write.
+    driver.click_scrolled_text(dialog + ' label', 'Show full commit IDs', wait_for_ready=True)
+    selected_card = dialog + ' [aria-label="Submodule modules/chosen"]'
+    sibling_card = dialog + ' [aria-label="Submodule modules/unchosen"]'
+    driver.wait(f"""const ids = [...document.querySelectorAll({json.dumps(selected_card + ' .metadata code')})];
+      return ids[0]?.textContent === {json.dumps(chosen_before['head'])}
+        && ids[1]?.textContent === {json.dumps(chosen_after['head'])};""")
+    driver.script("""const search = document.querySelector(arguments[0]);
+      search.value = arguments[1];
+      search.dispatchEvent(new Event('input', {bubbles: true}));""", dialog + ' input[type="search"]', upstream.upper())
+    driver.wait(f"""return !!document.querySelector({json.dumps(selected_card)})
+      && !document.querySelector({json.dumps(sibling_card)});""")
+    unchanged(chosen_after)
+    report['scenarios'].append('native-submodule-review-shows-and-filters-exact-recorded-and-checked-out-commits')
     return parent, repository_id
