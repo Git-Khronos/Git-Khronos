@@ -3593,9 +3593,14 @@ def full_toolkit(driver, fixtures, repository, repo_id, report, enter_phase):
     linked = fixtures.root / "native-linked"
     call("create_worktree", parentPath=str(fixtures.root), folder=linked.name, branch="native-linked", base="main")
     assert fixtures.git(linked, "rev-parse", "HEAD") == head()
-    call("set_worktree_locked", path=str(linked), locked=True)
-    assert "locked" in fixtures.git(repository, "worktree", "list", "--porcelain")
-    call("set_worktree_locked", path=str(linked), locked=False)
+    lock_reason = "portable backup: keep this checkout"
+    locked_snapshot = call("set_worktree_locked", path=str(linked), locked=True, reason=lock_reason)
+    locked_worktree = next(item for item in locked_snapshot["worktrees"] if item["path"] == str(linked))
+    assert locked_worktree["locked"] is True and locked_worktree["lockReason"] == lock_reason
+    assert f"locked {lock_reason}" in fixtures.git(repository, "worktree", "list", "--porcelain")
+    unlocked_snapshot = call("set_worktree_locked", path=str(linked), locked=False, reason=None)
+    unlocked_worktree = next(item for item in unlocked_snapshot["worktrees"] if item["path"] == str(linked))
+    assert unlocked_worktree["locked"] is False and unlocked_worktree["lockReason"] is None
     call("remove_worktree", path=str(linked), deleteBranch=True, force=False)
     assert not linked.exists()
     assert call("worktree_registration_review")["registrations"]

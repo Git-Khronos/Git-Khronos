@@ -9,10 +9,16 @@ artifacts, not checked-in or published reports.
 
 Linked worktrees can be locked with an optional user-supplied reason. Git's
 stored reason is shown on the worktree entry; unlocking remains an immediate
-action. The native lock-reason test, `desktop:check`, and focused Chromium and
-WebKit lock/unlock/cancel renderer checks passed on commits `a99b5e3` and
-`f305b8d`. This is source-level evidence only: the recorded 0.1.6 package
-predates these commits and does not qualify the new behavior for release.
+action. The native lock scenario now verifies the exact reason in both the
+returned snapshot and `git worktree list --porcelain`, then verifies unlock
+clears it. A local package passed the 330-scenario `native-full` suite and the
+27-scenario `native-worktrees` suite (SHA-256
+`f76b2e946a6e7646bcc07a2ae8c0b97dd19bdb377855ea53950cfa1f6dc3b5ec`). That
+package was built while a temporary keyboard-focus diagnostic attribute was
+present in the renderer; the diagnostic was removed afterward. Rebuild from
+the clean source before treating any package result as exact-source or release
+qualification. The focused Chromium and WebKit lock/unlock/cancel checks also
+passed on commits `a99b5e3` and `f305b8d`.
 
 ## 0.1.6 release handoff — 2026-11-25
 
