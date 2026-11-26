@@ -20,6 +20,10 @@ async function setup(page: Page): Promise<void> {
         if (fixture.hold) return new Promise((resolve) => { fixture.finish = () => resolve(snapshot()); });
         return Promise.resolve(snapshot());
       }
+      if (command === 'set_worktree_locked') {
+        return Promise.resolve({ ...git.repository(), worktrees: git.repository().worktrees.map((worktree: any) =>
+          worktree.path === args.path ? { ...worktree, locked: args.locked, lockReason: null } : worktree) });
+      }
       if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return Promise.resolve(git.repository());
       if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
       return Promise.reject(new Error(`Unexpected ${command}`));
@@ -32,6 +36,38 @@ async function openMove(page: Page): Promise<void> {
   await page.getByRole('menuitem', { name: 'Move linked worktree…', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Move linked worktree' })).toBeVisible();
 }
+
+test('locks and unlocks a linked worktree through its contextual menu', async ({ page }) => {
+  await setup(page);
+  const opener = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
+  const path = await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    return app.git.repository().worktrees.find((item: any) => item.branch === 'feature/partial-staging').path;
+  });
+
+  await opener.click();
+  await page.getByRole('menuitem', { name: 'Lock this worktree', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    return app.git.repository().worktrees.find((item: any) => item.branch === 'feature/partial-staging').locked;
+  })).toBe(true);
+  expect(await page.evaluate((expectedPath) => (window as any).__worktreeMove.calls.filter(
+    (entry: any) => entry.command === 'set_worktree_locked' && entry.args.path === expectedPath), path)).toEqual([
+    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: true } },
+  ]);
+
+  await opener.click();
+  await page.getByRole('menuitem', { name: 'Unlock this worktree', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    return app.git.repository().worktrees.find((item: any) => item.branch === 'feature/partial-staging').locked;
+  })).toBe(false);
+  expect(await page.evaluate((expectedPath) => (window as any).__worktreeMove.calls.filter(
+    (entry: any) => entry.command === 'set_worktree_locked' && entry.args.path === expectedPath), path)).toEqual([
+    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: true } },
+    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: false } },
+  ]);
+});
 
 test('worktree move reviews destination and sends selected HEAD and branch without force', async ({ page }) => {
   await setup(page);
