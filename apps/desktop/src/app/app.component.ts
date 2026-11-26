@@ -13937,7 +13937,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     this.openFileConfirmation({
-      kind: 'discard-bulk', path: `${preview.paths.length} unstaged files`,
+      kind: 'discard-bulk', path: this.discardPreviewLabel(preview),
       untracked: false, preview, repositoryId,
     }, returnFocus ?? this.workingTreeOptionsToggle()?.nativeElement ?? null);
   }
@@ -13960,6 +13960,13 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!matched) return false;
     }
     return accounted.size === selected.size;
+  }
+
+  private discardPreviewLabel(preview: { paths: readonly string[]; blockedPaths: readonly string[] }): string {
+    const eligible = preview.paths.length;
+    const blocked = preview.blockedPaths.length;
+    return blocked ? `${eligible} eligible · ${blocked} blocked`
+      : `${eligible} unstaged ${eligible === 1 ? 'file' : 'files'}`;
   }
 
   protected async chooseEligibleFilesFromBlockedDiscard(action = this.pendingFileAction()): Promise<void> {
@@ -14033,7 +14040,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (action?.kind === 'discard-bulk' && action.preview) {
       const restored: FileActionReview = {
         ...action,
-        path: `${action.preview.paths.length} unstaged files`,
+        path: this.discardPreviewLabel(action.preview),
       };
       this.blockedDiscardBackFocus = restored;
       this.pendingFileAction.set(restored);
@@ -14094,7 +14101,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.dismissFileConfirmation(false);
       this.openFileConfirmation({
         ...action,
-        path: `${preview.paths.length} unstaged files`,
+        path: this.discardPreviewLabel(preview),
         preview,
       }, returnFocus);
     } finally {

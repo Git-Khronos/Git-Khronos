@@ -1145,7 +1145,7 @@ test('offers a fresh root-file preview after blocking a mixed discard request', 
   await rootB.check();
   await dialog.getByRole('button', { name: 'Preview selected files' }).click();
 
-  await expect(dialog).toContainText('1 unstaged files');
+  await expect(dialog).toContainText('1 unstaged file');
   await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeEnabled();
   let calls = await page.evaluate(() => (window as any).__discardChoiceTest.calls);
   expect(calls.filter((call: { command: string }) => call.command === 'preview_discard')
@@ -1189,10 +1189,12 @@ test('returns to the blocked review without retaining root selections', async ({
   await page.getByRole('menuitem', { name: /^Discard all unstaged/ }).click();
   const dialog = page.getByRole('alertdialog');
   await dialog.getByRole('button', { name: 'Choose eligible files…' }).click();
+  await expect(dialog).toContainText('Still blocked; these paths will remain unchanged');
   const rootA = dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' });
   await rootA.check();
   await dialog.getByRole('button', { name: 'Back to blocked review' }).click();
 
+  await expect(dialog).toContainText('1 eligible · 1 blocked');
   await expect(dialog.getByRole('button', { name: 'Choose eligible files…' })).toBeFocused();
   await expect(dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
