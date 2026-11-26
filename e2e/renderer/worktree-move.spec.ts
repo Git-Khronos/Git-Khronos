@@ -67,6 +67,9 @@ test('locks and unlocks a linked worktree through its contextual menu', async ({
   ]);
 
   await opener.click();
+  await expect(page.getByRole('menuitem', { name: 'Remove this worktree', exact: true })).toBeDisabled();
+  await expect(page.getByRole('menuitem', { name: 'Remove worktree and delete branch', exact: true })).toBeDisabled();
+  await expect(page.getByText('Unlock this worktree before moving or removing it.', { exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: 'Unlock this worktree', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
