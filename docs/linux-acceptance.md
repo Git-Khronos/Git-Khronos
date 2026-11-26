@@ -3294,14 +3294,23 @@ Add `--list` to see the selected tests or `--grep='test title'` to narrow
 further. Profiles group renderer specs, not all dependencies of a code change.
 For shared UI or IPC changes, include adjacent specs or use the full suite.
 
-To plan a selection from the current diff, use `pnpm test:changed`.
-It defaults to `HEAD` (staged, unstaged and untracked changes); use
-`--base origin/dev` to include differences against that local tracking ref.
-Add `--run` to execute. Recognized renderer components select their profile,
-and changed renderer specs run directly. Shared or unmapped files fall back
-to the full desktop check, test and renderer targets; use `--run --allow-full`
-to execute that broader plan. This is a local aid,
-not a release gate or a complete dependency analysis.
+To plan or run checks based on changed files:
+
+```sh
+pnpm test:changed                           # Preview staged, unstaged and untracked changes vs HEAD
+pnpm test:changed --base origin/dev         # Compare with the local tracking ref; does not fetch
+pnpm test:changed --staged                  # Select from the index; execution still uses working files
+pnpm test:changed --run                     # Run the selected local checks
+pnpm test:changed --run --webkit --workers=4 # Opt into WebKit and override browser workers
+```
+
+Recognized renderer components select their profile. Changed browser and
+renderer unit specs run directly unless already covered, while native harness
+and registered package test edits use their own test targets. Packaged native
+scenarios still need a separate run against a selected Debian archive.
+Shared or unmapped files fall back to broader validation; use
+`--run --allow-full` after reviewing that plan. This is a local aid, not a
+release gate or a complete dependency analysis.
 
 For a broader local pass, run `pnpm nx run desktop:e2e-quick`. This skips
 the exhaustive five-column order permutations except for the default order
