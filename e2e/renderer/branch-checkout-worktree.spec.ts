@@ -66,11 +66,17 @@ async function setup(page: Page, sourceRegistrationPath?: string) {
         }
         return Promise.resolve(status);
       }
+      if (command === 'worktree_registration_review') {
+        return Promise.resolve({ registrations: [{
+          path: ownerPath, oid: 'a'.repeat(40), branch: branch.name, bare: false, locked: false,
+          lockReason: null, prunable: true, pruneReason: 'gitdir file points to non-existent location',
+        }], pruneReport: '' });
+      }
       if (command === 'inspect_commit') return Promise.resolve({ oid: args.oid, message: 'Owned fixture commit',
         signature: { status: 'unsigned', signer: null, key: null, fingerprint: null, trust: null }, files: [], filesTruncated: false });
       return Promise.reject(new Error(`Unexpected ${command}`));
     } };
-    return { branch: branch.name, sourcePath: source.path, ownerPath };
+    return { branch: branch.name, sourcePath: source.path, sourceId: source.id, ownerPath };
   }, sourceRegistrationPath);
 }
 
@@ -160,7 +166,7 @@ test('copies the recorded owning path when the checkout is unavailable', async (
     })));
   }, fixture.ownerPath);
   const dialog = await requestCheckout(page, fixture.branch);
-  await expect(dialog.getByRole('button', { name: 'Open existing checkout' })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Open existing checkout' })).toHaveCount(0);
   await page.evaluate(() => {
     let firstAttempt = true;
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
@@ -176,8 +182,19 @@ test('copies the recorded owning path when the checkout is unavailable', async (
   await copy.press('Enter');
   await expect(dialog.getByRole('status')).toHaveText('Owning checkout path copied.');
   expect(await page.evaluate(() => (window as any).__copiedWorktreePath)).toBe(fixture.ownerPath);
+  await dialog.getByRole('button', { name: 'Review registrations…' }).click();
+  const registration = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
+  await expect(dialog).toHaveCount(0);
+  await expect(registration).toContainText(fixture.ownerPath);
   expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
-    .filter((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toEqual([]);
+    .filter((entry: any) => entry.command === 'worktree_registration_review'))).toEqual([
+      { command: 'worktree_registration_review', args: { repoId: fixture.sourceId } },
+    ]);
+  expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
+    .filter((entry: any) => ['checkout_branch', 'open_repository', 'prune_worktree_registration'].includes(entry.command)))).toEqual([]);
+  await registration.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('list', { name: 'Local branches' })
+    .getByRole('button', { name: 'Local branch ' + fixture.branch, exact: false }).first()).toBeFocused();
 });
 
 test('Shift+Enter on an occupied sidebar branch reviews its existing checkout without running Git', async ({ page }) => {

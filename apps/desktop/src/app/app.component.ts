@@ -2225,6 +2225,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected readonly copyCheckoutWorktreePath = (path: string): Promise<boolean> => this.copyText(path);
 
+  protected reviewUnavailableCheckout(request: CheckoutWorktreeRequest): void {
+    if (this.checkoutWorktreeRequest() !== request || !request.prunable || this.git.busy()
+      || request.scope !== this.git.activeRepositoryReadScope()) return;
+    const opener = request.returnFocus?.isConnected ? request.returnFocus : this.toolbarBranchToggle()?.nativeElement;
+    this.checkoutWorktreeRequest.set(null);
+    this.openWorktreeRegistrationReview(false, opener);
+  }
+
   protected readonly openCheckoutWorktree = async (request: CheckoutWorktreeRequest): Promise<OpenRepositoryResult> => {
     const current = () => this.checkoutWorktreeRequest() === request
       && request.scope === this.git.activeRepositoryReadScope();

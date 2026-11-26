@@ -24,7 +24,7 @@ export interface CheckoutWorktreeRequest {
         <p id="checkout-worktree-scope">
           @if (request().prunable) {
             <strong>{{ request().branch }}</strong> is registered to a checkout that cannot be opened.
-            Copy its path or review the registration from Worktrees.
+            Copy its path or review the worktree registrations.
           } @else {
             <strong>{{ request().branch }}</strong> is already checked out elsewhere.
             Open that checkout instead of switching this one. No branch or working files will be changed.
@@ -43,7 +43,11 @@ export interface CheckoutWorktreeRequest {
         <footer>
           <button type="button" (click)="close()">{{ error() ? 'Close' : 'Cancel' }}</button>
           <button type="button" (click)="copyOwningPath()">Copy owning path</button>
-          <button type="button" [disabled]="phase() !== 'idle' || git.busy() || request().prunable || !!error()" (click)="confirm()">Open existing checkout</button>
+          @if (request().prunable) {
+            <button type="button" [disabled]="git.busy()" (click)="reviewRegistrations()">Review registrations…</button>
+          } @else {
+            <button type="button" [disabled]="phase() !== 'idle' || git.busy() || !!error()" (click)="confirm()">Open existing checkout</button>
+          }
         </footer>
       </section>
     </div>
@@ -64,6 +68,7 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<CheckoutWorktreeRequest>();
   readonly closed = output<void>();
+  readonly registrationsRequested = output<CheckoutWorktreeRequest>();
   readonly openOwner = input.required<(request: CheckoutWorktreeRequest) => Promise<OpenRepositoryResult>>();
   readonly copyText = input.required<(text: string) => Promise<boolean>>();
   readonly phase = signal<'idle' | 'checking' | 'opening'>('idle');
@@ -95,6 +100,12 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
     if (this.owns(request) && attempt === this.copyAttempt) {
       this.copyStatus.set(copied ? 'Owning checkout path copied.' : 'Could not copy the path. Select it above to copy it manually.');
     }
+  }
+
+  reviewRegistrations(): void {
+    const request = this.request();
+    if (!request.prunable || this.git.busy() || !this.owns(request)) return;
+    this.registrationsRequested.emit(request);
   }
 
   async confirm(): Promise<void> {
