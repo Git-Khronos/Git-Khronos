@@ -32,6 +32,20 @@ See `test-results/native/full-1795705807877835388/report.json` and
 Future installed release reports must include that scenario. The release-note
 entry was added after this archive was built; it needs a new package to ship.
 
+The local Debian rebuild from `29ffbc5` includes the release-note entry and
+subsequent sidebar focus and clipboard fixes. Its SHA-256 is
+`5f2e04db172c307b735abb144adbcbd434a1a8f6483bc52f8f7c72338eba8822`.
+The reports matching that digest are:
+
+- `test-results/native/full-1795707745570413394/report.json`: 331 passed.
+- `test-results/native/worktrees-1795707639604138578/report.json`: 28 passed.
+- `test-results/native/gitlab-fork-ui-1795707702101776141/report.json`: 11 passed,
+  including recovery from a real WebDriver stale-element refusal.
+
+The APT simulation accepted that archive as a local 0.1.6 upgrade; no system
+installation was performed. These are local extracted-package checks, not
+production-signed or cross-distribution qualification.
+
 ## 0.1.6 release handoff — 2026-11-25
 
 User-visible changes to call out in the release notes:
