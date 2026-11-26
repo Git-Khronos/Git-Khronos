@@ -3256,6 +3256,14 @@ pnpm nx run desktop:test-lfs
 TMPDIR=/tmp pnpm nx run desktop:test-signing
 ```
 
+For local renderer changes, start with just the affected spec:
+`pnpm nx run desktop:e2e -- e2e/renderer/worktree-move.spec.ts`.
+For a broader local pass, run `pnpm nx run desktop:e2e-quick`. This skips
+the exhaustive five-column order permutations except for the default order
+in both scroll modes. The remaining browser cases still exercise SHA placement,
+window resizing, and drag-and-drop. Use `--list` to inspect the selection.
+The full `desktop:e2e` target is unchanged and remains the release check.
+
 The native targets do not build the application. Without `--package`, they
 use the Debian archive in the local build output, which may predate the checkout.
 For a source regression, run `desktop:package-deb` first; for a release candidate,
