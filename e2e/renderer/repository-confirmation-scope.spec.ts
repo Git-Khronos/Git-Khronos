@@ -146,6 +146,26 @@ test('sparse selection and sparse-index setting are captured when review opens',
   expect((await calls(page))[0].args).toMatchObject({ paths: ['src', 'vendor'], sparseIndex: true });
 });
 
+for (const switchRepository of [false, true]) {
+  test(`outgoing sparse Back to Edit cannot consume the replacement review (switch=${switchRepository})`, async ({ page }) => {
+    const modal = await open(page, 'sparse-set');
+    await modal.getByRole('button', { name: 'Back to Edit' }).evaluate((outgoing: HTMLButtonElement, switchRepository) => {
+      if (switchRepository) (window as any).__changeScope('repository');
+      (window as any).__openScopedReview('sparse-set', true);
+      outgoing.click();
+    }, switchRepository);
+
+    await expect(modal.getByRole('list', { name: 'Selected directories' })).toHaveText('replacement-only');
+    await expect(page.getByRole('dialog', { name: 'Preferences' })).toHaveCount(0);
+    expect(await calls(page)).toEqual([]);
+    await modal.getByRole('button', { name: 'Back to Edit' }).click();
+    const editor = page.getByLabel('Sparse checkout directories');
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveValue('replacement-only');
+    expect(await calls(page)).toEqual([]);
+  });
+}
+
 test('an old unmerged-branch result cannot replace a newer review', async ({ page }) => {
   const modal = await open(page, 'branch');
   await page.evaluate(() => (window as any).__holdScope = 'delete_branch');
