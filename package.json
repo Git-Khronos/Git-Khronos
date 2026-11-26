@@ -21,12 +21,12 @@
     "tauri:build": "nx run desktop:tauri-build"
   },
   "dependencies": {
-    "@angular/common": "22.2.3",
-    "@angular/compiler": "22.2.3",
-    "@angular/core": "22.2.3",
-    "@angular/forms": "22.2.3",
-    "@angular/platform-browser": "22.2.3",
-    "@angular/router": "22.2.3",
+    "@angular/common": "22.3.0",
+    "@angular/compiler": "22.3.0",
+    "@angular/core": "22.3.0",
+    "@angular/forms": "22.3.0",
+    "@angular/platform-browser": "22.3.0",
+    "@angular/router": "22.3.0",
     "@tauri-apps/api": "2.12.1",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@xterm/addon-fit": "0.11.0",
@@ -36,9 +36,9 @@
     "tslib": "^2.8.1"
   },
   "devDependencies": {
-    "@angular/build": "22.2.4",
-    "@angular/cli": "22.2.4",
-    "@angular/compiler-cli": "22.2.3",
+    "@angular/build": "22.3.0",
+    "@angular/cli": "22.3.0",
+    "@angular/compiler-cli": "22.3.0",
     "@nx/angular": "23.2.1",
     "@nx/js": "23.2.1",
     "@playwright/test": "1.63.0",
