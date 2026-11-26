@@ -4331,6 +4331,12 @@ pnpm nx run desktop:e2e:sparse-checkout
 pnpm nx run desktop:native-sparse-checkout --output-style=stream -- --package "$archive"
 ```
 
+For changes to the shared repository confirmation component, use
+`pnpm nx run desktop:e2e:repository-confirmations` instead. It also covers
+confirmation ownership, keyboard focus, worktree removal, remote removal,
+force-push review, and branch publishing. The focused retest planner selects
+this profile for edits to that component.
+
 The owned fixture starts in cone mode with a sparse index, an excluded tracked
 file, and an unstaged edit. Preview and Cancel must leave that state intact and
 return focus to the menu button. Confirming **Restore All Files** must

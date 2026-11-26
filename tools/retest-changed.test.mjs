@@ -42,6 +42,18 @@ test('selects an untracked renderer spec and a staged feature edit', t => {
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('repository confirmation edits select the scoped profile and deduplicate a covered spec', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/repository-confirmations.component.html');
+  f.write('e2e/renderer/repository-confirmation-scope.spec.ts');
+  f.write('e2e/renderer/application-updates.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:repository-confirmations/);
+  assert.ok(plan.includes('e2e/renderer/application-updates[.]spec[.]ts$'));
+  assert.ok(!plan.includes('e2e/renderer/repository-confirmation-scope[.]spec[.]ts$'));
+  assert.doesNotMatch(plan, /desktop:check/);
+});
+
 test('removing a spec falls back rather than silently dropping coverage', t => {
   const f = fixture(t);
   const spec = 'e2e/renderer/application-updates.spec.ts';
