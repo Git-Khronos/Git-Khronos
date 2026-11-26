@@ -21,6 +21,7 @@ async function setup(page: Page): Promise<void> {
         return Promise.resolve(snapshot());
       }
       if (command === 'set_worktree_locked') {
+        if (fixture.fail) return Promise.reject({ kind: 'gitFailure', message: 'Git refused the worktree lock.' });
         return Promise.resolve({ ...git.repository(), worktrees: git.repository().worktrees.map((worktree: any) =>
           worktree.path === args.path ? { ...worktree, locked: args.locked,
             lockReason: args.locked ? args.reason : null } : worktree) });
@@ -111,6 +112,25 @@ test('canceling or escaping the worktree lock review leaves Git unchanged and re
   await expect(opener).toBeFocused();
   expect(await page.evaluate(() => (window as any).__worktreeMove.calls.filter(
     (entry: any) => entry.command === 'set_worktree_locked'))).toEqual([]);
+});
+
+test('a failed worktree lock retains the reason and focuses the lock error', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => { (window as any).__worktreeMove.fail = true; });
+  await page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Lock this worktree…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Lock linked worktree' });
+  const reason = dialog.getByRole('textbox', { name: 'Reason (optional)' });
+  const confirm = dialog.getByRole('button', { name: 'Lock worktree', exact: true });
+  await reason.fill('Keep this checkout');
+  await confirm.click();
+  const error = dialog.getByRole('alert');
+  await expect(error).toContainText('Git refused the worktree lock.');
+  await expect(error).toBeFocused();
+  await expect(reason).toHaveValue('Keep this checkout');
+  await page.evaluate(() => { (window as any).__worktreeMove.fail = false; });
+  await confirm.click();
+  await expect(dialog).toHaveCount(0);
 });
 
 test('worktree move reviews destination and sends selected HEAD and branch without force', async ({ page }) => {
