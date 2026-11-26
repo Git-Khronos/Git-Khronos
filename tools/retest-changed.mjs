@@ -20,15 +20,18 @@ const prefix = 'apps/desktop/src/app/';
 const { values } = parseArgs({ options: {
   help: { type: 'boolean', short: 'h' },
   base: { type: 'string', default: 'HEAD' },
+  staged: { type: 'boolean' },
   run: { type: 'boolean' },
   'allow-full': { type: 'boolean' },
 } });
 
 if (values.help) {
-  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--run [--allow-full]]
+  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--run [--allow-full]]
 
 Preview checks for staged, unstaged and untracked changes against HEAD by default.
 Use --base to compare against another local commit, for example origin/dev.
+Use --staged to select only changes in the index relative to the base.
+Tests still run against your working files, not an isolated staged snapshot.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
 This command does not fetch or replace the release test suite.`);
   process.exit(0);
@@ -45,9 +48,11 @@ if (revision.status !== 0) {
 const base = revision.stdout.trim();
 // --no-renames ensures removal of an old name is visible even after a rename.
 const changed = [...new Set([
-  ...split(git('diff', '--no-ext-diff', '--name-only', '--no-renames', '-z', base, '--')),
   ...split(git('diff', '--cached', '--no-ext-diff', '--name-only', '--no-renames', '-z', base, '--')),
-  ...split(git('ls-files', '--others', '--exclude-standard', '-z')),
+  ...(values.staged ? [] : [
+    ...split(git('diff', '--no-ext-diff', '--name-only', '--no-renames', '-z', base, '--')),
+    ...split(git('ls-files', '--others', '--exclude-standard', '-z')),
+  ]),
 ])].sort();
 
 const selected = new Set();

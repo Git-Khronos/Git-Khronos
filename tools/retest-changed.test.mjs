@@ -89,3 +89,16 @@ test('editing the retest planner selects tooling checks without launching browse
   assert.match(plan, /desktop:owned-process-test/);
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
 });
+
+test('staged selection does not include unstaged edits or untracked files', t => {
+  const f = fixture(t);
+  f.write('shared.ts');
+  f.commit();
+  f.write('e2e/renderer/application-updates.spec.ts');
+  f.git('add', 'e2e');
+  f.write('shared.ts', 'unstaged');
+  f.write('untracked.ts');
+  const plan = f.run('--staged');
+  assert.match(plan, /application-updates\.spec\.ts/);
+  assert.doesNotMatch(plan, /shared\.ts|untracked\.ts|desktop:check/);
+});
