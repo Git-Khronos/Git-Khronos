@@ -158,13 +158,26 @@ def occupied_branch_navigation(driver, fixtures, report):
 
     open_review(from_graph=True)
     driver.screenshot(Path(report['artifactsDirectory']) / 'occupied-checkout-review.png')
-    driver.click_visible('gk-checkout-worktree-dialog button', 'Open existing checkout')
-    driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
-    at(owner)
+    driver.wait("""const button = [...document.querySelectorAll('gk-checkout-worktree-dialog button')]
+      .find(item => item.textContent.trim() === 'Open existing checkout');
+      if (!button || button.disabled || !button.getClientRects().length) return false;
+      button.focus();
+      return document.activeElement === button;""")
+    driver.script("""window.__ownedWorktreeFrame = window.requestAnimationFrame;
+                    window.requestAnimationFrame = () => 0;""")
+    try:
+        driver.key('\ue007')  # Enter
+        driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
+        at(owner)
+        driver.wait("""return document.activeElement?.matches('.repo-tab-main[aria-selected="true"]')""", timeout=10)
+    finally:
+        driver.script("""window.requestAnimationFrame = window.__ownedWorktreeFrame;
+                        delete window.__ownedWorktreeFrame;""")
     owner_branch = '[aria-label="View current branch ' + branch + ' tip"]'
     driver.wait('return !!document.querySelector(' + json.dumps(owner_branch) + ')')
     after_navigation = footprints()
     assert after_navigation == before, 'Opening the owner performed a checkout or changed Git data'
+    report['scenarios'].append('native-occupied-branch-navigation-focuses-owner-tab-without-paint-frames')
     driver.screenshot(Path(report['artifactsDirectory']) / 'occupied-checkout-opened.png')
     report['scenarios'].append('native-occupied-branch-navigation-opens-registered-owner-without-checkout-or-data-loss')
     report['scenarios'].append('native-occupied-branch-graph-double-click-opens-registered-owner-without-detaching-head')

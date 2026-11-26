@@ -267,6 +267,7 @@ const RELEASE_MATRIX = [
     'native-occupied-branch-review-wraps-shift-tab-without-navigating',
     'native-shortcut-reference-wraps-shift-tab-without-changing-git-or-draft',
     'native-occupied-branch-navigation-opens-registered-owner-without-checkout-or-data-loss',
+    'native-occupied-branch-navigation-focuses-owner-tab-without-paint-frames',
     'native-occupied-branch-graph-double-click-opens-registered-owner-without-detaching-head',
     'native-occupied-branch-review-refuses-changed-owner-without-fallback-checkout',
     'native-ordinary-and-background-fetch-refuse-local-branch-refspecs',
@@ -291,6 +292,7 @@ const RELEASE_MATRIX = [
   ['ubuntu', '26.04', 'worktrees', [
     'native-occupied-branch-review-cancel-preserves-both-dirty-checkouts',
     'native-occupied-branch-navigation-opens-registered-owner-without-checkout-or-data-loss',
+    'native-occupied-branch-navigation-focuses-owner-tab-without-paint-frames',
     'native-occupied-branch-graph-double-click-opens-registered-owner-without-detaching-head',
     'native-occupied-dev-graph-double-click-returns-from-linked-to-primary-checkout',
     'native-occupied-branch-review-refuses-changed-owner-without-fallback-checkout',
