@@ -11,6 +11,9 @@ const split = value => value.split('\0').filter(Boolean);
 const profiles = [
   [/^worktree-(lock|move|registration)-dialog\.component\./, 'worktrees'],
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
+  [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'working-files'],
+  [/^stash-(?:options|delete|clear)-dialog\.component\.(?:ts|html|scss)$/, 'stash'],
+  [/^history-search\.component\.(?:ts|html|scss)$/, 'history'],
   [/^application-updates-dialog\.component\./, 'updates'],
 ];
 const prefix = 'apps/desktop/src/app/';
