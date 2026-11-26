@@ -63,6 +63,24 @@ test('large unstaged line totals fit beside bulk actions in a compact window', a
   expect(totals!.x + totals!.width).toBeLessThanOrEqual(stageButton!.x + 1);
 });
 
+test('a busy checkout retains measured totals until it can recount', async ({ page }) => {
+  const recap = page.locator('.unstaged-section gk-working-tree-summary');
+  const image = recap.getByRole('img');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: null, unstaged: { additions: 17, deletions: 8, uncountedFiles: 0, partial: false },
+  }));
+  await expect(image).toHaveAccessibleName('17 additions and 8 deletions in unstaged files');
+  await page.evaluate(() => (window as any).__unstagedSummary.git.branchMutationPending.set(true));
+  await expect(image).toHaveAccessibleName('17 additions and 8 deletions in unstaged files; updating');
+  expect(await page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(1);
+  await page.evaluate(() => (window as any).__unstagedSummary.git.branchMutationPending.set(false));
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[1].resolve({
+    staged: null, unstaged: { additions: 20, deletions: 9, uncountedFiles: 0, partial: false },
+  }));
+  await expect(image).toHaveAccessibleName('20 additions and 9 deletions in unstaged files');
+});
+
 test('status bursts coalesce and an old result cannot replace current totals', async ({ page }) => {
   await page.evaluate(() => {
     const s = (window as any).__unstagedSummary;

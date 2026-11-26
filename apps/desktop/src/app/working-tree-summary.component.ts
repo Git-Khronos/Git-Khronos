@@ -113,8 +113,10 @@ export class WorkingTreeSummariesDirective {
       const { status } = request;
       const hasUnstaged = !!(status.unstaged || status.untracked);
       const hasStaged = !!status.staged;
-      const canRead = visible && !busy && !preview && (hasStaged || hasUnstaged);
-      if (!canRead || (this.lastMeasurement && !sameSnapshot(this.lastMeasurement.request, request))) {
+      const active = visible && !preview && (hasStaged || hasUnstaged);
+      // A busy checkout cannot start a read, but its last measurement is
+      // still useful as an explicitly updating value for this same snapshot.
+      if (!active || (this.lastMeasurement && !sameSnapshot(this.lastMeasurement.request, request))) {
         this.lastMeasurement = null;
       }
       const pending: SummaryState = { phase: preview ? 'preview' : 'loading' };
@@ -124,7 +126,7 @@ export class WorkingTreeSummariesDirective {
       this.desired = null;
       this.staged.set(duringRead(hasStaged, previous?.staged));
       this.unstaged.set(duringRead(hasUnstaged, previous?.unstaged));
-      if (canRead) {
+      if (active && !busy) {
         this.desired = request;
         this.pump();
       }
