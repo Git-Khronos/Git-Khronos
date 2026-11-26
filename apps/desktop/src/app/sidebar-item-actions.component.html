@@ -7,7 +7,7 @@
   <button type="button" role="menuitem" [disabled]="model.busy || worktree.current || worktree.locked || worktree.prunable || model.open" (click)="choose('move')"><gk-icon name="folder-git" [size]="12" />Move linked worktree…</button>
   <button type="button" role="menuitem" [disabled]="model.busy || worktree.current || worktree.locked || model.open" (click)="choose('repair')"><gk-icon name="refresh" [size]="12" />Repair after external move…</button>
   <button type="button" role="menuitem" [disabled]="model.busy" (click)="choose('registrations')"><gk-icon name="eye" [size]="12" />Review registrations and prune report…</button>
-  <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="choose('toggle-lock')"><gk-icon [name]="worktree.locked ? 'check' : 'pin'" [size]="12" />{{ worktree.locked ? 'Unlock this worktree' : 'Lock this worktree' }}</button>
+  <button type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable" (click)="choose('toggle-lock')"><gk-icon [name]="worktree.locked ? 'check' : 'pin'" [size]="12" />{{ worktree.locked ? 'Unlock this worktree' : 'Lock this worktree…' }}</button>
   <i></i>
   <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || model.open" (click)="choose('remove')"><gk-icon name="trash" [size]="12" />Remove this worktree</button>
   <button class="danger" type="button" role="menuitem" [disabled]="worktree.current || worktree.prunable || !worktree.branch || model.open" (click)="choose('remove-and-delete')"><gk-icon name="trash" [size]="12" />Remove worktree and delete branch</button>

@@ -113,6 +113,7 @@ import { KeyboardShortcutsDialogComponent } from './keyboard-shortcuts-dialog.co
 import { RepositoryDialogComponent, type ManagedRepositoryOpen, type RepositoryDialogMode } from './repository-dialog.component';
 import { LfsTrackingDialogComponent, type LfsTrackingRequest } from './lfs-tracking-dialog.component';
 import { WorktreeMoveDialogComponent, type WorktreeMoveRequest } from './worktree-move-dialog.component';
+import { WorktreeLockDialogComponent, type WorktreeLockRequest } from './worktree-lock-dialog.component';
 import { WorktreeRegistrationDialogComponent, type SubmoduleReviewTarget, type WorktreeRegistrationRequest } from './worktree-registration-dialog.component';
 import { MergeRebaseDialogComponent, type MergeRebaseDialogState } from './merge-rebase-dialog.component';
 import { GitDocumentationDialogComponent } from './git-documentation-dialog.component';
@@ -729,7 +730,7 @@ function stableAuthorColor(identity: string): string {
 @Component({
   selector: 'gk-app',
   imports: [ToolbarOptionsComponent, GraphSettingsContentComponent, DialogFallbackFocusDirective, WorkspaceEditDialogsComponent, RepositorySetupDialogComponent, BranchDropMenuComponent, ConflictEditorComponent, ApplicationUpdatesDialogComponent, MainMenuContentComponent, CompactRepositoryActionsComponent, FileToolsDialogComponent, SavedDiscardListComponent, FileConfirmationDetailsComponent, EditorDraftRecoveryComponent, WindowsLauncherComponent, RepositoryLinkDialogComponent, FileContentDialogComponent, DiffWorkspaceComponent, RevisionInspectorComponent, BackgroundOperationWarningsComponent, BranchWorkflowDialogComponent, WorkspaceCenterComponent, MergePreviewDialogComponent, RecoveryHistoryDialogComponent, IntegrateBranchDialogComponent, StashDeleteDialogComponent, StashClearDialogComponent,
-    GraphActionMenuComponent, SidebarItemActionsComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
+    GraphActionMenuComponent, SidebarItemActionsComponent, StashActionMenuComponent, RepositoryTabMenuContentComponent, FileActionMenuComponent, TagCreationDialogComponent, BranchUpstreamDialogComponent, CheckoutWorktreeDialogComponent, DatePipe, TextValueDirective, NgTemplateOutlet, IconComponent, TerminalPanelComponent, GraphViewportComponent, ViewportSizeDirective, WorkingTreeViewportComponent, WorkingTreeSummaryComponent, WorkingTreeSummariesDirective, WorktreeGraphRowComponent, AuthenticationComponent, HistorySearchComponent, ReferenceActionDialogComponent, StashOptionsDialogComponent, FetchOptionsDialogComponent, WorktreeMoveDialogComponent, WorktreeLockDialogComponent, LfsTrackingDialogComponent, KeyboardShortcutsDialogComponent, RepositoryDialogComponent, WorktreeRegistrationDialogComponent, GitDocumentationDialogComponent, CommitPolicyFieldsComponent, CoauthorPickerComponent, CommitTemplateBannerComponent, InteractiveRebaseEditorComponent, HistoryReviewDialogComponent, MergeRebaseDialogComponent, PreferencesDialogComponent, CommandPaletteComponent, ActivityLogDrawerComponent, WelcomeLauncherComponent, LfsPruneDialogComponent, RepositoryConfirmationsComponent, ErrorToastComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -1223,6 +1224,28 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly worktreeMoveRequest = signal<WorktreeMoveRequest | null>(null);
   protected readonly ownsWorktreeMove = (request: WorktreeMoveRequest): boolean =>
     this.worktreeMoveRequest() === request && this.ownsRepositoryScope(request);
+
+  protected readonly worktreeLockRequest = signal<WorktreeLockRequest | null>(null);
+  protected readonly ownsWorktreeLock = (request: WorktreeLockRequest): boolean =>
+    this.worktreeLockRequest() === request && this.ownsRepositoryScope(request);
+
+  protected closeWorktreeLock(request: WorktreeLockRequest): void {
+    if (this.worktreeLockRequest() !== request) return;
+    this.worktreeLockRequest.set(null);
+    afterNextRender(() => {
+      if (request.repositoryId !== this.git.activeRepositoryId()
+        || request.repositoryPath !== this.git.repository()?.path) return;
+      const opener = request.returnFocus;
+      if (opener?.isConnected && opener.getClientRects().length && !opener.closest('[inert]')) {
+        opener.focus();
+        return;
+      }
+      const replacement = [...document.querySelectorAll<HTMLButtonElement>('button[data-worktree-path]')]
+        .find(button => button.dataset['worktreePath'] === request.worktree.path);
+      if (replacement?.getClientRects().length) replacement.focus();
+      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
+    }, { injector: this.injector });
+  }
 
   protected closeWorktreeMove(request: WorktreeMoveRequest, movedPath?: string, restoreFocus = true): void {
     if (this.worktreeMoveRequest() !== request) return;
@@ -7001,6 +7024,15 @@ export class AppComponent implements OnInit, OnDestroy {
     this.worktreeMoveRequest.set({ ...owner, worktree, returnFocus });
   }
 
+  protected openWorktreeLock(worktree: Worktree): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner || this.git.busy() || worktree.current || worktree.locked || worktree.prunable
+      || !this.git.repository()?.worktrees.some(candidate => candidate.path === worktree.path)) return;
+    const returnFocus = this.sidebarActionMenuReturnFocus;
+    this.actionOverlays.close('worktree');
+    this.worktreeLockRequest.set({ ...owner, worktree, returnFocus });
+  }
+
   protected openWorktreeRepair(worktree: Worktree): void {
     const owner = this.captureRepositoryEditorOwner();
     if (!owner || this.git.busy() || worktree.current || worktree.locked || this.isWorktreeOpen(worktree.path)) return;
@@ -7371,7 +7403,10 @@ export class AppComponent implements OnInit, OnDestroy {
         case 'move': this.openWorktreeMove(item); break;
         case 'repair': this.openWorktreeRepair(item); break;
         case 'registrations': this.openWorktreeRegistrationReview(); break;
-        case 'toggle-lock': void this.setWorktreeLocked(item); break;
+        case 'toggle-lock':
+          if (item.locked) void this.setWorktreeLocked(item);
+          else this.openWorktreeLock(item);
+          break;
         case 'remove': this.requestWorktreeRemoval(item, false); break;
         case 'remove-and-delete': this.requestWorktreeRemoval(item, true); break;
       }

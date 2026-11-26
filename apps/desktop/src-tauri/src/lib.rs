@@ -61,7 +61,8 @@ use git_khronos_git_core::{
     search_tracked_files as git_search_tracked_files,
     set_branch_upstream as git_set_branch_upstream, set_remote_url as git_set_remote_url,
     set_repository_identity as git_set_repository_identity,
-    set_sparse_checkout as git_set_sparse_checkout, set_worktree_locked as git_set_worktree_locked,
+    set_sparse_checkout as git_set_sparse_checkout,
+    set_worktree_locked_with_reason as git_set_worktree_locked,
     signing_diagnostic as git_signing_diagnostic, skip_rebase as git_skip_rebase,
     snapshot_with_limits_fast_and_checkpoint_visibility,
     snapshot_with_limits_startup_and_checkpoint_visibility, stage_all as git_stage_all,
@@ -1365,10 +1366,11 @@ fn set_worktree_locked(
     repo_id: String,
     path: String,
     locked: bool,
+    reason: Option<String>,
     state: tauri::State<'_, AppState>,
 ) -> Result<RepositorySnapshot, AppError> {
     mutate_and_refresh(&repo_id, &state, |repository| {
-        git_set_worktree_locked(repository, &path, locked)
+        git_set_worktree_locked(repository, &path, locked, reason.as_deref())
     })
 }
 

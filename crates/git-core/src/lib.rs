@@ -3505,6 +3505,15 @@ pub fn create_worktree_for_branch(
 }
 
 pub fn set_worktree_locked(path: &Path, target: &str, locked: bool) -> Result<(), AppError> {
+    set_worktree_locked_with_reason(path, target, locked, None)
+}
+
+pub fn set_worktree_locked_with_reason(
+    path: &Path,
+    target: &str,
+    locked: bool,
+    reason: Option<&str>,
+) -> Result<(), AppError> {
     let worktree = managed_worktree(path, target)?;
     if worktree.current {
         return Err(AppError::new(
@@ -3513,10 +3522,31 @@ pub fn set_worktree_locked(path: &Path, target: &str, locked: bool) -> Result<()
             Some("Open another worktree first."),
         ));
     }
-    let action = if locked { "lock" } else { "unlock" };
+    if !locked && reason.is_some() {
+        return Err(AppError::new(
+            "invalidWorktreeLockReason",
+            "A lock reason can only be supplied while locking a worktree.",
+            None,
+        ));
+    }
+    if reason.is_some_and(|reason| reason.chars().count() > 500 || reason.contains('\0')) {
+        return Err(AppError::new(
+            "invalidWorktreeLockReason",
+            "A worktree lock reason must be no more than 500 characters and cannot contain NUL.",
+            Some("Shorten the reason and retry. The worktree was not changed."),
+        ));
+    }
+    let mut args = vec!["worktree".to_owned()];
+    args.push(if locked { "lock" } else { "unlock" }.to_owned());
+    if locked && let Some(reason) = reason.filter(|reason| !reason.trim().is_empty()) {
+        args.push("--reason".to_owned());
+        args.push(reason.to_owned());
+    }
+    args.push(target.to_owned());
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
     run_mutation(
         path,
-        &["worktree", action, target],
+        &args,
         if locked {
             "lock that worktree"
         } else {
@@ -22725,13 +22755,29 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             "uncommitted agent work\n",
         )
         .expect("write linked worktree change");
-        repository.git(&[
-            "worktree",
-            "lock",
-            "--reason",
-            "portable\nbackup — offline",
+        let invalid_reason = set_worktree_locked_with_reason(
+            &repository.path,
             &linked_text,
-        ]);
+            true,
+            Some(&"x".repeat(501)),
+        )
+        .expect_err("reject oversized worktree lock reason");
+        assert_eq!(invalid_reason.kind, "invalidWorktreeLockReason");
+        let reason_on_unlock = set_worktree_locked_with_reason(
+            &repository.path,
+            &linked_text,
+            false,
+            Some("not allowed"),
+        )
+        .expect_err("reject lock reason on unlock");
+        assert_eq!(reason_on_unlock.kind, "invalidWorktreeLockReason");
+        set_worktree_locked_with_reason(
+            &repository.path,
+            &linked_text,
+            true,
+            Some("portable\nbackup — offline"),
+        )
+        .expect("lock linked worktree with reason");
 
         let data = snapshot(&repository.path).expect("snapshot worktrees");
         assert_eq!(data.worktrees.len(), 2);

@@ -23,7 +23,7 @@ async function setup(page: Page): Promise<void> {
       if (command === 'set_worktree_locked') {
         return Promise.resolve({ ...git.repository(), worktrees: git.repository().worktrees.map((worktree: any) =>
           worktree.path === args.path ? { ...worktree, locked: args.locked,
-            lockReason: args.locked ? 'portable disk backup' : null } : worktree) });
+            lockReason: args.locked ? args.reason : null } : worktree) });
       }
       if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return Promise.resolve(git.repository());
       if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
@@ -48,15 +48,22 @@ test('locks and unlocks a linked worktree through its contextual menu', async ({
   });
 
   await opener.click();
-  await page.getByRole('menuitem', { name: 'Lock this worktree', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Lock this worktree…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Lock linked worktree' });
+  const reason = dialog.getByRole('textbox', { name: 'Reason (optional)' });
+  await expect(reason).toBeFocused();
+  await reason.fill('portable disk backup');
+  await dialog.getByRole('button', { name: 'Lock worktree', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return app.git.repository().worktrees.find((item: any) => item.branch === 'feature/partial-staging').locked;
   })).toBe(true);
   await expect(worktree).toHaveAttribute('aria-label', /locked: portable disk backup/);
+  await expect(opener).toBeFocused();
   expect(await page.evaluate((expectedPath) => (window as any).__worktreeMove.calls.filter(
     (entry: any) => entry.command === 'set_worktree_locked' && entry.args.path === expectedPath), path)).toEqual([
-    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: true } },
+    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: true, reason: 'portable disk backup' } },
   ]);
 
   await opener.click();
@@ -68,8 +75,8 @@ test('locks and unlocks a linked worktree through its contextual menu', async ({
   await expect(worktree).not.toHaveAttribute('aria-label', /locked:/);
   expect(await page.evaluate((expectedPath) => (window as any).__worktreeMove.calls.filter(
     (entry: any) => entry.command === 'set_worktree_locked' && entry.args.path === expectedPath), path)).toEqual([
-    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: true } },
-    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: false } },
+    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: true, reason: 'portable disk backup' } },
+    { command: 'set_worktree_locked', args: { repoId: expect.any(String), path, locked: false, reason: null } },
   ]);
 });
 

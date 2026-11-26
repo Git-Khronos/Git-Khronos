@@ -1865,13 +1865,14 @@ export class GitKhronosService implements OnDestroy {
     return !this.error();
   }
 
-  async setWorktreeLocked(path: string, locked: boolean): Promise<void> {
+  async setWorktreeLocked(path: string, locked: boolean, reason: string | null = null): Promise<boolean> {
     await this.mutate(
       'set_worktree_locked',
       locked ? 'Locking worktree…' : 'Unlocking worktree…',
       locked ? 'Worktree locked' : 'Worktree unlocked',
-      { path, locked },
+      { path, locked, reason },
     );
+    return !this.error();
   }
 
   async removeWorktree(path: string, deleteBranch: boolean, force: boolean): Promise<void> {

@@ -732,7 +732,7 @@ export const create_branch_at: (args: { repoId: string; name: string; oid: strin
 export const create_branch_reference: (args: { repoId: string; name: string; oid: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_branch_reference");
 export const create_worktree: (args: { repoId: string; parentPath: string; folder: string; branch: string; base: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_worktree");
 export const create_worktree_for_branch: (args: { repoId: string; parentPath: string; folder: string; branch: string }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("create_worktree_for_branch");
-export const set_worktree_locked: (args: { repoId: string; path: string; locked: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("set_worktree_locked");
+export const set_worktree_locked: (args: { repoId: string; path: string; locked: boolean; reason?: string | null }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("set_worktree_locked");
 export const remove_worktree: (args: { repoId: string; path: string; deleteBranch: boolean; force: boolean }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("remove_worktree");
 export const move_worktree: (args: { repoId: string; request: WorktreeMove }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("move_worktree");
 export const repair_worktree: (args: { repoId: string; request: WorktreeRepair }) => Promise<RepositorySnapshot> = /* @__PURE__ */ __bindCommand__("repair_worktree");

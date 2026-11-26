@@ -56,6 +56,9 @@
       <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Checkout review unavailable" (keydown)="handleCheckoutLoaderKey($event)"><p role="alert">Checkout review could not load. No checkout will be retried automatically. Close and restart to retry.</p><button #checkoutWorktreeLoaderClose type="button" (click)="closeCheckoutWorktree()">Close</button></section></div>
     }
   }
+  @if (worktreeLockRequest(); as request) {
+    <gk-worktree-lock-dialog [request]="request" [ownsRequest]="ownsWorktreeLock" (closed)="closeWorktreeLock($event)" />
+  }
   @let deferredActions = deferredGitActionLease();
   @if (deferredActions.reference || deferredActions.fetch || deferredActions.worktree || deferredActions.stash) {
     @defer (on immediate) {
