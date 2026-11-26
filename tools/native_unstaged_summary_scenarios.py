@@ -497,17 +497,40 @@ def unstaged_summary_workflow(driver, fixtures, report):
 
     more_files = '.change-loader button'
     filter_files = 'input[aria-label="Filter changed files"]'
-    driver.wait(f"return document.querySelector({more_files!r})?.textContent.includes('Show 1,000 more files')")
-    driver.script("document.querySelector(arguments[0]).focus()", more_files)
+    driver.wait(f"""const button = document.querySelector({more_files!r});
+      if (!button?.textContent.includes('Show 1,000 more files')) return false;
+      button.focus();
+      return document.activeElement === button;""")
     # A live WebKit process may miss paint frames; focus follows DOM removal.
-    driver.script("""window.__ownedStatusPagerFrame = window.requestAnimationFrame;
+    driver.script("""const observer = new AbortController(), events = [];
+                    const capture = event => {
+                      if (events.length === 20) return;
+                      events.push({type: event.type, target: event.target?.tagName,
+                        active: document.activeElement?.tagName,
+                        label: document.activeElement?.getAttribute('aria-label')});
+                    };
+                    for (const event of ['focusin', 'focusout', 'click']) {
+                      document.addEventListener(event, capture, {capture: true, signal: observer.signal});
+                    }
+                    window.__ownedStatusPagerProbe = {observer, events};
+                    window.__ownedStatusPagerFrame = window.requestAnimationFrame;
                     window.requestAnimationFrame = () => 0;""")
     try:
         driver.key('\ue007')  # Enter
         driver.wait(f"return !document.querySelector({more_files!r}) && document.activeElement?.matches({filter_files!r})")
+    except TimeoutError:
+        report['statusPageFocusFailure'] = driver.script("""const active = document.activeElement;
+          return {active: active?.tagName, label: active?.getAttribute('aria-label'),
+            pagerPresent: !!document.querySelector(arguments[0]),
+            filterPresent: !!document.querySelector(arguments[1]), documentFocused: document.hasFocus(),
+            events: window.__ownedStatusPagerProbe?.events};""",
+          more_files, filter_files)
+        raise
     finally:
         driver.script("""window.requestAnimationFrame = window.__ownedStatusPagerFrame;
-                        delete window.__ownedStatusPagerFrame;""")
+                        delete window.__ownedStatusPagerFrame;
+                        window.__ownedStatusPagerProbe?.observer.abort();
+                        delete window.__ownedStatusPagerProbe;""")
     assert checkout_footprint(fixtures, crowded, files) == after_unstage
     report['scenarios'].append('native-final-working-tree-page-restores-keyboard-focus-without-changing-checkout')
     return status_byte_bound_workflow(driver, fixtures, report)
