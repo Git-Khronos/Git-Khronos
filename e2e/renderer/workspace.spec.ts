@@ -1974,6 +1974,25 @@ test('keeps commit context visible while the inspector scrolls and groups author
   await expect(copy).toHaveAccessibleName('Copy failed, retry commit SHA');
   await expect(copy).toContainText('Retry');
   await expect(inspector.getByRole('status')).toHaveText('Could not copy the commit SHA. Try again.');
+  await page.evaluate(() => {
+    const pending: { resolve: () => void; reject: (reason: Error) => void }[] = [];
+    (window as any).__inspectorCopyWrites = pending;
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: () => new Promise<void>((resolve, reject) => pending.push({ resolve, reject })),
+    });
+  });
+  await copy.click();
+  await copy.click();
+  await page.evaluate(async () => {
+    const [older, newer] = (window as any).__inspectorCopyWrites;
+    newer.resolve();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    older.reject(new Error('Old copy failed'));
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  await expect(inspector.getByRole('status')).toHaveText('Full commit SHA copied to clipboard.');
+
 
   const author = inspector.locator('.commit-author-card');
   const overview = inspector.getByRole('region', { name: 'Commit summary' });

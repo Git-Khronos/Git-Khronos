@@ -949,6 +949,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private filePathCopyGeneration = 0;
   private sidebarCopyGeneration = 0;
   private diffPathCopyGeneration = 0;
+  private commitOidCopyGeneration = 0;
   private sidebarActionMenuReturnFocus: HTMLElement | null = null;
   protected readonly sidebarActionMenuPosition = signal({ x: 8, y: 8 });
   private sidebarItemMenuAnchor = { x: 8, y: 8 };
@@ -13087,7 +13088,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async copyCommitOid(oid: string): Promise<void> {
+    const generation = ++this.commitOidCopyGeneration;
+    const scope = this.git.activeRepositoryReadScope();
     const feedback = { oid, status: await this.copyText(oid) ? 'copied' : 'failed' } as const;
+    if (generation !== this.commitOidCopyGeneration || scope !== this.git.activeRepositoryReadScope()) return;
     this.commitOidCopyFeedback.set(feedback);
     window.setTimeout(() => {
       if (this.commitOidCopyFeedback() === feedback) this.commitOidCopyFeedback.set(null);
