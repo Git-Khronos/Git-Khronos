@@ -38,6 +38,8 @@ subsequent sidebar focus and clipboard fixes. Its SHA-256 is
 The reports matching that digest are:
 
 - `test-results/native/full-1795707745570413394/report.json`: 331 passed.
+- `test-results/native/environment-1795708377730833979/report.json`: 333 passed
+  with inherited Git environment variables.
 - `test-results/native/worktrees-1795707639604138578/report.json`: 28 passed.
 - `test-results/native/gitlab-fork-ui-1795707702101776141/report.json`: 11 passed,
   including recovery from a real WebDriver stale-element refusal.
