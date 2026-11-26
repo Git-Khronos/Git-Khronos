@@ -1994,6 +1994,13 @@ test('keeps commit context visible while the inspector scrolls and groups author
   await expect(inspector.getByRole('status')).toHaveText('Full commit SHA copied to clipboard.');
 
 
+  // A commit can have the same ID in another checkout visit.
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    app.git.activeReadVisit.update((visit: number) => visit + 1);
+  });
+  await expect(copy).toHaveAccessibleName('Copy commit SHA');
+
   const author = inspector.locator('.commit-author-card');
   const overview = inspector.getByRole('region', { name: 'Commit summary' });
   await expect(overview).toContainText('Polish repository activity drawer');

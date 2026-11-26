@@ -1621,7 +1621,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly appThemeOptions = APP_THEME_OPTIONS;
   protected readonly workingTreeViewMode = signal<WorkingTreeViewMode>(this.readWorkingTreeViewMode());
   protected readonly fileFilter = signal('');
-  protected readonly commitOidCopyFeedback = signal<{ oid: string; status: 'copied' | 'failed' } | null>(null);
+  protected readonly commitOidCopyFeedback = signal<{ oid: string; scope: string; status: 'copied' | 'failed' } | null>(null);
   private readonly commitFilesScrollTop = signal(0);
   private readonly workingTreeFilesScrollTop = { unstaged: signal(0), staged: signal(0) };
   private readonly referenceListScrollTop = {
@@ -2644,7 +2644,8 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   protected readonly selectedCommitCopyStatus = computed<'idle' | 'copied' | 'failed'>(() => {
     const feedback = this.commitOidCopyFeedback();
-    return feedback && feedback.oid === this.selectedCommitData()?.oid ? feedback.status : 'idle';
+    return feedback && feedback.scope === this.git.activeRepositoryReadScope()
+      && feedback.oid === this.selectedCommitData()?.oid ? feedback.status : 'idle';
   });
   protected readonly selectedStash = computed(() => {
     const oid = this.selectedCommit();
@@ -13090,7 +13091,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async copyCommitOid(oid: string): Promise<void> {
     const generation = ++this.commitOidCopyGeneration;
     const scope = this.git.activeRepositoryReadScope();
-    const feedback = { oid, status: await this.copyText(oid) ? 'copied' : 'failed' } as const;
+    const feedback = { oid, scope, status: await this.copyText(oid) ? 'copied' : 'failed' } as const;
     if (generation !== this.commitOidCopyGeneration || scope !== this.git.activeRepositoryReadScope()) return;
     this.commitOidCopyFeedback.set(feedback);
     window.setTimeout(() => {
