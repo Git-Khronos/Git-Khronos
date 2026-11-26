@@ -94,9 +94,18 @@ test('loading more changed files preserves keyboard focus and then returns it to
   await page.keyboard.press('Enter');
   await expect(more).toHaveAccessibleName('Loading more changed files…');
   expect(await page.evaluate(() => (window as any).__changedPage.requests)).toBe(2);
-  await page.evaluate(() => (window as any).__changedPage.finish(true));
-  await expect(more).toHaveCount(0);
-  await expect(page.getByRole('searchbox', { name: 'Filter changed files' })).toBeFocused();
+  await page.evaluate(() => {
+    const fixture = (window as any).__changedPage;
+    fixture.requestAnimationFrame = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => 0;
+    fixture.finish(true);
+  });
+  try {
+    await expect(more).toHaveCount(0);
+    await expect(page.getByRole('searchbox', { name: 'Filter changed files' })).toBeFocused();
+  } finally {
+    await page.evaluate(() => { window.requestAnimationFrame = (window as any).__changedPage.requestAnimationFrame; });
+  }
   await expect(page.getByRole('button', { name: 'View changes in from-final-page.txt' })).toBeVisible();
 });
 

@@ -497,8 +497,15 @@ def unstaged_summary_workflow(driver, fixtures, report):
     filter_files = 'input[aria-label="Filter changed files"]'
     driver.wait(f"return document.querySelector({more_files!r})?.textContent.includes('Show 1,000 more files')")
     driver.script("document.querySelector(arguments[0]).focus()", more_files)
-    driver.key('\ue007')  # Enter
-    driver.wait(f"return !document.querySelector({more_files!r}) && document.activeElement?.matches({filter_files!r})")
+    # A live WebKit process may miss paint frames; focus follows DOM removal.
+    driver.script("""window.__ownedStatusPagerFrame = window.requestAnimationFrame;
+                    window.requestAnimationFrame = () => 0;""")
+    try:
+        driver.key('\ue007')  # Enter
+        driver.wait(f"return !document.querySelector({more_files!r}) && document.activeElement?.matches({filter_files!r})")
+    finally:
+        driver.script("""window.requestAnimationFrame = window.__ownedStatusPagerFrame;
+                        delete window.__ownedStatusPagerFrame;""")
     assert checkout_footprint(fixtures, crowded, files) == after_unstage
     report['scenarios'].append('native-final-working-tree-page-restores-keyboard-focus-without-changing-checkout')
     return status_byte_bound_workflow(driver, fixtures, report)
