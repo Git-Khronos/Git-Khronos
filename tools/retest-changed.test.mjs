@@ -138,11 +138,13 @@ test('WebKit opt-in applies only to selected browser targets', t => {
 test('editor fixture changes cover editing, file tools and draft recovery without duplicate runs', t => {
   const f = fixture(t);
   f.write('e2e/renderer/editor-protocol-fixture.ts');
+  f.write('apps/desktop/src/app/markdown-preview.worker.ts');
   for (const name of ['working-file-editor', 'file-tools', 'editor-draft-recovery']) {
     f.write(`e2e/renderer/${name}.spec.ts`);
   }
   const plan = f.run('--webkit', '--workers=2');
-  assert.ok(plan.includes('"desktop:e2e:working-files" "--" "--workers=2" "--project=webkit"'));
+  assert.match(plan, /markdown-preview\.worker\.ts": editor renderer profile/);
+  assert.ok(plan.includes('"desktop:e2e:editor" "--" "--workers=2" "--project=webkit"'));
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 

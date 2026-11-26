@@ -11,7 +11,8 @@ const split = value => value.split('\0').filter(Boolean);
 const profiles = [
   [/^worktree-(lock|move|registration)-dialog\.component\./, 'worktrees'],
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
-  [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'working-files'],
+  [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'editor'],
+  [/^markdown-preview(?:\.component|\.worker)?\.ts$/, 'editor'],
   [/^stash-(?:options|delete|clear)-dialog\.component\.(?:ts|html|scss)$/, 'stash'],
   [/^history-search\.component\.(?:ts|html|scss)$/, 'history'],
   [/^fetch-options-dialog\.component\.(?:ts|html|scss)$/, 'transport'],
@@ -102,8 +103,8 @@ for (const path of changed) {
     unitSpecs.push(path);
     plan = 'individual renderer unit spec';
   } else if (path === 'e2e/renderer/editor-protocol-fixture.ts' && existsSync(join(cwd, path))) {
-    selected.add('working-files');
-    plan = 'working-files renderer profile (shared editor fixture)';
+    selected.add('editor');
+    plan = 'editor renderer profile (shared editor fixture)';
   } else if (isPackageTest(path)) {
     packageTests = true;
     plan = 'package tooling tests';

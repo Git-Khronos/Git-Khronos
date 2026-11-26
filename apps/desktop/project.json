@@ -176,6 +176,7 @@
       "configurations": {
         "worktrees": { "command": "playwright test 'e2e/renderer/(worktree-|branch-checkout-worktree|submodule-review)'" },
         "working-files": { "command": "playwright test 'e2e/renderer/(working-(tree|file|directory)|discard-recovery|editor-draft-recovery|file-tools)'" },
+        "editor": { "command": "playwright test 'e2e/renderer/(working-file-editor|editor-draft-recovery|file-tools)[.]spec[.]ts$'" },
         "branches": { "command": "playwright test 'e2e/renderer/(branch-|context-branch-|previous-branch|reference-actions)'" },
         "stash": { "command": "playwright test 'e2e/renderer/(stash-|inline-stash-)'"},
         "transport": { "command": "playwright test 'e2e/renderer/(authentication[.-]|fetch-|pull-strategies|push-sync|remote-cleanup-review-scope)'" },

@@ -3280,6 +3280,7 @@ For a feature that spans multiple specs, use
 | --- | --- |
 | `worktrees` | Linked worktrees, occupied-branch checkout, submodule review |
 | `working-files` | File editing, draft recovery, external file tools, working-tree actions, discard and recovery |
+| `editor` | File editing, draft recovery and external file tools without the other working-tree cases |
 | `branches` | Branch navigation, scoped reference actions, branch workflows |
 | `stash` | Stash creation, review, restoration and deletion |
 | `transport` | Fetch, pull, push, remote cleanup and authentication UI |
