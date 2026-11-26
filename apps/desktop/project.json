@@ -175,7 +175,8 @@
       "options": { "command": "playwright test" },
       "configurations": {
         "worktrees": { "command": "playwright test 'e2e/renderer/(worktree-|branch-checkout-worktree|submodule-review)'" },
-        "working-files": { "command": "playwright test 'e2e/renderer/(working-(tree|file|directory)|discard-recovery|editor-draft-recovery|file-tools)'" },
+        "working-files": { "command": "playwright test 'e2e/renderer/(working-(tree|file|directory)|unstaged-summary|discard-recovery|editor-draft-recovery|file-tools)'" },
+        "recaps": { "command": "playwright test 'e2e/renderer/unstaged-summary[.]spec[.]ts$'" },
         "editor": { "command": "playwright test 'e2e/renderer/(working-file-editor|editor-draft-recovery|file-tools)[.]spec[.]ts$'" },
         "discard": { "command": "playwright test 'e2e/renderer/(discard-recovery|working-tree-lifecycle)[.]spec[.]ts$'" },
         "branches": { "command": "playwright test 'e2e/renderer/(branch-|context-branch-|previous-branch|reference-actions)'" },

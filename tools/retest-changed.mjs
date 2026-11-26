@@ -12,6 +12,7 @@ const profiles = [
   [/^(?:worktree-(?:lock|move|registration)-dialog|checkout-worktree-dialog|submodule-state-review)\.component\.(?:ts|html|scss)$/, 'worktrees'],
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
   [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'editor'],
+  [/^working-tree-summary\.component\.(?:ts|html|scss)$/, 'recaps'],
   [/^(?:discard-recovery-display\.ts|saved-discard-list\.component\.(?:ts|html|scss))$/, 'discard'],
   [/^stash-(?:options|delete|clear)-dialog\.component\.(?:ts|html|scss)$/, 'stash'],
   [/^history-search\.component\.(?:ts|html|scss)$/, 'history'],

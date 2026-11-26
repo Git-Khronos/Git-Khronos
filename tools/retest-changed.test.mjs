@@ -168,6 +168,15 @@ test('discard recovery display changes select only the discard profile', t => {
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 
+test('working-tree recap edits select the staged and unstaged summary cases once', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/working-tree-summary.component.ts');
+  f.write('e2e/renderer/unstaged-summary.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:recaps/);
+  assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
+});
+
 test('occupied-checkout and submodule dialogs select the worktree profile', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/checkout-worktree-dialog.component.ts');
