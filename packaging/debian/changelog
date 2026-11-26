@@ -10,6 +10,8 @@ git-khronos (0.1.6) unstable; urgency=medium
     recovery for ordinary nested files on Linux without unstaging changes.
   * Offer to open the linked worktree that owns a checked-out branch
     instead of detaching the current checkout.
+  * Let users add a reason when locking a linked worktree, and explain
+    why its removal actions are unavailable until it is unlocked.
   * Add manual update checks and optional automatic updates with publisher
     verification. Automatic updates are off by default.
   * Copy the full commit ID from a file history row and clear clipboard

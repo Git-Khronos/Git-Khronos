@@ -22,6 +22,16 @@ This qualifies the extracted package on that host, not a production-signed
 release or the full distribution matrix. The focused Chromium and WebKit
 lock/unlock/cancel checks also passed on `a99b5e3` and `f305b8d`.
 
+The later local archive built from `07dffab` passed all 331 full and 28
+focused worktree scenarios on the same Ubuntu 26.04/WSL2 baseline
+(SHA-256 `e4c8b1f7a97f681ec5ae50adc1e43b5376dc5a6375bd1c5464fcd6983577d920`).
+The added UI scenario verifies shortcut isolation, the exact Git lock reason,
+both disabled removal actions, and preservation of the checkout after unlock.
+See `test-results/native/full-1795705807877835388/report.json` and
+`test-results/native/worktrees-1795705502395248629/report.json`.
+Future installed release reports must include that scenario. The release-note
+entry was added after this archive was built; it needs a new package to ship.
+
 ## 0.1.6 release handoff — 2026-11-25
 
 User-visible changes to call out in the release notes:
