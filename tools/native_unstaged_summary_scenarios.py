@@ -43,7 +43,9 @@ def unstaged_summary_workflow(driver, fixtures, report):
     report['unstagedLineSummary'] = {'source': str(repository), 'before': before, 'initialRecap': initial, 'initialStagedRecap': initial_staged}
     report['scenarios'].append('native-unstaged-summary-counts-index-relative-lines-untracked-text-and-binary-exclusion-without-writes')
 
-    colors = driver.script("""const root = document.documentElement;
+    # A live status refresh can temporarily retire the just-measured recap.
+    # Sample both palettes from the same ready element within the poll.
+    colors = driver.wait("""const root = document.documentElement;
       const previous = root.getAttribute('data-theme');
       const excluded = document.querySelector('.unstaged-section gk-working-tree-summary .summary em');
       if (excluded?.textContent.trim() !== '1 excluded') return null;
