@@ -325,6 +325,14 @@ All five installed suites passed again after that change
 (`verified-release-matrix-latest-gitlab.json`); the original reports
 remain under `matrix-*/reports/gitlab-*/`.
 
+The navigation harness also verifies that a live WebKit page without
+animation frames still completes the scroll and hit-target check. The
+normal paint wait remains in use when frames arrive; a timer only bounds
+that wait. The test suppresses frames in the owned page and counts actual
+clicks on the intended control and its disabled duplicate. The installed
+release verifier requires this evidence on each GitLab baseline. A lost
+WebDriver reply is still reported as uncertain, not retried.
+
 To run the entire suite against an extracted archive in a prepared
 test environment, use `pnpm nx run desktop:native-gitlab -- --package
 "$archive"`. This includes the loopback SSH clone fixture and requires
@@ -332,9 +340,9 @@ a working OpenSSH server executable and helpers. An extracted server also
 needs the helpers' runtime libraries; an executable `sshd` alone does
 not prove its session helper can start. For the original fork catalogue regression, use
 `pnpm nx run desktop:native-gitlab-fork-ui -- --package "$archive"`.
-It exercises the actual catalogue transition and all three WebDriver
-regressions without SSH. The focused target now opens a small owned
-repository directly rather than running the general smoke suite first.
+It exercises the actual catalogue transition and the WebDriver readiness
+and refusal regressions without SSH. The focused target opens a small
+owned repository directly rather than running the general smoke suite first.
 It passed the same ten fork and WebDriver assertions on the workstation
 (`direct-nx-gitlab-fork-ui-focused/`). The full installed release check
 is unchanged.

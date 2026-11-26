@@ -126,9 +126,9 @@ def owned_renderer(app, retired):
         raise SystemExit("Refusing to terminate an ambiguous WebKit child")
 
 
-def exercise_renderer_input(app):
+def exercise_renderer_input(app, *, paint_timeout=12):
     """An old compositor frame can be nonblank before its replacement is usable."""
-    window, label, closed = wait_for(sampled_window, "painted renderer to exercise", app)
+    window, label, closed = wait_for(sampled_window, "painted renderer to exercise", app, timeout=paint_timeout)
     library = c.CDLL("libXtst.so.6")
     send_key = library.XTestFakeKeyEvent
     send_key.argtypes = [ptr, c.c_uint, c.c_int, c.c_ulong]
@@ -182,7 +182,9 @@ def renderer_recovery():
 
         app = launch()
         try:
-            exercise_renderer_input(app)
+            # Cold launches have to start GTK and WebKit as well as paint a page.
+            # Keep the shorter budget for in-process renderer replacements.
+            exercise_renderer_input(app, paint_timeout=20)
             retired = set()
             for attempt in range(4):
                 pid, fd = wait_for(lambda: owned_renderer(app, retired), "owned WebKit child", app)
@@ -203,7 +205,7 @@ def renderer_recovery():
             if app.wait(timeout=12) != 1 or "keeps stopping; closing" not in Path("renderer.log").read_text(errors="replace"):
                 raise SystemExit("The fourth renderer crash did not close the app through its recovery policy")
             app = launch()
-            title, colors = wait_for(painted_window, "fresh nonblank window", app)
+            title, colors = exercise_renderer_input(app, paint_timeout=20)
             print(f"Fresh launch after repeated renderer crashes: {title!r}, {colors} colors.")
         finally:
             if app.poll() is None:
