@@ -131,3 +131,23 @@ test('copying a commit SHA closes its menu and returns keyboard focus', async ({
   await expect(menu).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });
+
+test('a late clipboard result does not dismiss a reopened commit menu', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: () => new Promise<void>(resolve => { (window as any).__finishGraphCopy = resolve; }),
+    } });
+  });
+  const { menu, trigger } = await openCommitMenu(page);
+  await menu.getByRole('menuitem', { name: 'Copy commit SHA', exact: true }).press('Enter');
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__finishGraphCopy)).toBe('function');
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await trigger.press('Enter');
+  await expect(menu).toBeVisible();
+  await page.evaluate(async () => {
+    (window as any).__finishGraphCopy();
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
+  await expect(menu).toBeVisible();
+});
