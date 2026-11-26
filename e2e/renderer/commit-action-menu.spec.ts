@@ -121,3 +121,13 @@ test('cancel and a same-tip branch change cannot trigger a detached checkout', a
   await expect(review.getByRole('button', { name: 'Check out detached HEAD', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => (window as any).__checkoutCommitCalls.filter((call: any) => call.command === 'checkout_commit'))).toEqual([]);
 });
+
+test('copying a commit SHA closes its menu and returns keyboard focus', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => {} } });
+  });
+  const { menu, trigger } = await openCommitMenu(page);
+  await menu.getByRole('menuitem', { name: 'Copy commit SHA', exact: true }).press('Enter');
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});

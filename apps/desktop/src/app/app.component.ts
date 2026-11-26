@@ -10593,7 +10593,7 @@ export class AppComponent implements OnInit, OnDestroy {
     applySelectedDiffLines: this.applySelectedDiffLines.bind(this),
     canInspectActiveFile: this.canInspectActiveFile.bind(this),
     closeDiffViewer: this.closeDiffViewer.bind(this),
-    copyContextValue: this.copyContextValue.bind(this),
+    copyContextValue: (value: string) => { void this.copyText(value); },
     diffFileStatusLabel: this.diffFileStatusLabel.bind(this),
     diffFileTargetContext: this.diffFileTargetContext.bind(this),
     diffFileTargetKey: this.diffFileTargetKey.bind(this),
@@ -14368,8 +14368,11 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async copyContextValue(value: string): Promise<void> {
-    await this.copyText(value);
-    this.actionOverlays.close('context');
+    const generation = this.contextMenuGeneration;
+    const copied = await this.copyText(value);
+    if (this.contextMenuGeneration !== generation || !this.contextMenu()) return;
+    this.dismissGraphActionMenu(true);
+    if (!copied) this.git.error.set('Could not copy the graph item. Clipboard access is unavailable.');
   }
 
   protected async copyContextReference(): Promise<void> {
