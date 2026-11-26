@@ -3277,8 +3277,9 @@ task clean:archives -- --older-days 1      # Preview a shorter retention window
 ```
 
 The cleanup skips a held package build lock, symlinked paths, and paths with
-mounted directories. Release bundles, source snapshots, screenshots, and
-logs are excluded. These commands free space inside Linux; they do not
+mounted directories. For older archives without a Cargo cache tag, it requires
+a matching archived Debian package checksum. Release bundles, source snapshots,
+screenshots, and logs are excluded. These commands free space inside Linux; they do not
 shrink the WSL virtual disk file on Windows.
 
 The lightweight lifecycle tests include the actual CLI with a private fake

@@ -1,5 +1,6 @@
 import contextlib
 import fcntl
+import hashlib
 import io
 import os
 from pathlib import Path
@@ -44,3 +45,30 @@ class PruneTest(unittest.TestCase):
             self.assertFalse(cache.exists())
             self.assertEqual(artifact.read_text(), "retained")
             self.assertTrue(outside.is_dir())
+
+    def test_old_archive_without_cache_tag_needs_a_valid_package_checksum(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            run = root / "target/local-review/jammy-owned"
+            work = run / "work"
+            source = work / "source"
+            cache = source / "target/release/deps"
+            cache.mkdir(parents=True)
+            lock = source / "target/.git-khronos-linux-package.lock"
+            lock.touch()
+            (source / "Cargo.toml").touch()
+            artifact = work / "artifacts/Git-Khronos_0.1.6_amd64.deb"
+            artifact.parent.mkdir()
+            archive_bytes = b"retained package"
+            artifact.write_bytes(archive_bytes)
+            manifest = artifact.with_name("SHA256SUMS")
+            old = time.time() - 8 * 86400
+            for path in (run, cache, lock, artifact):
+                os.utime(path, (old, old))
+            for checksum, retain in (("0" * 64, True), (hashlib.sha256(archive_bytes).hexdigest(), False)):
+                manifest.write_text(f"{checksum}  {artifact.name}\n")
+                os.utime(manifest, (old, old))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(prune(root, 7, True), 0)
+                self.assertEqual(cache.exists(), retain)
+                self.assertEqual(artifact.read_bytes(), archive_bytes)

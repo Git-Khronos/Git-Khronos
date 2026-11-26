@@ -2,6 +2,7 @@
 """Prune regenerable caches in old local Jammy qualification runs only."""
 import argparse
 import fcntl
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -21,6 +22,32 @@ CACHE_PATHS = (
 def owned_directory(path):
     return (path.is_dir() and path.resolve() == path
             and path.stat().st_uid == os.getuid() and not path.is_mount())
+
+
+def verified_debian_archive(work, cutoff):
+    """Recognize older jobs whose archived build omitted Cargo's cache tag."""
+    artifacts = work / "artifacts"
+    if not owned_directory(artifacts):
+        return False
+    manifest = artifacts / "SHA256SUMS"
+    try:
+        meta = manifest.lstat()
+        if not stat.S_ISREG(meta.st_mode) or meta.st_size > 16384 or meta.st_mtime > cutoff:
+            return False
+        for line in manifest.read_text().splitlines():
+            match = re.fullmatch(r"([a-f0-9]{64}) [ *](Git-Khronos_[A-Za-z0-9.+_~-]+\.deb)", line)
+            if not match:
+                continue
+            package = artifacts / match[2]
+            meta = package.lstat()
+            if not stat.S_ISREG(meta.st_mode) or not 0 < meta.st_size <= 128 * 1024**2 or meta.st_mtime > cutoff:
+                continue
+            with package.open("rb") as data:
+                if hashlib.file_digest(data, "sha256").hexdigest() == match[1]:
+                    return True
+    except (OSError, UnicodeError):
+        return False
+    return False
 
 
 def prune(root, days, apply):
@@ -45,7 +72,7 @@ def prune(root, days, apply):
         lock = target / ".git-khronos-linux-package.lock"
         # The packaging wrapper uses this same lock. Skip incomplete or
         # unfamiliar layouts rather than guessing what is disposable.
-        if not owned_directory(target) or not (target / "CACHEDIR.TAG").is_file():
+        if not owned_directory(target):
             continue
         try:
             if not stat.S_ISREG(lock.lstat().st_mode):
@@ -58,7 +85,12 @@ def prune(root, days, apply):
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 continue
-            if max(run.stat().st_mtime, source.stat().st_mtime, lock.stat().st_mtime) > cutoff:
+            if max(run.stat().st_mtime, lock.stat().st_mtime) > cutoff:
+                continue
+            if (target / "CACHEDIR.TAG").is_file():
+                if source.stat().st_mtime > cutoff:
+                    continue
+            elif not verified_debian_archive(work, cutoff):
                 continue
             for name in CACHE_PATHS:
                 path = work / name
