@@ -3372,6 +3372,15 @@ pnpm nx run desktop:native-submodule-initialize --output-style=stream -- --packa
 pnpm nx run desktop:native-submodule-update --output-style=stream -- --package "$archive"
 ```
 
+The `c76209d` archive (SHA-256
+`e20aa6e6598a23f51e2ac798745439e040c1f1a775417c803b22a006619453b3`)
+passed both submodule initialization scenarios and all four update scenarios
+after extraction on Ubuntu 26.04. The update report compares the full
+recorded and checked-out commit IDs against Git, then filters by the new
+checkout ID without modifying the parent or either child. Reports:
+`test-results/native/submodule-initialize-1795722022322838731` and
+`test-results/native/submodule-update-1795722028728461827`.
+
 Local Ubuntu 26.04 checkpoint: the archive built from `ef415ca` with SHA-256
 `48692296e3ef2d05654eee55b7b4c98fa5ea297ab3199e249ce60cfa7a41466e`
 passed extracted-package GitLab fork/catalogue (11 scenarios), working-tree
