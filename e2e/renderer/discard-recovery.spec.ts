@@ -1031,7 +1031,7 @@ for (const selected of [false, true]) {
     }
     await expect(dialog).toContainText(selected ? path : 'unloaded/file.bin');
     await expect(dialog).toContainText('The paths below cannot be discarded with recovery');
-    await expect(dialog).toContainText('No files will be discarded');
+    await expect(dialog).toContainText('No files were discarded');
     if (!selected) {
       await expect(dialog).toContainText('tracked-root.txt');
       await expect(dialog).toContainText('Also excluded: conflicts, submodule working trees, and nested repositories.');
