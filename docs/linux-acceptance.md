@@ -24,7 +24,24 @@ the provided package into its isolated fixtures.
 
 ## Latest 0.1.6 local qualification
 
-The newer test-key archive includes the per-file discard button's busy
+The current test-key archive includes the changed-files focus fix, the
+toolbar keyboard recovery fix, and the earlier discard, recap, workspace,
+and GitLab changes. Its SHA-256 is
+`1415e37857fea3f57a2dd5f58f87f6fab05e5404c91f5a383a05a5d741e6a5b7`.
+It passed all 52 installed reports in one run across Ubuntu 22.04, 24.04,
+and 26.04 and Debian 12 and 13. The Jammy publisher-environment report
+passed all 330 scenarios, and the test-key trust verifier matched the
+exact archive. The focused installed recap suite also passed all 28
+scenarios, including final-page focus with animation frames suppressed.
+
+See `target/local-review/jammy-pagination-focus.Mw4Urs/HANDOFF.md` for
+the preview command, the build receipt, inventories, and exact-artifact
+reports. This archive is not production-signed. Upgrade, launch, or
+signing reports for the older digests below do not qualify its bytes.
+
+### Earlier per-file discard qualification
+
+The earlier test-key archive includes the per-file discard button's busy
 state. Its SHA-256 is
 `2fc9a868cfbb1390e37f9728d498631d5e6400f093635795d1a6b63a4550b9d9`.
 It passed all 52 required installed reports in one local run across five
