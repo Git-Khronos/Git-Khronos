@@ -4294,3 +4294,15 @@ palette assertion failed as expected against the previous package from
 `99016b7`, whose numeric colors did not change with the theme.
 The 94-case Chromium recap, virtualization and discard run passed; the two
 targeted compact-header and palette cases also passed on WebKit.
+
+The expanded sparse-checkout suite also checks the exact requested directory
+and full-index mode before Apply, verifies that Cancel makes no changes, and
+exercises Reapply with a dirty then clean file outside the selection. Reapply
+must first name and preserve the out-of-cone edit, then remove only the clean
+excluded copy without changing HEAD, staged content, or the in-cone edit.
+
+All six scenarios passed in 14.1 seconds on Ubuntu 26.04 under WSL2 against
+the package built from `d298a29` (SHA-256
+`86587c96d75f342181704747b0c532c8d0ad45ae2547864521dd2ef988445725`).
+The earlier package from `6920036` failed the new scope assertion as expected:
+its Apply dialog showed neither the directory list nor the index mode.

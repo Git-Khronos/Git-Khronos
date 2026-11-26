@@ -1781,8 +1781,8 @@ def main():
                 from native_submodule_initialize_scenarios import initialize_one_submodule
                 repository, repo_id = initialize_one_submodule(driver, fixtures, report)
             elif args.suite == "sparse-checkout":
-                from native_sparse_checkout_scenarios import disable_sparse_checkout
-                repository, repo_id = disable_sparse_checkout(driver, fixtures, report)
+                from native_sparse_checkout_scenarios import sparse_checkout_workflow
+                repository, repo_id = sparse_checkout_workflow(driver, fixtures, report)
             elif args.suite == "submodule-update":
                 from native_submodule_update_scenarios import update_one_submodule
                 repository, repo_id = update_one_submodule(driver, fixtures, report)
