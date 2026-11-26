@@ -1,0 +1,67 @@
+// Local feedback only; this is not a replacement for release checks.
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
+
+const cwd = fileURLToPath(new URL('../', import.meta.url));
+const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+const split = value => value.split('\0').filter(Boolean);
+const profiles = [
+  [/^worktree-(lock|move|registration)-dialog\.component\./, 'worktrees'],
+  [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
+  [/^application-updates-dialog\.component\./, 'updates'],
+];
+const prefix = 'apps/desktop/src/app/';
+const { values } = parseArgs({ options: {
+  base: { type: 'string', default: 'HEAD' },
+  run: { type: 'boolean' },
+} });
+
+const base = git('rev-parse', '--verify', '--end-of-options', values.base + '^{commit}').trim();
+// --no-renames ensures removal of an old name is visible even after a rename.
+const changed = [...new Set([
+  ...split(git('diff', '--no-ext-diff', '--name-only', '--no-renames', '-z', base, '--')),
+  ...split(git('diff', '--cached', '--no-ext-diff', '--name-only', '--no-renames', '-z', base, '--')),
+  ...split(git('ls-files', '--others', '--exclude-standard', '-z')),
+])].sort();
+
+const selected = new Set();
+const specs = [];
+let broad = false;
+for (const path of changed) {
+  let plan;
+  if (/^(README\.md|docs\/.*\.md)$/.test(path)) {
+    plan = 'documentation only';
+  } else if (/^e2e\/renderer\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
+    specs.push(path);
+    plan = 'individual renderer spec';
+  } else {
+    const profile = path.startsWith(prefix) && profiles.find(([test]) => test.test(path.slice(prefix.length)))?.[1];
+    if (profile && existsSync(join(cwd, path))) {
+      selected.add(profile);
+      plan = profile + ' renderer profile';
+    } else {
+      broad = true;
+      plan = 'broader checks (shared, removed or unmapped file)';
+    }
+  }
+  console.log(JSON.stringify(path) + ': ' + plan);
+}
+
+const commands = broad
+  ? [['desktop:check'], ['desktop:test'], ['desktop:e2e']]
+  : [...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
+     ...(specs.length ? [['desktop:e2e', '--', ...specs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
+for (const command of commands) console.log('pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
+if (!commands.length) console.log('No test-relevant changes selected.');
+else if (!values.run) console.log('Plan only. Add --run to execute.');
+else {
+  // Use the workspace package manager; each target must succeed before the next.
+  for (const args of commands) {
+    const result = spawnSync('pnpm', ['nx', 'run', ...args], { cwd, stdio: 'inherit' });
+    if (result.error) throw result.error;
+    if (result.status !== 0) process.exit(result.status ?? 1);
+  }
+}
