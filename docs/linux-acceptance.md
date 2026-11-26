@@ -3346,6 +3346,15 @@ pass its archive explicitly and match the report's `packageSha256` against the
 candidate digest. A failing or passing run against an older archive does not
 establish the behavior of the current source.
 
+Local Ubuntu 26.04 checkpoint: the archive built from `ef415ca` with SHA-256
+`48692296e3ef2d05654eee55b7b4c98fa5ea297ab3199e249ce60cfa7a41466e`
+passed extracted-package GitLab fork/catalogue (11 scenarios), working-tree
+recaps (28), discard subset (7), and large discard (4). The reports are in
+`test-results/native/` under `gitlab-fork-ui-1795714904981933760`,
+`working-tree-recaps-1795714928016813840`, `discard-subset-1795714861740713503`,
+and `discard-large-1795714873612561145`. This predates the Nx 24 update and
+does not qualify a system install, production signature, or hosted run.
+
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
