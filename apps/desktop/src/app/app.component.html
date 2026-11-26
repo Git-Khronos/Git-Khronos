@@ -1126,24 +1126,23 @@
           }
           <ng-template #commitGraphFallback let-failed="failed">
             @if (visibleGraphRows().length) {
-              @let window = virtualGraphWindow();
-              <div class="graph-history-fallback"
-                [style.height.px]="window.topPadding + window.items.length * 40 + window.bottomPadding"
-                [style.min-width.px]="commitRowWidth()">
+              <div class="graph-history-fallback" style="height: 100%">
                 <p [attr.role]="failed ? 'alert' : 'status'">{{ failed ? 'Commit history could not load. Restart Git Khronos to retry.' : 'Loading commit history…' }}</p>
               </div>
             }
           </ng-template>
-          @defer (on immediate) {
-            <gk-graph-viewport #graphViewport [windowSource]="virtualGraphWindow" [slotsSource]="graphRowSlots"
-              [widthSource]="commitRowWidth" [presenter]="graphRowView()" />
-          } @placeholder {
-            <ng-container [ngTemplateOutlet]="commitGraphFallback" />
-          } @loading {
-            <ng-container [ngTemplateOutlet]="commitGraphFallback" />
-          } @error {
-            <ng-container [ngTemplateOutlet]="commitGraphFallback" [ngTemplateOutletContext]="{ failed: true }" />
-          }
+          <!-- Keep scroll geometry independent of the deferred row component. -->
+          <div class="graph-history-space" [style.height.px]="graphHistoryHeight()" [style.min-width.px]="commitRowWidth()">
+            @defer (on immediate) {
+              <gk-graph-viewport #graphViewport [slotsSource]="graphRowSlots" [presenter]="graphRowView()" />
+            } @placeholder {
+              <ng-container [ngTemplateOutlet]="commitGraphFallback" />
+            } @loading {
+              <ng-container [ngTemplateOutlet]="commitGraphFallback" />
+            } @error {
+              <ng-container [ngTemplateOutlet]="commitGraphFallback" [ngTemplateOutletContext]="{ failed: true }" />
+            }
+          </div>
           @if (!visibleGraphRows().length) {
             <div class="empty-panel"><span><gk-icon name="repo" [size]="32" /></span><strong>No commits yet</strong><p>Stage files and create the first commit.</p></div>
           }

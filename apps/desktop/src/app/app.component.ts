@@ -3594,6 +3594,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private readonly visibleGraphRowIndexByOid = computed(() => this.visibleGraphRowLookups().indexByOid, { equal: () => false });
 
+  protected readonly graphHistoryHeight = computed(() => this.visibleGraphRows().length * COMMIT_ROW_HEIGHT);
+
   protected readonly virtualGraphWindow = computed(() => calculateVirtualWindow(
     this.visibleGraphRows(),
     this.graphScrollTop(),
