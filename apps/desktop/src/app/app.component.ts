@@ -947,6 +947,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private contextMenuReturnFocus: HTMLElement | null = null;
   private fileContextMenuReturnFocus: HTMLElement | null = null;
   private filePathCopyGeneration = 0;
+  private sidebarCopyGeneration = 0;
   private sidebarActionMenuReturnFocus: HTMLElement | null = null;
   protected readonly sidebarActionMenuPosition = signal({ x: 8, y: 8 });
   private sidebarItemMenuAnchor = { x: 8, y: 8 };
@@ -7393,7 +7394,13 @@ export class AppComponent implements OnInit, OnDestroy {
     if (action === 'copy-path' || (action === 'copy-url' && view.kind === 'submodule')) {
       const value = action === 'copy-url' && view.kind === 'submodule' ? view.item.url : view.item.path;
       this.dismissSidebarActionMenu(true);
-      void this.copyText(value);
+      const generation = ++this.sidebarCopyGeneration;
+      const scope = this.git.activeRepositoryReadScope();
+      void this.copyText(value).then(copied => {
+        if (!copied && generation === this.sidebarCopyGeneration && scope === this.git.activeRepositoryReadScope()) {
+          this.git.error.set('Could not copy the sidebar item. Clipboard access is unavailable.');
+        }
+      });
       return;
     }
     if (view.kind === 'worktree') {

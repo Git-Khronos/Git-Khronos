@@ -3068,6 +3068,15 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
   });
   await expect(page.locator('body')).toHaveAttribute('data-copied-submodule-path', expectedSubmodulePath);
   await expect(submoduleActions).toBeFocused();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      value: async () => { throw new Error('Clipboard denied'); },
+    });
+  });
+  await submoduleActions.press('Enter');
+  await menu.getByRole('menuitem', { name: 'Copy submodule path' }).click();
+  await expect(page.locator('gk-error-toast')).toContainText('Could not copy the sidebar item. Clipboard access is unavailable.');
+  await expect(submoduleActions).toBeFocused();
 });
 
 test('confirms forced worktree removal only after acknowledging changes', async ({ page }) => {
