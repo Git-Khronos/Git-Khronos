@@ -3364,6 +3364,16 @@ and large discard (4) on Ubuntu 26.04. Reports under `test-results/native/`:
 `discard-large-1795715356509820951`. These reports apply only to the exact
 local archive, not an installed or signed production candidate.
 
+The checkout-review rebuild from `36710e0`, SHA-256
+`dd6d2b71fc52557a6bd8b6a32184f344f2b1807f083d66599d26c83317ab18d4`,
+passed worktrees (29 scenarios), discard subset (7), and large discard (4)
+after extraction on Ubuntu 26.04. The worktree run includes a real linked
+checkout that disappears during review; opening the registration report does
+not switch branches, repair the checkout, or prune the registration.
+Reports: `test-results/native/worktrees-1795716532937286489`,
+`test-results/native/discard-subset-1795716574626834281`, and
+`test-results/native/discard-large-1795716589389053973`.
+
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
