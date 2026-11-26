@@ -1,6 +1,7 @@
 import { defineConfig, devices, type ReporterDescription } from '@playwright/test';
 
-const port = Number(process.env['PLAYWRIGHT_PORT'] ?? 4201);
+const defaultPort = 4201;
+const port = Number(process.env['PLAYWRIGHT_PORT'] ?? defaultPort);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid PLAYWRIGHT_PORT');
 const serverTimeout = Number(process.env['PLAYWRIGHT_SERVER_TIMEOUT_MS'] ?? 120_000);
 if (!Number.isInteger(serverTimeout) || serverTimeout < 1 || serverTimeout > 2_147_483_647) {
@@ -15,7 +16,8 @@ export default defineConfig({
   testDir: './e2e/renderer',
   // Playwright clears this directory at startup. Never clear native evidence
   // or another named audit stored alongside the renderer results.
-  outputDir: process.env['GIT_KHRONOS_RENDERER_OUTPUT_DIR'] ?? './test-results/renderer',
+  outputDir: process.env['GIT_KHRONOS_RENDERER_OUTPUT_DIR']
+    ?? (port === defaultPort ? './test-results/renderer' : `./test-results/renderer-port-${port}`),
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: 0,

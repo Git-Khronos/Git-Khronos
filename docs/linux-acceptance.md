@@ -4121,10 +4121,12 @@ quote. It requires general transport guidance with no pending credential request
 and the same independent local-state preservation checks. Unit controls also
 verify that quoted targets cannot override a genuine security or Push failure.
 
-Renderer tests write to `test-results/renderer/`; native evidence stays in
-`test-results/native/`. Playwright clears its output directory before a run,
-so keep independently retained audits in sibling directories, not inside the
-renderer output directory.
+Renderer tests write to `test-results/renderer/` on the default port and
+`test-results/renderer-port-<port>/` with a custom `PLAYWRIGHT_PORT`. Native
+evidence stays in `test-results/native/`. Playwright clears its output
+directory before a run. For concurrent runs that intentionally reuse the
+same server, set `GIT_KHRONOS_RENDERER_OUTPUT_DIR` to a different sibling
+directory for each run.
 
 Pull requests run the smoke suite against a newly built package. Pushes to
 `dev` run the full suite. Manual workflow dispatch can run full or performance
