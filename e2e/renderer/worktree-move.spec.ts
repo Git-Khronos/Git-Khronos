@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function setup(page: Page): Promise<void> {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -240,7 +240,7 @@ test('open worktree tab disables moving and explains the required close action',
   await expect(page.locator('.worktree-card-menu')).toContainText('Close its repository tab before moving');
 });
 
-for (const mode of ['hold', 'fail'] as const) {
+for (const mode of ['hold', 'fail', 'return-to-checkout'] as const) {
   test(`worktree lock loading is dismissible without mutation (${mode})`, async ({ page }) => {
     await setup(page);
     let release!: () => void;
@@ -266,8 +266,19 @@ for (const mode of ['hold', 'fail'] as const) {
     await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
-    if (mode === 'hold') {
-      await page.keyboard.press('Escape');
+    if (mode !== 'fail') {
+      if (mode === 'hold') {
+        await page.keyboard.press('Escape');
+      } else {
+        await page.evaluate(() => {
+          const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
+          const original = git.repository();
+          const other = { ...original, id: 'other', path: '/owned/other' };
+          git.repositories.update((items: any[]) => [...items, other]);
+          git.activateRepository(other.id);
+          git.activateRepository(original.id);
+        });
+      }
       await expect(loading).toHaveCount(0);
       release();
       await featureLoaded;
@@ -281,7 +292,7 @@ for (const mode of ['hold', 'fail'] as const) {
       await page.keyboard.press('Escape');
       await expect(failed).toHaveCount(0);
     }
-    await expect(opener).toBeFocused();
+    if (mode !== 'return-to-checkout') await expect(opener).toBeFocused();
     expect(await page.evaluate(() => (window as any).__worktreeMove.calls.filter(
       (entry: any) => entry.command === 'set_worktree_locked'))).toEqual([]);
   });

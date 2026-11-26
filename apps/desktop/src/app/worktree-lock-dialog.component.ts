@@ -17,6 +17,7 @@ import { GitKhronosService } from './git-khronos.service';
 import { isTabKey } from './tab-key';
 
 export interface WorktreeLockRequest {
+  readonly scope: string;
   repositoryId: string;
   repositoryPath: string;
   worktree: Worktree;

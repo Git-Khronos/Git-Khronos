@@ -1231,7 +1231,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected readonly worktreeLockRequest = signal<WorktreeLockRequest | null>(null);
   protected readonly ownsWorktreeLock = (request: WorktreeLockRequest): boolean =>
-    this.worktreeLockRequest() === request && this.ownsRepositoryScope(request);
+    this.worktreeLockRequest() === request && this.git.activeRepositoryReadScope() === request.scope;
 
   private readonly worktreeLockLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('worktreeLockLoaderClose');
   private readonly worktreeLockLoaderFocus = afterRenderEffect(() => {
@@ -1239,17 +1239,18 @@ export class AppComponent implements OnInit, OnDestroy {
   });
 
   protected handleWorktreeLockLoaderKey(event: KeyboardEvent, request: WorktreeLockRequest): void {
+    if (!this.ownsWorktreeLock(request)) return;
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); this.closeWorktreeLock(request); }
     else this.cycleDialogFocus(event.currentTarget as HTMLElement, event);
   }
 
-  protected closeWorktreeLock(request: WorktreeLockRequest): void {
+  protected closeWorktreeLock(request: WorktreeLockRequest, restoreFocus = true): void {
     if (this.worktreeLockRequest() !== request) return;
     this.worktreeLockRequest.set(null);
+    if (!restoreFocus) return;
     afterNextRender(() => {
-      if (request.repositoryId !== this.git.activeRepositoryId()
-        || request.repositoryPath !== this.git.repository()?.path) return;
+      if (this.worktreeLockRequest() || this.git.activeRepositoryReadScope() !== request.scope) return;
       const opener = request.returnFocus;
       if (opener?.isConnected && opener.getClientRects().length && !opener.closest('[inert]')) {
         opener.focus();
@@ -1443,6 +1444,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const stash = this.stashDialog();
     const fetch = this.fetchRequest();
     const move = this.worktreeMoveRequest();
+    const lock = this.worktreeLockRequest();
     const publish = this.pendingPublishBranch();
     const force = this.pendingForcePush();
     const lfs = this.lfsPruneReview();
@@ -1454,6 +1456,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
     if (fetch && !this.ownsFetchOptions(fetch)) untracked(() => this.closeFetchOptions(fetch, false));
     if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
+    if (lock && !this.ownsWorktreeLock(lock)) untracked(() => this.closeWorktreeLock(lock, false));
     if (stash && !this.ownsRepositoryScope(stash)) untracked(() => this.closeStashDialog(stash, false));
     if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (contextCreation && !this.ownsRepositoryScope(contextCreation)) untracked(() => this.dismissGraphActionMenu(false));
@@ -7067,7 +7070,7 @@ export class AppComponent implements OnInit, OnDestroy {
       || !this.git.repository()?.worktrees.some(candidate => candidate.path === worktree.path)) return;
     const returnFocus = this.sidebarActionMenuReturnFocus;
     this.actionOverlays.close('worktree');
-    this.worktreeLockRequest.set({ ...owner, worktree, returnFocus });
+    this.worktreeLockRequest.set({ ...owner, scope: this.git.activeRepositoryReadScope(), worktree, returnFocus });
   }
 
   protected openWorktreeRepair(worktree: Worktree): void {
