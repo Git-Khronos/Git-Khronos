@@ -133,7 +133,7 @@ const unitSpecs = new Set();
 const gitCoreModules = new Set();
 const nativeSuites = new Set();
 let retestTools = false;
-let packageTests = false;
+const packageSpecs = new Set();
 let authenticationTests = false;
 let nativeHarnessTests = false;
 let unmappedNativeSource = false;
@@ -187,8 +187,8 @@ for (const path of changed) {
     if (path === 'e2e/renderer/graph-layout-test-helpers.ts') graphTypecheck = true;
     plan = 'all direct renderer fixture consumers';
   } else if (isPackageTest(path)) {
-    packageTests = true;
-    plan = 'package tooling tests';
+    packageSpecs.add(path);
+    plan = 'individual package tooling spec';
   } else if (/^e2e\/renderer\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
     specs.add(path);
     plan = 'individual renderer spec';
@@ -230,7 +230,7 @@ if (!broad && selected.has('worktrees') && selected.has('submodules')) {
 const filters = broad ? [] : filtersFor(selected);
 const directSpecs = [...specs].filter(path => !filters.some(filter => filter.test(path)));
 const extraChecks = [
-  ...(packageTests ? [['desktop:package-test']] : []),
+  ...(packageSpecs.size ? [broad ? ['desktop:package-test'] : ['desktop:package-test:focused', '--', ...packageSpecs]] : []),
   ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
   ...(nativePackage ? [...nativeSuites].map(suite => ['desktop:' + suite, '--', '--package', nativePackage]) : []),
 ];

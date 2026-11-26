@@ -3355,8 +3355,9 @@ pnpm test:changed --run --native-package "$archive" # Also run mapped packaged s
 ```
 
 Recognized renderer components select their profile. Changed browser and
-renderer unit specs run directly unless already covered, while native harness
-and registered package test edits use their own test targets. For edits to
+renderer unit specs run directly unless already covered. Native harness edits
+select the harness unit tests, and edits to registered package-tooling specs
+run just those specs together. For edits to
 mapped GitLab, worktree, recap, sparse-checkout, submodule, and discard scenario files, use
 `--native-package` to run the affected suites against an explicit Debian archive.
 These are representative focused suites, not a transitive dependency analysis.

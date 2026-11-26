@@ -261,14 +261,18 @@ test('a native harness unit-test edit selects no browser or package run', t => {
   assert.match(f.run(), /desktop:check[\s\S]*desktop:native-harness-test/);
 });
 
-test('package specs select only the package lane when registered in Nx', t => {
+test('registered package specs share one filtered Node test run', t => {
   const f = fixture(t);
-  f.write('tools/package-deb.test.mjs');
+  f.write('tools/report-initial-renderer.test.mjs');
+  f.write('tools/prepare-frontend-notices.test.mjs');
   const plan = f.run();
-  assert.match(plan, /desktop:package-test/);
+  assert.match(plan, /"desktop:package-test:focused" "--output-style=static" "--" "tools\/prepare-frontend-notices.test.mjs" "tools\/report-initial-renderer.test.mjs"/);
   assert.doesNotMatch(plan, /desktop:check|desktop:e2e/);
   f.write('tools/not-registered.test.mjs');
-  assert.match(f.run(), /desktop:check/);
+  const broad = f.run();
+  assert.match(broad, /desktop:check/);
+  assert.match(broad, /"desktop:package-test"/);
+  assert.doesNotMatch(broad, /desktop:package-test:focused/);
 });
 
 test('selects an individual renderer unit spec without starting Playwright', t => {
