@@ -159,6 +159,9 @@ for (const command of commands.filter(isBrowser)) {
   if (values.workers) command.push('--workers=' + values.workers);
   if (values.webkit) command.push('--project=webkit');
 }
+// Nx 24's compact default omits child output even when redirected to a log.
+// Keep compiler diagnostics and per-suite results visible in local retests.
+for (const command of commands) command.splice(1, 0, '--output-style=static');
 for (const command of commands) {
   const envPrefix = values.webkit && isBrowser(command) ? 'GIT_KHRONOS_RENDERER_WEBKIT=1 ' : '';
   console.log(envPrefix + 'pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));

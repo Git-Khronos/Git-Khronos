@@ -70,7 +70,7 @@ test('execution preserves argument boundaries and stops at the first failure', {
     cwd: f.cwd, encoding: 'utf8', env: { ...process.env, PATH: bin + delimiter + process.env.PATH },
   });
   assert.equal(result.status, 17);
-  assert.deepEqual(result.stdout.match(/^invoked .+$/gm), ['invoked <nx>', 'invoked <run>', 'invoked <desktop:check>']);
+  assert.deepEqual(result.stdout.match(/^invoked .+$/gm), ['invoked <nx>', 'invoked <run>', 'invoked <desktop:check>', 'invoked <--output-style=static>']);
 });
 
 test('help explains the broad fallback and invalid bases fail without running tests', t => {
@@ -142,7 +142,7 @@ test('editor fixture changes cover editing, file tools and draft recovery withou
     f.write(`e2e/renderer/${name}.spec.ts`);
   }
   const plan = f.run('--webkit', '--workers=2');
-  assert.ok(plan.includes('"desktop:e2e:editor" "--" "--workers=2" "--project=webkit"'));
+  assert.ok(plan.includes('"desktop:e2e:editor" "--output-style=static" "--" "--workers=2" "--project=webkit"'));
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 
@@ -186,6 +186,6 @@ test('selects an individual renderer unit spec without starting Playwright', t =
   const f = fixture(t);
   f.write('apps/desktop/src/app/shortcut-labels.spec.ts');
   const plan = f.run('--webkit');
-  assert.match(plan, /"desktop:renderer-unit-test:focused" "--" "apps\/desktop\/src\/app\/shortcut-labels.spec.ts"/);
+  assert.match(plan, /"desktop:renderer-unit-test:focused" "--output-style=static" "--" "apps\/desktop\/src\/app\/shortcut-labels.spec.ts"/);
   assert.doesNotMatch(plan, /desktop:e2e|project=webkit/);
 });
