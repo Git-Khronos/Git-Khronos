@@ -263,6 +263,7 @@ const RELEASE_MATRIX = [
     'native-ui-file-merge-separate-reviewed-real-index-staging-and-private-cleanup',
     'native-saved-repository-paths-survive-workspace-switch-and-support-retry-and-removal',
     'native-worktree-and-branch-removal-requires-recovery-before-removing-checkout',
+    'native-worktree-lock-menu-reviews-reason-and-blocks-removal',
     'native-occupied-branch-review-cancel-preserves-both-dirty-checkouts',
     'native-occupied-branch-review-wraps-shift-tab-without-navigating',
     'native-shortcut-reference-wraps-shift-tab-without-changing-git-or-draft',
