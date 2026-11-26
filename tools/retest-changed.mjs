@@ -68,6 +68,7 @@ const selected = new Set();
 const specs = [];
 let retestTools = false;
 let nativeHarnessTests = false;
+let nativeHarnessSource = false;
 let broad = false;
 for (const path of changed) {
   let plan;
@@ -79,6 +80,10 @@ for (const path of changed) {
   } else if (/^tools\/native_[a-z0-9_]+_test\.py$/.test(path) && existsSync(join(cwd, path))) {
     nativeHarnessTests = true;
     plan = 'native harness unit tests';
+  } else if (/^tools\/native_[a-z0-9_]+\.py$/.test(path) && existsSync(join(cwd, path))) {
+    nativeHarnessTests = true;
+    nativeHarnessSource = true;
+    plan = 'native harness unit tests; packaged scenario validation is separate';
   } else if (/^e2e\/renderer\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
     specs.push(path);
     plan = 'individual renderer spec';
@@ -125,6 +130,9 @@ for (const command of commands.filter(isBrowser)) {
 for (const command of commands) {
   const envPrefix = values.webkit && isBrowser(command) ? 'GIT_KHRONOS_RENDERER_WEBKIT=1 ' : '';
   console.log(envPrefix + 'pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
+}
+if (nativeHarnessSource) {
+  console.log('For packaged acceptance, run the affected native suite against an explicit Debian archive.');
 }
 if (!commands.length) console.log('No test-relevant changes selected.');
 else if (!values.run) console.log('Plan only. Add --run to execute.');

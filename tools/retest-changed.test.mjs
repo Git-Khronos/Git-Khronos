@@ -142,7 +142,10 @@ test('a native harness unit-test edit selects no browser or package run', t => {
   assert.match(plan, /desktop:native-harness-test/);
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check|project=webkit/);
   f.write('tools/native_acceptance.py');
-  const broad = f.run();
-  assert.match(broad, /desktop:check/);
-  assert.match(broad, /desktop:native-harness-test/);
+  const harness = f.run();
+  assert.match(harness, /desktop:native-harness-test/);
+  assert.match(harness, /affected native suite/);
+  assert.doesNotMatch(harness, /desktop:e2e|desktop:check/);
+  f.write('shared.ts');
+  assert.match(f.run(), /desktop:check[\s\S]*desktop:native-harness-test/);
 });
