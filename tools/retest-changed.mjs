@@ -154,7 +154,8 @@ for (const path of changed) {
   } else if (gitCoreTestModules.has(gitCoreModule) && existsSync(join(cwd, path))) {
     gitCoreModules.add(gitCoreModule + '::');
     plan = 'focused Git core Rust test module';
-  } else if (/^tools\/retest-changed(?:\.test)?\.mjs$/.test(path) && existsSync(join(cwd, path))) {
+  } else if (/^tools\/(?:retest-changed(?:\.test)?|renderer-artifacts\.test)\.mjs$/.test(path)
+    && existsSync(join(cwd, path))) {
     retestTools = true;
     plan = 'test selection and local process checks';
   } else if (/^tools\/prune_local_build_caches(?:_test)?\.py$/.test(path) && existsSync(join(cwd, path))) {

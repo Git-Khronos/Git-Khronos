@@ -92,6 +92,14 @@ test('editing the retest planner selects tooling checks without launching browse
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
 });
 
+test('editing the artifact isolation test runs the tooling checks without launching browsers', t => {
+  const f = fixture(t);
+  f.write('tools/renderer-artifacts.test.mjs');
+  const plan = f.run();
+  assert.match(plan, /desktop:owned-process-test/);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
+});
+
 test('staged selection does not include unstaged edits or untracked files', t => {
   const f = fixture(t);
   f.write('shared.ts');
