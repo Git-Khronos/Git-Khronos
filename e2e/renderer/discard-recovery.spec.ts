@@ -1198,6 +1198,7 @@ test('returns to the blocked review without retaining root selections', async ({
   await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
   await dialog.getByRole('button', { name: 'Choose eligible files…' }).click();
   await expect(dialog).toContainText('No files are currently eligible.');
+  await expect(dialog).toContainText('Go back to recheck eligibility, or cancel');
   await expect(dialog.getByRole('button', { name: 'Preview selected files' })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await dialog.getByRole('button', { name: 'Cancel' }).click();

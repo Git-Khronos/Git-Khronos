@@ -1,7 +1,11 @@
 @if (action(); as action) {
   @if (action.kind === 'discard-bulk' && choicePaths(); as paths) {
     <section class="blocked-discard-choice" aria-label="Choose eligible files for a fresh discard review">
-      <p>No files have been changed. Select eligible files to review. A fresh preview is required before confirmation.</p>
+      @if (paths.length) {
+        <p>No files have been changed. Select eligible files to review. A fresh preview is required before confirmation.</p>
+      } @else {
+        <p>No files have been changed. Go back to recheck eligibility, or cancel to leave the working files unchanged.</p>
+      }
       @if (action.preview?.blockedPaths?.length) {
         <div class="blocked-discard-path-group">
           <p>Still blocked; these paths will remain unchanged:</p>
