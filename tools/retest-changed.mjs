@@ -18,12 +18,31 @@ const profiles = [
 ];
 const prefix = 'apps/desktop/src/app/';
 const { values } = parseArgs({ options: {
+  help: { type: 'boolean', short: 'h' },
   base: { type: 'string', default: 'HEAD' },
   run: { type: 'boolean' },
   'allow-full': { type: 'boolean' },
 } });
 
-const base = git('rev-parse', '--verify', '--end-of-options', values.base + '^{commit}').trim();
+if (values.help) {
+  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--run [--allow-full]]
+
+Preview checks for staged, unstaged and untracked changes against HEAD by default.
+Use --base to compare against another local commit, for example origin/dev.
+Use --run for focused checks; add --allow-full to execute a broad fallback.
+This command does not fetch or replace the release test suite.`);
+  process.exit(0);
+}
+
+const revision = spawnSync('git', ['rev-parse', '--verify', '--end-of-options', values.base + '^{commit}'], {
+  cwd, encoding: 'utf8',
+});
+if (revision.error) throw revision.error;
+if (revision.status !== 0) {
+  console.error('Could not resolve test base ' + JSON.stringify(values.base) + ' as a local Git commit.');
+  process.exit(2);
+}
+const base = revision.stdout.trim();
 // --no-renames ensures removal of an old name is visible even after a rename.
 const changed = [...new Set([
   ...split(git('diff', '--no-ext-diff', '--name-only', '--no-renames', '-z', base, '--')),

@@ -70,3 +70,14 @@ test('execution preserves argument boundaries and stops at the first failure', {
   assert.equal(result.status, 17);
   assert.deepEqual(result.stdout.match(/^invoked .+$/gm), ['invoked <nx>', 'invoked <run>', 'invoked <desktop:check>']);
 });
+
+test('help explains the broad fallback and invalid bases fail without running tests', t => {
+  const f = fixture(t);
+  assert.match(f.run('--help'), /Usage: pnpm test:changed/);
+  const result = spawnSync(process.execPath, ['tools/retest-changed.mjs', '--base', 'missing-ref', '--run'], {
+    cwd: f.cwd, encoding: 'utf8',
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Could not resolve test base "missing-ref"/);
+  assert.doesNotMatch(result.stdout, /nx run/);
+});
