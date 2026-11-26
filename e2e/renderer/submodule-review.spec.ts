@@ -208,6 +208,28 @@ test('submodule review explains each state with exact commits and invokes only t
   await expect(opener(page)).toBeFocused();
 });
 
+test('submodule review can show both full commit IDs without a Git request', async ({ page }) => {
+  await setup(page);
+  await open(page);
+  await page.setViewportSize({ width: 360, height: 720 });
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const lane = dialog.getByRole('listitem', { name: 'Submodule vendor/lane-engine', exact: true });
+  const recorded = lane.locator('.metadata code').nth(0);
+  const checkout = lane.locator('.metadata code').nth(1);
+  const full = dialog.getByRole('checkbox', { name: 'Show full commit IDs' });
+  await expect(recorded).toHaveText('a'.repeat(10));
+  await expect(checkout).toHaveText('b'.repeat(10));
+  await full.check();
+  await expect(recorded).toHaveText('a'.repeat(40));
+  await expect(checkout).toHaveText('b'.repeat(40));
+  expect(await lane.locator('.metadata dd').evaluateAll(values =>
+    values.every(value => value.scrollWidth <= value.clientWidth + 1))).toBe(true);
+  await full.uncheck();
+  await expect(recorded).toHaveText('a'.repeat(10));
+  expect(await page.evaluate(() => (window as any).__submoduleReview.calls.map((call: any) => call.command)))
+    .toEqual(['submodule_state_review']);
+});
+
 test('filters by path or name and treats untracked-only checkouts as needing attention', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => { (window as any).__submoduleReview.mixed = true; });

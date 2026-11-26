@@ -42,6 +42,8 @@ import { submoduleFindings } from './submodule-findings';
                 </label>
                 <label><input type="checkbox" [checked]="attentionOnly()" [disabled]="!!confirming() || syncing()"
                   (change)="attentionOnly.set($any($event.target).checked)" />Needs attention only</label>
+                <label><input type="checkbox" [checked]="fullCommitIds()" [disabled]="!!confirming() || syncing()"
+                  (change)="fullCommitIds.set($any($event.target).checked)" />Show full commit IDs</label>
                 <small aria-live="polite">{{ visibleEntries().length }} of {{ result.entries.length }} shown</small>
               </div>
               <div class="bulk-actions" role="group" aria-label="All submodule actions">
@@ -77,8 +79,8 @@ import { submoduleFindings } from './submodule-findings';
                     <span class="state" [class.attention]="hasAttention(entry)">{{ hasAttention(entry) ? 'Needs attention' : 'Up to date' }}</span>
                   </div>
                   <dl class="metadata">
-                    <div><dt>Recorded</dt><dd><code>{{ shortOid(entry.indexOid) }}</code></dd></div>
-                    <div><dt>Checked out</dt><dd><code>{{ entry.checkedOut ? shortOid(entry.checkoutOid) : 'Not initialized' }}</code></dd></div>
+                    <div><dt>Recorded</dt><dd><code [title]="entry.indexOid ?? ''">{{ displayOid(entry.indexOid) }}</code></dd></div>
+                    <div><dt>Checked out</dt><dd><code [title]="entry.checkoutOid ?? ''">{{ entry.checkedOut ? displayOid(entry.checkoutOid) : 'Not initialized' }}</code></dd></div>
                     @if (entry.name) { <div class="wide"><dt>Remote update branch</dt><dd>{{ trackingBranchLabel(entry.trackingBranch) }}</dd></div> }
                     @if (entry.declaredUrl) { <div class="wide"><dt>.gitmodules URL</dt><dd>{{ entry.declaredUrl }}</dd></div> }
                     @if (entry.registeredUrl) { <div class="wide"><dt>Local URL</dt><dd>{{ entry.registeredUrl }}</dd></div> }
@@ -244,7 +246,7 @@ import { submoduleFindings } from './submodule-findings';
     .metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; margin: 12px 0; padding: 9px 10px; border-radius: 5px; background: color-mix(in srgb, var(--inspector-list) 72%, transparent); }
     .metadata div { min-width: 0; } .metadata .wide { grid-column: 1 / -1; }
     dt { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-    dd { margin: 1px 0 0; color: var(--text); font-size: 12px; } dd code { font-weight: 500; }
+    dd { margin: 1px 0 0; color: var(--text); font-size: 12px; } dd code { font-weight: 500; overflow-wrap: anywhere; }
     .findings { display: grid; gap: 5px; margin: 0 0 4px; }
     .findings li { padding: 6px 8px 6px 10px; border: 0; border-left: 3px solid var(--inspector-divider); border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--inspector-list) 58%, transparent); }
     .findings li.attention { border-left-color: var(--accent); }
@@ -254,7 +256,7 @@ import { submoduleFindings } from './submodule-findings';
     .review-summary strong { font-size: 17px; text-align: center; } .review-summary span { font-size: 12px; }
     .entry-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 14px; margin: 12px 0; color: var(--muted); }
     .entry-filters label:first-child { flex: 1 1 190px; min-width: 0; display: grid; gap: 4px; font-size: 12px; }
-    .entry-filters label:nth-child(2) { display: flex; align-items: center; gap: 6px; min-height: 34px; font-size: 12px; }
+    .entry-filters label:not(:first-child) { display: flex; align-items: center; gap: 6px; min-height: 34px; font-size: 12px; }
     .entry-filters input[type=search] { width: 100%; box-sizing: border-box; min-height: 34px; padding: 6px 8px; border: 1px solid var(--inspector-divider); border-radius: 4px; background: var(--inspector-list); color: var(--text); font: inherit; }
     .entry-filters input[type=checkbox] { accent-color: var(--accent); }
     .entry-filters input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -294,6 +296,7 @@ export class SubmoduleStateReviewComponent {
   readonly syncNotice = signal('');
   readonly filterQuery = signal('');
   readonly attentionOnly = signal(false);
+  readonly fullCommitIds = signal(false);
   readonly visibleEntries = computed(() => {
     const query = this.filterQuery().trim().toLowerCase();
     const attentionOnly = this.attentionOnly();
@@ -314,6 +317,7 @@ export class SubmoduleStateReviewComponent {
         this.syncNotice.set('');
         this.filterQuery.set('');
         this.attentionOnly.set(false);
+        this.fullCommitIds.set(false);
         void this.reload(target.submoduleTarget);
       });
     });
@@ -579,8 +583,8 @@ export class SubmoduleStateReviewComponent {
     setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(failure ? '[role=alert]' : '[data-submodule-sync]')?.focus());
   }
 
-  shortOid(oid: string | null): string {
-    return oid?.slice(0, 10) ?? 'Not recorded';
+  displayOid(oid: string | null): string {
+    return (this.fullCommitIds() ? oid : oid?.slice(0, 10)) ?? 'Not recorded';
   }
 
   async reload(submoduleTarget?: SubmoduleReviewTarget): Promise<void> {
