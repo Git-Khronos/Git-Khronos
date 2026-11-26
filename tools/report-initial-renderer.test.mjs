@@ -159,3 +159,49 @@ test('compares two emitted builds without counting lazy files or rewriting repor
     rmSync(root, { force: true, recursive: true });
   }
 });
+
+test('counts the immediate workspace import separately without counting optional features twice', () => {
+  const metadata = structuredClone(metagraph);
+  metadata.outputs['main.js'].imports.push({ kind: 'dynamic-import', path: 'workspace.js' });
+  metadata.outputs['workspace.js'] = {
+    entryPoint: 'apps/desktop/src/app/app.component.ts',
+    bytes: 50,
+    imports: [
+      { kind: 'import-statement', path: 'main.js' },
+      { kind: 'import-statement', path: './workspace-helper.js' },
+      { kind: 'dynamic-import', path: 'dialog.js' },
+    ],
+  };
+  metadata.outputs['workspace-helper.js'] = {
+    bytes: 11, imports: [{ kind: 'import-statement', path: 'core.js' }],
+  };
+  const report = initialRendererReport(index, metadata, budget);
+  assert.equal(report.initialBytes, 144);
+  assert.equal(report.warningOverageBytes, 44);
+  assert.deepEqual(report.workspaceStartup, {
+    entry: 'workspace.js',
+    additionalBytes: 61,
+    totalBytes: 205,
+    additionalAssets: [{ path: 'workspace-helper.js', bytes: 11 }, { path: 'workspace.js', bytes: 50 }],
+  });
+  delete metadata.outputs['workspace-helper.js'];
+  assert.throws(() => initialRendererReport(index, metadata, budget), /workspace-helper.js/);
+});
+
+test('also verifies on-disk bytes for the workspace startup chunks', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'khronos-workspace-startup-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const browser = join(directory, 'browser');
+  mkdirSync(browser);
+  writeFileSync(join(browser, 'index.html'), '<script src="main.js"></script>');
+  writeFileSync(join(browser, 'main.js'), '123');
+  writeFileSync(join(browser, 'workspace.js'), '12345678');
+  writeFileSync(join(directory, 'browser-stats.json'), JSON.stringify({ outputs: {
+    'main.js': { bytes: 3, imports: [{ kind: 'dynamic-import', path: 'workspace.js' }] },
+    'workspace.js': { bytes: 7, imports: [], entryPoint: 'apps/desktop/src/app/app.component.ts' },
+  } }));
+  const cli = fileURLToPath(new URL('./report-initial-renderer.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [cli, directory], { encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /asset size differ: workspace.js/);
+});

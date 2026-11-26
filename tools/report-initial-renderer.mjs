@@ -32,6 +32,52 @@ export function budgetBytes(value) {
   return bytes;
 }
 
+const workspaceEntryPoint = 'apps/desktop/src/app/app.component.ts';
+
+function buildOutput(metadata, output) {
+  const entry = Object.hasOwn(metadata.outputs ?? {}, output) ? metadata.outputs[output] : null;
+  if (!Number.isSafeInteger(entry?.bytes) || entry.bytes < 0 || !Array.isArray(entry.imports)) {
+    throw new Error(`Missing or invalid build metadata for initial asset: ${output}`);
+  }
+  return entry;
+}
+
+function staticImports(entry) {
+  return entry.imports
+    .filter(dependency => !dependency.external && (dependency.kind === 'import-statement' || dependency.kind === 'import-rule'))
+    .map(dependency => localOutputPath(dependency.path));
+}
+
+function workspaceStartupReport(metadata, initial) {
+  // StartupComponent loads AppComponent immediately via a dynamic import.
+  // Follow that one known boundary and then static edges only. Do not count
+  // optional feature chunks or describe these offline bytes as paint timing.
+  const roots = new Set();
+  for (const output of initial.keys()) {
+    for (const dependency of buildOutput(metadata, output).imports) {
+      if (dependency.external || dependency.kind !== 'dynamic-import') continue;
+      const path = localOutputPath(dependency.path);
+      if (metadata.outputs[path]?.entryPoint === workspaceEntryPoint) roots.add(path);
+    }
+  }
+  if (!roots.size) return undefined;
+  if (roots.size > 1) throw new Error('Found multiple workspace startup entry chunks.');
+  const [entry] = roots;
+  const pending = [entry];
+  const additional = new Map();
+  while (pending.length) {
+    const path = pending.pop();
+    if (initial.has(path) || additional.has(path)) continue;
+    const output = buildOutput(metadata, path);
+    additional.set(path, output.bytes);
+    pending.push(...staticImports(output));
+  }
+  const additionalAssets = [...additional].sort(([a], [b]) => a.localeCompare(b))
+    .map(([path, bytes]) => ({ path, bytes }));
+  const additionalBytes = additionalAssets.reduce((sum, asset) => sum + asset.bytes, 0);
+  return { entry, additionalBytes, additionalAssets };
+}
+
 // Include exactly the emitted entry files and their static import graph.
 // Assets behind a dynamic import don't contribute unless the index eagerly
 // preloads them or another initial file also statically imports them.
@@ -43,16 +89,9 @@ export function initialRendererReport(html, metadata, budget) {
   while (pending.length) {
     const output = pending.pop();
     if (seen.has(output)) continue;
-    const entry = Object.hasOwn(metadata.outputs ?? {}, output) ? metadata.outputs[output] : null;
-    if (!Number.isSafeInteger(entry?.bytes) || entry.bytes < 0 || !Array.isArray(entry.imports)) {
-      throw new Error(`Missing or invalid build metadata for initial asset: ${output}`);
-    }
+    const entry = buildOutput(metadata, output);
     seen.set(output, entry.bytes);
-    for (const dependency of entry.imports) {
-      if (!dependency.external && (dependency.kind === 'import-statement' || dependency.kind === 'import-rule')) {
-        pending.push(localOutputPath(dependency.path));
-      }
-    }
+    pending.push(...staticImports(entry));
     let metadataInputBytes = 0;
     for (const [input, contribution] of Object.entries(entry.inputs ?? {})) {
       const bytes = contribution?.bytesInOutput;
@@ -68,8 +107,10 @@ export function initialRendererReport(html, metadata, budget) {
   const initialBytes = [...seen.values()].reduce((sum, bytes) => sum + bytes, 0);
   const warningBytes = budgetBytes(budget?.maximumWarning);
   const errorBytes = budgetBytes(budget?.maximumError);
+  const workspace = workspaceStartupReport(metadata, seen);
   return {
     initialBytes, warningBytes, errorBytes,
+    ...(workspace ? { workspaceStartup: { ...workspace, totalBytes: initialBytes + workspace.additionalBytes } } : {}),
     warningOverageBytes: Math.max(0, initialBytes - warningBytes),
     errorHeadroomBytes: errorBytes - initialBytes,
     assets: [...seen].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => ({ path, bytes })),
@@ -90,7 +131,7 @@ function readRendererBuild(directory, budget) {
     readFileSync(join(browser, 'index.html'), 'utf8'),
     JSON.parse(readFileSync(join(directory, 'browser-stats.json'), 'utf8')), budget,
   );
-  for (const asset of report.assets) {
+  for (const asset of [...report.assets, ...(report.workspaceStartup?.additionalAssets ?? [])]) {
     const file = statSync(join(browser, asset.path));
     if (!file.isFile() || file.size !== asset.bytes) {
       throw new Error(`Build metadata and emitted asset size differ: ${asset.path}`);
@@ -159,5 +200,6 @@ function recordRendererReport(directory, report, json) {
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
+  if (report.workspaceStartup) console.log(`Workspace startup assets: ${report.workspaceStartup.totalBytes} bytes including the initial renderer; ${report.workspaceStartup.additionalBytes} bytes loaded after bootstrap.`);
   console.log(`Initial renderer: ${report.initialBytes} bytes (${report.warningOverageBytes} over warning, ${report.errorHeadroomBytes} error headroom). Report: ${destination}`);
 }

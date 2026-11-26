@@ -112,6 +112,12 @@ development preview initialization in the emitted assets. See
 The production Nx build now treats a renderer above that same 900,000-byte
 warning threshold as a failed build. It still writes `initial-renderer.json`
 so the eager assets that contributed to the overage can be inspected.
+The same report now separately counts the immediate workspace import and
+its static dependencies, excluding feature chunks loaded on demand. In the
+production output for `2e5998e`, the initial renderer is 292,792 bytes and
+the workspace adds 1,051,693 bytes, for 1,344,485 bytes total. These are
+raw on-disk asset sizes, not a performance measurement or a change to
+the initial-bundle budget.
 Angular now rejects an individual component stylesheet over 76,000 bytes
 instead of warning at 76,000 and waiting until 80,000 to fail.
 
