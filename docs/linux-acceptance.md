@@ -3487,6 +3487,29 @@ pnpm nx exec -p desktop --excludeTaskDependencies -- \
   python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$package"
 ```
 
+On Ubuntu 26.04 amd64, this setup supplies the test server and its
+`libwrap.so.0` dependency without installing either package:
+
+```sh
+repo=$(pwd)
+sshd_dir=$(mktemp -d)
+(
+  cd "$sshd_dir" &&
+  apt-get download openssh-server libwrap0 &&
+  dpkg-deb -x ./openssh-server_*.deb extracted &&
+  dpkg-deb -x ./libwrap0_*.deb extracted &&
+  cd "$repo" &&
+  GIT_KHRONOS_SSHD="$sshd_dir/extracted/usr/sbin/sshd" \
+    LD_LIBRARY_PATH="$sshd_dir/extracted/usr/lib/x86_64-linux-gnu" \
+    pnpm nx run desktop:native-gitlab --output-style=stream -- --package "$package"
+)
+```
+
+Using that setup, all 50 GitLab scenarios passed in 58.6 seconds against the
+Debian archive built from `99016b7`, including the catalogue and the real
+pinned loopback SSH clone. See
+`target/local-review/native-gitlab-99016b7-private-ssh.log`.
+
 Its private CA and SSH identity/known-hosts configuration apply only to the owned
 application process. The SSH server accepts one read-only test repository command.
 It changes no host trust, keys, agent, accounts or system service and contacts no
