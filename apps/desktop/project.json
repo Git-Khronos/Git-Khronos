@@ -210,6 +210,7 @@
       "options": { "command": "playwright test" },
       "configurations": {
         "worktrees": { "command": "playwright test 'e2e/renderer/(worktree-|branch-checkout-worktree|submodule-review)'" },
+        "sparse-checkout": { "command": "playwright test 'e2e/renderer/sparse-(checkout|left-paths)[.]spec[.]ts$'" },
         "submodules": { "command": "playwright test 'e2e/renderer/submodule-review[.]spec[.]ts$'" },
         "working-files": { "command": "playwright test 'e2e/renderer/(working-(tree|file|directory)|unstaged-summary|discard-recovery|editor-draft-recovery|file-tools)'" },
         "recaps": { "command": "playwright test 'e2e/renderer/unstaged-summary[.]spec[.]ts$'" },

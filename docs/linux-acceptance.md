@@ -3300,6 +3300,7 @@ For a feature that spans multiple specs, use
 | `editor` | File editing, draft recovery and external file tools without the other working-tree cases |
 | `discard` | Discard review, recovery, and whole-file, hunk, and line action lifecycle |
 | `branches` | Branch navigation, scoped reference actions, branch workflows |
+| `sparse-checkout` | Sparse toolbar, directory selection, disable review, and paths left outside the selection |
 | `stash` | Stash creation, review, restoration and deletion |
 | `transport` | Fetch, pull, push, remote cleanup and authentication UI |
 | `gitlab` | Catalogue, clone, fork browsing and creation |
@@ -4268,6 +4269,7 @@ Run this when changing the sparse-checkout toolbar, its confirmation dialog,
 or native sparse-checkout commands, without running the full acceptance suite:
 
 ```sh
+pnpm nx run desktop:e2e:sparse-checkout
 pnpm nx run desktop:native-sparse-checkout --output-style=stream -- --package "$archive"
 ```
 
