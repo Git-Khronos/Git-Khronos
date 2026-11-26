@@ -3393,6 +3393,11 @@ and discard-limit (4). The four reports in
 above. This did not change the host installation or qualify the WSLg pinned
 shortcut or a production signature.
 
+A second isolated Ubuntu 26.04 install of the same archive passed worktrees
+(29 scenarios), GitLab fork/catalogue (11), and working-tree recaps (28).
+For those installed-executable and desktop-entry reports, see
+`target/local-review/installed-worktrees-gitlab-c76209d/reports/`.
+
 Local Ubuntu 26.04 checkpoint: the archive built from `ef415ca` with SHA-256
 `48692296e3ef2d05654eee55b7b4c98fa5ea297ab3199e249ce60cfa7a41466e`
 passed extracted-package GitLab fork/catalogue (11 scenarios), working-tree
