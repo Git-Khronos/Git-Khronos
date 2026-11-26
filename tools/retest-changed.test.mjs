@@ -149,3 +149,13 @@ test('a native harness unit-test edit selects no browser or package run', t => {
   f.write('shared.ts');
   assert.match(f.run(), /desktop:check[\s\S]*desktop:native-harness-test/);
 });
+
+test('package specs select only the package lane when registered in Nx', t => {
+  const f = fixture(t);
+  f.write('tools/package-deb.test.mjs');
+  const plan = f.run();
+  assert.match(plan, /desktop:package-test/);
+  assert.doesNotMatch(plan, /desktop:check|desktop:e2e/);
+  f.write('tools/not-registered.test.mjs');
+  assert.match(f.run(), /desktop:check/);
+});

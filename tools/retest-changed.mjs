@@ -64,9 +64,22 @@ const changed = [...new Set([
   ]),
 ])].sort();
 
+let desktopTargets;
+function targets() {
+  return desktopTargets ??= JSON.parse(readFileSync(join(cwd, 'apps/desktop/project.json'), 'utf8')).targets;
+}
+
+function isPackageTest(path) {
+  if (!/^tools\/[a-z0-9-]+\.test\.mjs$/.test(path) || !existsSync(join(cwd, path))) return false;
+  const command = targets()['package-test']?.options?.command ?? '';
+  return /^node --test(?: tools\/[a-z0-9-]+\.test\.mjs)+$/.test(command)
+    && command.split(' ').includes(path);
+}
+
 const selected = new Set();
 const specs = [];
 let retestTools = false;
+let packageTests = false;
 let nativeHarnessTests = false;
 let nativeHarnessSource = false;
 let broad = false;
@@ -84,6 +97,9 @@ for (const path of changed) {
     nativeHarnessTests = true;
     nativeHarnessSource = true;
     plan = 'native harness unit tests; packaged scenario validation is separate';
+  } else if (isPackageTest(path)) {
+    packageTests = true;
+    plan = 'package tooling tests';
   } else if (/^e2e\/renderer\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
     specs.push(path);
     plan = 'individual renderer spec';
@@ -103,8 +119,7 @@ for (const path of changed) {
 
 function filtersFor(selectedProfiles) {
   if (!selectedProfiles.size) return [];
-  const project = JSON.parse(readFileSync(join(cwd, 'apps/desktop/project.json'), 'utf8'));
-  const configurations = project.targets.e2e.configurations;
+  const configurations = targets().e2e.configurations;
   // Only infer coverage for a plain Playwright file regex. If a profile gains
   // flags or a wrapper, keep the direct spec rather than risking a missed test.
   return [...selectedProfiles].flatMap(profile => {
@@ -116,10 +131,14 @@ function filtersFor(selectedProfiles) {
 
 const filters = broad ? [] : filtersFor(selected);
 const directSpecs = specs.filter(path => !filters.some(filter => filter.test(path)));
+const extraChecks = [
+  ...(packageTests ? [['desktop:package-test']] : []),
+  ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
+];
 const commands = broad
-  ? [['desktop:check'], ['desktop:test'], ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []), ['desktop:e2e']]
+  ? [['desktop:check'], ['desktop:test'], ...extraChecks, ['desktop:e2e']]
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
-     ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
+     ...extraChecks,
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
      ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
 const isBrowser = command => command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:');
