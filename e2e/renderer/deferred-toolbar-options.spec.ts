@@ -37,8 +37,14 @@ test('split menu options are absent at startup and the latest opener takes owner
     await toggle(page, pull).press('Enter');
     await expect(menu(page, fetch)).toHaveCount(0);
     await expect(menu(page, pull).getByRole('status')).toHaveText('Loading toolbar options…');
+    const controlledId = await toggle(page, pull).getAttribute('aria-controls');
+    expect(controlledId).toBe('pull-options-menu');
+    const loadingMenu = await menu(page, pull).elementHandle();
+    expect(await loadingMenu.evaluate(node => node.id)).toBe(controlledId);
     held.release();
     await expect(menu(page, pull).getByRole('menuitem').first()).toBeFocused();
+    expect(await loadingMenu.evaluate(node => node === document.getElementById(node.id))).toBe(true);
+    await loadingMenu.dispose();
     await expect(menu(page, fetch)).toHaveCount(0);
     expect(held.requests()).toBe(1);
     await page.keyboard.press('Escape');
