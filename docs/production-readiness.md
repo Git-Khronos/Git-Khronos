@@ -1,6 +1,6 @@
 # Production-readiness review
 
-Snapshot: 2026-11-20. This is an evidence-bounded work-in-progress
+Snapshot: 2026-11-26. This is an evidence-bounded work-in-progress
 review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
@@ -29,14 +29,18 @@ User-visible changes to call out in the release notes:
 - Branch and tag menus copy the full Git ref so overlapping short names
   remain unambiguous.
 
-The latest portable test-publisher package includes the WSLg startup
-mitigation, the working-tree keyboard and scroll fixes, and the toolbar
-stash-review refresh fix. The exact archive passed all 52 installed
-release checks in one run across five baselines, three WSLg XWayland
-launches, and the offline signed-update rehearsal. Both X11 launch paths
-and responsive renderer recovery passed after upgrading from public
-0.1.5 on each baseline, without changing the dirty checkout. The actual
-Windows taskbar pin has not been exercised.
+The current portable test-publisher package includes the worktree-focus
+fix. Its exact archive (`46247c359ff192d6e2e04183e583f671d5232b968ae42092e5013d03e815765f`)
+passed all 52 installed release checks in one run across five baselines and
+all 331 Ubuntu 22.04 publisher scenarios. It also passed the offline
+test-key updater rehearsal, then an APT upgrade from public 0.1.5 on each
+baseline. Both X11 launch paths and renderer recovery passed after the
+upgrade; each dirty fixture's branch, index, staged and unstaged changes,
+and untracked file remained unchanged. See the exact-artifact reports in
+[the package evidence](linux-acceptance.md#latest-016-local-qualification).
+The actual Windows taskbar pin has not been exercised. A prior archive
+passed three WSLg XWayland launches; those results do not qualify the newer
+archive.
 See [the package evidence](linux-acceptance.md#latest-016-local-qualification).
 The test publisher key does not qualify production signing. Public release
 still requires a production-key build from the release tag, exact-artifact
@@ -75,10 +79,11 @@ test cannot establish their trust in the production publisher.
 
 ### Release operator checklist
 
-Read-only hosted preflight on 2026-11-25: public latest is still `v0.1.5`;
-no remote `v0.1.6` tag exists. The repository variables endpoint listed
-no variables, and looking up `signed-release` returned HTTP 404 to the
-checking account. Treat the publisher key and environment protections as
+Read-only hosted preflight on 2026-11-26: public latest is still `v0.1.5`;
+the requested `v0.1.6` tag is missing or unreadable, the production public
+key is missing/malformed/unreadable, and the `signed-release` environment
+is missing or unreadable to the checking account. The publication switch
+is not confirmed. Treat the publisher key and environment protections as
 unverified until a repository administrator confirms them. Before
 enabling publication, confirm that `signed-release` has required
 reviewers and only allows deployment from the protected `main` branch.

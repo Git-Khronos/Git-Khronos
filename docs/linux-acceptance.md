@@ -24,7 +24,27 @@ the provided package into its isolated fixtures.
 
 ## Latest 0.1.6 local qualification
 
-The current test-key archive includes the changed-files focus fix, the
+The newest worktree-focus test-key archive has SHA-256
+`46247c359ff192d6e2e04183e583f671d5232b968ae42092e5013d03e815765f`.
+It passed all 52 installed reports in one clean run across Ubuntu 22.04,
+24.04, and 26.04 and Debian 12 and 13. The Ubuntu 22.04 publisher
+environment passed all 331 scenarios, and the strict test-publisher
+verifier accepted reports for this exact archive. The offline test-key
+updater rehearsal also accepted the verified bytes and rejected a modified
+body.
+
+The same exact archive was then installed as an APT upgrade from public
+0.1.5 on all five baselines. Each upgrade preserved a dirty checkout's
+branch, index, staged and unstaged changes, and untracked file; both X11
+launch paths and repeated renderer recovery passed, followed by a fresh
+interactive launch. Logs are under
+`target/local-review/current-exact-upgrade-launch-20261126T133118Z/`.
+The clean acceptance matrix and verifier are under
+`target/local-review/jammy-worktree-qualification-low-load.RIvp3O/`.
+The test-key artifact is not production-signed or published; these checks
+do not qualify the actual Windows-pinned WSLg shortcut or a hosted release.
+
+The preceding test-key archive includes the changed-files focus fix, the
 toolbar keyboard recovery fix, and the earlier discard, recap, workspace,
 and GitLab changes. Its SHA-256 is
 `1415e37857fea3f57a2dd5f58f87f6fab05e5404c91f5a383a05a5d741e6a5b7`.
