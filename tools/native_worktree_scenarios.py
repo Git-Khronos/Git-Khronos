@@ -244,6 +244,30 @@ def occupied_branch_navigation(driver, fixtures, report):
     driver.key('\ue00c')  # Escape dismisses the error without retrying the read.
     driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
     report['scenarios'].append('native-occupied-branch-review-refuses-changed-owner-without-fallback-checkout')
+
+    # A registered checkout can disappear while the ownership dialog is open.
+    # Review the now-unavailable registration without pruning or repairing it.
+    open_ui(driver, source)
+    open_review(ref='owned/reassigned-topic')
+    parked_owner = owner.with_name(owner.name + '-parked')
+    owner.rename(parked_owner)
+    registration = 'gk-worktree-registration-dialog [role=dialog]'
+    try:
+        driver.click_visible(review + ' button', 'Open existing checkout')
+        driver.wait("""return document.querySelector('gk-checkout-worktree-dialog [role=alert]')
+          ?.textContent.includes('became unavailable during review')""")
+        driver.click_visible(review + ' button', 'Review registrations…')
+        driver.wait(f"""return document.querySelector({json.dumps(registration)})
+          ?.textContent.includes({json.dumps(str(owner))}) && !document.querySelector({json.dumps(review)})""")
+        at(source)
+        assert not owner.exists(), 'Read-only registration review recreated the missing worktree'
+        driver.click_visible(registration + ' button', 'Close')
+        driver.wait('return !document.querySelector(' + json.dumps(registration) + ')')
+    finally:
+        parked_owner.rename(owner)
+    assert footprints() == changed, 'Registration review modified a checkout, index, configuration or reference'
+    report['scenarios'].append('native-occupied-branch-review-opens-read-only-registration-report-for-missing-owner')
+
     report['occupiedBranchNavigation'] = {
         'source': str(source), 'owner': str(owner), 'branch': branch,
         'before': before, 'afterCancel': after_cancel, 'afterNavigation': after_navigation,
