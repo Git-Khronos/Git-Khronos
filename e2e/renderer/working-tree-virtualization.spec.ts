@@ -45,7 +45,8 @@ function filePath(section: 'unstaged' | 'staged', index: number): string {
 
 async function loadLargeWorkingTree(page: Page): Promise<void> {
   await page.goto('/');
-  await expect(page.locator('.commit-row').first()).toBeVisible();
+  // Working files are ready independently of the asynchronously loaded graph.
+  await expect(page.getByRole('button', { name: /^Unstaged Files/ })).toBeVisible();
   await page.evaluate((count) => {
     interface Entry {
       path: string;
