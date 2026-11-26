@@ -3406,6 +3406,14 @@ Reports under `test-results/native/`: `discard-limit-1795718233879180603`,
 `discard-subset-1795718253665442799`, `discard-large-1795718266387403960`,
 and `working-tree-recaps-1795718289364085349`.
 
+The toolbar accessibility and deferred-history rebuild from `ae0157d`,
+SHA-256 `bcdba8a5808da71f45c55028834212d29b7047ffb5ac5468c69229574c9da6a5`,
+passed all 19 extracted-package smoke scenarios on Ubuntu 26.04
+(`test-results/native/smoke-1795720692491891013`). This includes real
+keyboard Tab returning from the toolbar menu after a focus gap. The matching
+source also passed the production renderer budget check (292,792 initial
+bytes) and targeted delayed-history and toolbar accessibility browser checks.
+
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
