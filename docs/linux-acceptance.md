@@ -3268,6 +3268,7 @@ For a feature that spans multiple specs, use
 | `branches` | Branch navigation, scoped reference actions, branch workflows |
 | `stash` | Stash creation, review, restoration and deletion |
 | `gitlab` | Catalogue, clone, fork browsing and creation |
+| `graph` | Representative graph layout, connectivity, scrolling and virtualization |
 | `history` | History search, paging, blame, comparison and replay |
 | `workspace` | Repository workspace, tab and sidebar interactions |
 | `keyboard` | Command palette, shortcut reference and review-dialog keyboard handling |
