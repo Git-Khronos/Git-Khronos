@@ -353,3 +353,15 @@ test('worktree edits include branch reservation and recap edits select the recap
   assert.match(plan, /"desktop:native-working-tree-recaps"/);
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
 });
+
+test('GitLab SSH fixture changes select the catalogue only, not the fork UI suite', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'candidate.deb\n');
+  f.commit();
+  f.write('candidate.deb');
+  f.write('tools/native_gitlab_ssh_fixture.py');
+  f.write('tools/native_gitlab_ssh_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.equal([...plan.matchAll(/"desktop:native-gitlab"/g)].length, 1);
+  assert.doesNotMatch(plan, /"desktop:native-gitlab-fork-ui"|desktop:e2e|desktop:check/);
+});

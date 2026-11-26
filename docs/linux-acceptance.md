@@ -3477,8 +3477,9 @@ set `GIT_KHRONOS_SSHD` to an absolute private server path when it is not install
 at `/usr/sbin/sshd`. For OpenSSH builds with separate `sshd-session` and
 `sshd-auth` executables, keep both under the same extracted prefix's
 `usr/lib/openssh`; the fixture selects them automatically. The server
-and both helpers must be able to load their distribution libraries (check
-each with `ldd` when extracting without installing). To reproduce only the
+and both helpers must be able to load their distribution libraries. The
+catalogue target checks for missing private helpers and loader errors during
+package preflight, before starting the app. To reproduce only the
 fork catalogue UI and its HTTPS fixture without SSH, use `--suite gitlab-fork-ui`.
 
 ```sh

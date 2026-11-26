@@ -1575,8 +1575,8 @@ def main():
             assert {"libssl.so.3", "libcrypto.so.3"} <= set(needed), needed
             report["nativeTlsPackage"] = {"depends": dependencies, "neededLibraries": needed}
         if args.suite == "gitlab":
-            from native_gitlab_ssh_fixture import resolve_sshd
-            resolve_sshd()
+            from native_gitlab_ssh_fixture import preflight_sshd
+            preflight_sshd(fixtures.env)
         if args.suite in ("full", "environment", "lfs-counts"):
             probe_lfs_count_toolchain(fixtures, report)
         progress.enter_phase("native-session-start")

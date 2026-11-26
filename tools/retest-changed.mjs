@@ -38,6 +38,8 @@ const rendererFixtureSpecs = new Map([
 const packagedScenarios = new Map([
   ['tools/native_gitlab_fork_scenarios.py', ['native-gitlab-fork-ui']],
   ['tools/native_gitlab_scenarios.py', ['native-gitlab', 'native-gitlab-fork-ui']],
+  ['tools/native_gitlab_ssh_fixture.py', ['native-gitlab']],
+  ['tools/native_gitlab_ssh_scenarios.py', ['native-gitlab']],
   ['tools/native_unstaged_summary_scenarios.py', ['native-working-tree-recaps']],
   ['tools/native_worktree_scenarios.py', ['native-worktrees', 'native-worktree-reservation']],
   ['tools/native_sparse_checkout_scenarios.py', ['native-sparse-checkout']],

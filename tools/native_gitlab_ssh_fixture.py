@@ -33,10 +33,13 @@ def serve_upload(repository, journal, git):
                                 **({"GIT_PROTOCOL": os.environ["GIT_PROTOCOL"]} if "GIT_PROTOCOL" in os.environ else {})})
 
 
-def sshd_helper_config(sshd):
+def sshd_helpers(sshd):
     helpers = sshd.parent.parent / "lib/openssh"
-    session = helpers / "sshd-session"
-    auth = helpers / "sshd-auth"
+    return helpers / "sshd-session", helpers / "sshd-auth"
+
+
+def sshd_helper_config(sshd):
+    session, auth = sshd_helpers(sshd)
     if session.is_file() and auth.is_file():
         return f"SshdSessionPath {json.dumps(str(session))}\nSshdAuthPath {json.dumps(str(auth))}\n"
     return ""
@@ -51,6 +54,33 @@ def resolve_sshd():
             "to an extracted sshd. The gitlab-fork-ui suite does not require SSH."
         )
     return sshd
+
+
+def preflight_sshd(env):
+    """Detect incomplete private prefixes before spending time in the webview."""
+    sshd = resolve_sshd()
+    helpers = sshd_helpers(sshd)
+    selected = helpers if any(path.exists() for path in helpers) else ()
+    for executable in (sshd, *selected):
+        if not executable.is_file() or not os.access(executable, os.X_OK):
+            raise RuntimeError(
+                f"OpenSSH fixture helper {executable.name} is missing or not executable. "
+                "Keep both helpers from the same package in the extracted prefix."
+            )
+        try:
+            probe = subprocess.run([str(executable), "-V"], stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                   env=env | {"LC_ALL": "C"}, timeout=5, check=False)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise RuntimeError(f"Could not start OpenSSH fixture executable {executable.name}.") from error
+        # Some OpenSSH releases reject -V. Only diagnose a loader error here;
+        # the fixture's later sshd -t invocation validates the actual config.
+        if probe.returncode and b"error while loading shared libraries:" in probe.stderr:
+            raise RuntimeError(
+                f"OpenSSH fixture executable {executable.name} could not load its shared libraries. "
+                "Use a prepared test image or supply the extracted package dependencies. "
+                "For HTTPS-only fork UI coverage, use gitlab-fork-ui."
+            )
 
 
 def start_gitlab_ssh(fixtures, gate, children, report):

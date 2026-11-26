@@ -111,3 +111,32 @@ class GitLabSshFixtureTests(unittest.TestCase):
                 self.assertEqual(environment["GIT_CONFIG_NOSYSTEM"], "1")
                 self.assertNotIn("SSH_AUTH_SOCK", environment)
             self.assertEqual(journal.read_text(), '{"uploadPack": true}\n')
+
+    def test_preflight_reports_incomplete_prefix_or_unloadable_helper(self):
+        from native_gitlab_ssh_fixture import preflight_sshd
+
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = Path(directory) / "usr"
+            sshd = prefix / "sbin/sshd"
+            session = prefix / "lib/openssh/sshd-session"
+            auth = session.with_name("sshd-auth")
+            for binary in (sshd, session):
+                binary.parent.mkdir(parents=True, exist_ok=True)
+                binary.touch(mode=0o700)
+            env = {"LD_LIBRARY_PATH": "/owned/test-libraries"}
+            with patch.dict(os.environ, {"GIT_KHRONOS_SSHD": str(sshd)}):
+                with patch("subprocess.run", return_value=Mock(returncode=0)) as run:
+                    with self.assertRaisesRegex(RuntimeError, "sshd-auth.*missing"):
+                        preflight_sshd(env)
+                    auth.touch(mode=0o700)
+                    # Older helpers may not implement -V, but the loader may still work.
+                    run.return_value = Mock(returncode=1, stderr=b"unknown option -- V")
+                    preflight_sshd(env)
+                    self.assertEqual(run.call_args.args[0], [str(auth), "-V"])
+                    self.assertEqual(run.call_args.kwargs["env"], env | {"LC_ALL": "C"})
+                    run.side_effect = [
+                        Mock(returncode=0),
+                        Mock(returncode=127, stderr=b"error while loading shared libraries: libwrap.so.0"),
+                    ]
+                    with self.assertRaisesRegex(RuntimeError, "sshd-session.*shared libraries"):
+                        preflight_sshd(env)
