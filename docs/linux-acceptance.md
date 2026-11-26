@@ -3278,7 +3278,7 @@ Add `--list` to see the selected tests or `--grep='test title'` to narrow
 further. Profiles group renderer specs, not all dependencies of a code change.
 For shared UI or IPC changes, include adjacent specs or use the full suite.
 
-To plan a selection from the current diff, use `node tools/retest-changed.mjs`.
+To plan a selection from the current diff, use `pnpm test:changed`.
 It defaults to `HEAD` (staged, unstaged and untracked changes); use
 `--base origin/dev` to include differences against that local tracking ref.
 Add `--run` to execute. Recognized renderer components select their profile,

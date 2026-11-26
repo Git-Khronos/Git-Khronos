@@ -14,6 +14,7 @@
     "build": "nx run desktop:build",
     "test": "nx run-many -t test",
     "test:e2e": "playwright test",
+    "test:changed": "node tools/retest-changed.mjs",
     "lint": "nx run-many -t lint",
     "check": "nx run-many -t check",
     "tauri": "tauri",
