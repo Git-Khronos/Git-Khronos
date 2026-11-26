@@ -3143,8 +3143,9 @@ fingerprint prevents an otherwise passing command from being reported as
 a pass. Ignored files and edits reverted before the final check are not
 covered; use `--snapshot REF` for a run isolated from live checkout edits.
 
-A named validation that includes `desktop:e2e` (directly or via an explicit
-`run-many --targets` list) also writes optional
+A named validation that includes `desktop:e2e`, `desktop:e2e-quick`, or
+`desktop:e2e-webkit` (directly or via an explicit `run-many --targets` list)
+also writes optional
 `renderer-progress.json` once Playwright knows the test plan. The status
 command reports how many distinct tests have returned a result, total
 attempts including retries, and the latest outcome for each counted test.
@@ -3255,6 +3256,30 @@ missing from the store, setup fails rather than using the live checkout.
 `preparing.json` records the pinned commit during setup; `started.json`
 means Nx actually started, and both receipts identify the isolated directory.
 Use normal mode for Git-history-dependent targets such as `nx affected`.
+
+When a renderer snapshot finishes, the runner removes the snapshot's
+`node_modules` and Angular/Nx caches. It keeps the exported source, receipts,
+logs, traces, and screenshots. An abrupt host stop can leave caches behind.
+To reclaim the main checkout's regenerable Rust debug output, stop active
+builds and run `task clean:debug`; release bundles and reports are retained.
+Avoid the broader `task clean` when keeping packages or local evidence.
+
+For Jammy qualification, archive the verified package, its checksum, source
+identity, logs, and reports—not the per-run Cargo target, package registry,
+pnpm store, or renderer caches. Reuse a shared cache outside the evidence
+directory when the host and toolchain are compatible. To reclaim old caches
+from the known archived Jammy layout, stop qualification jobs and run:
+
+```sh
+task clean:archives                        # Preview eligible caches (seven days old)
+task clean:archives -- --apply             # Remove only the listed regenerable caches
+task clean:archives -- --older-days 1      # Preview a shorter retention window
+```
+
+The cleanup skips a held package build lock, symlinked paths, and paths with
+mounted directories. Release bundles, source snapshots, screenshots, and
+logs are excluded. These commands free space inside Linux; they do not
+shrink the WSL virtual disk file on Windows.
 
 The lightweight lifecycle tests include the actual CLI with a private fake
 package-manager executable; they never change the user's PATH or launch a build:

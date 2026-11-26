@@ -165,16 +165,21 @@ process.stdout.write(process.env.PLAYWRIGHT_PORT + ' reuse=' + process.env.PLAYW
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
   delete env.PLAYWRIGHT_PORT;
   env.PLAYWRIGHT_REUSE_SERVER = '1';
-  const mixed = spawnSync(process.execPath, [launcher, 'run', join(root, 'mixed'),
-    'run-many', '--targets=e2e,e2e-webkit', '--projects=desktop'], { cwd: root, env });
-  assert.notEqual(mixed.status, 0);
-  assert.match(String(mixed.stderr), /separate validation directories/);
+  for (const targets of ['e2e,e2e-webkit', 'e2e,e2e-quick']) {
+    const mixed = spawnSync(process.execPath, [launcher, 'run', join(root, 'mixed'),
+      'run-many', `--targets=${targets}`, '--projects=desktop'], { cwd: root, env });
+    assert.notEqual(mixed.status, 0);
+    assert.match(String(mixed.stderr), /separate validation directories/);
+  }
   for (const [name, override, args] of [
     ['auto', undefined, ['run', 'desktop:e2e']],
     ['explicit', occupied, ['run', 'desktop:e2e']],
     ['bare', undefined, ['desktop:e2e']],
     ['many', undefined, ['run-many', '--targets=test,e2e', '--projects=desktop']],
     ['many-short', undefined, ['run-many', '-t', 'check,e2e', '-p', 'desktop']],
+    ['quick', undefined, ['desktop:e2e-quick']],
+    ['quick-shorthand', undefined, ['e2e-quick', 'desktop']],
+    ['quick-many', undefined, ['run-many', '--targets=check,e2e-quick', '--projects=desktop']],
     ['webkit', undefined, ['desktop:e2e-webkit']],
     ['webkit-shorthand', undefined, ['e2e-webkit', 'desktop']],
     ['webkit-many', undefined, ['run-many', '--targets=check,e2e-webkit', '--projects=desktop']],
@@ -522,6 +527,10 @@ if (args[0] === 'install') {
   if (process.env.FIXTURE_FAIL_INSTALL === '1') process.exit(3);
   fs.writeFileSync(process.env.FIXTURE_SPEC, 'live edit during validation');
   fs.writeFileSync('offline-install', 'owned dependency setup');
+  for (const path of ['node_modules', '.angular/cache', '.nx/cache']) {
+    fs.mkdirSync(path, { recursive: true });
+    fs.writeFileSync(path + '/owned-cache', 'generated and disposable');
+  }
 } else {
   assert.deepEqual(args, ['nx', 'run', 'desktop:e2e']);
   assert.equal(fs.readFileSync('offline-install', 'utf8'), 'owned dependency setup');
@@ -542,6 +551,10 @@ if (args[0] === 'install') {
     for (const receipt of ['started.json', 'result.json']) {
       assert.equal(JSON.parse(readFileSync(join(directory, receipt), 'utf8')).rendererPort, port);
     }
+    for (const cache of ['node_modules', '.angular/cache', '.nx/cache']) {
+      assert.equal(existsSync(join(expected.commandCwd, cache)), false, cache);
+    }
+    assert.equal(readFileSync(join(expected.commandCwd, 'graph.spec.ts'), 'utf8'), 'committed test');
     assert.equal(readFileSync(spec, 'utf8'), 'live edit during validation');
     assert.equal(git('rev-parse', 'HEAD'), commit);
     assert.equal(git('worktree', 'list', '--porcelain').match(/^worktree /gm).length, 1);

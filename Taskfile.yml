@@ -244,6 +244,17 @@ tasks:
       - task: check
       - task: test
 
+  clean:archives:
+    desc: Preview old archived Linux build caches; pass --apply to remove them without removing packages or reports
+    platforms: [linux]
+    cmds:
+      - python3 tools/prune_local_build_caches.py {{.CLI_ARGS}}
+
+  clean:debug:
+    desc: Reclaim local Rust debug artifacts without removing release packages or test reports
+    cmds:
+      - cargo clean --profile dev --target-dir "{{.ROOT_DIR}}/target"
+
   clean:
     desc: Remove generated Nx, Angular, Rust, and distribution artifacts
     cmds:

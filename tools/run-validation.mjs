@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, openSync, closeSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, openSync, closeSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { delimiter, resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -73,15 +73,18 @@ if (snapshot && !commit) throw new Error('Snapshot ref does not resolve to a loc
 const directory = resolve(runDirectory);
 const commandCwd = commit ? join(directory, 'source') : process.cwd();
 if (commit && directory.includes(delimiter)) throw new Error('Snapshot run path contains Git’s path-list delimiter');
-const isDesktopRenderer = value => /^desktop:e2e(?:-webkit)?(?::[^:]+)?$/.test(value ?? '');
+const rendererTargets = new Set(['e2e', 'e2e-quick', 'e2e-webkit']);
+const isDesktopRenderer = value => {
+  const [project, target] = (value ?? '').split(':');
+  return project === 'desktop' && rendererTargets.has(target);
+};
 const nxArgs = args.includes('--') ? args.slice(0, args.indexOf('--')) : args;
-const rendererTargets = new Set(['e2e', 'e2e-webkit']);
 const selectedRendererTargets = nxArgs[0] === 'run-many' ? new Set(nxArgs.flatMap((argument, index) => {
   const flag = /^(?:-t|--target|--targets)(?:=(.*))?$/.exec(argument);
   return flag ? (flag[1] ?? nxArgs[index + 1] ?? '').split(/[,\s]+/).filter(target => rendererTargets.has(target)) : [];
 })) : new Set();
 if (selectedRendererTargets.size > 1) {
-  throw new Error('Run desktop:e2e and desktop:e2e-webkit in separate validation directories so each owns its port and renderer progress.');
+  throw new Error('Run renderer targets in separate validation directories so each owns its port and renderer progress.');
 }
 const rendererRun = (nxArgs[0] === 'run' && isDesktopRenderer(nxArgs[1]))
   || (rendererTargets.has(nxArgs[0]) && nxArgs[1] === 'desktop')
@@ -242,6 +245,19 @@ async function runValidation() {
   } finally {
     process.removeListener('SIGINT', onInterrupt);
     process.removeListener('SIGTERM', onTerminate);
+  }
+  // Renderer artifacts are written outside the exported source. Keep those
+  // and the source itself; reclaim only generated caches in our own snapshot.
+  if (commit && rendererRun) {
+    for (const cache of ['node_modules', '.angular/cache', '.nx/cache']) {
+      const path = join(commandCwd, cache);
+      try {
+        // Do not follow a replaced snapshot or cache parent/link outside it.
+        if (realpathSync(path) === path) rmSync(path, { recursive: true, force: true });
+      } catch (error) {
+        if (error.code !== 'ENOENT') writeFileSync(output, `==> Could not remove snapshot cache ${cache}: ${error.code ?? 'unknown error'}\n`);
+      }
+    }
   }
   // Persist once, outside the command catch: a reporting failure must remain a
   // nonzero worker failure, not trigger another close or masquerade as success.
