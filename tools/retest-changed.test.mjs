@@ -112,3 +112,14 @@ test('worker overrides apply only to browser tests', t => {
   assert.doesNotMatch(plan, /"desktop:owned-process-test"[^\n]*--workers/);
   assert.throws(() => f.run('--workers=0'), /positive integer/);
 });
+
+test('does not schedule a second browser run for a spec covered by the selected profile', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/worktree-lock-dialog.component.ts');
+  f.write('e2e/renderer/worktree-move.spec.ts');
+  f.write('e2e/renderer/application-updates.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /"desktop:e2e:worktrees"/);
+  assert.ok(plan.includes('application-updates[.]spec[.]ts$'));
+  assert.ok(!plan.includes('worktree-move[.]spec[.]ts$'));
+});

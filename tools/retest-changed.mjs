@@ -17,6 +17,11 @@ const profiles = [
   [/^fetch-options-dialog\.component\.(?:ts|html|scss)$/, 'transport'],
   [/^application-updates-dialog\.component\./, 'updates'],
 ];
+// Only omit direct runs for specs explicitly covered by an already selected profile.
+const coveredSpecs = {
+  worktrees: /^e2e\/renderer\/(?:worktree-(?:move|registration|repair|wip-count)|branch-checkout-worktree|submodule-review)\.spec\.ts$/,
+  updates: /^e2e\/renderer\/application-updates\.spec\.ts$/,
+};
 const prefix = 'apps/desktop/src/app/';
 const { values } = parseArgs({ options: {
   help: { type: 'boolean', short: 'h' },
@@ -90,11 +95,12 @@ for (const path of changed) {
   console.log(JSON.stringify(path) + ': ' + plan);
 }
 
+const directSpecs = specs.filter(path => ![...selected].some(profile => coveredSpecs[profile]?.test(path)));
 const commands = broad
   ? [['desktop:check'], ['desktop:test'], ['desktop:e2e']]
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
-     ...(specs.length ? [['desktop:e2e', '--', ...specs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
+     ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
 if (values.workers) {
   for (const command of commands) {
     if (command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:')) {
