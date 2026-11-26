@@ -89,6 +89,7 @@ for (const path of changed) {
       plan = profile + ' renderer profile';
     } else {
       broad = true;
+      if (/^tools\/native_[^/]+\.py$/.test(path)) nativeHarnessTests = true;
       plan = 'broader checks (shared, removed or unmapped file)';
     }
   }
@@ -111,7 +112,7 @@ function filtersFor(selectedProfiles) {
 const filters = broad ? [] : filtersFor(selected);
 const directSpecs = specs.filter(path => !filters.some(filter => filter.test(path)));
 const commands = broad
-  ? [['desktop:check'], ['desktop:test'], ['desktop:e2e']]
+  ? [['desktop:check'], ['desktop:test'], ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []), ['desktop:e2e']]
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
      ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
