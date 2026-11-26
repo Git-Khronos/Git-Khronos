@@ -21,12 +21,19 @@ export interface CheckoutWorktreeRequest {
       <section #dialog tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="checkout-worktree-title" aria-describedby="checkout-worktree-scope"
         (click)="$event.stopPropagation()" (keydown)="handleKey($event)">
         <h2 id="checkout-worktree-title">Branch is open in another checkout</h2>
-        <p id="checkout-worktree-scope"><strong>{{ request().branch }}</strong> is already checked out elsewhere.
-          Open that checkout instead of switching this one. No branch or working files will be changed.</p>
+        <p id="checkout-worktree-scope">
+          @if (request().prunable) {
+            <strong>{{ request().branch }}</strong> is registered to a checkout that cannot be opened.
+            Copy its path or review the registration from Worktrees.
+          } @else {
+            <strong>{{ request().branch }}</strong> is already checked out elsewhere.
+            Open that checkout instead of switching this one. No branch or working files will be changed.
+          }
+        </p>
         <p>Current checkout: <code>{{ request().repositoryPath }}</code></p>
         <p>Owning checkout: <code>{{ request().worktreePath }}</code></p>
         @if (request().prunable) {
-          <p role="alert">The registered checkout is missing. Review its registration from Worktrees. No repair or pruning has been performed.</p>
+          <p role="alert">No repair or pruning has been performed.</p>
         }
         @if (error(); as message) { <p role="alert" tabindex="-1">{{ message }}</p> }
         @if (copyStatus(); as message) { <p role="status">{{ message }}</p> }

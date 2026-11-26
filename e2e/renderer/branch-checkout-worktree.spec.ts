@@ -100,22 +100,6 @@ test('graph double click recovers when another checkout took the branch after th
     .filter((entry: any) => ['checkout_branch', 'refresh_repository', 'open_repository'].includes(entry.command))
     .map((entry: any) => entry.command));
   expect(await calls()).toEqual(['checkout_branch', 'refresh_repository']);
-  await page.evaluate(() => {
-    let firstAttempt = true;
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
-      writeText: async (text: string) => {
-        if (firstAttempt) { firstAttempt = false; throw new Error('Clipboard denied'); }
-        (window as any).__copiedWorktreePath = text;
-      },
-    } });
-  });
-  const copy = dialog.getByRole('button', { name: 'Copy owning path' });
-  await copy.click();
-  await expect(dialog.getByRole('status')).toHaveText('Could not copy the path. Select it above to copy it manually.');
-  await copy.click();
-  await expect(dialog.getByRole('status')).toHaveText('Owning checkout path copied.');
-  expect(await page.evaluate(() => (window as any).__copiedWorktreePath)).toBe(fixture.ownerPath);
-  expect(await calls()).toEqual(['checkout_branch', 'refresh_repository']);
   await dialog.getByRole('button', { name: 'Open existing checkout' }).click();
   await expect(page.locator('.status-repository-path')).toHaveText(fixture.ownerPath);
   expect(await calls()).toEqual(['checkout_branch', 'refresh_repository', 'refresh_repository', 'open_repository']);
@@ -166,6 +150,35 @@ async function requestCheckout(page: Page, branch: string) {
   await item.dblclick();
   return page.getByRole('dialog', { name: 'Branch is open in another checkout' });
 }
+
+test('copies the recorded owning path when the checkout is unavailable', async ({ page }) => {
+  const fixture = await setup(page);
+  await page.evaluate(ownerPath => {
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
+    git.repositories.update((tabs: any[]) => tabs.map(tab => ({ ...tab,
+      worktrees: tab.worktrees.map((tree: any) => tree.path === ownerPath ? { ...tree, prunable: true } : tree),
+    })));
+  }, fixture.ownerPath);
+  const dialog = await requestCheckout(page, fixture.branch);
+  await expect(dialog.getByRole('button', { name: 'Open existing checkout' })).toBeDisabled();
+  await page.evaluate(() => {
+    let firstAttempt = true;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (text: string) => {
+        if (firstAttempt) { firstAttempt = false; throw new Error('Clipboard denied'); }
+        (window as any).__copiedWorktreePath = text;
+      },
+    } });
+  });
+  const copy = dialog.getByRole('button', { name: 'Copy owning path' });
+  await copy.press('Enter');
+  await expect(dialog.getByRole('status')).toHaveText('Could not copy the path. Select it above to copy it manually.');
+  await copy.press('Enter');
+  await expect(dialog.getByRole('status')).toHaveText('Owning checkout path copied.');
+  expect(await page.evaluate(() => (window as any).__copiedWorktreePath)).toBe(fixture.ownerPath);
+  expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
+    .filter((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toEqual([]);
+});
 
 test('Shift+Enter on an occupied sidebar branch reviews its existing checkout without running Git', async ({ page }) => {
   const fixture = await setup(page);
