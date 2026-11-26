@@ -22827,6 +22827,20 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             .expect("unlocked linked agent worktree");
         assert!(!unlocked_worktree.locked);
         assert_eq!(unlocked_worktree.lock_reason, None);
+        set_worktree_locked(&repository.path, &linked_text, true).expect("lock without a reason");
+        let reasonless = snapshot(&repository.path).expect("snapshot reasonless lock");
+        let reasonless_worktree = reasonless
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.path == linked_text)
+            .expect("linked worktree with reasonless lock");
+        assert!(reasonless_worktree.locked);
+        assert_eq!(reasonless_worktree.lock_reason, None);
+        let locked_error = remove_worktree(&repository.path, &linked_text, true, true)
+            .expect_err("a force removal must still refuse locked worktrees");
+        assert_eq!(locked_error.kind, "lockedWorktree");
+        assert!(Path::new(&linked_text).is_dir());
+        set_worktree_locked(&repository.path, &linked_text, false).expect("unlock reasonless lock");
         let dirty_error = remove_worktree(&repository.path, &linked_text, false, false)
             .expect_err("protect dirty linked worktree");
         assert_eq!(dirty_error.kind, "gitFailure");
