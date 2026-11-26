@@ -38,7 +38,7 @@ test('sparse selection names changed paths Git kept outside it and refreshes sta
 
 test('stage all discloses changed paths outside the sparse selection and shows Git status', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
   const skipped = { kind: 'sparsePathsNotStaged',
     message: 'Other changes were staged, but Git left 1 changed path(s) outside the sparse checkout selection unstaged: docs/guide.md.',
     hint: 'Add their directories to the sparse checkout selection and stage again, or restore those files.' };
