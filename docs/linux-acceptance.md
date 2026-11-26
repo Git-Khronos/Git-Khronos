@@ -3245,6 +3245,21 @@ files without emitting output. Both are dependencies of `desktop:test` so they
 also run through the ordinary test gate. The graph check does not claim to type
 check unrelated renderer journeys.
 
+### Optional native TypeScript check
+
+For local graph-test type checking only, run:
+
+```sh
+pnpm --package=typescript@7.0.2 dlx tsc --project tsconfig.graph-tests.json
+```
+
+This downloads the pinned CLI into pnpm's external cache without changing the
+workspace dependencies or lockfile. In three runs per compiler on the same
+checkout (excluding installation), the median was 0.97 s on 7.0.2 and 4.29 s on
+6.0.3; both passed. That is not an Angular build or browser-test benchmark.
+Keep the normal Nx gate on the workspace compiler: Angular 22
+[requires TypeScript 6.0.x](https://angular.dev/reference/versions).
+
 ## Nx targets
 
 ```text
