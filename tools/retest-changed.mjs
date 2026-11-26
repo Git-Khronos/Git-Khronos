@@ -22,20 +22,27 @@ const { values } = parseArgs({ options: {
   help: { type: 'boolean', short: 'h' },
   base: { type: 'string', default: 'HEAD' },
   staged: { type: 'boolean' },
+  workers: { type: 'string' },
   run: { type: 'boolean' },
   'allow-full': { type: 'boolean' },
 } });
 
 if (values.help) {
-  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--run [--allow-full]]
+  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--run [--allow-full]]
 
 Preview checks for staged, unstaged and untracked changes against HEAD by default.
 Use --base to compare against another local commit, for example origin/dev.
 Use --staged to select only changes in the index relative to the base.
 Tests still run against your working files, not an isolated staged snapshot.
+Use --workers to override the browser worker count.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
 This command does not fetch or replace the release test suite.`);
   process.exit(0);
+}
+
+if (values.workers !== undefined && !/^[1-9][0-9]{0,2}$/.test(values.workers)) {
+  console.error('--workers must be a positive integer from 1 to 999.');
+  process.exit(2);
 }
 
 const revision = spawnSync('git', ['rev-parse', '--verify', '--end-of-options', values.base + '^{commit}'], {
@@ -88,6 +95,13 @@ const commands = broad
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
      ...(specs.length ? [['desktop:e2e', '--', ...specs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
+if (values.workers) {
+  for (const command of commands) {
+    if (command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:')) {
+      command.push('--workers=' + values.workers);
+    }
+  }
+}
 for (const command of commands) console.log('pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
 if (!commands.length) console.log('No test-relevant changes selected.');
 else if (!values.run) console.log('Plan only. Add --run to execute.');

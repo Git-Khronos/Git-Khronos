@@ -102,3 +102,13 @@ test('staged selection does not include unstaged edits or untracked files', t =>
   assert.match(plan, /application-updates\.spec\.ts/);
   assert.doesNotMatch(plan, /shared\.ts|untracked\.ts|desktop:check/);
 });
+
+test('worker overrides apply only to browser tests', t => {
+  const f = fixture(t);
+  f.write('tools/retest-changed.test.mjs');
+  f.write('e2e/renderer/application-updates.spec.ts');
+  const plan = f.run('--workers=4');
+  assert.match(plan, /"desktop:e2e"[^\n]*"--workers=4"/);
+  assert.doesNotMatch(plan, /"desktop:owned-process-test"[^\n]*--workers/);
+  assert.throws(() => f.run('--workers=0'), /positive integer/);
+});
