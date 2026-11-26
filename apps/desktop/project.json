@@ -179,6 +179,9 @@
         "branches": { "command": "playwright test 'e2e/renderer/(branch-|context-branch-|previous-branch|reference-actions)'" },
         "stash": { "command": "playwright test 'e2e/renderer/(stash-|inline-stash-)'"},
         "gitlab": { "command": "playwright test 'e2e/renderer/gitlab-'"},
+        "history": { "command": "playwright test 'e2e/renderer/(history-|blame-pages|operation-history-lifecycle)'" },
+        "workspace": { "command": "playwright test 'e2e/renderer/workspace([.-])'" },
+        "keyboard": { "command": "playwright test 'e2e/renderer/(command-palette|keyboard-shortcuts|confirmation-keyboard|setup-dialog-keyboard)'" },
         "updates": { "command": "playwright test 'e2e/renderer/application-updates[.]spec[.]ts$'" }
       }
     },
