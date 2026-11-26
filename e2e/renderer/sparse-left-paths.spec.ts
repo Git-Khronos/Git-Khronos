@@ -23,6 +23,10 @@ test('sparse selection names changed paths Git kept outside it and refreshes sta
   await page.getByRole('button', { name: 'Update Directories' }).click();
   const confirmation = page.getByRole('alertdialog', { name: 'Apply this directory selection?' });
   await expect(confirmation).toContainText('Changed or conflicted files stay and are listed.');
+  await expect(confirmation.getByRole('list', { name: 'Selected directories' }).getByRole('listitem'))
+    .toHaveText(['apps/desktop', 'crates/git-core']);
+  await expect(confirmation).toContainText('Index: Sparse');
+  await expect(confirmation.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await confirmation.getByRole('button', { name: 'Apply Selection' }).click();
   const alert = page.getByRole('alert').filter({ hasText: left.hint });
   await expect(alert).toBeVisible();

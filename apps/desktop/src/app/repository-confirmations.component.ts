@@ -37,7 +37,8 @@ export class RepositoryConfirmationsComponent {
   readonly forcePushRepositoryPath = input<string | null>(null);
   readonly publishRepositoryPath = input<string | null>(null);
   readonly sparseAction = input<'set' | 'disable' | null>(null);
-  readonly sparsePathCount = input(0);
+  readonly sparsePaths = input<readonly string[]>([]);
+  readonly sparseIndex = input(false);
   readonly forcePush = input<ForcePushReview | null>(null);
   readonly forcePushDestination = input<PushDestinationReview | null>(null);
   readonly worktree = input<WorktreeRemovalReview | null>(null);

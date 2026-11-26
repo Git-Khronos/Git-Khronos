@@ -6547,10 +6547,6 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.git.reapplySparseCheckout();
   }
 
-  protected sparseCheckoutPathCount(): number {
-    return this.sparseCheckoutPaths().split(/\r?\n/).filter((value) => value.trim()).length;
-  }
-
   private loadSparseCheckoutDraft(): void {
     const sparse = this.git.repository()?.sparseCheckout;
     this.sparseCheckoutPaths.set(sparse?.paths.join('\n') ?? '');
