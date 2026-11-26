@@ -7392,7 +7392,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (view !== this.sidebarItemActionsView()) return;
     if (action === 'copy-path' || (action === 'copy-url' && view.kind === 'submodule')) {
       const value = action === 'copy-url' && view.kind === 'submodule' ? view.item.url : view.item.path;
-      this.dismissSidebarActionMenu();
+      this.dismissSidebarActionMenu(true);
       void this.copyContextValue(value);
       return;
     }

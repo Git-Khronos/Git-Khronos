@@ -3055,7 +3055,8 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
   await expect(menu.getByRole('menuitem', { name: 'Open submodule' })).toBeFocused();
   await page.keyboard.press('End');
   await expect(menu.getByRole('menuitem', { name: 'Copy submodule path' })).toBeFocused();
-  await page.keyboard.press('Escape');
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeHidden();
   await expect(submoduleActions).toBeFocused();
 });
 
