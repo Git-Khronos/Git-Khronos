@@ -168,6 +168,17 @@ test('discard recovery display changes select only the discard profile', t => {
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 
+test('occupied-checkout and submodule dialogs select the worktree profile', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/checkout-worktree-dialog.component.ts');
+  f.write('apps/desktop/src/app/submodule-state-review.component.ts');
+  f.write('e2e/renderer/branch-checkout-worktree.spec.ts');
+  f.write('e2e/renderer/submodule-review.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:worktrees/);
+  assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
+});
+
 test('a native harness unit-test edit selects no browser or package run', t => {
   const f = fixture(t);
   f.write('tools/native_acceptance_test.py');

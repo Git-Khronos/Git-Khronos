@@ -9,7 +9,7 @@ const cwd = fileURLToPath(new URL('../', import.meta.url));
 const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 const split = value => value.split('\0').filter(Boolean);
 const profiles = [
-  [/^worktree-(lock|move|registration)-dialog\.component\./, 'worktrees'],
+  [/^(?:worktree-(?:lock|move|registration)-dialog|checkout-worktree-dialog|submodule-state-review)\.component\.(?:ts|html|scss)$/, 'worktrees'],
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
   [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'editor'],
   [/^(?:discard-recovery-display\.ts|saved-discard-list\.component\.(?:ts|html|scss))$/, 'discard'],
