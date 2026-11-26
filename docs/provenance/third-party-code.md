@@ -333,8 +333,8 @@ Required notices:
 
 Sources:
 
-- `@types/node 24.19.2`: <https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node>
-- `undici-types 7.24.6`: <https://github.com/nodejs/undici>
+- `@types/node 26.6.10`: <https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node>
+- `undici-types 8.9.0`: <https://github.com/nodejs/undici>
 
 License: MIT for both packages, verified in the published package metadata and
 installed `LICENSE` files. This permissive license is compatible with GPL-3.0.
