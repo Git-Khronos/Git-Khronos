@@ -19,6 +19,13 @@ const profiles = [
   [/^application-updates-dialog\.component\./, 'updates'],
 ];
 const prefix = 'apps/desktop/src/app/';
+const rendererFixtureSpecs = new Map([
+  ['e2e/renderer/graph-layout-test-helpers.ts', ['graph-columns', 'graph-layout-readiness']],
+  ['e2e/renderer/lazy-chunk-routing.ts', [
+    'deferred-compact-toolbar', 'deferred-graph-settings', 'deferred-main-menu',
+    'deferred-toolbar-options', 'revision-inspector-loading', 'startup-failures',
+  ]],
+]);
 const { values } = parseArgs({ options: {
   help: { type: 'boolean', short: 'h' },
   base: { type: 'string', default: 'HEAD' },
@@ -78,12 +85,13 @@ function isPackageTest(path) {
 }
 
 const selected = new Set();
-const specs = [];
+const specs = new Set();
 const unitSpecs = new Set();
 let retestTools = false;
 let packageTests = false;
 let nativeHarnessTests = false;
 let nativeHarnessSource = false;
+let graphTypecheck = false;
 let broad = false;
 for (const path of changed) {
   let plan;
@@ -109,11 +117,15 @@ for (const path of changed) {
   } else if (path === 'e2e/renderer/editor-protocol-fixture.ts' && existsSync(join(cwd, path))) {
     selected.add('editor');
     plan = 'editor renderer profile (shared editor fixture)';
+  } else if (rendererFixtureSpecs.has(path) && existsSync(join(cwd, path))) {
+    for (const spec of rendererFixtureSpecs.get(path)) specs.add(`e2e/renderer/${spec}.spec.ts`);
+    if (path === 'e2e/renderer/graph-layout-test-helpers.ts') graphTypecheck = true;
+    plan = 'all direct renderer fixture consumers';
   } else if (isPackageTest(path)) {
     packageTests = true;
     plan = 'package tooling tests';
   } else if (/^e2e\/renderer\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
-    specs.push(path);
+    specs.add(path);
     plan = 'individual renderer spec';
   } else {
     const profile = path.startsWith(prefix) && profiles.find(([test]) => test.test(path.slice(prefix.length)))?.[1];
@@ -142,7 +154,7 @@ function filtersFor(selectedProfiles) {
 }
 
 const filters = broad ? [] : filtersFor(selected);
-const directSpecs = specs.filter(path => !filters.some(filter => filter.test(path)));
+const directSpecs = [...specs].filter(path => !filters.some(filter => filter.test(path)));
 const extraChecks = [
   ...(packageTests ? [['desktop:package-test']] : []),
   ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
@@ -150,6 +162,7 @@ const extraChecks = [
 const commands = broad
   ? [['desktop:check'], ['desktop:test'], ...extraChecks, ['desktop:e2e']]
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
+     ...(graphTypecheck ? [['desktop:graph-test-typecheck']] : []),
      ...extraChecks,
      ...(unitSpecs.size ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),

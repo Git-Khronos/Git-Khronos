@@ -179,6 +179,28 @@ test('occupied-checkout and submodule dialogs select the worktree profile', t =>
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 
+test('graph fixture changes retain exhaustive columns coverage and graph type checking', t => {
+  const f = fixture(t);
+  f.write('e2e/renderer/graph-layout-test-helpers.ts');
+  f.write('e2e/renderer/graph-columns.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:graph-test-typecheck/);
+  const command = plan.split('\n').find(line => line.includes('"desktop:e2e"'));
+  assert.equal(command.match(/graph-columns/g)?.length, 1);
+  assert.match(command, /graph-layout-readiness/);
+  assert.doesNotMatch(plan, /desktop:check|grep-invert/);
+});
+
+test('lazy-chunk fixture changes select all six dependent browser suites', t => {
+  const f = fixture(t);
+  f.write('e2e/renderer/lazy-chunk-routing.ts');
+  const plan = f.run();
+  const command = plan.split('\n').find(line => line.includes('"desktop:e2e"'));
+  assert.equal(command.match(/\[\.\]spec\[\.\]ts\$/g)?.length, 6);
+  assert.match(command, /startup-failures/);
+  assert.doesNotMatch(plan, /desktop:check/);
+});
+
 test('a native harness unit-test edit selects no browser or package run', t => {
   const f = fixture(t);
   f.write('tools/native_acceptance_test.py');
