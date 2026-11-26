@@ -157,6 +157,17 @@ test('Markdown implementation changes also exercise the unit spec exactly once',
   assert.match(unit, /"--" "apps\/desktop\/src\/app\/markdown-preview\.spec\.ts"$/);
 });
 
+test('discard recovery display changes select only the discard profile', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/discard-recovery-display.ts');
+  f.write('apps/desktop/src/app/saved-discard-list.component.ts');
+  f.write('e2e/renderer/discard-recovery.spec.ts');
+  f.write('e2e/renderer/working-tree-lifecycle.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:discard/);
+  assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
+});
+
 test('a native harness unit-test edit selects no browser or package run', t => {
   const f = fixture(t);
   f.write('tools/native_acceptance_test.py');
