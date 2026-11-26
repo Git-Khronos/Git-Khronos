@@ -761,9 +761,10 @@ local URL that differs from an absolute declared URL. A configured
 `submodule.<name>.ignore` setting does not hide changes in this review. Relative
 declared URLs are reported without resolution. Reviews are bounded to 500 paths;
 bare repositories are refused.
-Use **Show full commit IDs** to inspect the exact index and checkout commits.
-You can filter by either full ID or a prefix of at least seven hexadecimal
-characters. Filtering changes the list, not the scope of bulk actions.
+Use **Show full commit IDs** to inspect the exact index and checkout commits,
+including staged changes and the sides of conflicts. You can filter by a full
+ID or a prefix of at least seven hexadecimal characters. Filtering changes
+the list, not the scope of bulk actions.
 
 The manager keeps bulk initialization and remote updating separate. **Initialize
 missing** checks out every missing submodule at the commits recorded by the

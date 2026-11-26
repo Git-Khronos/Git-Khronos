@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function setup(page: Page): Promise<void> {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Repository toolbar' })).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -224,7 +224,8 @@ test('submodule review can show both full commit IDs without a Git request', asy
   await expect(checkout).toHaveText('b'.repeat(40));
   const search = dialog.getByRole('searchbox', { name: 'Filter by path, name or commit ID' });
   await search.fill('B'.repeat(10));
-  await expect(dialog.getByRole('group', { name: 'Filter submodule states' })).toContainText('2 of 6 shown');
+  await expect(dialog.getByRole('listitem', { name: 'Submodule moved', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('listitem', { name: 'Submodule synced', exact: true })).toHaveCount(0);
   await expect(lane).toBeVisible();
   await search.fill('a'.repeat(40));
   await expect(lane).toBeVisible();
@@ -277,6 +278,19 @@ test('clearing empty submodule filters returns focus without another read', asyn
   await expect(dialog.getByRole('group', { name: 'Filter submodule states' })).toContainText('6 of 6 shown');
   expect(await page.evaluate(() => (window as any).__submoduleReview.calls
     .filter((call: any) => call.command.includes('submodule')).map((call: any) => call.command))).toEqual(['submodule_state_review']);
+});
+
+test('submodule conflict sides can be read and found by full commit ID', async ({ page }) => {
+  await setup(page);
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const search = dialog.getByRole('searchbox', { name: 'Filter by path, name or commit ID' });
+  await search.fill('c'.repeat(40));
+  const conflict = dialog.getByRole('listitem', { name: 'Submodule merge/lib' });
+  await expect(conflict).toContainText(`theirs ${'c'.repeat(10)}.`);
+  await expect(dialog.getByRole('group', { name: 'Filter submodule states' })).toContainText('1 of 6 shown');
+  await dialog.getByRole('checkbox', { name: 'Show full commit IDs' }).check();
+  await expect(conflict).toContainText(`Base ${'a'.repeat(40)}, ours ${'b'.repeat(40)}, theirs ${'c'.repeat(40)}.`);
 });
 
 test('initializes every missing submodule only after a scoped bulk confirmation', async ({ page }) => {

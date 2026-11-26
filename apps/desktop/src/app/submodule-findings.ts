@@ -6,14 +6,13 @@ export interface SubmoduleFinding {
   attention: boolean;
 }
 
-const short = (oid: string | null): string => oid ? oid.slice(0, 10) : 'none';
-
-export function submoduleFindings(entry: SubmoduleState): SubmoduleFinding[] {
+export function submoduleFindings(entry: SubmoduleState, fullCommitIds = false): SubmoduleFinding[] {
+  const commit = (oid: string | null): string => (fullCommitIds ? oid : oid?.slice(0, 10)) ?? 'none';
   const findings: SubmoduleFinding[] = [];
   const add = (label: string, detail: string, attention = true) => findings.push({ label, detail, attention });
   if (entry.conflict) {
     const side = entry.conflict;
-    add('Submodule commit conflict', `Base ${short(side.base)}, ours ${short(side.ours)}, theirs ${short(side.theirs)}. `
+    add('Submodule commit conflict', `Base ${commit(side.base)}, ours ${commit(side.ours)}, theirs ${commit(side.theirs)}. `
       + 'Check out the commit to keep inside the submodule, then stage this path in the parent repository.');
     if (side.mixedTypes) add('File and submodule conflict', 'One side is not a submodule. Resolve this path with local Git.');
   }
@@ -28,11 +27,11 @@ export function submoduleFindings(entry: SubmoduleState): SubmoduleFinding[] {
       : 'Initialize to register its URL in local configuration and check out the recorded commit.');
   }
   if (entry.commitChanged) {
-    add('Different commit checked out', `Checked out ${short(entry.checkoutOid)}; recorded ${short(entry.indexOid)}. `
+    add('Different commit checked out', `Checked out ${commit(entry.checkoutOid)}; recorded ${commit(entry.indexOid)}. `
       + 'Stage the path to record the new commit, or choose Check out recorded commit to return to it.');
   }
   if (entry.stagedChange) {
-    add('Submodule commit change staged', `HEAD ${short(entry.headOid)} → index ${entry.indexOid ? short(entry.indexOid) : 'removed'}. `
+    add('Submodule commit change staged', `HEAD ${commit(entry.headOid)} → index ${entry.indexOid ? commit(entry.indexOid) : 'removed'}. `
       + 'Committing records this change for everyone who updates.');
   }
   if (entry.trackedChanges) {

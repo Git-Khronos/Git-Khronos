@@ -86,7 +86,7 @@ import { submoduleFindings } from './submodule-findings';
                     @if (entry.registeredUrl) { <div class="wide"><dt>Local URL</dt><dd>{{ entry.registeredUrl }}</dd></div> }
                   </dl>
                   <ul class="findings">
-                    @for (finding of findings(entry); track finding.label) {
+                    @for (finding of findings(entry, fullCommitIds()); track finding.label) {
                       <li [class.attention]="finding.attention"><strong>{{ finding.label }}</strong>
                         <span>{{ finding.detail }}</span></li>
                     }
@@ -252,6 +252,7 @@ import { submoduleFindings } from './submodule-findings';
     .findings li { padding: 6px 8px 6px 10px; border: 0; border-left: 3px solid var(--inspector-divider); border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--inspector-list) 58%, transparent); }
     .findings li.attention { border-left-color: var(--accent); }
     .findings strong, .findings span { display: block; }
+    .findings span { overflow-wrap: anywhere; }
     .review-summary { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 10px; margin: 12px 0; padding: 9px 11px; border: 1px solid #3d665b; border-radius: 6px; background: #203b35; color: #a6e5d1; }
     .review-summary.attention { border-color: #735d36; background: #3c3020; color: #f3ca83; }
     .review-summary strong { font-size: 17px; text-align: center; } .review-summary span { font-size: 12px; }
@@ -305,7 +306,9 @@ export class SubmoduleStateReviewComponent {
     const oidPrefix = /^[0-9a-f]{7,64}$/.test(query);
     return (this.review()?.entries ?? []).filter(entry =>
       (!query || entry.path.toLowerCase().includes(query) || entry.name?.toLowerCase().includes(query)
-        || (oidPrefix && [entry.indexOid, entry.checkoutOid].some(oid => oid?.toLowerCase().startsWith(query))))
+        || (oidPrefix && [entry.headOid, entry.indexOid, entry.checkoutOid,
+          entry.conflict?.base, entry.conflict?.ours, entry.conflict?.theirs]
+          .some(oid => oid?.toLowerCase().startsWith(query))))
       && (!attentionOnly || this.hasAttention(entry)));
   });
   readonly recursive = signal(false);

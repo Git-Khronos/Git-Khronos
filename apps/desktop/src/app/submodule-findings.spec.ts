@@ -43,4 +43,13 @@ describe('submodule findings', () => {
     const findings = submoduleFindings(state({ declaredUrl: '../lib', urlMatches: null }));
     expect(findings.map(finding => finding.label)).toEqual(['Matches the recorded commit', 'Relative declared URL']);
   });
+
+  it('shows complete staged and conflict commits when requested', () => {
+    const c = 'c'.repeat(64);
+    const findings = submoduleFindings(state({
+      stagedChange: true, indexOid: b, conflict: { base: a, ours: b, theirs: c, mixedTypes: false },
+    }), true);
+    expect(findings[0].detail).toContain(`Base ${a}, ours ${b}, theirs ${c}.`);
+    expect(findings[1].detail).toContain(`HEAD ${a} → index ${b}.`);
+  });
 });
