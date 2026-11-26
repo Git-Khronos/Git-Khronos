@@ -149,6 +149,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite worktree-reservation --headless" }
     },
+    "native-workspace-bulk-locate": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite workspace-bulk-locate --headless" }
+    },
     "native-worktrees": {
       "executor": "nx:run-commands",
       "cache": false,

@@ -1448,6 +1448,15 @@ is not proof of a successful selection: the test waits for the exact moved path
 to become active and verifies saved membership and Git data independently.
 The exact-artifact Ubuntu 24.04 CI job runs both suites on the installed package.
 
+For a focused local native dialog check against a chosen Debian archive:
+
+```sh
+pnpm nx run desktop:native-workspace-bulk-locate -- --package "$archive"
+```
+
+The target selects one folder and cancels the next chooser. It runs on a
+private Xvfb display and does not send input to the live desktop.
+
 Use `--suite workspace-locate-nearby --headless` to check the starting folder
 when a checkout was renamed in its original parent. The keyboard selects the
 sole row in the chooser's starting folder without navigating; only the exact

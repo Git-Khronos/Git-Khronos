@@ -411,3 +411,14 @@ test('selection can use an alternate index without leaking it to test fixtures',
   assert.match(output, /"desktop:test-authentication"/);
   assert.match(output, /index=<> fixture=<\/owned\/sshd>/);
 });
+
+test('workspace relocation changes select the owned native folder chooser with an explicit archive', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'candidate.deb\n');
+  f.commit();
+  f.write('candidate.deb');
+  f.write('tools/native_workspace_locate_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-workspace-bulk-locate"/);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
+});
