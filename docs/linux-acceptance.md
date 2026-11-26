@@ -3258,6 +3258,22 @@ TMPDIR=/tmp pnpm nx run desktop:test-signing
 
 For local renderer changes, start with just the affected spec:
 `pnpm nx run desktop:e2e -- e2e/renderer/worktree-move.spec.ts`.
+For a feature that spans multiple specs, use
+`pnpm nx run desktop:e2e:<profile>`:
+
+| Profile | Renderer coverage |
+| --- | --- |
+| `worktrees` | Linked worktrees, occupied-branch checkout, submodule review |
+| `working-files` | File editing, working-tree actions, discard and recovery |
+| `branches` | Branch navigation, scoped reference actions, branch workflows |
+| `stash` | Stash creation, review, restoration and deletion |
+| `gitlab` | Catalogue, clone, fork browsing and creation |
+| `updates` | Application updater UI |
+
+Add `--list` to see the selected tests or `--grep='test title'` to narrow
+further. Profiles group renderer specs, not all dependencies of a code change.
+For shared UI or IPC changes, include adjacent specs or use the full suite.
+
 For a broader local pass, run `pnpm nx run desktop:e2e-quick`. This skips
 the exhaustive five-column order permutations except for the default order
 in both scroll modes. The remaining browser cases still exercise SHA placement,

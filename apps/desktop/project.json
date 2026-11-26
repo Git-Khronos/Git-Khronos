@@ -172,7 +172,15 @@
     "e2e": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "playwright test" }
+      "options": { "command": "playwright test" },
+      "configurations": {
+        "worktrees": { "command": "playwright test 'e2e/renderer/(worktree-|branch-checkout-worktree|submodule-review)'" },
+        "working-files": { "command": "playwright test 'e2e/renderer/(working-(tree|file|directory)|discard-recovery)'" },
+        "branches": { "command": "playwright test 'e2e/renderer/(branch-|context-branch-|previous-branch|reference-actions)'" },
+        "stash": { "command": "playwright test 'e2e/renderer/(stash-|inline-stash-)'"},
+        "gitlab": { "command": "playwright test 'e2e/renderer/gitlab-'"},
+        "updates": { "command": "playwright test 'e2e/renderer/application-updates[.]spec[.]ts$'" }
+      }
     },
     "e2e-quick": {
       "executor": "nx:run-commands",
