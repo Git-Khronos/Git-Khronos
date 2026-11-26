@@ -371,6 +371,21 @@ private X11 session with a temporary profile. It does not reinstall the app
 or change your repositories. A pass does not validate your WSLg display,
 existing app profile, or Windows pin.
 
+If Git Khronos opens and responds but the terminal reports
+`MESA: error: ZINK: failed to choose pdev` or
+`libEGL warning: egl: failed to create dri2 screen`, a graphics backend
+failed to initialize; those lines alone don't indicate that the app failed.
+If a normal launch is blank, fully quit Git Khronos and try one launch
+with Mesa software rendering from your WSL terminal:
+
+```sh
+LIBGL_ALWAYS_SOFTWARE=1 git-khronos
+```
+
+This setting applies only to that launch. If it restores the window, check
+WSL and Windows graphics driver updates rather than changing the system-wide
+rendering configuration. See [Microsoft's WSLg graphics guidance](https://github.com/microsoft/wslg/blob/main/README.md#opengl-accelerated-rendering-in-wslg).
+
 If a launch creates a taskbar entry but no visible window, do not diagnose it
 from `libEGL`/DRI3 warnings alone. Check `/mnt/wslg/weston.log` for a shared-memory
 `Input/output error` followed by `use_gfxredir = 0`, and the Windows window title
