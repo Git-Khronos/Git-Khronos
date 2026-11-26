@@ -36,7 +36,7 @@ import { submoduleFindings } from './submodule-findings';
             </div>
             @if (result.entries.length) {
               <div class="entry-filters" role="group" aria-label="Filter submodule states">
-                <label>Filter by path or name
+                <label>Filter by path, name or commit ID
                   <input type="search" [value]="filterQuery()" [disabled]="!!confirming() || syncing()"
                     (input)="filterQuery.set($any($event.target).value)" />
                 </label>
@@ -300,8 +300,10 @@ export class SubmoduleStateReviewComponent {
   readonly visibleEntries = computed(() => {
     const query = this.filterQuery().trim().toLowerCase();
     const attentionOnly = this.attentionOnly();
+    const oidPrefix = /^[0-9a-f]{7,64}$/.test(query);
     return (this.review()?.entries ?? []).filter(entry =>
-      (!query || entry.path.toLowerCase().includes(query) || entry.name?.toLowerCase().includes(query))
+      (!query || entry.path.toLowerCase().includes(query) || entry.name?.toLowerCase().includes(query)
+        || (oidPrefix && [entry.indexOid, entry.checkoutOid].some(oid => oid?.toLowerCase().startsWith(query))))
       && (!attentionOnly || this.hasAttention(entry)));
   });
   readonly recursive = signal(false);

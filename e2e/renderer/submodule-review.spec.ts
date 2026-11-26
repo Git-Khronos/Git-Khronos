@@ -222,6 +222,12 @@ test('submodule review can show both full commit IDs without a Git request', asy
   await full.check();
   await expect(recorded).toHaveText('a'.repeat(40));
   await expect(checkout).toHaveText('b'.repeat(40));
+  const search = dialog.getByRole('searchbox', { name: 'Filter by path, name or commit ID' });
+  await search.fill('B'.repeat(10));
+  await expect(dialog.getByRole('group', { name: 'Filter submodule states' })).toContainText('2 of 6 shown');
+  await expect(lane).toBeVisible();
+  await search.fill('a'.repeat(40));
+  await expect(lane).toBeVisible();
   expect(await lane.locator('.metadata dd').evaluateAll(values =>
     values.every(value => value.scrollWidth <= value.clientWidth + 1))).toBe(true);
   await full.uncheck();
@@ -236,7 +242,7 @@ test('filters by path or name and treats untracked-only checkouts as needing att
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   const filters = dialog.getByRole('group', { name: 'Filter submodule states' });
-  const query = filters.getByRole('searchbox', { name: 'Filter by path or name' });
+  const query = filters.getByRole('searchbox', { name: 'Filter by path, name or commit ID' });
   const attention = filters.getByRole('checkbox', { name: 'Needs attention only' });
   await expect(filters).toContainText('8 of 8 shown');
   await query.fill('GUIDE');
@@ -368,11 +374,11 @@ test('submodule review fits a compact window, contains Tab focus and returns fro
   const help = dialog.getByRole('button', { name: 'Learn about submodule state…', exact: true });
   await dialog.getByRole('button', { name: 'Close', exact: true }).focus();
   await page.keyboard.press('Tab');
-  await expect(dialog.getByRole('searchbox', { name: 'Filter by path or name' })).toBeFocused();
+  await expect(dialog.getByRole('searchbox', { name: 'Filter by path, name or commit ID' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('checkbox', { name: 'Needs attention only' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(dialog.getByRole('searchbox', { name: 'Filter by path or name' })).toBeFocused();
+  await expect(dialog.getByRole('searchbox', { name: 'Filter by path, name or commit ID' })).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
   await help.click();
