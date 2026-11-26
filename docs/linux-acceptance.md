@@ -3358,6 +3358,12 @@ Shared or unmapped files fall back to broader validation; use
 `--run --allow-full` after reviewing that plan. This is a local aid, not a
 release gate or a complete dependency analysis.
 
+Edits to named Git core Rust unit-test modules run their module filters
+together in one Cargo invocation, without Playwright. Rust implementation
+edits, removed files, and unmapped modules still use the broader fallback.
+The focused run does not opt into ignored signing or LFS cases; use their
+dedicated targets when the change affects those capabilities.
+
 For a broader local pass, run `pnpm nx run desktop:e2e-quick`. This skips
 the exhaustive five-column order permutations except for the default order
 in both scroll modes. The remaining browser cases still exercise SHA placement,

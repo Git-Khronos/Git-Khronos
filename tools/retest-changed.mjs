@@ -50,6 +50,13 @@ const packagedScenarios = new Map([
     'native-discard-stale-review', 'native-discard-large', 'native-discard-limit',
   ]],
 ]);
+// These are named #[cfg(test)] modules, not shared helpers or production code.
+const gitCoreTestModules = new Set([
+  'branch_comparison_tests', 'no_commit_replay_tests', 'ordered_revert_tests',
+  'rebase_split_tests', 'reference_actions_tests', 'reference_rename_tests',
+  'selected_rebase_tests', 'stash_file_restore_tests',
+  ...(process.platform === 'win32' ? [] : ['literal_file_tests', 'transport_stderr_tests']),
+]);
 const { values } = parseArgs({ options: {
   help: { type: 'boolean', short: 'h' },
   base: { type: 'string', default: 'HEAD' },
@@ -122,6 +129,7 @@ function isPackageTest(path) {
 const selected = new Set();
 const specs = new Set();
 const unitSpecs = new Set();
+const gitCoreModules = new Set();
 const nativeSuites = new Set();
 let retestTools = false;
 let packageTests = false;
@@ -131,10 +139,14 @@ let graphTypecheck = false;
 let broad = false;
 for (const path of changed) {
   let plan;
+  const gitCoreModule = /^crates\/git-core\/src\/([a-z_]+)\.rs$/.exec(path)?.[1];
   const sourceCheck = path.startsWith(prefix)
     ? rendererSourceChecks.find(([test]) => test.test(path.slice(prefix.length))) : undefined;
   if (/^(README\.md|docs\/.*\.md)$/.test(path)) {
     plan = 'documentation only';
+  } else if (gitCoreTestModules.has(gitCoreModule) && existsSync(join(cwd, path))) {
+    gitCoreModules.add(gitCoreModule + '::');
+    plan = 'focused Git core Rust test module';
   } else if (/^tools\/retest-changed(?:\.test)?\.mjs$/.test(path) && existsSync(join(cwd, path))) {
     retestTools = true;
     plan = 'test selection and local process checks';
@@ -221,6 +233,7 @@ const commands = broad
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
      ...(graphTypecheck ? [['desktop:graph-test-typecheck']] : []),
      ...extraChecks,
+     ...(gitCoreModules.size ? [['desktop:git-core-unit-test', '--', ...gitCoreModules]] : []),
      ...(unitSpecs.size ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
      ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];

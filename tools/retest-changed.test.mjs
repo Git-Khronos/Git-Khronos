@@ -365,3 +365,17 @@ test('GitLab SSH fixture changes select the catalogue only, not the fork UI suit
   assert.equal([...plan.matchAll(/"desktop:native-gitlab"/g)].length, 1);
   assert.doesNotMatch(plan, /"desktop:native-gitlab-fork-ui"|desktop:e2e|desktop:check/);
 });
+
+test('changed Git core unit modules share one Cargo run without Playwright or browser flags', t => {
+  const f = fixture(t);
+  f.write('crates/git-core/src/branch_comparison_tests.rs');
+  f.write('crates/git-core/src/reference_rename_tests.rs');
+  const plan = f.run('--webkit', '--workers=4');
+  assert.match(plan, /"desktop:git-core-unit-test" "--output-style=static" "--" "branch_comparison_tests::" "reference_rename_tests::"/);
+  assert.equal([...plan.matchAll(/pnpm nx run/g)].length, 1);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check|project=webkit|workers=4/);
+  f.write('crates/git-core/src/reference_rename.rs');
+  const broad = f.run();
+  assert.match(broad, /"desktop:test"/);
+  assert.doesNotMatch(broad, /"desktop:git-core-unit-test"/);
+});
