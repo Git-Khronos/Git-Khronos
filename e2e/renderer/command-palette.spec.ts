@@ -230,6 +230,9 @@ test('opens a grouped branch switcher from the compact repository toolbar', asyn
   await search.press('End');
   await search.press('PageDown');
   await expect(palette.getByRole('option', { selected: true })).toBeEnabled();
+  await search.press('Home');
+  await search.press('PageDown');
+  await expect(palette.getByRole('option', { selected: true })).toBeEnabled();
   await search.fill('partial');
   await expect(palette.getByRole('option', { name: /feature\/partial-staging/ })).toHaveCount(1);
   await page.keyboard.press('Escape');
