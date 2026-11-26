@@ -81,8 +81,8 @@ const UBUNTU_NOBLE_REVIEWS = [
   ]],
   ['discard-limit', [
     'native-oversized-nested-file-gets-size-specific-refusal-without-mutation',
-    'native-oversized-nested-bulk-gets-size-specific-refusal-without-mutation',
-    'native-palette-restores-opener-after-oversized-bulk-discard-refusal',
+    'native-oversized-nested-bulk-reviews-and-rechecks-all-blocked-paths-without-mutation',
+    'native-palette-restores-opener-after-canceling-an-all-blocked-discard-review',
     'native-mixed-discard-labels-oversized-paths-and-leaves-all-files-unchanged',
   ]],
   ['submodule-initialize', [

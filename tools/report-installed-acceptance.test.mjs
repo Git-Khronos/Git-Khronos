@@ -277,8 +277,8 @@ test('installed discard needs both actions, exact direct selection, recovery of 
     ['discard-large', 'native-ui-discards-and-recovers-four-large-nested-untracked-files'],
     ['discard-large', 'native-large-discard-capture-survives-restart-and-recovers-exact-bytes'],
     ['discard-limit', 'native-oversized-nested-file-gets-size-specific-refusal-without-mutation'],
-    ['discard-limit', 'native-oversized-nested-bulk-gets-size-specific-refusal-without-mutation'],
-    ['discard-limit', 'native-palette-restores-opener-after-oversized-bulk-discard-refusal'],
+    ['discard-limit', 'native-oversized-nested-bulk-reviews-and-rechecks-all-blocked-paths-without-mutation'],
+    ['discard-limit', 'native-palette-restores-opener-after-canceling-an-all-blocked-discard-review'],
     ['discard-limit', 'native-mixed-discard-labels-oversized-paths-and-leaves-all-files-unchanged'],
   ]) {
     const partial = fixtures.map(report => report.suite === suite

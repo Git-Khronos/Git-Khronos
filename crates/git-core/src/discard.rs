@@ -1038,6 +1038,25 @@ pub fn prepare_discard(
         paths.push(entry.path);
     }
     if paths.is_empty() {
+        if selected.is_none() && !blocked_paths.is_empty() {
+            // A whole-worktree review can explain an entirely blocked set.
+            // execute_discard rejects any blocked preview before file writes.
+            return Ok(DiscardPlan {
+                preview: DiscardPreview {
+                    paths,
+                    skipped_paths,
+                    blocked_paths,
+                    oversized_paths,
+                    untracked: 0,
+                },
+                selected,
+                mutation_patch: Vec::new(),
+                patch,
+                index: index_output.stdout,
+                selection_preview: None,
+                boundary,
+            });
+        }
         if !oversized_paths.is_empty() && oversized_paths.len() == blocked_paths.len() {
             return Err(AppError::new(
                 "discardFileTooLarge",
@@ -4551,6 +4570,40 @@ mod tests {
             b"{\"new\":true}\n"
         );
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+    }
+
+    #[test]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn all_blocked_bulk_discard_reports_paths_without_writing() {
+        let repository = Repository::new();
+        repository.baseline();
+        let file = repository.0.join("new/oversized.json");
+        fs::create_dir(file.parent().unwrap()).unwrap();
+        fs::File::create(&file)
+            .unwrap()
+            .set_len(MAX_GUARDED_FILE_BYTES + 1)
+            .unwrap();
+        let index_path = repository.0.join(".git/index");
+        let index = fs::read(&index_path).unwrap();
+        let plan = prepare_discard(&repository.0, None).unwrap();
+        assert!(plan.preview.paths.is_empty());
+        assert_eq!(plan.preview.blocked_paths, ["new/oversized.json"]);
+        assert_eq!(plan.preview.oversized_paths, plan.preview.blocked_paths);
+        assert_eq!(plan.preview.untracked, 0);
+        assert_eq!(
+            execute_discard(&repository.0, &plan).unwrap_err().kind,
+            "repositoryFileRefused"
+        );
+        assert_eq!(fs::read(index_path).unwrap(), index);
+        assert_eq!(
+            fs::metadata(file).unwrap().len(),
+            MAX_GUARDED_FILE_BYTES + 1
+        );
+        assert!(
+            discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

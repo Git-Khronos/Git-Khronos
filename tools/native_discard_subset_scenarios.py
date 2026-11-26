@@ -551,16 +551,24 @@ def discard_file_size_limit(driver, fixtures, report):
     assert checkout_footprint(fixtures, repository, files) == before
     assert not driver.invoke('load_discard_recoveries', repoId=repo_id)
     report['scenarios'].append('native-oversized-nested-file-gets-size-specific-refusal-without-mutation')
+    dialog = '[role="alertdialog"]'
     driver.click_visible('[aria-label="Discard all unstaged changes"]')
-    outcome = driver.wait("""const detail = document.querySelector('.error-toast[role="alert"]')?.textContent;
-      if (detail?.includes('The blocked nested files exceed the 64 MiB per-file limit')) return 'size-specific refusal';
-      if (detail?.includes('This discard request includes nested paths')) return 'generic nested-path refusal';
-      return null;""")
-    assert outcome == 'size-specific refusal', outcome
-    assert not driver.script("return !!document.querySelector('[role=alertdialog]')")
+    blocked_review = f"""const review = document.querySelector({dialog!r});
+      if (review?.querySelector('.confirm-action')?.disabled !== true) return false;
+      const rows = [...review.querySelectorAll('.discard-preview-paths li')].map(row => row.textContent);
+      return review.textContent.includes('0 eligible · 2 blocked')
+        && {json.dumps([nested, second])}.every(path => rows.some(row =>
+          row.includes(path) && row.includes('Too large to save for recovery')));"""
+    driver.wait(blocked_review)
+    driver.click_scrolled_text(dialog + ' button', 'Recheck eligibility', wait_for_ready=True)
+    driver.wait(f"""const review = document.querySelector({dialog!r});
+      return review?.querySelector('.blocked-discard-choice')?.textContent.includes('No files are currently eligible')
+        && review.querySelector('.confirm-action')?.disabled === true;""")
+    driver.click_scrolled_text(dialog + ' button', 'Cancel', wait_for_ready=True)
+    driver.wait(f"return !document.querySelector({dialog!r})")
     assert checkout_footprint(fixtures, repository, files) == before
     assert not driver.invoke('load_discard_recoveries', repoId=repo_id)
-    report['scenarios'].append('native-oversized-nested-bulk-gets-size-specific-refusal-without-mutation')
+    report['scenarios'].append('native-oversized-nested-bulk-reviews-and-rechecks-all-blocked-paths-without-mutation')
 
     origin = 'input[aria-label="Filter changed files"]'
     search = 'gk-command-palette input[aria-label="Search commands"]'
@@ -571,17 +579,17 @@ def discard_file_size_limit(driver, fixtures, report):
       field.value = 'discard all unstaged'; field.dispatchEvent(new Event('input', {bubbles: true}));""")
     driver.click_scrolled_text('gk-command-palette [role=option] strong',
                                'Discard All Unstaged Changes…', wait_for_ready=True)
+    driver.wait(blocked_review)
+    driver.click_scrolled_text(dialog + ' button', 'Cancel', wait_for_ready=True)
     driver.wait(f"""return document.activeElement?.matches({origin!r})
-      && document.querySelector('.error-toast[role="alert"]')?.textContent.includes('64 MiB per-file limit')
-      && !document.querySelector('[role="alertdialog"]')""")
+      && !document.querySelector({dialog!r})""")
     assert checkout_footprint(fixtures, repository, files) == before
     assert not driver.invoke('load_discard_recoveries', repoId=repo_id)
-    report['scenarios'].append('native-palette-restores-opener-after-oversized-bulk-discard-refusal')
+    report['scenarios'].append('native-palette-restores-opener-after-canceling-an-all-blocked-discard-review')
     (repository / 'fixture.txt').write_bytes(b'Eligible unstaged content\n')
     mixed_before = checkout_footprint(fixtures, repository, files)
     driver.wait("return !!document.querySelector('[aria-label=\"Stage fixture.txt\"]')")
     driver.click_visible('[aria-label="Discard all unstaged changes"]')
-    dialog = '[role="alertdialog"]'
     driver.wait(f"""const review = document.querySelector({dialog!r});
       if (review?.querySelector('.confirm-action')?.disabled !== true) return false;
       const rows = [...review.querySelectorAll('.discard-preview-paths li')].map(row => row.textContent);

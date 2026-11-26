@@ -33,6 +33,10 @@ and partial (hunk or line) discard remain unsupported. If a bulk request
 is blocked, the chooser lists eligible paths returned by native preview,
 including eligible nested tracked files. It requires a fresh preview of
 the user's selection before any changes are made.
+If every path in a whole-worktree request is blocked, the review lists the
+blockers and offers a fresh eligibility check. It cannot be confirmed and
+does not generate a recovery capture. A direct single-file refusal remains
+an error, including its specific size limit when applicable.
 Capture serialization streams JSON into the existing base64 header and
 enforces the header and total capture budgets while writing. It does not
 allocate a separate full JSON document or a second full encoded header.
