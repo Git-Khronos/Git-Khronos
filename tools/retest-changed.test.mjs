@@ -16,6 +16,8 @@ function fixture(t) {
   };
   write('tools/retest-changed.mjs');
   copyFileSync(new URL('./retest-changed.mjs', import.meta.url), join(cwd, 'tools/retest-changed.mjs'));
+  write('apps/desktop/project.json');
+  copyFileSync(new URL('../apps/desktop/project.json', import.meta.url), join(cwd, 'apps/desktop/project.json'));
   git('init', '-q');
   const commit = () => {
     git('add', '-A');

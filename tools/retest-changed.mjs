@@ -1,6 +1,6 @@
 // Local feedback only; this is not a replacement for release checks.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -17,11 +17,6 @@ const profiles = [
   [/^fetch-options-dialog\.component\.(?:ts|html|scss)$/, 'transport'],
   [/^application-updates-dialog\.component\./, 'updates'],
 ];
-// Only omit direct runs for specs explicitly covered by an already selected profile.
-const coveredSpecs = {
-  worktrees: /^e2e\/renderer\/(?:worktree-(?:move|registration|repair|wip-count)|branch-checkout-worktree|submodule-review)\.spec\.ts$/,
-  updates: /^e2e\/renderer\/application-updates\.spec\.ts$/,
-};
 const prefix = 'apps/desktop/src/app/';
 const { values } = parseArgs({ options: {
   help: { type: 'boolean', short: 'h' },
@@ -95,7 +90,21 @@ for (const path of changed) {
   console.log(JSON.stringify(path) + ': ' + plan);
 }
 
-const directSpecs = specs.filter(path => ![...selected].some(profile => coveredSpecs[profile]?.test(path)));
+function filtersFor(selectedProfiles) {
+  if (!selectedProfiles.size) return [];
+  const project = JSON.parse(readFileSync(join(cwd, 'apps/desktop/project.json'), 'utf8'));
+  const configurations = project.targets.e2e.configurations;
+  // Only infer coverage for a plain Playwright file regex. If a profile gains
+  // flags or a wrapper, keep the direct spec rather than risking a missed test.
+  return [...selectedProfiles].flatMap(profile => {
+    const command = configurations[profile]?.command ?? '';
+    const match = /^playwright test '(e2e\/renderer\/[^']+)'$/.exec(command);
+    return match ? [new RegExp(match[1])] : [];
+  });
+}
+
+const filters = broad ? [] : filtersFor(selected);
+const directSpecs = specs.filter(path => !filters.some(filter => filter.test(path)));
 const commands = broad
   ? [['desktop:check'], ['desktop:test'], ['desktop:e2e']]
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
