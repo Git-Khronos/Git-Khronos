@@ -44,7 +44,7 @@ export interface WorktreeLockRequest {
           @if (!owns(target)) {
             <p role="alert" tabindex="-1">The active repository or worktree changed. Close this dialog and review the intended worktree.</p>
           }
-          @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
+          @if (lockError(); as message) { <p role="alert" tabindex="-1">{{ message }}</p> }
           <footer>
             <button type="button" data-lock-cancel [disabled]="git.busy()" (click)="close(target)">Cancel</button>
             <button type="submit" [disabled]="!canConfirm(target)">{{ git.busy() ? 'Locking…' : 'Lock worktree' }}</button>
@@ -78,11 +78,13 @@ export class WorktreeLockDialogComponent {
   readonly ownsRequest = input.required<(request: WorktreeLockRequest) => boolean>();
   readonly closed = output<WorktreeLockRequest>();
   readonly reason = signal('');
+  protected readonly lockError = signal<string | null>(null);
 
   constructor() {
     effect(() => {
       const target = this.request();
       this.reason.set('');
+      this.lockError.set(null);
       if (target) afterNextRender(() => {
         if (this.owns(target)) this.reasonInput()?.nativeElement.focus();
       }, { injector: this.injector });
@@ -108,10 +110,16 @@ export class WorktreeLockDialogComponent {
 
   async confirm(target: WorktreeLockRequest): Promise<void> {
     if (!this.canConfirm(target)) return;
+    this.lockError.set(null);
     const reason = this.reason().trim();
     const succeeded = await this.git.setWorktreeLocked(target.worktree.path, true, reason || null);
-    if (succeeded && this.request() === target) this.closed.emit(target);
-    else afterNextRender(() => this.dialog()?.nativeElement.querySelector<HTMLElement>('[role="alert"]')?.focus(), { injector: this.injector });
+    if (this.request() !== target || !this.ownsRequest()(target)) return;
+    if (succeeded) {
+      this.closed.emit(target);
+      return;
+    }
+    this.lockError.set(this.git.error() || 'Could not lock this worktree.');
+    afterNextRender(() => this.dialog()?.nativeElement.querySelector<HTMLElement>('[role="alert"]')?.focus(), { injector: this.injector });
   }
 
   close(target: WorktreeLockRequest): void {
