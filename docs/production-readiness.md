@@ -118,6 +118,11 @@ production output for `2e5998e`, the initial renderer is 292,792 bytes and
 the workspace adds 1,051,693 bytes, for 1,344,485 bytes total. These are
 raw on-disk asset sizes, not a performance measurement or a change to
 the initial-bundle budget.
+Deferring the linked-worktree lock form reduces that total from 1,344,485
+to 1,292,130 bytes (52,355 bytes saved at workspace startup); the bootstrap
+remains 292,792 bytes. The first opening of the lock review may load 53,712
+additional bytes when its form dependency is not already loaded by another
+feature. These counts use emitted production chunks and static imports.
 Angular now rejects an individual component stylesheet over 76,000 bytes
 instead of warning at 76,000 and waiting until 80,000 to fail.
 

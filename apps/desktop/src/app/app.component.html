@@ -61,7 +61,23 @@
     }
   }
   @if (worktreeLockRequest(); as request) {
-    <gk-worktree-lock-dialog [request]="request" [ownsRequest]="ownsWorktreeLock" (closed)="closeWorktreeLock($event)" />
+    @defer (on immediate) {
+      <gk-worktree-lock-dialog [request]="request" [ownsRequest]="ownsWorktreeLock" (closed)="closeWorktreeLock($event)" />
+    } @placeholder {
+      <div class="confirmation-backdrop">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading worktree lock review" (keydown)="handleWorktreeLockLoaderKey($event, request)">
+          <p role="status">Loading worktree lock review…</p>
+          <button #worktreeLockLoaderClose type="button" (click)="closeWorktreeLock(request)">Cancel</button>
+        </section>
+      </div>
+    } @error {
+      <div class="confirmation-backdrop">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Worktree lock review unavailable" (keydown)="handleWorktreeLockLoaderKey($event, request)">
+          <p role="alert">The worktree lock review could not load. No lock command ran. Close and restart before retrying.</p>
+          <button #worktreeLockLoaderClose type="button" (click)="closeWorktreeLock(request)">Close</button>
+        </section>
+      </div>
+    }
   }
   @let deferredActions = deferredGitActionLease();
   @if (deferredActions.reference || deferredActions.fetch || deferredActions.worktree || deferredActions.stash) {

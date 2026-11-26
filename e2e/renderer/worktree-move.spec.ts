@@ -239,3 +239,50 @@ test('open worktree tab disables moving and explains the required close action',
   await expect(page.getByRole('menuitem', { name: 'Move linked worktree…', exact: true })).toBeDisabled();
   await expect(page.locator('.worktree-card-menu')).toContainText('Close its repository tab before moving');
 });
+
+for (const mode of ['hold', 'fail'] as const) {
+  test(`worktree lock loading is dismissible without mutation (${mode})`, async ({ page }) => {
+    await setup(page);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let resolveFeature!: () => void;
+    const featureLoaded = new Promise<void>(resolve => { resolveFeature = resolve; });
+    await page.route('**/chunk-*.js', async route => {
+      const response = await route.fetch();
+      const source = await response.text();
+      if (!source.includes('WorktreeLockDialogComponent') || !source.includes('Lock linked worktree')) {
+        await route.fulfill({ response, body: source });
+        return;
+      }
+      await gate;
+      if (mode === 'fail') await route.abort();
+      else await route.fulfill({ response, body: source });
+      resolveFeature();
+    });
+    const opener = page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true });
+    await opener.click();
+    await page.getByRole('menuitem', { name: 'Lock this worktree…', exact: true }).click();
+    const loading = page.getByRole('dialog', { name: 'Loading worktree lock review' });
+    await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(loading.getByRole('button', { name: 'Cancel' })).toBeFocused();
+    if (mode === 'hold') {
+      await page.keyboard.press('Escape');
+      await expect(loading).toHaveCount(0);
+      release();
+      await featureLoaded;
+      await expect(page.getByRole('dialog', { name: 'Lock linked worktree' })).toHaveCount(0);
+    } else {
+      release();
+      await featureLoaded;
+      const failed = page.getByRole('dialog', { name: 'Worktree lock review unavailable' });
+      await expect(failed.getByRole('alert')).toContainText('No lock command ran');
+      await expect(failed.getByRole('button', { name: 'Close' })).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(failed).toHaveCount(0);
+    }
+    await expect(opener).toBeFocused();
+    expect(await page.evaluate(() => (window as any).__worktreeMove.calls.filter(
+      (entry: any) => entry.command === 'set_worktree_locked'))).toEqual([]);
+  });
+}

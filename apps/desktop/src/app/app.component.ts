@@ -1233,6 +1233,17 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly ownsWorktreeLock = (request: WorktreeLockRequest): boolean =>
     this.worktreeLockRequest() === request && this.ownsRepositoryScope(request);
 
+  private readonly worktreeLockLoaderClose = viewChild<ElementRef<HTMLButtonElement>>('worktreeLockLoaderClose');
+  private readonly worktreeLockLoaderFocus = afterRenderEffect(() => {
+    this.worktreeLockLoaderClose()?.nativeElement.focus();
+  });
+
+  protected handleWorktreeLockLoaderKey(event: KeyboardEvent, request: WorktreeLockRequest): void {
+    event.stopPropagation();
+    if (event.key === 'Escape') { event.preventDefault(); this.closeWorktreeLock(request); }
+    else this.cycleDialogFocus(event.currentTarget as HTMLElement, event);
+  }
+
   protected closeWorktreeLock(request: WorktreeLockRequest): void {
     if (this.worktreeLockRequest() !== request) return;
     this.worktreeLockRequest.set(null);
