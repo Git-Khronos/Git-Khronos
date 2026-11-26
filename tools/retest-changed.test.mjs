@@ -141,8 +141,8 @@ test('editor fixture changes cover editing, file tools and draft recovery withou
   for (const name of ['working-file-editor', 'file-tools', 'editor-draft-recovery']) {
     f.write(`e2e/renderer/${name}.spec.ts`);
   }
-  const plan = f.run();
-  assert.match(plan, /desktop:e2e:working-files/);
+  const plan = f.run('--webkit', '--workers=2');
+  assert.ok(plan.includes('"desktop:e2e:working-files" "--" "--workers=2" "--project=webkit"'));
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 

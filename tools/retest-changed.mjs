@@ -151,6 +151,7 @@ const commands = broad
      ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
 const isBrowser = command => command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:');
 for (const command of commands.filter(isBrowser)) {
+  if ((values.workers || values.webkit) && !command.includes('--')) command.push('--');
   if (values.workers) command.push('--workers=' + values.workers);
   if (values.webkit) command.push('--project=webkit');
 }
