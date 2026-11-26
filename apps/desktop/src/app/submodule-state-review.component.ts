@@ -37,7 +37,7 @@ import { submoduleFindings } from './submodule-findings';
             @if (result.entries.length) {
               <div class="entry-filters" role="group" aria-label="Filter submodule states">
                 <label>Filter by path, name or commit ID
-                  <input type="search" [value]="filterQuery()" [disabled]="!!confirming() || syncing()"
+                  <input #submoduleFilter type="search" [value]="filterQuery()" [disabled]="!!confirming() || syncing()"
                     (input)="filterQuery.set($any($event.target).value)" />
                 </label>
                 <label><input type="checkbox" [checked]="attentionOnly()" [disabled]="!!confirming() || syncing()"
@@ -210,7 +210,8 @@ import { submoduleFindings } from './submodule-findings';
               } @empty {
                 <li class="empty-state">
                   @if (result.entries.length) {
-                    <strong>No matching submodules</strong><span>Change the path or attention filter.</span>
+                    <strong>No matching submodules</strong><span>Change or clear the filters to see other submodules.</span>
+                    <button type="button" [disabled]="!!confirming() || syncing()" (click)="clearFilters()">Clear filters</button>
                   } @else {
                     <strong>No submodules</strong><span>This repository has no declared or recorded submodule paths.</span>
                   }
@@ -267,6 +268,7 @@ import { submoduleFindings } from './submodule-findings';
     .bulk-confirm { margin-bottom: 12px; }
     .empty-state { display: grid; gap: 3px; padding: 18px; border: 1px dashed var(--inspector-divider); border-radius: 6px; color: var(--muted); text-align: center; }
     .empty-state strong { color: var(--text); }
+    .empty-state button { justify-self: center; margin: 4px 0 0; }
     .footnote { color: var(--muted); font-size: 12px; }
     footer { position: sticky; bottom: -20px; display: flex; gap: 10px; justify-content: flex-end; margin: 18px -20px -20px; padding: 12px 20px; border-top: 1px solid var(--inspector-divider); background: var(--inspector-list); }
     button { margin: 6px 6px 0 0; padding: 7px 11px; border: 1px solid var(--inspector-divider); border-radius: 4px; background: var(--inspector-list); color: var(--text); }
@@ -311,6 +313,7 @@ export class SubmoduleStateReviewComponent {
   readonly trackingBranchName = signal('');
   readonly findings = submoduleFindings;
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
+  private readonly submoduleFilter = viewChild<ElementRef<HTMLInputElement>>('submoduleFilter');
 
   constructor() {
     effect(() => {
@@ -327,6 +330,13 @@ export class SubmoduleStateReviewComponent {
 
   canSync(entry: SubmoduleState): boolean {
     return !!entry.name && !!entry.declaredUrl && !!entry.registeredUrl && entry.urlMatches !== true;
+  }
+
+  clearFilters(): void {
+    if (this.confirming() || this.syncing()) return;
+    this.filterQuery.set('');
+    this.attentionOnly.set(false);
+    this.submoduleFilter()?.nativeElement.focus({ preventScroll: true });
   }
 
   trackingBranchLabel(branch: string | null): string {

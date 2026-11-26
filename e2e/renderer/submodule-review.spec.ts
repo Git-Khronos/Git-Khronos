@@ -261,6 +261,24 @@ test('filters by path or name and treats untracked-only checkouts as needing att
     .filter((call: any) => call.command.includes('submodule')).map((call: any) => call.command))).toEqual(['submodule_state_review']);
 });
 
+test('clearing empty submodule filters returns focus without another read', async ({ page }) => {
+  await setup(page);
+  await open(page);
+  const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+  const query = dialog.getByRole('searchbox', { name: 'Filter by path, name or commit ID' });
+  const attention = dialog.getByRole('checkbox', { name: 'Needs attention only' });
+  await query.fill('nothing-matches-this');
+  await attention.check();
+  await expect(dialog).toContainText('No matching submodules');
+  await dialog.getByRole('button', { name: 'Clear filters', exact: true }).press('Enter');
+  await expect(query).toBeFocused();
+  await expect(query).toHaveValue('');
+  await expect(attention).not.toBeChecked();
+  await expect(dialog.getByRole('group', { name: 'Filter submodule states' })).toContainText('6 of 6 shown');
+  expect(await page.evaluate(() => (window as any).__submoduleReview.calls
+    .filter((call: any) => call.command.includes('submodule')).map((call: any) => call.command))).toEqual(['submodule_state_review']);
+});
+
 test('initializes every missing submodule only after a scoped bulk confirmation', async ({ page }) => {
   await setup(page);
   await open(page);
