@@ -948,6 +948,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private fileContextMenuReturnFocus: HTMLElement | null = null;
   private filePathCopyGeneration = 0;
   private sidebarCopyGeneration = 0;
+  private diffPathCopyGeneration = 0;
   private sidebarActionMenuReturnFocus: HTMLElement | null = null;
   protected readonly sidebarActionMenuPosition = signal({ x: 8, y: 8 });
   private sidebarItemMenuAnchor = { x: 8, y: 8 };
@@ -10593,7 +10594,7 @@ export class AppComponent implements OnInit, OnDestroy {
     applySelectedDiffLines: this.applySelectedDiffLines.bind(this),
     canInspectActiveFile: this.canInspectActiveFile.bind(this),
     closeDiffViewer: this.closeDiffViewer.bind(this),
-    copyContextValue: (value: string) => { void this.copyText(value); },
+    copyContextValue: this.copyDiffPath.bind(this),
     diffFileStatusLabel: this.diffFileStatusLabel.bind(this),
     diffFileTargetContext: this.diffFileTargetContext.bind(this),
     diffFileTargetKey: this.diffFileTargetKey.bind(this),
@@ -14365,6 +14366,17 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected fileHasParentDirectory(path: string): boolean {
     return this.fileDirectory(path) !== '';
+  }
+
+  private async copyDiffPath(path: string): Promise<void> {
+    const generation = ++this.diffPathCopyGeneration;
+    const scope = this.git.activeRepositoryReadScope();
+    const diff = this.activeDiff();
+    const copied = await this.copyText(path);
+    if (!copied && this.diffViewerOpen() && this.activeDiff() === diff
+      && generation === this.diffPathCopyGeneration && scope === this.git.activeRepositoryReadScope()) {
+      this.git.error.set('Could not copy the diff path. Clipboard access is unavailable.');
+    }
   }
 
   protected async copyContextValue(value: string): Promise<void> {

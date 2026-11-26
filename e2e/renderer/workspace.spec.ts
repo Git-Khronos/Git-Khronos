@@ -9473,7 +9473,16 @@ test('keeps focused file changes inside the center workspace', async ({ page }) 
   const fullPath = await fileIdentity.getAttribute('title');
   expect(fullPath).toBeTruthy();
   await expect(fileIdentity.locator('strong')).toHaveText(fullPath!.split('/').at(-1)!);
-  await expect(diff.getByRole('button', { name: `Copy path for ${fullPath}` })).toHaveAttribute('title', 'Copy full file path');
+  const copyPath = diff.getByRole('button', { name: `Copy path for ${fullPath}` });
+  await expect(copyPath).toHaveAttribute('title', 'Copy full file path');
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async () => { throw new Error('Clipboard denied'); },
+    } });
+  });
+  await copyPath.click();
+  await expect(page.locator('gk-error-toast')).toContainText('Could not copy the diff path. Clipboard access is unavailable.');
+  await expect(diff).toBeVisible();
   expect(await fileIdentity.locator('strong').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await diff.locator('.diff-workspace-toolbar').evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(75);
   const [backBox, identityBox, closeBox, pickerBox, layoutBox, actionsBox] = await Promise.all([
