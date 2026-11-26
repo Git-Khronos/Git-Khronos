@@ -3294,6 +3294,7 @@ For a feature that spans multiple specs, use
 | Profile | Renderer coverage |
 | --- | --- |
 | `worktrees` | Linked worktrees, occupied-branch checkout, submodule review |
+| `submodules` | Submodule review, commit ID filtering and guarded management actions |
 | `working-files` | File editing, draft recovery, external file tools, line counts, working-tree actions, discard and recovery |
 | `recaps` | Staged and unstaged additions/deletions, refresh races, and compact headers |
 | `editor` | File editing, draft recovery and external file tools without the other working-tree cases |

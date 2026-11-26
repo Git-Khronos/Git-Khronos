@@ -190,6 +190,7 @@
       "options": { "command": "playwright test" },
       "configurations": {
         "worktrees": { "command": "playwright test 'e2e/renderer/(worktree-|branch-checkout-worktree|submodule-review)'" },
+        "submodules": { "command": "playwright test 'e2e/renderer/submodule-review[.]spec[.]ts$'" },
         "working-files": { "command": "playwright test 'e2e/renderer/(working-(tree|file|directory)|unstaged-summary|discard-recovery|editor-draft-recovery|file-tools)'" },
         "recaps": { "command": "playwright test 'e2e/renderer/unstaged-summary[.]spec[.]ts$'" },
         "editor": { "command": "playwright test 'e2e/renderer/(working-file-editor|editor-draft-recovery|file-tools)[.]spec[.]ts$'" },

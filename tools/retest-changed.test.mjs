@@ -177,15 +177,26 @@ test('working-tree recap edits select the staged and unstaged summary cases once
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 
-test('occupied-checkout and submodule dialogs select the worktree profile', t => {
+test('occupied-checkout dialog selects the worktree profile', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/checkout-worktree-dialog.component.ts');
-  f.write('apps/desktop/src/app/submodule-state-review.component.ts');
   f.write('e2e/renderer/branch-checkout-worktree.spec.ts');
-  f.write('e2e/renderer/submodule-review.spec.ts');
   const plan = f.run();
   assert.match(plan, /desktop:e2e:worktrees/);
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
+});
+
+test('submodule review changes select only the submodule profile', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/submodule-state-review.component.ts');
+  f.write('e2e/renderer/submodule-review.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:submodules/);
+  assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
+  f.write('apps/desktop/src/app/checkout-worktree-dialog.component.ts');
+  const combined = f.run();
+  assert.match(combined, /desktop:e2e:worktrees/);
+  assert.equal(combined.match(/pnpm nx run/g)?.length, 1);
 });
 
 test('graph fixture changes retain exhaustive columns coverage and graph type checking', t => {
