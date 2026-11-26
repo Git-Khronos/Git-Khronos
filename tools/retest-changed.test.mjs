@@ -322,3 +322,34 @@ test('a shared discard scenario file selects all six registered discard suites',
   ]);
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
 });
+
+test('GitLab fixture and fork edits share one catalogue run and one fork UI run', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'candidate.deb\n');
+  f.commit();
+  f.write('candidate.deb');
+  f.write('tools/native_gitlab_fork_scenarios.py');
+  const forkOnly = f.run('--native-package', 'candidate.deb');
+  assert.match(forkOnly, /"desktop:native-gitlab-fork-ui"/);
+  assert.doesNotMatch(forkOnly, /"desktop:native-gitlab"/);
+  f.write('tools/native_gitlab_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.deepEqual([...plan.matchAll(/"desktop:native-(gitlab[^"]*)"/g)].map(match => match[1]).sort(), [
+    'gitlab', 'gitlab-fork-ui',
+  ]);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
+});
+
+test('worktree edits include branch reservation and recap edits select the recap target', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'candidate.deb\n');
+  f.commit();
+  f.write('candidate.deb');
+  f.write('tools/native_worktree_scenarios.py');
+  f.write('tools/native_unstaged_summary_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-worktree-reservation"/);
+  assert.match(plan, /"desktop:native-worktrees"/);
+  assert.match(plan, /"desktop:native-working-tree-recaps"/);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
+});

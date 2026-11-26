@@ -3347,8 +3347,11 @@ pnpm test:changed --run --native-package "$archive" # Also run mapped packaged s
 Recognized renderer components select their profile. Changed browser and
 renderer unit specs run directly unless already covered, while native harness
 and registered package test edits use their own test targets. For edits to
-mapped sparse-checkout, submodule, and discard scenario files, use
+mapped GitLab, worktree, recap, sparse-checkout, submodule, and discard scenario files, use
 `--native-package` to run the affected suites against an explicit Debian archive.
+These are representative focused suites, not a transitive dependency analysis.
+The GitLab catalogue suite needs OpenSSH server or `GIT_KHRONOS_SSHD`;
+fork-only edits use the fork UI suite without SSH.
 Unmapped native scenario or shared harness edits still need manual suite selection.
 Shared or unmapped files fall back to broader validation; use
 `--run --allow-full` after reviewing that plan. This is a local aid, not a

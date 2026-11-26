@@ -34,7 +34,12 @@ const rendererFixtureSpecs = new Map([
     'deferred-toolbar-options', 'revision-inspector-loading', 'startup-failures',
   ]],
 ]);
+// Representative focused suites; this is not a transitive Python dependency graph.
 const packagedScenarios = new Map([
+  ['tools/native_gitlab_fork_scenarios.py', ['native-gitlab-fork-ui']],
+  ['tools/native_gitlab_scenarios.py', ['native-gitlab', 'native-gitlab-fork-ui']],
+  ['tools/native_unstaged_summary_scenarios.py', ['native-working-tree-recaps']],
+  ['tools/native_worktree_scenarios.py', ['native-worktrees', 'native-worktree-reservation']],
   ['tools/native_sparse_checkout_scenarios.py', ['native-sparse-checkout']],
   ['tools/native_submodule_initialize_scenarios.py', ['native-submodule-initialize']],
   ['tools/native_submodule_update_scenarios.py', ['native-submodule-update']],

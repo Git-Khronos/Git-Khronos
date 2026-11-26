@@ -144,6 +144,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite working-tree-recaps --headless" }
     },
+    "native-worktree-reservation": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite worktree-reservation --headless" }
+    },
     "native-worktrees": {
       "executor": "nx:run-commands",
       "cache": false,
