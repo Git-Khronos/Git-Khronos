@@ -13998,8 +13998,9 @@ export class AppComponent implements OnInit, OnDestroy {
       this.blockedDiscardChoiceSelectedPaths.set([]);
       afterNextRender(() => {
         if (this.pendingFileAction() === refreshedAction && this.blockedDiscardChoicePaths() === preview.paths) {
-          this.fileConfirmationDialog()?.nativeElement.querySelector<HTMLInputElement>('.blocked-discard-choice input[type="checkbox"]:not(:disabled)')
-            ?.focus({ preventScroll: true });
+          const dialog = this.fileConfirmationDialog()?.nativeElement;
+          (dialog?.querySelector<HTMLInputElement>('.blocked-discard-choice input[type="checkbox"]:not(:disabled)')
+            ?? dialog?.querySelector<HTMLButtonElement>('[data-file-dialog-cancel]'))?.focus({ preventScroll: true });
         }
       }, { injector: this.injector });
     } finally {

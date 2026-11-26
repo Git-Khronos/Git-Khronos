@@ -1176,7 +1176,7 @@ test('returns to the blocked review without retaining root selections', async ({
           fixture.previews++;
           return Promise.resolve(fixture.previews === 1
             ? { token: 'blocked-token', paths: ['initial-root.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0 }
-            : { token: 'refreshed-token', paths: ['root-a.txt'], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0 });
+            : { token: 'refreshed-token', paths: fixture.previews === 2 ? ['root-a.txt'] : [], skippedPaths: [], blockedPaths: ['nested/file.txt'], untracked: 0 });
         }
         if (command === 'refresh_repository_status') return Promise.resolve(git.repository().status);
         return Promise.reject(new Error(`Unexpected command ${command}`));
@@ -1196,6 +1196,10 @@ test('returns to the blocked review without retaining root selections', async ({
   await expect(dialog.getByRole('button', { name: 'Choose eligible files…' })).toBeFocused();
   await expect(dialog.getByRole('checkbox', { name: 'Select root-a.txt for fresh discard review' })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Discard captured changes' })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Choose eligible files…' }).click();
+  await expect(dialog).toContainText('No files are currently eligible.');
+  await expect(dialog.getByRole('button', { name: 'Preview selected files' })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(options).toBeFocused();
   const result = await page.evaluate(() => (window as any).__discardChoiceTest);
