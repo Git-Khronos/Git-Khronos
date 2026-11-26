@@ -225,7 +225,11 @@ test('opens a grouped branch switcher from the compact repository toolbar', asyn
   await expect(palette.getByText('Branches', { exact: true })).toBeVisible();
   await expect(palette.getByRole('listbox', { name: 'Branch choices' })).toBeVisible();
   await expect(palette.locator('.palette-footer')).toContainText('Switch');
-  await expect(palette.getByRole('option', { name: /^main/ })).toBeDisabled();
+  const currentBranch = palette.getByRole('option', { name: /^main/ });
+  await expect(currentBranch).toBeDisabled();
+  await search.press('End');
+  await search.press('PageDown');
+  await expect(palette.getByRole('option', { selected: true })).toBeEnabled();
   await search.fill('partial');
   await expect(palette.getByRole('option', { name: /feature\/partial-staging/ })).toHaveCount(1);
   await page.keyboard.press('Escape');
