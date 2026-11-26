@@ -22,6 +22,11 @@ const profiles = [
   [/^application-updates-dialog\.component\./, 'updates'],
 ];
 const prefix = 'apps/desktop/src/app/';
+const rendererSourceChecks = [
+  [/^markdown-preview(?:\.component|\.worker)?\.ts$/, 'editor', 'markdown-preview.spec.ts'],
+  [/^application-updates\.service\.ts$/, 'updates', 'application-updates.service.spec.ts'],
+  [/^submodule-findings\.ts$/, 'submodules', 'submodule-findings.spec.ts'],
+];
 const rendererFixtureSpecs = new Map([
   ['e2e/renderer/graph-layout-test-helpers.ts', ['graph-columns', 'graph-layout-readiness']],
   ['e2e/renderer/lazy-chunk-routing.ts', [
@@ -98,6 +103,8 @@ let graphTypecheck = false;
 let broad = false;
 for (const path of changed) {
   let plan;
+  const sourceCheck = path.startsWith(prefix)
+    ? rendererSourceChecks.find(([test]) => test.test(path.slice(prefix.length))) : undefined;
   if (/^(README\.md|docs\/.*\.md)$/.test(path)) {
     plan = 'documentation only';
   } else if (/^tools\/retest-changed(?:\.test)?\.mjs$/.test(path) && existsSync(join(cwd, path))) {
@@ -110,13 +117,14 @@ for (const path of changed) {
     nativeHarnessTests = true;
     nativeHarnessSource = true;
     plan = 'native harness unit tests; packaged scenario validation is separate';
-  } else if (/^apps\/desktop\/src\/app\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
+  } else if (/^apps\/desktop\/src\/app\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
     unitSpecs.add(path);
     plan = 'individual renderer unit spec';
-  } else if (/^apps\/desktop\/src\/app\/markdown-preview(?:\.component|\.worker)?\.ts$/.test(path) && existsSync(join(cwd, path))) {
-    selected.add('editor');
-    unitSpecs.add(prefix + 'markdown-preview.spec.ts');
-    plan = 'editor renderer profile and Markdown unit spec';
+  } else if (sourceCheck && existsSync(join(cwd, path))) {
+    const [, profile, unitSpec] = sourceCheck;
+    selected.add(profile);
+    unitSpecs.add(prefix + unitSpec);
+    plan = profile + ' renderer profile and ' + unitSpec;
   } else if (path === 'e2e/renderer/editor-protocol-fixture.ts' && existsSync(join(cwd, path))) {
     selected.add('editor');
     plan = 'editor renderer profile (shared editor fixture)';

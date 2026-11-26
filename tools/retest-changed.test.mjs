@@ -157,6 +157,23 @@ test('Markdown implementation changes also exercise the unit spec exactly once',
   assert.match(unit, /"--" "apps\/desktop\/src\/app\/markdown-preview\.spec\.ts"$/);
 });
 
+test('updater service and submodule findings select their unit and browser checks', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/application-updates.service.spec.ts');
+  const unitOnly = f.run();
+  assert.match(unitOnly, /desktop:renderer-unit-test:focused/);
+  assert.doesNotMatch(unitOnly, /desktop:e2e|desktop:check/);
+  f.write('apps/desktop/src/app/application-updates.service.ts');
+  f.write('apps/desktop/src/app/submodule-findings.ts');
+  const plan = f.run();
+  const unit = plan.split('\n').find(line => line.includes('desktop:renderer-unit-test:focused'));
+  assert.equal(unit.match(/application-updates\.service\.spec\.ts/g)?.length, 1);
+  assert.match(unit, /submodule-findings\.spec\.ts/);
+  assert.match(plan, /desktop:e2e:updates/);
+  assert.match(plan, /desktop:e2e:submodules/);
+  assert.doesNotMatch(plan, /desktop:check/);
+});
+
 test('discard recovery display changes select only the discard profile', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/discard-recovery-display.ts');
