@@ -3414,6 +3414,13 @@ keyboard Tab returning from the toolbar menu after a focus gap. The matching
 source also passed the production renderer budget check (292,792 initial
 bytes) and targeted delayed-history and toolbar accessibility browser checks.
 
+The full Chromium run on the earlier `87cfe17` source snapshot ran 2,843
+cases in 47.4 minutes: 2,841 passed and two failed. Both failures passed
+the `--last-failed` retest after the stable toolbar menu and history-space
+fixes. Local logs: `target/local-review/full-renderer-87cfe17.log` and
+`target/local-review/full-renderer-87cfe17-failed-retest.log`. This was not a
+clean full Chromium pass on the later revision.
+
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
