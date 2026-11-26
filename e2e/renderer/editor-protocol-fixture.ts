@@ -4,7 +4,8 @@ import { expect, type Page } from '@playwright/test';
 // covered by owned Git fixtures in the Rust native/core suites.
 export async function prepareEditor(page: Page, mode = 'ready', openPreview = true) {
   await page.goto('/');
-  await expect(page.locator('.commit-row').first()).toBeVisible();
+  // The editor uses the selected repository, not asynchronously loaded history.
+  await expect(page.getByRole('button', { name: /^Unstaged Files/ })).toBeVisible();
   await page.evaluate(({ mode, openPreview }) => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git, repo = git.repository();
