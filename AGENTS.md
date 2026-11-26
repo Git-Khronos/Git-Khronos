@@ -1356,3 +1356,17 @@ maximum similarity to an existing proprietary application
 - The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
 
 <!-- nx configuration end-->
+
+## Local validation storage
+
+- Treat build and dependency caches as disposable, not evidence. For each
+  qualification run retain the exact verified package (when applicable), its
+  checksum, the source commit, and relevant logs/reports. Do not retain a copy
+  of Cargo, pnpm, or renderer caches for every run.
+- Prefer one reusable cache per host/toolchain or an ephemeral build directory.
+  For archived Linux qualification runs, review `task clean:archives` and
+  periodically apply it after any qualification jobs have stopped. Use
+  `task clean:debug` to reclaim the main checkout's Rust debug output without
+  deleting release bundles or test evidence.
+- For an interrupted snapshot, verify that its runner is no longer live before
+  reclaiming caches. Preserve terminal receipts and failure diagnostics.
