@@ -3256,6 +3256,13 @@ pnpm nx run desktop:test-lfs
 TMPDIR=/tmp pnpm nx run desktop:test-signing
 ```
 
+The native targets do not build the application. Without `--package`, they
+use the Debian archive in the local build output, which may predate the checkout.
+For a source regression, run `desktop:package-deb` first; for a release candidate,
+pass its archive explicitly and match the report's `packageSha256` against the
+candidate digest. A failing or passing run against an older archive does not
+establish the behavior of the current source.
+
 The packaged GitLab discovery/clone suite uses the same verified package and
 ordinary native IPC with owned HTTPS and loopback SSH services and synthetic
 credentials. It requires `sshd` (`openssh-server`) in addition to the client;
