@@ -475,6 +475,7 @@ pub struct Worktree {
     pub branch: Option<String>,
     pub current: bool,
     pub locked: bool,
+    pub lock_reason: Option<String>,
     pub prunable: bool,
     pub status_loaded: bool,
     pub changes: usize,
@@ -9718,6 +9719,7 @@ fn read_worktrees(
             let mut oid = String::new();
             let mut branch = None;
             let mut locked = false;
+            let mut lock_reason = None;
             let mut prunable = false;
             // Git paths and registration reasons can contain literal newlines.
             for line in record.split('\0') {
@@ -9732,8 +9734,11 @@ fn read_worktrees(
                             .unwrap_or(value)
                             .to_owned(),
                     );
-                } else if line == "locked" || line.starts_with("locked ") {
+                } else if line == "locked" {
                     locked = true;
+                } else if let Some(reason) = line.strip_prefix("locked ") {
+                    locked = true;
+                    lock_reason = Some(reason.to_owned());
                 } else if line == "prunable" || line.starts_with("prunable ") {
                     prunable = true;
                 }
@@ -9757,6 +9762,7 @@ fn read_worktrees(
                 branch,
                 current,
                 locked,
+                lock_reason,
                 prunable,
                 status_loaded: current || linked_status.is_some(),
                 changes: status.as_ref().map_or(0, |value| value.entry_count),
@@ -22719,7 +22725,13 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
             "uncommitted agent work\n",
         )
         .expect("write linked worktree change");
-        set_worktree_locked(&repository.path, &linked_text, true).expect("lock linked worktree");
+        repository.git(&[
+            "worktree",
+            "lock",
+            "--reason",
+            "portable\nbackup — offline",
+            &linked_text,
+        ]);
 
         let data = snapshot(&repository.path).expect("snapshot worktrees");
         assert_eq!(data.worktrees.len(), 2);
@@ -22738,6 +22750,10 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
         assert!(linked.status_loaded);
         assert_eq!(linked.changes, 1);
         assert!(linked.locked);
+        assert_eq!(
+            linked.lock_reason.as_deref(),
+            Some("portable\nbackup — offline")
+        );
         assert!(!linked.current);
         assert!(!linked.prunable);
 
@@ -22757,6 +22773,14 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
         );
 
         set_worktree_locked(&repository.path, &linked_text, false).expect("unlock linked worktree");
+        let unlocked = snapshot(&repository.path).expect("snapshot unlocked worktree");
+        let unlocked_worktree = unlocked
+            .worktrees
+            .iter()
+            .find(|worktree| worktree.branch.as_deref() == Some("agent/task"))
+            .expect("unlocked linked agent worktree");
+        assert!(!unlocked_worktree.locked);
+        assert_eq!(unlocked_worktree.lock_reason, None);
         let dirty_error = remove_worktree(&repository.path, &linked_text, false, false)
             .expect_err("protect dirty linked worktree");
         assert_eq!(dirty_error.kind, "gitFailure");

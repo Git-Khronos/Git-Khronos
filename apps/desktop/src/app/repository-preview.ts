@@ -51,8 +51,8 @@ export function createRepositoryPreview(): RepositorySnapshot {
     stashes: [{ reference: 'stash@{0}', oid: stashOid, message: 'WIP on graph polish' }],
     tags: [{ fullName: 'refs/tags/v0.1.0', name: 'v0.1.0', oid: tagOid }],
     worktrees: [
-      { path: '/home/maya/projects/git-khronos', oid: headOid, branch: 'main', current: true, locked: false, prunable: false, statusLoaded: true, changes: 4, ahead: 1, behind: 0 },
-      { path: '/home/maya/projects/git-khronos-partial-staging', oid: featureOid, branch: 'feature/partial-staging', current: false, locked: false, prunable: false, statusLoaded: true, changes: 2, ahead: 0, behind: 0 },
+      { path: '/home/maya/projects/git-khronos', oid: headOid, branch: 'main', current: true, locked: false, lockReason: null, prunable: false, statusLoaded: true, changes: 4, ahead: 1, behind: 0 },
+      { path: '/home/maya/projects/git-khronos-partial-staging', oid: featureOid, branch: 'feature/partial-staging', current: false, locked: false, lockReason: null, prunable: false, statusLoaded: true, changes: 2, ahead: 0, behind: 0 },
     ],
     submodules: [
       { name: 'vendor/lane-engine', path: 'vendor/lane-engine', absolutePath: '/home/maya/projects/git-khronos/vendor/lane-engine', url: 'https://github.com/example/lane-engine.git', oid: commits[4].oid, headOid: commits[4].oid, initialized: true, outOfSync: false },

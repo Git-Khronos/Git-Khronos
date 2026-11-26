@@ -3,7 +3,7 @@ import type { Worktree } from '@git-khronos/contracts';
 import { branchCheckoutOwner, repositoryLocationLabel } from './repository-location';
 
 const worktree = (path: string, branch: string | null, current = false, prunable = false): Worktree => ({
-  path, branch, current, prunable, oid: 'a'.repeat(40), locked: false,
+  path, branch, current, prunable, oid: 'a'.repeat(40), locked: false, lockReason: null,
   statusLoaded: false, changes: 0, ahead: 0, behind: 0,
 });
 

@@ -613,11 +613,11 @@
             <div class="reference-content worktree-list">
               @for (worktree of visibleListWorktrees(); track worktree.path) {
                 <div class="worktree-list-item" [class.current]="worktree.current" [class.has-changes]="worktree.changes" [class.prunable]="worktree.prunable" [title]="(worktree.branch || 'Detached HEAD') + ' · ' + worktree.path" (contextmenu)="openWorktreeMenu($event, worktree.path)">
-                  <button class="worktree-list-main" type="button" [attr.aria-label]="'Worktree ' + (worktree.branch || 'Detached HEAD') + ', ' + worktree.path + (worktree.current ? ', current' : '')" (click)="selectWorktreeWip(worktree)" [disabled]="worktree.prunable">
+                  <button class="worktree-list-main" type="button" [attr.aria-label]="'Worktree ' + (worktree.branch || 'Detached HEAD') + ', ' + worktree.path + (worktree.current ? ', current' : '') + (worktree.locked ? ', locked' + (worktree.lockReason ? ': ' + worktree.lockReason : '') : '')" (click)="selectWorktreeWip(worktree)" [disabled]="worktree.prunable">
                     <span><gk-icon name="folder-git" [size]="13" /></span><span><strong>{{ worktree.branch || 'Detached HEAD' }}</strong><small>{{ git.pathLabel(worktree.path) }}</small></span>
                     @if (worktree.statusLoaded && worktree.changes) { <b>{{ worktree.changes }} WIP</b> }
                     @else if (!worktree.statusLoaded) { <b title="Open this worktree to inspect its status">Status on open</b> }
-                    @if (worktree.locked) { <i title="Locked"><gk-icon name="pin" [size]="10" /></i> }
+                    @if (worktree.locked) { <i [title]="'Locked' + (worktree.lockReason ? ': ' + worktree.lockReason : '')"><gk-icon name="pin" [size]="10" /></i> }
                   </button>
                   <button class="worktree-list-actions" type="button" [attr.data-worktree-path]="worktree.path" title="Worktree actions" aria-label="Worktree actions for {{ worktree.branch ?? git.pathLabel(worktree.path) }}" aria-haspopup="menu" [attr.aria-expanded]="worktreeMenuPath() === worktree.path" (click)="toggleWorktreeMenu($event, worktree.path)"><gk-icon name="more" [size]="13" /></button>
                   @if (worktreeMenuPath() === worktree.path) {
