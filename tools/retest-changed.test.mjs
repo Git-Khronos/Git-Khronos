@@ -135,6 +135,17 @@ test('WebKit opt-in applies only to selected browser targets', t => {
   assert.doesNotMatch(plan, /GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run "desktop:owned-process-test"/);
 });
 
+test('editor fixture changes cover editing, file tools and draft recovery without duplicate runs', t => {
+  const f = fixture(t);
+  f.write('e2e/renderer/editor-protocol-fixture.ts');
+  for (const name of ['working-file-editor', 'file-tools', 'editor-draft-recovery']) {
+    f.write(`e2e/renderer/${name}.spec.ts`);
+  }
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:working-files/);
+  assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
+});
+
 test('a native harness unit-test edit selects no browser or package run', t => {
   const f = fixture(t);
   f.write('tools/native_acceptance_test.py');

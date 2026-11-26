@@ -3279,7 +3279,7 @@ For a feature that spans multiple specs, use
 | Profile | Renderer coverage |
 | --- | --- |
 | `worktrees` | Linked worktrees, occupied-branch checkout, submodule review |
-| `working-files` | File editing, working-tree actions, discard and recovery |
+| `working-files` | File editing, draft recovery, external file tools, working-tree actions, discard and recovery |
 | `branches` | Branch navigation, scoped reference actions, branch workflows |
 | `stash` | Stash creation, review, restoration and deletion |
 | `transport` | Fetch, pull, push, remote cleanup and authentication UI |

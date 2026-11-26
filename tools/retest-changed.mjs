@@ -101,6 +101,9 @@ for (const path of changed) {
   } else if (/^apps\/desktop\/src\/app\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
     unitSpecs.push(path);
     plan = 'individual renderer unit spec';
+  } else if (path === 'e2e/renderer/editor-protocol-fixture.ts' && existsSync(join(cwd, path))) {
+    selected.add('working-files');
+    plan = 'working-files renderer profile (shared editor fixture)';
   } else if (isPackageTest(path)) {
     packageTests = true;
     plan = 'package tooling tests';
