@@ -126,6 +126,26 @@ test('opens, filters, and recovers from an empty command search', async ({ page 
   await expect(opener).toBeFocused();
 });
 
+test('does not execute a disabled command when Enter is pressed', async ({ page }) => {
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    (window as any).__executedPaletteActions = [];
+    app.runCommand = (action: { id: string }) => (window as any).__executedPaletteActions.push(action.id);
+  });
+  await page.keyboard.press('Control+p');
+
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const search = palette.getByRole('combobox', { name: 'Search commands' });
+  await search.fill('Undo');
+  const undo = palette.getByRole('option', { name: /^Undo/ });
+  await expect(undo).toBeDisabled();
+  await expect(search).not.toHaveAttribute('aria-activedescendant');
+
+  await search.press('Enter');
+  await expect(palette).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__executedPaletteActions)).toEqual([]);
+});
+
 test('keeps keyboard selection visible and executes a searched view command', async ({ page }) => {
   await page.keyboard.press('Control+p');
   const palette = page.getByRole('dialog', { name: 'Command palette' });

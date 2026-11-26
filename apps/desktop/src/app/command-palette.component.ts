@@ -80,7 +80,7 @@ export class CommandPaletteComponent {
     if (event.key === 'Enter') {
       event.preventDefault();
       const action = this.commands()[this.selection()];
-      if (action) this.executed.emit(action);
+      if (action?.enabled) this.executed.emit(action);
     }
   }
 
@@ -99,14 +99,48 @@ export class CommandPaletteComponent {
       this.selection.set(0);
       return;
     }
-    const step = direction === 'first' ? 1 : direction === 'last' ? -1 : Math.sign(direction);
-    let index = direction === 'first'
-      ? 0
-      : direction === 'last'
-        ? commands.length - 1
-        : Math.max(0, Math.min(commands.length - 1, this.selection() + direction));
-    while (!commands[index]?.enabled && index + step >= 0 && index + step < commands.length) index += step;
-    this.selection.set(index);
+    if (direction === 'first' || direction === 'last') {
+      const step = direction === 'first' ? 1 : -1;
+      for (let index = step > 0 ? 0 : commands.length - 1;
+        index >= 0 && index < commands.length; index += step) {
+        if (commands[index].enabled) {
+          this.selection.set(index);
+          this.scrollSelectionIntoView(index);
+          return;
+        }
+      }
+      return;
+    }
+
+    const step = Math.sign(direction);
+    const current = this.selection();
+    const target = Math.max(0, Math.min(commands.length - 1, current + direction));
+    for (let index = target; index >= 0 && index < commands.length; index += step) {
+      if (commands[index].enabled) {
+        this.selection.set(index);
+        this.scrollSelectionIntoView(index);
+        return;
+      }
+    }
+    // A page jump can land on a disabled row at the boundary. In that case,
+    // settle on the closest enabled row between the target and prior selection.
+    for (let index = target - step; step > 0 ? index >= current : index <= current; index -= step) {
+      if (commands[index]?.enabled) {
+        this.selection.set(index);
+        this.scrollSelectionIntoView(index);
+        return;
+      }
+    }
+    // The result set may have changed while the palette was open; recover to
+    // the first enabled action rather than retaining a stale disabled index.
+    const firstEnabled = commands.findIndex((action) => action.enabled);
+    if (firstEnabled >= 0) {
+      this.selection.set(firstEnabled);
+      this.scrollSelectionIntoView(firstEnabled);
+    }
+  }
+
+  private scrollSelectionIntoView(index: number): void {
     queueMicrotask(() => this.searchInput()?.nativeElement.closest('.command-palette')
       ?.querySelector<HTMLElement>(`#command-palette-option-${index}`)?.scrollIntoView({ block: 'nearest' }));
   }

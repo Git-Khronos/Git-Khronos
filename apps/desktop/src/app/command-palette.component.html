@@ -10,7 +10,7 @@
         <input #searchInput type="search"
           [attr.aria-label]="scope() === 'files' ? 'Search tracked files' : scope() === 'branches' ? 'Search branches' : 'Search commands'"
           role="combobox" aria-controls="command-palette-results" aria-autocomplete="list" aria-expanded="true"
-          [attr.aria-activedescendant]="items.length ? 'command-palette-option-' + selection() : null"
+          [attr.aria-activedescendant]="items[selection()]?.enabled ? 'command-palette-option-' + selection() : null"
           [placeholder]="scope() === 'files' ? 'Search files or enter an exact historical path' : scope() === 'branches' ? 'Search local and remote branches' : 'Search commands, repos, refs, and files'"
           autocomplete="off" [ngModel]="query()" (ngModelChange)="queryChanged.emit($event)"
           (keydown)="handleSearchKey($event)" />
