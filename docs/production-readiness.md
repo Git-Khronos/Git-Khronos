@@ -5,6 +5,15 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Dev follow-up after the 0.1.6 candidate — 2026-11-26
+
+Linked worktrees can be locked with an optional user-supplied reason. Git's
+stored reason is shown on the worktree entry; unlocking remains an immediate
+action. The native lock-reason test, `desktop:check`, and focused Chromium and
+WebKit lock/unlock/cancel renderer checks passed on commits `a99b5e3` and
+`f305b8d`. This is source-level evidence only: the recorded 0.1.6 package
+predates these commits and does not qualify the new behavior for release.
+
 ## 0.1.6 release handoff — 2026-11-25
 
 User-visible changes to call out in the release notes:
