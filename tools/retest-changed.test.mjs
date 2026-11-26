@@ -138,14 +138,23 @@ test('WebKit opt-in applies only to selected browser targets', t => {
 test('editor fixture changes cover editing, file tools and draft recovery without duplicate runs', t => {
   const f = fixture(t);
   f.write('e2e/renderer/editor-protocol-fixture.ts');
-  f.write('apps/desktop/src/app/markdown-preview.worker.ts');
   for (const name of ['working-file-editor', 'file-tools', 'editor-draft-recovery']) {
     f.write(`e2e/renderer/${name}.spec.ts`);
   }
   const plan = f.run('--webkit', '--workers=2');
-  assert.match(plan, /markdown-preview\.worker\.ts": editor renderer profile/);
   assert.ok(plan.includes('"desktop:e2e:editor" "--" "--workers=2" "--project=webkit"'));
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
+});
+
+test('Markdown implementation changes also exercise the unit spec exactly once', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/markdown-preview.worker.ts');
+  f.write('apps/desktop/src/app/markdown-preview.ts');
+  f.write('apps/desktop/src/app/markdown-preview.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:editor/);
+  const unit = plan.split('\n').find(line => line.includes('desktop:renderer-unit-test:focused'));
+  assert.match(unit, /"--" "apps\/desktop\/src\/app\/markdown-preview\.spec\.ts"$/);
 });
 
 test('a native harness unit-test edit selects no browser or package run', t => {

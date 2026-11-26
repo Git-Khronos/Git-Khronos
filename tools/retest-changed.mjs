@@ -12,7 +12,6 @@ const profiles = [
   [/^worktree-(lock|move|registration)-dialog\.component\./, 'worktrees'],
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
   [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'editor'],
-  [/^markdown-preview(?:\.component|\.worker)?\.ts$/, 'editor'],
   [/^stash-(?:options|delete|clear)-dialog\.component\.(?:ts|html|scss)$/, 'stash'],
   [/^history-search\.component\.(?:ts|html|scss)$/, 'history'],
   [/^fetch-options-dialog\.component\.(?:ts|html|scss)$/, 'transport'],
@@ -79,7 +78,7 @@ function isPackageTest(path) {
 
 const selected = new Set();
 const specs = [];
-const unitSpecs = [];
+const unitSpecs = new Set();
 let retestTools = false;
 let packageTests = false;
 let nativeHarnessTests = false;
@@ -100,8 +99,12 @@ for (const path of changed) {
     nativeHarnessSource = true;
     plan = 'native harness unit tests; packaged scenario validation is separate';
   } else if (/^apps\/desktop\/src\/app\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
-    unitSpecs.push(path);
+    unitSpecs.add(path);
     plan = 'individual renderer unit spec';
+  } else if (/^apps\/desktop\/src\/app\/markdown-preview(?:\.component|\.worker)?\.ts$/.test(path) && existsSync(join(cwd, path))) {
+    selected.add('editor');
+    unitSpecs.add(prefix + 'markdown-preview.spec.ts');
+    plan = 'editor renderer profile and Markdown unit spec';
   } else if (path === 'e2e/renderer/editor-protocol-fixture.ts' && existsSync(join(cwd, path))) {
     selected.add('editor');
     plan = 'editor renderer profile (shared editor fixture)';
@@ -147,7 +150,7 @@ const commands = broad
   ? [['desktop:check'], ['desktop:test'], ...extraChecks, ['desktop:e2e']]
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
      ...extraChecks,
-     ...(unitSpecs.length ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
+     ...(unitSpecs.size ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
      ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
 const isBrowser = command => command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:');
