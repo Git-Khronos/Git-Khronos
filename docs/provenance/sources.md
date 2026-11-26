@@ -197,9 +197,9 @@ original project code. No external source or vendor implementation was copied.
 
 Sources: the actual production `dist/apps/desktop/3rdpartylicenses.txt`, installed
 package metadata, `pnpm-lock.yaml`, the official
-[plugin-dialog 2.8.1 registry metadata](https://registry.npmjs.org/@tauri-apps/plugin-dialog/2.8.1),
+[plugin-dialog 2.8.4 registry metadata](https://registry.npmjs.org/@tauri-apps/plugin-dialog/2.8.4),
 and the exact plugins-workspace revision
-`d4835d0e947179bac24a383212792d74be3ebe4f`.
+`128190689dbe59b59d344e01bf07b00862aa3791`.
 
 Used to identify the omitted generated notice payload and the dialog package's
 SPDX-only published notice. The pinned upstream manifest and MIT/Apache license

@@ -1,26 +1,26 @@
 {
   "name": "@tauri-apps/plugin-dialog",
-  "version": "2.8.1",
+  "version": "2.8.4",
   "license": "MIT OR Apache-2.0",
   "repository": "https://github.com/tauri-apps/plugins-workspace",
-  "revision": "d4835d0e947179bac24a383212792d74be3ebe4f",
-  "sourceArchive": "https://registry.npmjs.org/@tauri-apps/plugin-dialog/-/plugin-dialog-2.8.1.tgz",
-  "integrity": "sha512-/DtE3B62JgpYuWFL5ATXM6KOXUq7pca7cJWOgSqULhZsgyjLk0PWKek1dbRDvhNBW6flNsOfWphsKnb+738Dmw==",
-  "manifestSha256": "3613f84cf00181ce75e12fb71314c670a00a4b6ca6c19e0915872510109ba1c9",
-  "manifestGitBlob": "fa3968db0b65e64c03d8b484791d5e84cba2f183",
-  "manifestUpstream": "https://github.com/tauri-apps/plugins-workspace/blob/d4835d0e947179bac24a383212792d74be3ebe4f/plugins/dialog/package.json",
+  "revision": "128190689dbe59b59d344e01bf07b00862aa3791",
+  "sourceArchive": "https://registry.npmjs.org/@tauri-apps/plugin-dialog/-/plugin-dialog-2.8.4.tgz",
+  "integrity": "sha512-+6ZOiXenOaxXwb8qCbBPdT2jX2cFPaVVHGIskrpmJLpmWj+qKRTD6X/z9x7hTdSQn7NedcoXCkWGej4a7dC4lw==",
+  "manifestSha256": "af8a8f5263c57545433dc83e79b88fad6f18c200657f7c6cc7ed6328eb7e8997",
+  "manifestGitBlob": "8897f81d1cfb6c503201e940db377c00a84d08b9",
+  "manifestUpstream": "https://github.com/tauri-apps/plugins-workspace/blob/128190689dbe59b59d344e01bf07b00862aa3791/plugins/dialog/package.json",
   "publishedNoticeSha256": "eb8a6c84630461b352badcab1dbe5d0168c56d377358b2b8c86b51003272d5ef",
   "publishedNoticeGitBlob": "cdd0df5ad76e63d23a80834469609c1d8109ff2e",
   "notices": [
     {
-      "file": "plugin-dialog-2.8.1-LICENSE_MIT",
-      "upstream": "https://github.com/tauri-apps/plugins-workspace/blob/d4835d0e947179bac24a383212792d74be3ebe4f/LICENSE_MIT",
+      "file": "plugin-dialog-2.8.4-LICENSE_MIT",
+      "upstream": "https://github.com/tauri-apps/plugins-workspace/blob/128190689dbe59b59d344e01bf07b00862aa3791/LICENSE_MIT",
       "sha256": "89ff9689dcf9dd53968785d05a26f7898bb169dbfcada8d032b3e68cf0d55607",
       "gitBlob": "4d75472566358fac0eed03625b37d1837a33dfe2"
     },
     {
-      "file": "plugin-dialog-2.8.1-LICENSE_APACHE-2.0",
-      "upstream": "https://github.com/tauri-apps/plugins-workspace/blob/d4835d0e947179bac24a383212792d74be3ebe4f/LICENSE_APACHE-2.0",
+      "file": "plugin-dialog-2.8.4-LICENSE_APACHE-2.0",
+      "upstream": "https://github.com/tauri-apps/plugins-workspace/blob/128190689dbe59b59d344e01bf07b00862aa3791/LICENSE_APACHE-2.0",
       "sha256": "0cec06e0e55fbc3dc5cee4fca9b607f66cb8f4e4dbcf3b3c013594dd156732e9",
       "gitBlob": "4947287f7b5ccb5d1e8b7b2d3aa5d89f322c160d"
     }

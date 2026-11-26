@@ -61,16 +61,16 @@ not an exact linked-artifact SBOM.
 
 ## Frontend dialog-plugin notice supplement
 
-The published `@tauri-apps/plugin-dialog 2.8.1` npm package declares
+The published `@tauri-apps/plugin-dialog 2.8.4` npm package declares
 `MIT OR Apache-2.0` but ships only `LICENSE.spdx`. Official versioned registry
 metadata identifies upstream revision
-`d4835d0e947179bac24a383212792d74be3ebe4f` in
+`128190689dbe59b59d344e01bf07b00862aa3791` in
 <https://github.com/tauri-apps/plugins-workspace>. Its archive integrity matches
 the exact `pnpm-lock.yaml` entry; the upstream dialog manifest also matches the
 installed manifest's SHA-256 and Git blob.
 
 The exact `LICENSE_MIT` and `LICENSE_APACHE-2.0` at that revision are retained
-under `packaging/licenses/plugin-dialog-2.8.1-LICENSE_*`. Both original files
+under `packaging/licenses/plugin-dialog-2.8.4-LICENSE_*`. Both original files
 lack a final newline; their bytes, copyright notices and terms remain unchanged.
 Reviewed source URLs, registry integrity, manifest/SPDX identities and both
 notice hashes are in `packaging/licenses/reviewed-frontend-notices.json`.
