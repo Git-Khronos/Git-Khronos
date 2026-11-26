@@ -3259,7 +3259,9 @@ Use normal mode for Git-history-dependent targets such as `nx affected`.
 
 When a renderer snapshot finishes, the runner removes the snapshot's
 `node_modules` and Angular/Nx caches. It keeps the exported source, receipts,
-logs, traces, and screenshots. An abrupt host stop can leave caches behind.
+logs, traces, and screenshots. After a reboot, reclaim any stranded caches
+with `node tools/run-validation.mjs reclaim <run-directory>`. This requires
+a renderer snapshot receipt from a different boot and refuses a live run.
 To reclaim the main checkout's regenerable Rust debug output, stop active
 builds and run `task clean:debug`; release bundles and reports are retained.
 Avoid the broader `task clean` when keeping packages or local evidence.

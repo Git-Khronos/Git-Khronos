@@ -626,3 +626,35 @@ test('a receipt from another Linux boot cannot claim a live PID', { skip: !curre
   assert.equal(stopped.state, 'stopped-without-result');
   assert.equal(stopped.stopReason, 'different-boot');
 });
+
+test('reclaim removes only disposable caches from a renderer snapshot on a previous boot', { skip: !currentBootId() }, t => {
+  const directory = mkdtempSync(join(tmpdir(), 'gk-reclaim-snapshot-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const source = join(directory, 'source');
+  const outside = join(directory, 'outside');
+  mkdirSync(join(outside, 'cache'), { recursive: true });
+  mkdirSync(join(source, 'node_modules'), { recursive: true });
+  symlinkSync(outside, join(source, '.nx'), 'dir');
+  const committed = join(source, 'package.json');
+  const log = join(directory, 'output.log');
+  writeFileSync(committed, 'committed input');
+  writeFileSync(log, 'interrupted evidence');
+  const owner = {
+    runnerPid: process.pid, runnerStart: processStart(process.pid), runnerBootId: currentBootId(),
+    rendererPort: '4202', source: { mode: 'commit-snapshot', commandCwd: source },
+  };
+  const receipt = join(directory, 'started.json');
+  const reclaim = () => spawnSync(process.execPath, [launcher, 'reclaim', directory], { encoding: 'utf8' });
+  writeFileSync(receipt, JSON.stringify(owner));
+  assert.notEqual(reclaim().status, 0);
+  assert.ok(existsSync(join(source, 'node_modules')));
+  const old = owner.runnerBootId.replace(/^./, c => c === '0' ? '1' : '0');
+  writeFileSync(receipt, JSON.stringify({ ...owner, runnerBootId: old }));
+  const result = reclaim();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(join(source, 'node_modules')), false);
+  assert.ok(existsSync(join(outside, 'cache')));
+  assert.equal(readFileSync(committed, 'utf8'), 'committed input');
+  assert.equal(readFileSync(log, 'utf8'), 'interrupted evidence');
+  assert.equal(readStatus(directory).state, 'stopped-without-result');
+});

@@ -8,17 +8,36 @@ import { runOwnedCommand } from './owned-command.mjs';
 import { currentBootId, processStart, validationStatus } from './validation-status.mjs';
 import { validationSourceFingerprint } from './validation-source.mjs';
 
+function reclaimSnapshotCaches(source, output) {
+  let failures = 0;
+  for (const cache of ['node_modules', '.angular/cache', '.nx/cache']) {
+    const path = join(source, cache);
+    try {
+      // Do not follow a replaced snapshot or cache parent/link outside it.
+      if (realpathSync(path) === path) rmSync(path, { recursive: true, force: true });
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        failures++;
+        writeFileSync(output, `==> Could not remove snapshot cache ${cache}: ${error.code ?? 'unknown error'}\n`);
+      }
+    }
+  }
+  return failures;
+}
+
 const [mode, runDirectory, ...args] = process.argv.slice(2);
 const usage = `Usage:
   node tools/run-validation.mjs start DIRECTORY [--snapshot REF | --guard-source] NX_COMMAND [NX_ARGS...]
   node tools/run-validation.mjs run   DIRECTORY [--snapshot REF | --guard-source] NX_COMMAND [NX_ARGS...]
   node tools/run-validation.mjs status DIRECTORY
   node tools/run-validation.mjs wait   DIRECTORY
+  node tools/run-validation.mjs reclaim DIRECTORY
 
 Use start for a detached run, or run to wait in the foreground.
 Without --snapshot the run uses the current checkout; with it, it uses the named local commit.
 --guard-source refuses a passing result if Git-visible checkout files differ at the end.
 Use wait to observe an existing run and return its exit code, without taking ownership.
+Use reclaim to remove disposable caches from an interrupted renderer snapshot after a reboot.
 
 Example:
   node tools/run-validation.mjs start target/validation-runs/local-check run desktop:e2e -- --workers=2
@@ -31,8 +50,23 @@ const useSnapshot = args[0] === '--snapshot';
 const snapshot = useSnapshot ? args.splice(0, 2)[1] : undefined;
 const guardSource = !useSnapshot && args[0] === '--guard-source';
 if (guardSource) args.shift();
-if (!runDirectory || !['start', 'run', 'status', 'wait'].includes(mode)) {
-  throw new Error('Expected start|run DIRECTORY [--snapshot REF] [Nx arguments], or status|wait DIRECTORY');
+if (!runDirectory || !['start', 'run', 'status', 'wait', 'reclaim'].includes(mode)) {
+  throw new Error('Expected start|run DIRECTORY [--snapshot REF] [Nx arguments], or status|wait|reclaim DIRECTORY');
+}
+if (mode === 'reclaim') {
+  if (useSnapshot || guardSource || args.length) throw new Error('reclaim accepts only a run directory');
+  const directory = resolve(runDirectory);
+  const source = join(directory, 'source');
+  const status = validationStatus(directory);
+  if (status.state !== 'stopped-without-result' || status.stopReason !== 'different-boot'
+    || status.source?.mode !== 'commit-snapshot' || status.source.commandCwd !== source
+    || !/^\d+$/.test(status.rendererPort ?? '')
+    || realpathSync(directory) !== directory || realpathSync(source) !== source) {
+    throw new Error('Refusing to reclaim: expected an owned renderer snapshot interrupted on a previous boot.');
+  }
+  const failures = reclaimSnapshotCaches(source, process.stderr.fd);
+  if (!failures) console.log('Reclaimed disposable renderer snapshot caches. Sources, logs, and evidence are untouched.');
+  process.exit(failures ? 1 : 0);
 }
 if (mode === 'status' || mode === 'wait') {
   if (useSnapshot || guardSource || args.length) throw new Error(`${mode} accepts only a run directory`);
@@ -248,17 +282,7 @@ async function runValidation() {
   }
   // Renderer artifacts are written outside the exported source. Keep those
   // and the source itself; reclaim only generated caches in our own snapshot.
-  if (commit && rendererRun) {
-    for (const cache of ['node_modules', '.angular/cache', '.nx/cache']) {
-      const path = join(commandCwd, cache);
-      try {
-        // Do not follow a replaced snapshot or cache parent/link outside it.
-        if (realpathSync(path) === path) rmSync(path, { recursive: true, force: true });
-      } catch (error) {
-        if (error.code !== 'ENOENT') writeFileSync(output, `==> Could not remove snapshot cache ${cache}: ${error.code ?? 'unknown error'}\n`);
-      }
-    }
-  }
+  if (commit && rendererRun) reclaimSnapshotCaches(commandCwd, output);
   // Persist once, outside the command catch: a reporting failure must remain a
   // nonzero worker failure, not trigger another close or masquerade as success.
   finish(...outcome);
