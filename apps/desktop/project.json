@@ -283,7 +283,10 @@
       "cache": true,
       "inputs": ["default", "^production", "{workspaceRoot}/vitest.config.mts", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs"],
       "executor": "nx:run-commands",
-      "options": { "command": "pnpm exec vitest run apps/desktop/src/app/*.spec.ts" }
+      "options": { "command": "pnpm exec vitest run apps/desktop/src/app/*.spec.ts" },
+      "configurations": {
+        "focused": { "command": "pnpm exec vitest run --dir apps/desktop/src/app" }
+      }
     },
     "test": {
       "dependsOn": ["graph-test-typecheck", "owned-process-test", "editor-recovery-test", "renderer-unit-test"],

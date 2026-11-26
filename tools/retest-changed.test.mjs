@@ -159,3 +159,11 @@ test('package specs select only the package lane when registered in Nx', t => {
   f.write('tools/not-registered.test.mjs');
   assert.match(f.run(), /desktop:check/);
 });
+
+test('selects an individual renderer unit spec without starting Playwright', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/shortcut-labels.spec.ts');
+  const plan = f.run('--webkit');
+  assert.match(plan, /"desktop:renderer-unit-test:focused" "--" "apps\/desktop\/src\/app\/shortcut-labels.spec.ts"/);
+  assert.doesNotMatch(plan, /desktop:e2e|project=webkit/);
+});

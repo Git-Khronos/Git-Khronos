@@ -78,6 +78,7 @@ function isPackageTest(path) {
 
 const selected = new Set();
 const specs = [];
+const unitSpecs = [];
 let retestTools = false;
 let packageTests = false;
 let nativeHarnessTests = false;
@@ -97,6 +98,9 @@ for (const path of changed) {
     nativeHarnessTests = true;
     nativeHarnessSource = true;
     plan = 'native harness unit tests; packaged scenario validation is separate';
+  } else if (/^apps\/desktop\/src\/app\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
+    unitSpecs.push(path);
+    plan = 'individual renderer unit spec';
   } else if (isPackageTest(path)) {
     packageTests = true;
     plan = 'package tooling tests';
@@ -139,6 +143,7 @@ const commands = broad
   ? [['desktop:check'], ['desktop:test'], ...extraChecks, ['desktop:e2e']]
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
      ...extraChecks,
+     ...(unitSpecs.length ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
      ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
 const isBrowser = command => command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:');
