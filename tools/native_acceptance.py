@@ -1071,45 +1071,51 @@ def toolbar_menu_focus_gap(driver, report):
     toggle = '[aria-label="Pull options"]'
     driver.wait(f"""const button = document.querySelector({json.dumps(toggle)});
         return button && !button.disabled && button.getClientRects().length;""")
-    driver.script("""window.__nativeToolbarTabProbe = [];
+    driver.script("""const controller = new AbortController();
+        const probe = window.__nativeToolbarTabProbe = { controller, events: [] };
         document.addEventListener('keydown', event => {
-            if (event.key !== 'Tab') return;
+            if (event.key !== 'Tab' && !(event.key === 'Unidentified' && event.code === 'Tab')) return;
             const describe = element => element?.tagName
                 + (element?.id ? '#' + element.id : '')
                 + (element?.getAttribute('aria-label') ? '[' + element.getAttribute('aria-label') + ']' : '');
             const target = describe(event.target);
-            queueMicrotask(() => window.__nativeToolbarTabProbe.push({
+            queueMicrotask(() => probe.events.push({
+                key: event.key, code: event.code, shift: event.shiftKey,
                 target, active: describe(document.activeElement), defaultPrevented: event.defaultPrevented,
                 menuStillOpen: !!document.querySelector('#pull-options-menu'),
             }));
-        });""")
-    for modifiers in ((), ("\ue008",)):
-        driver.script("document.querySelector(arguments[0]).focus()", toggle)
-        driver.key("\ue004", modifiers=modifiers)
-        driver.script("document.activeElement.setAttribute('data-native-toolbar-tab-target', '')")
-        try:
-            driver.click_visible(toggle)
-            driver.wait("""return document.querySelector('#pull-options-menu[gkToolbarOptions]')
-                ?.contains(document.activeElement);""")
-            # Model a focused fallback being removed just before the next key.
-            driver.script("document.activeElement.blur()")
-            assert driver.script("return document.activeElement === document.body")
+        }, { signal: controller.signal });""")
+    try:
+        for modifiers in ((), ("\ue008",)):
+            driver.script("document.querySelector(arguments[0]).focus()", toggle)
             driver.key("\ue004", modifiers=modifiers)
+            driver.script("document.activeElement.setAttribute('data-native-toolbar-tab-target', '')")
             try:
-                driver.wait("return !document.querySelector('#pull-options-menu')", 5)
-            except TimeoutError as error:
-                state = driver.script("""const active = document.activeElement;
-                    return JSON.stringify({
-                        active: active?.tagName + (active?.id ? '#' + active.id : '')
-                            + (active?.getAttribute('aria-label') ? '[' + active.getAttribute('aria-label') + ']' : ''),
-                        menuStillOpen: !!document.querySelector('#pull-options-menu'),
-                        tabEvents: window.__nativeToolbarTabProbe,
-                    });""")
-                raise AssertionError(f"Toolbar menu did not dismiss after Tab; focus state: {state}") from error
-            assert driver.script("return document.activeElement.hasAttribute('data-native-toolbar-tab-target')")
-        finally:
-            driver.script("""document.querySelectorAll('[data-native-toolbar-tab-target]')
-                .forEach(element => element.removeAttribute('data-native-toolbar-tab-target'));""")
+                driver.click_visible(toggle)
+                driver.wait("""return document.querySelector('#pull-options-menu[gkToolbarOptions]')
+                    ?.contains(document.activeElement);""")
+                # Model a focused fallback being removed just before the next key.
+                driver.script("document.activeElement.blur()")
+                assert driver.script("return document.activeElement === document.body")
+                driver.key("\ue004", modifiers=modifiers)
+                try:
+                    driver.wait("return !document.querySelector('#pull-options-menu')", 5)
+                except TimeoutError as error:
+                    state = driver.script("""const active = document.activeElement;
+                        return JSON.stringify({
+                            active: active?.tagName + (active?.id ? '#' + active.id : '')
+                                + (active?.getAttribute('aria-label') ? '[' + active.getAttribute('aria-label') + ']' : ''),
+                            menuStillOpen: !!document.querySelector('#pull-options-menu'),
+                            tabEvents: window.__nativeToolbarTabProbe.events,
+                        });""")
+                    raise AssertionError(f"Toolbar menu did not dismiss after Tab; focus state: {state}") from error
+                assert driver.script("return document.activeElement.hasAttribute('data-native-toolbar-tab-target')")
+            finally:
+                driver.script("""document.querySelectorAll('[data-native-toolbar-tab-target]')
+                    .forEach(element => element.removeAttribute('data-native-toolbar-tab-target'));""")
+    finally:
+        driver.script("""window.__nativeToolbarTabProbe.controller.abort();
+            delete window.__nativeToolbarTabProbe;""")
     report["scenarios"].append("native-toolbar-menu-tab-returns-to-toolbar-after-focus-gap")
 
 
