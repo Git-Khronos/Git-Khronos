@@ -15203,8 +15203,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private restoreRepositoryReviewFocus(review: RepositoryReviewScope): void {
+    const checkoutVisit = this.git.activeRepositoryReadScope();
     queueMicrotask(() => {
-      if (!this.ownsRepositoryScope(review) || this.pendingBranchAction() || this.pendingSparseCheckoutReview()
+      if (this.git.activeRepositoryReadScope() !== checkoutVisit || !this.ownsRepositoryScope(review)
+        || this.pendingBranchAction() || this.pendingSparseCheckoutReview()
         || this.pendingWorktreeAction() || this.pendingForcePush() || this.pendingPublishBranch() || this.lfsPruneReview()) return;
       if (review.returnFocus?.isConnected) review.returnFocus.focus({ preventScroll: true });
     });

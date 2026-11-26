@@ -186,6 +186,35 @@ for (const [review, action] of [
   });
 }
 
+for (const revisit of [false, true]) {
+  test(`dismissed review restores focus only in the same checkout visit (revisit=${revisit})`, async ({ page }) => {
+    await page.evaluate(() => {
+      const opener = document.createElement('button');
+      opener.textContent = 'Owned review opener';
+      document.body.append(opener);
+      opener.focus();
+      (window as any).__openScopedReview('branch');
+    });
+    const modal = page.getByRole('alertdialog');
+    await expect(modal).toBeVisible();
+    await modal.getByRole('button', { name: 'Cancel', exact: true }).evaluate((cancel, revisit) => {
+      (cancel as HTMLButtonElement).focus();
+      (cancel as HTMLButtonElement).click();
+      if (!revisit) return;
+      const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
+      const original = git.repository();
+      const next = { ...original, id: 'focus-other', path: '/owned/focus-other' };
+      git.repositories.update((items: any[]) => [...items, next]);
+      git.activateRepository(next.id);
+      git.activateRepository(original.id);
+    }, revisit);
+    await expect(modal).toBeHidden();
+    const opener = page.getByRole('button', { name: 'Owned review opener', exact: true });
+    if (revisit) await expect(opener).not.toBeFocused();
+    else await expect(opener).toBeFocused();
+  });
+}
+
 test('an old unmerged-branch result cannot replace a newer review', async ({ page }) => {
   const modal = await open(page, 'branch');
   await page.evaluate(() => (window as any).__holdScope = 'delete_branch');
