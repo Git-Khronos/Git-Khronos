@@ -3362,7 +3362,12 @@ Edits to named Git core Rust unit-test modules run their module filters
 together in one Cargo invocation, without Playwright. Rust implementation
 edits, removed files, and unmapped modules still use the broader fallback.
 The focused run does not opt into ignored signing or LFS cases; use their
-dedicated targets when the change affects those capabilities.
+dedicated targets when the change affects those capabilities. Edits to the
+desktop authentication transport test or its local HTTPS fixture select
+`desktop:test-authentication`. This does not enable the separate OpenSSH
+or ignored Git LFS qualification cases. The selector can read a caller's
+alternate Git index, but strips Git-local overrides from the test processes
+so fixture repositories use their own indexes and configuration.
 
 For a broader local pass, run `pnpm nx run desktop:e2e-quick`. This skips
 the exhaustive five-column order permutations except for the default order

@@ -379,3 +379,35 @@ test('changed Git core unit modules share one Cargo run without Playwright or br
   assert.match(broad, /"desktop:test"/);
   assert.doesNotMatch(broad, /"desktop:git-core-unit-test"/);
 });
+
+test('native authentication transport and its HTTPS fixture share one focused Cargo run', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src-tauri/tests/authentication_transport.rs');
+  f.write('apps/desktop/src-tauri/tests/fixtures/https_git_server.py');
+  const plan = f.run('--webkit');
+  assert.equal([...plan.matchAll(/"desktop:test-authentication"/g)].length, 1);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check|project=webkit/);
+  f.write('apps/desktop/src-tauri/src/lib.rs');
+  assert.doesNotMatch(f.run(), /"desktop:test-authentication"/);
+});
+
+test('selection can use an alternate index without leaking it to test fixtures', { skip: process.platform === 'win32' }, t => {
+  const f = fixture(t);
+  const bin = join(f.cwd, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\nprintf "index=<%s> fixture=<%s>\\n" "$GIT_INDEX_FILE" "$GIT_KHRONOS_SSHD"\n', { mode: 0o700 });
+  const env = { ...process.env, PATH: bin + delimiter + process.env.PATH,
+    GIT_INDEX_FILE: join(f.cwd, 'alternate-index'), GIT_KHRONOS_SSHD: '/owned/sshd' };
+  const git = (...args) => execFileSync('git', args, { cwd: f.cwd, env });
+  git('read-tree', 'HEAD');
+  const spec = 'apps/desktop/src-tauri/tests/authentication_transport.rs';
+  f.write(spec);
+  git('add', spec);
+  assert.doesNotMatch(f.run('--staged'), /test-authentication/);
+
+  const output = execFileSync(process.execPath, ['tools/retest-changed.mjs', '--staged', '--run'], {
+    cwd: f.cwd, encoding: 'utf8', env,
+  });
+  assert.match(output, /"desktop:test-authentication"/);
+  assert.match(output, /index=<> fixture=<\/owned\/sshd>/);
+});

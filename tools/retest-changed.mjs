@@ -133,6 +133,7 @@ const gitCoreModules = new Set();
 const nativeSuites = new Set();
 let retestTools = false;
 let packageTests = false;
+let authenticationTests = false;
 let nativeHarnessTests = false;
 let unmappedNativeSource = false;
 let graphTypecheck = false;
@@ -144,6 +145,10 @@ for (const path of changed) {
     ? rendererSourceChecks.find(([test]) => test.test(path.slice(prefix.length))) : undefined;
   if (/^(README\.md|docs\/.*\.md)$/.test(path)) {
     plan = 'documentation only';
+  } else if (/^apps\/desktop\/src-tauri\/tests\/(?:authentication_transport\.rs|fixtures\/https_git_server\.py)$/.test(path)
+    && existsSync(join(cwd, path))) {
+    authenticationTests = true;
+    plan = 'focused native authentication transport tests';
   } else if (gitCoreTestModules.has(gitCoreModule) && existsSync(join(cwd, path))) {
     gitCoreModules.add(gitCoreModule + '::');
     plan = 'focused Git core Rust test module';
@@ -233,6 +238,7 @@ const commands = broad
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
      ...(graphTypecheck ? [['desktop:graph-test-typecheck']] : []),
      ...extraChecks,
+     ...(authenticationTests ? [['desktop:test-authentication']] : []),
      ...(gitCoreModules.size ? [['desktop:git-core-unit-test', '--', ...gitCoreModules]] : []),
      ...(unitSpecs.size ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
@@ -268,10 +274,14 @@ else if (broad && !values['allow-full']) {
     if (check.error) throw check.error;
     if (check.status !== 0) process.exit(check.status ?? 1);
   }
+  // The selection above may legitimately use an alternate index. Tests use
+  // their own repositories and must not inherit the caller's Git-local paths.
+  const testEnv = { ...process.env };
+  for (const key of git('rev-parse', '--local-env-vars').trim().split(/\r?\n/)) delete testEnv[key];
   for (const args of commands) {
     const env = values.webkit && isBrowser(args)
-      ? { ...process.env, GIT_KHRONOS_RENDERER_WEBKIT: '1' }
-      : process.env;
+      ? { ...testEnv, GIT_KHRONOS_RENDERER_WEBKIT: '1' }
+      : testEnv;
     const result = spawnSync('pnpm', ['nx', 'run', ...args], { cwd, env, stdio: 'inherit' });
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);

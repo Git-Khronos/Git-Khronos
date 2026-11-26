@@ -319,6 +319,11 @@
         "parallel": false
       }
     },
+    "test-authentication": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": { "command": "cargo test --locked -p git-khronos-desktop --test authentication_transport" }
+    },
     "git-core-unit-test": {
       "cache": false,
       "executor": "nx:run-commands",
