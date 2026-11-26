@@ -74,7 +74,7 @@ def sparse_checkout_workflow(driver, fixtures, report):
     search = 'gk-command-palette input[aria-label="Search commands"]'
     editor = 'textarea[aria-label="Sparse checkout directories"]'
     preferences = '#preference-sparse-checkout'
-    apply = dialog + ' button'
+    review_buttons = dialog + ' button'
     root_file = (repository / "fixture.txt").read_bytes()
 
     def review_selection():
@@ -91,6 +91,9 @@ def sparse_checkout_workflow(driver, fixtures, report):
           input.dispatchEvent(new Event('input', {bubbles: true}));
           const checkbox = input.closest('.preference-group').querySelector('input[type=checkbox]');
           if (checkbox.checked) checkbox.click();""", editor)
+        show_selection_review()
+
+    def show_selection_review():
         driver.click_scrolled_text(preferences + ' button', 'Enable Sparse Checkout', wait_for_ready=True)
         driver.wait(f"""const review = document.querySelector({dialog!r});
           return review?.querySelector('h2')?.textContent.trim() === 'Apply this directory selection?'
@@ -111,13 +114,26 @@ def sparse_checkout_workflow(driver, fixtures, report):
 
     review_selection()
     assert_full_checkout()
-    driver.click_scrolled_text(apply, 'Cancel', wait_for_ready=True)
+    driver.click_scrolled_text(review_buttons, 'Cancel', wait_for_ready=True)
     driver.wait(f"return !document.querySelector({dialog!r});")
     assert_full_checkout()
     report["scenarios"].append("native-sparse-selection-shows-exact-directory-and-index-and-cancels-without-writes")
 
     review_selection()
-    driver.click_scrolled_text(apply, 'Apply Selection', wait_for_ready=True)
+    assert 'Back to Edit' in driver.script(
+        "return [...document.querySelectorAll(arguments[0])].map(button => button.textContent.trim());",
+        review_buttons,
+    ), "Sparse selection review must offer Back to Edit"
+    driver.click_scrolled_text(review_buttons, 'Back to Edit', wait_for_ready=True)
+    driver.wait(f"""const editor = document.querySelector({editor!r});
+      return !document.querySelector({dialog!r}) && editor && document.activeElement === editor
+        && editor.value === 'included'
+        && !editor.closest('.preference-group').querySelector('input[type=checkbox]').checked;""")
+    assert_full_checkout()
+    report["scenarios"].append("native-sparse-back-to-edit-keeps-draft-and-focus-without-writes")
+
+    show_selection_review()
+    driver.click_scrolled_text(review_buttons, 'Apply Selection', wait_for_ready=True)
     driver.wait(f"return !document.querySelector({dialog!r}) && document.querySelector({toggle!r})?.getClientRects().length > 0;", 60)
     driver.click_visible(toggle)
     driver.wait(f"return document.querySelector({menu!r})?.textContent.includes('full index');")

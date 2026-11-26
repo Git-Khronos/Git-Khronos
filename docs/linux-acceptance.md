@@ -4317,3 +4317,12 @@ the package built from `d298a29` (SHA-256
 `86587c96d75f342181704747b0c532c8d0ad45ae2547864521dd2ef988445725`).
 The earlier package from `6920036` failed the new scope assertion as expected:
 its Apply dialog showed neither the directory list nor the index mode.
+
+The **Back to Edit** regression passes on the Debian package built from
+`2e5998e` (SHA-256
+`95fb6bfe2b2d42e1c64be6cd08fd72dbebadd555a7827ff457a4d6308d3b85f4`).
+It verifies that the directory and full-index choice return to the focused
+editor without changing the checkout, and that the next review can apply
+the same selection. All seven sparse-checkout scenarios passed in 11.3
+seconds on Ubuntu 26.04 under WSL2. The older package from `d298a29`
+failed the new check because it did not offer **Back to Edit**.
