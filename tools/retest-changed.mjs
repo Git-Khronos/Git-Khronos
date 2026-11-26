@@ -52,11 +52,15 @@ const changed = [...new Set([
 
 const selected = new Set();
 const specs = [];
+let retestTools = false;
 let broad = false;
 for (const path of changed) {
   let plan;
   if (/^(README\.md|docs\/.*\.md)$/.test(path)) {
     plan = 'documentation only';
+  } else if (/^tools\/retest-changed(?:\.test)?\.mjs$/.test(path) && existsSync(join(cwd, path))) {
+    retestTools = true;
+    plan = 'test selection and local process checks';
   } else if (/^e2e\/renderer\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
     specs.push(path);
     plan = 'individual renderer spec';
@@ -75,7 +79,8 @@ for (const path of changed) {
 
 const commands = broad
   ? [['desktop:check'], ['desktop:test'], ['desktop:e2e']]
-  : [...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
+  : [...(retestTools ? [['desktop:owned-process-test']] : []),
+     ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
      ...(specs.length ? [['desktop:e2e', '--', ...specs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
 for (const command of commands) console.log('pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
 if (!commands.length) console.log('No test-relevant changes selected.');

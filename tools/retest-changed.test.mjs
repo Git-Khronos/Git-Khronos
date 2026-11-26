@@ -81,3 +81,11 @@ test('help explains the broad fallback and invalid bases fail without running te
   assert.match(result.stderr, /Could not resolve test base "missing-ref"/);
   assert.doesNotMatch(result.stdout, /nx run/);
 });
+
+test('editing the retest planner selects tooling checks without launching browsers', t => {
+  const f = fixture(t);
+  f.write('tools/retest-changed.test.mjs');
+  const plan = f.run();
+  assert.match(plan, /desktop:owned-process-test/);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
+});
