@@ -3295,7 +3295,7 @@ For a feature that spans multiple specs, use
 | `stash` | Stash creation, review, restoration and deletion |
 | `transport` | Fetch, pull, push, remote cleanup and authentication UI |
 | `gitlab` | Catalogue, clone, fork browsing and creation |
-| `graph` | Representative graph layout, connectivity, scrolling and virtualization |
+| `graph` | Representative graph layout, connectivity, delayed rendering, scrolling and virtualization |
 | `history` | History search, paging, blame, comparison and replay |
 | `workspace` | Repository workspace, tab and sidebar interactions |
 | `keyboard` | Command palette, shortcut reference and review-dialog keyboard handling |

@@ -13,6 +13,7 @@ const profiles = [
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
   [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'editor'],
   [/^working-tree-summary\.component\.(?:ts|html|scss)$/, 'recaps'],
+  [/^graph-viewport\.component\.(?:ts|html|scss)$/, 'graph'],
   [/^(?:discard-recovery-display\.ts|saved-discard-list\.component\.(?:ts|html|scss))$/, 'discard'],
   [/^stash-(?:options|delete|clear)-dialog\.component\.(?:ts|html|scss)$/, 'stash'],
   [/^history-search\.component\.(?:ts|html|scss)$/, 'history'],

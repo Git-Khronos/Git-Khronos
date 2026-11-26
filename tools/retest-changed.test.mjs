@@ -200,6 +200,14 @@ test('graph fixture changes retain exhaustive columns coverage and graph type ch
   assert.doesNotMatch(plan, /desktop:check|grep-invert/);
 });
 
+test('graph viewport edits select the representative graph profile', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/graph-viewport.component.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:graph/);
+  assert.doesNotMatch(plan, /desktop:check/);
+});
+
 test('lazy-chunk fixture changes select all six dependent browser suites', t => {
   const f = fixture(t);
   f.write('e2e/renderer/lazy-chunk-routing.ts');
