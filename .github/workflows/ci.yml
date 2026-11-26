@@ -277,8 +277,9 @@ jobs:
           package=$(task --silent package:deb:path)
           pnpm nx exec -p desktop --excludeTaskDependencies -- \
             python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$package"
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - name: Upload packaged acceptance diagnostics
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         with:
           name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}
           path: |

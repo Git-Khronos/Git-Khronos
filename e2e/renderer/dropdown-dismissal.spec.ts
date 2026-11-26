@@ -16,6 +16,15 @@ for (const key of ['Tab', 'Shift+Tab'] as const) {
     await page.keyboard.press(key);
     await expect(menu).toHaveCount(0);
     await expect(destination).toBeFocused();
+
+    await opener.press('Enter');
+    await expect(menu.locator('[role="menuitem"]:focus')).toBeVisible();
+    // Model focus being dropped while the deferred fallback is replaced.
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await expect(page.locator('body')).toBeFocused();
+    await page.keyboard.press(key);
+    await expect(menu).toHaveCount(0);
+    await expect(destination).toBeFocused();
   });
 }
 

@@ -107,11 +107,15 @@ def reopen_workspace_tab(driver, fixtures, report):
                     + json.dumps('Workspace: ' + workspace['name']))
         wait_tabs(paths)
 
-    def show_reopen():
+    def show_reopen(expected_enabled):
         driver.click_visible('[aria-label="Main menu"]')
-        return driver.wait("""const item = [...document.querySelectorAll('.app-menu-popover [role=menuitem]')]
+        # Wait for the deferred menu's workspace-specific binding, not just
+        # for a newly attached button whose initial disabled property is false.
+        return driver.wait("""const item = [...document.querySelectorAll('.app-menu-popover gk-main-menu-content [role=menuitem]')]
           .find(node => node.querySelector('strong')?.textContent.trim() === 'Reopen Closed Repository');
-          return item ? (item.disabled ? 'disabled' : 'enabled') : null;""")
+          return item && (item.disabled ? 'disabled' : 'enabled') === """
+                           + json.dumps('enabled' if expected_enabled else 'disabled')
+                           + """ ? (item.disabled ? 'disabled' : 'enabled') : null;""")
 
     wait_tabs([first, middle, last])
     assert memberships() == {primary['id']: primary['repositoryPaths'], other['id']: other['repositoryPaths']}
@@ -120,14 +124,14 @@ def reopen_workspace_tab(driver, fixtures, report):
     wait_tabs([first, last])
     assert memberships()[primary['id']] == [str(first), str(offline), str(last)]
     switch(other, [middle])
-    evidence = report['workspaceReopen'] = {'otherWorkspaceAction': show_reopen()}
+    evidence = report['workspaceReopen'] = {'otherWorkspaceAction': show_reopen(False)}
     assert evidence['otherWorkspaceAction'] == 'disabled', evidence
     driver.key('\ue00c')
     driver.wait("return !document.querySelector('.app-menu-popover')")
     report['scenarios'].append('native-ui-reopen-closed-tab-does-not-leak-across-workspaces')
 
     switch(primary, [first, last])
-    assert show_reopen() == 'enabled'
+    assert show_reopen(True) == 'enabled'
     driver.click_scrolled_text('.app-menu-popover [role=menuitem] strong', 'Reopen Closed Repository', wait_for_ready=True)
     wait_tabs([first, middle, last])
     driver.wait("return document.querySelector('.status-repository-path')?.textContent.trim() === " + json.dumps(str(middle)))

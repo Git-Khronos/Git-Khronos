@@ -243,6 +243,24 @@ test('the release matrix needs exact suites on all supported userspaces', () => 
     [['24.04', 'smoke']]);
 });
 
+test('a passing smoke report must prove toolbar Tab recovery to qualify', () => {
+  const scenario = 'native-toolbar-menu-tab-returns-to-toolbar-after-focus-gap';
+  const fixtures = matrixFixtures();
+  const smokeReports = fixtures.filter(report => report.suite === 'smoke');
+  assert.ok(smokeReports.length > 0);
+  for (const smoke of smokeReports) {
+    const reports = fixtures.map(report => report === smoke
+      ? { ...report, scenarios: report.scenarios.filter(name => name !== scenario) }
+      : report);
+    const matrix = summarizeReleaseMatrix(reports);
+    assert.equal(matrix.complete, false);
+    assert.deepEqual(
+      matrix.checks.filter(check => check.report === null).map(({ distribution, suite }) => [distribution, suite]),
+      [[smoke.linuxDistribution, 'smoke']],
+    );
+  }
+});
+
 test('installed discard needs both actions, exact direct selection, recovery of a deletion, and safe refusals', () => {
   const fixtures = matrixFixtures();
   for (const [suite, scenario] of [

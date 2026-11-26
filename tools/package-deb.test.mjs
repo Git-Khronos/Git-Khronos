@@ -255,6 +255,12 @@ test('checks the installed launcher and executable bytes even when the package v
   assert.throws(check, /is not installed/);
 });
 
+test('packaged CI skips diagnostics when no package was built, but preserves evidence of acceptance failures', async () => {
+  const ci = (await readFile(join(repositoryRoot, '.github/workflows/ci.yml'), 'utf8')).replaceAll('\r\n', '\n');
+  assert.match(ci, /name: Build and verify Debian package\n\s+id: package\n/);
+  assert.match(ci, /name: Upload packaged acceptance diagnostics\n\s+uses: actions\/upload-artifact@v4\n\s+if: \$\{\{ !cancelled\(\) && steps\.package\.outcome == 'success' \}\}/);
+});
+
 test('installed review diagnostics continue after a sibling failure without publishing qualification evidence', async () => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const [ubuntu, debian] = workflow.split('\n  debian-runtime:\n');

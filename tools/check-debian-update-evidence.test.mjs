@@ -63,6 +63,7 @@ test('hosted release preflight only reads the official repository and requires a
   await writeFile(join(root, 'gh'), `#!/bin/sh
 set -e
 [ "$#" = 6 ] && [ "$1 $2 $3 $4 $5" = 'api --hostname github.com --method GET' ] || exit 98
+[ "$6" != "$FIXTURE_EMPTY_ENDPOINT" ] || exit 0
 case "$6" in
   repos/Git-Khronos/Git-Khronos/releases/latest) echo '{"tag_name":"v0.1.5"}' ;;
   repos/Git-Khronos/Git-Khronos/git/ref/tags/v0.1.6)
@@ -113,6 +114,17 @@ esac
   const unreadable = check([main], { FIXTURE_ENVIRONMENT: '' });
   assert.equal(unreadable.status, 1);
   assert.match(unreadable.stdout, /Not confirmed: signed-release environment/);
+  for (const [endpoint, label] of [
+    ['releases/latest', 'latest public release'],
+    ['git/ref/tags/v0.1.6', 'requested tag v0.1.6'],
+    ['actions/variables/GIT_KHRONOS_UPDATER_PUBLIC_KEY', 'publisher public key'],
+    ['actions/variables/GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED', 'signed publication switch'],
+    ['environments/signed-release/deployment-branch-policies?per_page=2', 'main-only release environment policy'],
+  ]) {
+    const empty = check([main], { FIXTURE_EMPTY_ENDPOINT: `repos/Git-Khronos/Git-Khronos/${endpoint}` }, ['v0.1.6']);
+    assert.equal(empty.status, 1, empty.stderr + empty.stdout);
+    assert.ok(empty.stdout.includes(`Not confirmed: ${label}`), empty.stdout);
+  }
 });
 
 test('signed release preparation rejects missing inventories before staging output', async t => {

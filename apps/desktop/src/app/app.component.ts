@@ -4623,6 +4623,16 @@ export class AppComponent implements OnInit, OnDestroy {
   protected handleShortcut(event: KeyboardEvent): void {
     // AltGr can arrive as Ctrl+Alt, and even Enter or Escape can belong to an IME.
     if (event.isComposing || event.getModifierState('AltGraph')) return;
+    if (isTabKey(event) && !event.defaultPrevented) {
+      const menu = this.toolbarOptionsView();
+      const opener = this.toolbarOverlays.activeOverlay()?.returnFocus;
+      // A deferred menu can swap its focused item between keyboard events.
+      // If the browser dropped focus, still resume Tab from the menu opener.
+      if (menu && opener && (event.target === document.body || event.target === opener)) {
+        this.exitToolbarOptionsByTab(document.getElementById(menu.id));
+        return;
+      }
+    }
     const updates = this.applicationUpdatesRequest();
     if (updates) {
       if (event.key === 'Escape') { event.preventDefault(); this.closeApplicationUpdates(updates); }
@@ -12442,16 +12452,8 @@ export class AppComponent implements OnInit, OnDestroy {
       this.closeToolbarMenus(true);
       return;
     }
-    if (event.key === 'Tab') {
-      const menu = event.currentTarget as HTMLElement;
-      const opener = this.toolbarOverlays.activeOverlay()?.returnFocus;
-      if (opener?.isConnected && !opener.matches(':disabled') && !opener.closest('[inert]')) {
-        // Angular detaches the menu after this event. Resume the browser's
-        // native Tab order from the opening control, not a disappearing item.
-        menu.inert = true;
-        opener.focus({ preventScroll: true });
-      }
-      this.closeToolbarMenus();
+    if (isTabKey(event)) {
+      this.exitToolbarOptionsByTab(event.currentTarget as HTMLElement);
       return;
     }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
@@ -12466,6 +12468,16 @@ export class AppComponent implements OnInit, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
     items[next].focus();
+  }
+
+  private exitToolbarOptionsByTab(menu: HTMLElement | null): void {
+    const opener = this.toolbarOverlays.activeOverlay()?.returnFocus;
+    if (opener?.isConnected && !opener.matches(':disabled') && !opener.closest('[inert]')) {
+      // Angular detaches the menu after this event; exclude its controls now.
+      if (menu) menu.inert = true;
+      opener.focus({ preventScroll: true });
+    }
+    this.closeToolbarMenus();
   }
 
   private visibleToolbarMenuItems(menu: ParentNode): HTMLButtonElement[] {

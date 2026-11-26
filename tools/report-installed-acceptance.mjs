@@ -12,7 +12,10 @@ const MAX_REPORT_BYTES = 4 * 1024 * 1024;
 const MAX_REPORTS = 512;
 const MAX_DISCOVERY_DEPTH = 12;
 const MAX_DISCOVERY_ENTRIES = 10_000;
-const SMOKE_SCENARIO = 'native-ui-reviewed-checkpoint-deletion-preserves-sibling-and-repository';
+const SMOKE_SCENARIOS = [
+  'native-ui-reviewed-checkpoint-deletion-preserves-sibling-and-repository',
+  'native-toolbar-menu-tab-returns-to-toolbar-after-focus-gap',
+];
 const GITLAB_SCENARIOS = [
   'native-gitlab-catalogue-preserves-independent-git-refs-index-config-and-working-tree',
   'native-gitlab-fork-lost-reply-private-outcome-survives-real-process-restart-without-credential-or-post-replay',
@@ -231,7 +234,7 @@ const UBUNTU_NOBLE_REVIEWS = [
 ];
 
 const RELEASE_MATRIX = [
-  ['ubuntu', '22.04', 'smoke', SMOKE_SCENARIO],
+  ['ubuntu', '22.04', 'smoke', SMOKE_SCENARIOS],
   ['ubuntu', '22.04', 'gitlab', GITLAB_SCENARIOS],
   ['ubuntu', '22.04', 'watcher-refresh', [
     'native-packed-ref-refresh-replays-read-after-held-status',
@@ -269,7 +272,7 @@ const RELEASE_MATRIX = [
     'native-stash-branch-refuses-ignored-obstruction-before-creating-branch',
     'native-reviewed-stash-branch-retains-exact-saved-state-and-source',
   ], true],
-  ['ubuntu', '24.04', 'smoke', SMOKE_SCENARIO],
+  ['ubuntu', '24.04', 'smoke', SMOKE_SCENARIOS],
   ['ubuntu', '24.04', 'gitlab', GITLAB_SCENARIOS],
   ['ubuntu', '24.04', 'application-update-consent', [
     'native-updater-manual-check-runs-offline-without-automatic-consent',
@@ -277,7 +280,7 @@ const RELEASE_MATRIX = [
     'native-updater-opt-out-survives-process-restart-and-keeps-manual-checks-available',
   ]],
   ...UBUNTU_NOBLE_REVIEWS.map(([suite, scenarios]) => ['ubuntu', '24.04', suite, scenarios]),
-  ['ubuntu', '26.04', 'smoke', SMOKE_SCENARIO],
+  ['ubuntu', '26.04', 'smoke', SMOKE_SCENARIOS],
   ['ubuntu', '26.04', 'gitlab', [
     ...GITLAB_SCENARIOS,
     'native-webdriver-waits-for-delayed-navigation-and-clicks-once',
@@ -293,7 +296,7 @@ const RELEASE_MATRIX = [
   ]],
   ['debian', '12', 'incoming-links', 'native-incoming-cold-saved-promisor-restoration-and-patch-read-never-fetch-with-independent-positive-control', true],
   ['debian', '12', 'gitlab', GITLAB_SCENARIOS],
-  ['debian', '13', 'smoke', SMOKE_SCENARIO],
+  ['debian', '13', 'smoke', SMOKE_SCENARIOS],
   ['debian', '13', 'gitlab', GITLAB_SCENARIOS],
 ];
 

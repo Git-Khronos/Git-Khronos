@@ -1054,6 +1054,31 @@ def menu_tab_focus(driver, report):
     report["scenarios"].append("native-menu-tab-dismissal-preserves-sequential-focus")
 
 
+def toolbar_menu_focus_gap(driver, report):
+    toggle = '[aria-label="Pull options"]'
+    menu = '#pull-options-menu'
+    driver.wait(f"""const button = document.querySelector({json.dumps(toggle)});
+        return button && !button.disabled && button.getClientRects().length;""")
+    for modifiers in ((), ("\ue008",)):
+        driver.script("document.querySelector(arguments[0]).focus()", toggle)
+        driver.key("\ue004", modifiers=modifiers)
+        driver.script("document.activeElement.setAttribute('data-native-toolbar-tab-target', '')")
+        try:
+            driver.click_visible(toggle)
+            driver.wait("""return document.querySelector('#pull-options-menu[gkToolbarOptions]')
+                ?.contains(document.activeElement);""")
+            # Model a focused fallback being removed just before the next key.
+            driver.script("document.activeElement.blur()")
+            assert driver.script("return document.activeElement === document.body")
+            driver.key("\ue004", modifiers=modifiers)
+            driver.wait("return !document.querySelector('#pull-options-menu')", 5)
+            assert driver.script("return document.activeElement.hasAttribute('data-native-toolbar-tab-target')")
+        finally:
+            driver.script("""document.querySelectorAll('[data-native-toolbar-tab-target]')
+                .forEach(element => element.removeAttribute('data-native-toolbar-tab-target'));""")
+    report["scenarios"].append("native-toolbar-menu-tab-returns-to-toolbar-after-focus-gap")
+
+
 def terminal_csp_rendering(driver, report):
     driver.click('[title="Open repository terminal (Alt+T or Ctrl+`)"]')
     driver.wait("return !!document.querySelector('gk-terminal-panel .xterm-screen')")
@@ -1270,6 +1295,7 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     driver.click('[aria-label="Show Left Panel"]')
     report["scenarios"].append("native-workspace-outside-pointer-dismissal")
     menu_tab_focus(driver, report)
+    toolbar_menu_focus_gap(driver, report)
     # Exercise asynchronous filesystem discovery through the real UI, without
     # manually refreshing it or replacing renderer state with IPC results.
     driver.click('.wip-nav')

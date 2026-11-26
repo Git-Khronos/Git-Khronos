@@ -4283,6 +4283,7 @@ mod tests {
         assert!(error.hint.unwrap().contains("Do not repeat"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn bulk_discard_skips_nested_repositories_and_preserves_ignored_and_unselected_files() {
         let repository = Repository::new();
@@ -4681,6 +4682,7 @@ mod tests {
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     }
 
+    #[cfg(unix)]
     #[test]
     fn individual_and_partial_nested_discards_are_refused_before_capture() {
         for tracked_nested in [false, true] {

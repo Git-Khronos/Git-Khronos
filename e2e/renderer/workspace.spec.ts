@@ -4884,7 +4884,7 @@ test('resizes the commit message column independently of unused graph space', as
   const messageWidth = () => messageHeading.evaluate((heading) =>
     Math.round(heading.getBoundingClientRect().width - (heading.classList.contains('trailing-column') ? 26 : 0)));
   const expectSettingsPinnedRight = async () => {
-    // The last heading also spans the settings strip, the header's only extra track.
+    // The trailing heading spans the extra row-actions track, not the fixed settings lane.
     expect(await page.locator('.graph-columns').evaluate((header) =>
       getComputedStyle(header).gridTemplateColumns.split(' ').length
         === header.children.length + header.querySelectorAll(':scope > .trailing-column').length,
@@ -4893,7 +4893,7 @@ test('resizes the commit message column independently of unused graph space', as
     await expect.poll(async () => {
       const header = (await page.locator('.graph-columns').boundingBox())!;
       const button = (await settingsButton.boundingBox())!;
-      return Math.abs(header.x + header.width - button.x - button.width - 22);
+      return Math.abs(header.x + header.width - button.x);
     }).toBeLessThanOrEqual(1);
   };
   await expectSettingsPinnedRight();
@@ -5511,8 +5511,8 @@ test('keeps graph headers aligned while wide histories scroll horizontally', asy
   ]);
   expect(headerBoxAfterScroll).not.toBeNull();
   expect(settingsBoxAfterScroll).not.toBeNull();
-  expect(Math.abs(settingsBoxAfterScroll!.x + settingsBoxAfterScroll!.width -
-    (headerBoxAfterScroll!.x + headerBoxAfterScroll!.width - 22))).toBeLessThanOrEqual(1);
+  expect(Math.abs(settingsBoxAfterScroll!.x -
+    (headerBoxAfterScroll!.x + headerBoxAfterScroll!.width))).toBeLessThanOrEqual(1);
   // The leading column scrolls with the history instead of staying pinned over the columns after it.
   await expect.poll(() => leadingHeader.evaluate((element) => element.getBoundingClientRect().x)).toBeLessThan(shellX);
   await expect.poll(async () => Math.abs(
@@ -5564,7 +5564,7 @@ test('keeps compact history controls clear of the side-by-side commit inspector'
     expect(historyBox!.x + historyBox!.width).toBeLessThanOrEqual(inspectorBox!.x);
     expect(settingsBox!.x + settingsBox!.width).toBeLessThanOrEqual(inspectorBox!.x - 4);
     expect(Math.abs(settingsBox!.x + settingsBox!.width -
-      (headerBox!.x + headerBox!.width - 22 - gutter))).toBeLessThanOrEqual(1);
+      (headerBox!.x + headerBox!.width - gutter))).toBeLessThanOrEqual(1);
 
     await settingsButton.click();
     await expect(page.getByRole('dialog', { name: 'Graph settings' })).toBeVisible();
