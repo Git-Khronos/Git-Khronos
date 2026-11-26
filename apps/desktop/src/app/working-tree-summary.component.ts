@@ -3,7 +3,7 @@ import { ipc, type RepositoryStatus, type WorkingTreeChangeSummary, type Working
 import { GitKhronosService } from './git-khronos.service';
 
 type RecapSection = 'staged' | 'unstaged';
-type SummaryState = { phase: 'loading' | 'unavailable' | 'preview' }
+type SummaryState = { phase: 'waiting' | 'loading' | 'unavailable' | 'preview' }
   | { phase: 'ready' | 'refreshing'; value: WorkingTreeChangeSummary };
 const EMPTY: SummaryState = { phase: 'ready', value: { additions: 0, deletions: 0, uncountedFiles: 0, partial: false } };
 
@@ -34,8 +34,8 @@ function sameSnapshot(first: Request, next: Request): boolean {
         @if (current.value.partial) { <em>(partial)</em> }
         @if (refreshing) { <em aria-hidden="true">…</em> }
       </span>
-    } @else if (current.phase === 'loading') {
-      <span class="pending" role="status">Counting lines…</span>
+    } @else if (current.phase === 'loading' || current.phase === 'waiting') {
+      <span class="pending" role="status">{{ current.phase === 'waiting' ? 'Waiting for Git…' : 'Counting lines…' }}</span>
     } @else if (current.phase === 'unavailable') {
       <span class="pending">Line counts unavailable</span>
       <button class="retry" type="button" [attr.aria-label]="'Retry ' + section() + ' line counts'"
@@ -119,7 +119,7 @@ export class WorkingTreeSummariesDirective {
       if (!active || (this.lastMeasurement && !sameSnapshot(this.lastMeasurement.request, request))) {
         this.lastMeasurement = null;
       }
-      const pending: SummaryState = { phase: preview ? 'preview' : 'loading' };
+      const pending: SummaryState = { phase: preview ? 'preview' : busy ? 'waiting' : 'loading' };
       const previous = this.lastMeasurement?.result;
       const duringRead = (hasChanges: boolean, value?: WorkingTreeChangeSummary | null): SummaryState =>
         !hasChanges ? EMPTY : value ? { phase: 'refreshing', value } : pending;

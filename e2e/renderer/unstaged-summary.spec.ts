@@ -81,6 +81,24 @@ test('a busy checkout retains measured totals until it can recount', async ({ pa
   await expect(image).toHaveAccessibleName('20 additions and 9 deletions in unstaged files');
 });
 
+test('a busy checkout without a measurement waits before recounting', async ({ page }) => {
+  const recap = page.locator('.unstaged-section gk-working-tree-summary');
+  await page.evaluate(() => (window as any).__unstagedSummary.git.branchMutationPending.set(true));
+  await expect(recap.getByRole('status')).toHaveText('Waiting for Git…');
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: null, unstaged: { additions: 999, deletions: 0, uncountedFiles: 0, partial: false },
+  }));
+  await expect(recap.getByRole('status')).toHaveText('Waiting for Git…');
+  expect(await page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(1);
+  await page.evaluate(() => (window as any).__unstagedSummary.git.branchMutationPending.set(false));
+  await expect(recap.getByRole('status')).toHaveText('Counting lines…');
+  await expect.poll(() => page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(2);
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[1].resolve({
+    staged: null, unstaged: { additions: 3, deletions: 1, uncountedFiles: 0, partial: false },
+  }));
+  await expect(recap.getByRole('img')).toHaveAccessibleName('3 additions and 1 deletion in unstaged files');
+});
+
 test('status bursts coalesce and an old result cannot replace current totals', async ({ page }) => {
   await page.evaluate(() => {
     const s = (window as any).__unstagedSummary;
