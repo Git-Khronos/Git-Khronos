@@ -134,3 +134,13 @@ test('WebKit opt-in applies only to selected browser targets', t => {
   assert.match(plan, /GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run "desktop:e2e"[^\n]*"--project=webkit"/);
   assert.doesNotMatch(plan, /GIT_KHRONOS_RENDERER_WEBKIT=1 pnpm nx run "desktop:owned-process-test"/);
 });
+
+test('a native harness unit-test edit selects no browser or package run', t => {
+  const f = fixture(t);
+  f.write('tools/native_acceptance_test.py');
+  const plan = f.run('--webkit');
+  assert.match(plan, /desktop:native-harness-test/);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check|project=webkit/);
+  f.write('tools/native_acceptance.py');
+  assert.match(f.run(), /desktop:check/);
+});

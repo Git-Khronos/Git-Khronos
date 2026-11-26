@@ -67,6 +67,7 @@ const changed = [...new Set([
 const selected = new Set();
 const specs = [];
 let retestTools = false;
+let nativeHarnessTests = false;
 let broad = false;
 for (const path of changed) {
   let plan;
@@ -75,6 +76,9 @@ for (const path of changed) {
   } else if (/^tools\/retest-changed(?:\.test)?\.mjs$/.test(path) && existsSync(join(cwd, path))) {
     retestTools = true;
     plan = 'test selection and local process checks';
+  } else if (/^tools\/native_[a-z0-9_]+_test\.py$/.test(path) && existsSync(join(cwd, path))) {
+    nativeHarnessTests = true;
+    plan = 'native harness unit tests';
   } else if (/^e2e\/renderer\/[a-z0-9-]+\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
     specs.push(path);
     plan = 'individual renderer spec';
@@ -109,6 +113,7 @@ const directSpecs = specs.filter(path => !filters.some(filter => filter.test(pat
 const commands = broad
   ? [['desktop:check'], ['desktop:test'], ['desktop:e2e']]
   : [...(retestTools ? [['desktop:owned-process-test']] : []),
+     ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
      ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
 const isBrowser = command => command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:');
