@@ -1,7 +1,7 @@
 // Local feedback only; this is not a replacement for release checks.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -34,6 +34,15 @@ const rendererFixtureSpecs = new Map([
     'deferred-toolbar-options', 'revision-inspector-loading', 'startup-failures',
   ]],
 ]);
+const packagedScenarios = new Map([
+  ['tools/native_sparse_checkout_scenarios.py', ['native-sparse-checkout']],
+  ['tools/native_submodule_initialize_scenarios.py', ['native-submodule-initialize']],
+  ['tools/native_submodule_update_scenarios.py', ['native-submodule-update']],
+  ['tools/native_discard_subset_scenarios.py', [
+    'native-discard-subset', 'native-discard-busy', 'native-discard-deletion',
+    'native-discard-stale-review', 'native-discard-large', 'native-discard-limit',
+  ]],
+]);
 const { values } = parseArgs({ options: {
   help: { type: 'boolean', short: 'h' },
   base: { type: 'string', default: 'HEAD' },
@@ -41,17 +50,19 @@ const { values } = parseArgs({ options: {
   workers: { type: 'string' },
   webkit: { type: 'boolean' },
   run: { type: 'boolean' },
+  'native-package': { type: 'string' },
   'allow-full': { type: 'boolean' },
 } });
 
 if (values.help) {
-  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--run [--allow-full]]
+  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--native-package <archive.deb>] [--run [--allow-full]]
 
 Preview checks for staged, unstaged and untracked changes against HEAD by default.
 Use --base to compare against another local commit, for example origin/dev.
 Use --staged to select only changes in the index relative to the base.
 Tests still run against your working files, not an isolated staged snapshot.
 Use --workers to override the browser worker count and --webkit to select WebKit.
+Use --native-package to include mapped native scenario suites with an explicit Debian archive.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
 This command does not fetch or replace the release test suite.`);
   process.exit(0);
@@ -60,6 +71,15 @@ This command does not fetch or replace the release test suite.`);
 if (values.workers !== undefined && !/^[1-9][0-9]{0,2}$/.test(values.workers)) {
   console.error('--workers must be a positive integer from 1 to 999.');
   process.exit(2);
+}
+
+let nativePackage;
+if (values['native-package'] !== undefined) {
+  nativePackage = resolve(values['native-package']);
+  if (!nativePackage.endsWith('.deb') || !statSync(nativePackage, { throwIfNoEntry: false })?.isFile()) {
+    console.error('--native-package requires the path to an existing .deb file.');
+    process.exit(2);
+  }
 }
 
 const revision = spawnSync('git', ['rev-parse', '--verify', '--end-of-options', values.base + '^{commit}'], {
@@ -95,10 +115,11 @@ function isPackageTest(path) {
 const selected = new Set();
 const specs = new Set();
 const unitSpecs = new Set();
+const nativeSuites = new Set();
 let retestTools = false;
 let packageTests = false;
 let nativeHarnessTests = false;
-let nativeHarnessSource = false;
+let unmappedNativeSource = false;
 let graphTypecheck = false;
 let broad = false;
 for (const path of changed) {
@@ -115,8 +136,16 @@ for (const path of changed) {
     plan = 'native harness unit tests';
   } else if (/^tools\/native_[a-z0-9_]+\.py$/.test(path) && existsSync(join(cwd, path))) {
     nativeHarnessTests = true;
-    nativeHarnessSource = true;
-    plan = 'native harness unit tests; packaged scenario validation is separate';
+    const suites = packagedScenarios.get(path);
+    const registered = suites?.every(suite => targets()[suite]?.options?.command
+      === 'python3 tools/native_acceptance.py --suite ' + suite.slice('native-'.length) + ' --headless');
+    if (registered) {
+      for (const suite of suites) nativeSuites.add(suite);
+      plan = 'native harness unit tests and packaged suites: ' + suites.join(', ');
+    } else {
+      unmappedNativeSource = true;
+      plan = 'native harness unit tests; packaged scenario validation is separate';
+    }
   } else if (/^apps\/desktop\/src\/app\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.spec\.ts$/.test(path) && existsSync(join(cwd, path))) {
     unitSpecs.add(path);
     plan = 'individual renderer unit spec';
@@ -178,6 +207,7 @@ const directSpecs = [...specs].filter(path => !filters.some(filter => filter.tes
 const extraChecks = [
   ...(packageTests ? [['desktop:package-test']] : []),
   ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
+  ...(nativePackage ? [...nativeSuites].map(suite => ['desktop:' + suite, '--', '--package', nativePackage]) : []),
 ];
 const commands = broad
   ? [['desktop:check'], ['desktop:test'], ...extraChecks, ['desktop:e2e']]
@@ -200,7 +230,10 @@ for (const command of commands) {
   const envPrefix = values.webkit && isBrowser(command) ? 'GIT_KHRONOS_RENDERER_WEBKIT=1 ' : '';
   console.log(envPrefix + 'pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
 }
-if (nativeHarnessSource) {
+if (nativeSuites.size && !nativePackage) {
+  console.log('Add --native-package <archive.deb> to include the mapped packaged suites.');
+}
+if (unmappedNativeSource) {
   console.log('For packaged acceptance, run the affected native suite against an explicit Debian archive.');
 }
 if (!commands.length) console.log('No test-relevant changes selected.');

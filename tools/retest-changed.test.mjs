@@ -278,3 +278,47 @@ test('selects an individual renderer unit spec without starting Playwright', t =
   assert.match(plan, /"desktop:renderer-unit-test:focused" "--output-style=static" "--" "apps\/desktop\/src\/app\/shortcut-labels.spec.ts"/);
   assert.doesNotMatch(plan, /desktop:e2e|project=webkit/);
 });
+
+test('mapped native scenario edits require an explicit archive and do not start Playwright', t => {
+  const f = fixture(t);
+  const archive = 'artifacts/local candidate.deb';
+  f.write('.gitignore', 'artifacts/\n');
+  f.commit();
+  f.write(archive);
+  f.write('tools/native_sparse_checkout_scenarios.py');
+  const plan = f.run();
+  assert.match(plan, /Add --native-package/);
+  assert.doesNotMatch(plan, /"desktop:native-sparse-checkout"/);
+
+  const packaged = f.run('--native-package', archive, '--webkit');
+  assert.match(packaged, /"desktop:native-harness-test"/);
+  assert.ok(packaged.includes('"desktop:native-sparse-checkout" "--output-style=static" "--" "--package" '
+    + JSON.stringify(join(f.cwd, archive))));
+  assert.doesNotMatch(packaged, /desktop:e2e|desktop:check|project=webkit/);
+});
+
+test('an invalid native archive fails before scheduling checks', t => {
+  const f = fixture(t);
+  f.write('tools/native_sparse_checkout_scenarios.py');
+  const result = spawnSync(process.execPath, ['tools/retest-changed.mjs', '--native-package', 'missing.deb', '--run'], {
+    cwd: f.cwd, encoding: 'utf8',
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /existing \.deb file/);
+  assert.doesNotMatch(result.stdout, /nx run/);
+});
+
+test('a shared discard scenario file selects all six registered discard suites', t => {
+  const f = fixture(t);
+  f.write('candidate.deb');
+  f.write('.gitignore', 'candidate.deb\n');
+  f.commit();
+  f.write('tools/native_discard_subset_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  const suites = [...plan.matchAll(/"desktop:native-(discard-[a-z-]+)"/g)].map(match => match[1]).sort();
+  assert.deepEqual(suites, [
+    'discard-busy', 'discard-deletion', 'discard-large', 'discard-limit',
+    'discard-stale-review', 'discard-subset',
+  ]);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
+});
