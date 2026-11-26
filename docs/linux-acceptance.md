@@ -4380,4 +4380,8 @@ pnpm 12.23.0, Tauri 2.12.7 and dialog plugin 2.8.4. Its archive SHA-256 is
 All 56 focused packaged scenarios passed: smoke (19), worktrees (29),
 sparse checkout (7), and bulk workspace relocation (1). The relocation
 case selected and canceled actual native folder choosers on private Xvfb.
+The same archive subsequently passed all 11 `gitlab-fork-ui` scenarios in
+69.2 seconds, including real WebDriver stale-element recovery, delayed
+catalogue readiness, and one-click navigation without paint frames.
+Evidence: `test-results/native/gitlab-fork-ui-1795736468788653639/`.
 This is extracted-archive evidence, not an installed release qualification.
