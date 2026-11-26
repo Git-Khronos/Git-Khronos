@@ -921,7 +921,15 @@ The private headless display stays initialized between app processes so a
 WebView restart doesn't also race an X server reset. If a restart fails,
 inbox cleanup must not replace the original error with an invalid session ID.
 
-For a long run, read the evidence directory's `progress.json`. It identifies
+For a long run under Nx 24, use `--output-style=stream` before the
+Playwright or native arguments separator. For example:
+
+```sh
+pnpm nx run desktop:native-full --output-style=stream -- --package "$archive"
+```
+
+This prints the evidence directory as soon as the worker starts, even when
+redirecting output to a log. Read that directory's `progress.json`. It identifies
 the acceptance worker PID in its process namespace, current phase, phase start (seconds into the
 run), and last completed scenario. The full toolkit identifies the active
 group, such as file tools, hosted reviews, Git transport, history, or
