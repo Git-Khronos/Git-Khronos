@@ -189,7 +189,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "playwright test --grep-invert '(keeps|fits) column order (?!branch,graph,message,author,date )'"
+        "command": "playwright test --grep-invert '@exhaustive-layout'"
       }
     },
     "e2e-webkit": {

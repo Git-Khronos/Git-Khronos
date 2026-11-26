@@ -78,7 +78,8 @@ const allOrders = permutations(DEFAULT_VISIBLE);
 // 24 complete resize sequences under one deadline could time out with no layout
 // violation and prevent the remaining permutations from being exercised.
 for (const order of allOrders) {
-  test(`keeps column order ${order.join(',')} aligned while resizing`, async ({ page }) => {
+  const coverage = order.join() === DEFAULT_VISIBLE.join() ? {} : { tag: '@exhaustive-layout' };
+  test(`keeps column order ${order.join(',')} aligned while resizing`, coverage, async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1920, height: 900 });
     await openWithLayout(page, order, {}, true);
@@ -86,7 +87,7 @@ for (const order of allOrders) {
     await exerciseSeparators(page, order, order.join(), false);
   });
 
-  test(`fits column order ${order.join(',')} when horizontal scrolling is off`, async ({ page }) => {
+  test(`fits column order ${order.join(',')} when horizontal scrolling is off`, coverage, async ({ page }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1600, height: 900 });
     await openWithLayout(page, order, { scroll: false }, true);
