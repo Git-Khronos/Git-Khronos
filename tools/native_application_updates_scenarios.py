@@ -85,9 +85,11 @@ def application_updates_workflow(driver, fixtures, report):
       const helpId = automatic.getAttribute('aria-describedby');
       const help = helpId && document.getElementById(helpId);
       const check = [...dialog.querySelectorAll('button')].find(b => b.textContent.trim() === 'Check for updates');
+      const browse = [...dialog.querySelectorAll('button')].find(b => b.textContent.trim() === 'Browse official releases (opens browser)');
       return {text: dialog.textContent, automatic: automatic.checked,
         consentHelp: help && dialog.contains(help) ? help.textContent.trim().replace(/\s+/g, ' ') : '',
         automaticDisabled: automatic.disabled, checkDisabled: check.disabled,
+        browseEnabled: !!browse && !browse.disabled && browse.getAttribute('aria-disabled') !== 'true',
         installButtons: [...dialog.querySelectorAll('button')].filter(b => b.textContent.includes('Install verified')).length};''', modal)
     consent_help = state['consentHelp']
     for fragment in (
@@ -97,8 +99,12 @@ def application_updates_workflow(driver, fixtures, report):
         'does not stop an installer that has already started',
     ):
         assert fragment in consent_help, consent_help
+    manual_help = ('This build cannot check for or install updates in the app. '
+                   'Use Browse official releases to find a package and install it manually.')
+    assert state['browseEnabled'], state
     report['scenarios'].append('native-updates-automatic-setting-describes-download-and-install-consent')
     if expect_trust:
+        assert manual_help not in consent_help, consent_help
         status = driver.request('POST', driver.path('execute/async'), {'script': """
           const done = arguments[arguments.length - 1];
           window.__TAURI_INTERNALS__.invoke('application_update_status')
@@ -120,6 +126,7 @@ def application_updates_workflow(driver, fixtures, report):
 
     assert state['automatic'] is False and state['automaticDisabled']
     assert state['checkDisabled'] and state['installButtons'] == 0
+    assert consent_help.startswith(manual_help), consent_help
     assert 'Running version' in state['text'] and 'not configured' in state['text']
     report['applicationUpdates'] = {'source': str(repository), 'missingTrustUi': state}
     report['scenarios'].append('native-updates-menu-discloses-missing-publisher-trust-and-default-off-automatic-mode')
