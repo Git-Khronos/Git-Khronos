@@ -78,6 +78,8 @@ case "$6" in
     echo '{"value":"true"}' ;;
   repos/Git-Khronos/Git-Khronos/actions/variables/GIT_KHRONOS_HOSTED_SIGNING_ENABLED)
     echo '{"value":"true"}' ;;
+  'repos/Git-Khronos/Git-Khronos/contents/.github/workflows/publish-signed-debian.yml?ref=main')
+    printf '%s\n' "$FIXTURE_HOSTED_WORKFLOW" ;;
   repos/Git-Khronos/Git-Khronos/environments/signed-release-signer)
     printf '%s\n' "$FIXTURE_SIGNER_ENVIRONMENT" ;;
   'repos/Git-Khronos/Git-Khronos/environments/signed-release-signer/deployment-branch-policies?per_page=2')
@@ -100,6 +102,10 @@ esac
     env: { ...process.env, PATH: `${root}:${process.env.PATH}`, FIXTURE_PUBLISHER: publisher,
       FIXTURE_ENVIRONMENT: JSON.stringify(environment),
       FIXTURE_SIGNER_ENVIRONMENT: JSON.stringify({ ...environment, name: 'signed-release-signer' }),
+      FIXTURE_HOSTED_WORKFLOW: JSON.stringify({
+        path: '.github/workflows/publish-signed-debian.yml', encoding: 'base64',
+        content: Buffer.from('      hosted_signing:\n    environment: signed-release-signer\n').toString('base64'),
+      }),
       FIXTURE_QUALIFY_WORKFLOW: 'Qualify Debian release candidate', FIXTURE_PUBLISH_WORKFLOW_STATE: 'active',
       FIXTURE_RULES: JSON.stringify({ total_count: rules.length, branch_policies: rules }), ...overrides },
   });
@@ -112,11 +118,15 @@ esac
   assert.doesNotMatch(valid.stdout, /Signer key secret/);
   const hosted = check([main], {}, ['--hosted', 'v0.1.6']);
   assert.equal(hosted.status, 0, hosted.stderr + hosted.stdout);
+  assert.match(hosted.stdout, /Hosted signing workflow: present on main/);
   assert.match(hosted.stdout, /signed-release-signer environment: required reviewers configured/);
   assert.match(hosted.stdout, /Signer key secret: metadata confirmed/);
   const noSigner = check([main], { FIXTURE_SIGNER_ENVIRONMENT: '' }, ['--hosted']);
   assert.equal(noSigner.status, 1);
   assert.match(noSigner.stdout, /Not confirmed: signed-release-signer environment/);
+  const noWorkflow = check([main], { FIXTURE_HOSTED_WORKFLOW: '{}' }, ['--hosted']);
+  assert.equal(noWorkflow.status, 1);
+  assert.match(noWorkflow.stdout, /Not confirmed: hosted signing workflow on main/);
   const noSecretMetadata = check([main], {
     FIXTURE_EMPTY_ENDPOINT: 'repos/Git-Khronos/Git-Khronos/environments/signed-release-signer/secrets/TAURI_SIGNING_PRIVATE_KEY',
   }, ['--hosted']);

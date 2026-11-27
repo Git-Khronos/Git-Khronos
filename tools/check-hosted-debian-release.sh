@@ -86,6 +86,21 @@ check_environment() {
 check_environment signed-release
 
 if [[ "$hosted" == true ]]; then
+  if get "$root/contents/.github/workflows/publish-signed-debian.yml?ref=main" 2>/dev/null |
+      node --input-type=module -e '
+        import fs from "node:fs";
+        try {
+          const file = JSON.parse(fs.readFileSync(0, "utf8"));
+          if (file.path !== ".github/workflows/publish-signed-debian.yml" || file.encoding !== "base64") process.exit(1);
+          const workflow = Buffer.from(file.content, "base64").toString("utf8");
+          if (!/^ {6}hosted_signing:\s*$/m.test(workflow) ||
+              !/^ {4}environment: signed-release-signer\s*$/m.test(workflow)) process.exit(1);
+        } catch { process.exit(1); }
+      '; then
+    echo 'Hosted signing workflow: present on main.'
+  else
+    missing 'hosted signing workflow on main (missing, unreadable, or not merged)'
+  fi
   check_environment signed-release-signer
   if get "$root/actions/variables/GIT_KHRONOS_HOSTED_SIGNING_ENABLED" 2>/dev/null |
       one_json 'length == 1 and .[0].value == "true"' >/dev/null; then
