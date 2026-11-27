@@ -491,12 +491,22 @@ test('a complete clean renderer run emits per-spec timing evidence separately fr
   assert.ok(!existsSync(timings));
   reporter.onTestEnd(tests[2], { status: 'passed', duration: 200 });
   reporter.onEnd({ status: 'passed' });
-  assert.deepEqual(JSON.parse(readFileSync(timings, 'utf8')), {
+  const { caseTimings, ...specTimings } = JSON.parse(readFileSync(timings, 'utf8'));
+  assert.deepEqual(specTimings, {
     version: 1, totalCases: 3, specs: [
       { spec: 'longer.spec.ts', cases: 2, durationMs: 700 },
       { spec: 'shorter.spec.ts', cases: 1, durationMs: 100 },
     ],
   });
+  assert.deepEqual(caseTimings.map(entry => entry.durationMs).sort((a, b) => a - b), [100, 200, 500]);
+  const ids = caseTimings.map(entry => entry.id);
+  assert.equal(new Set(ids).size, tests.length);
+  assert.ok(ids.every(id => /^[a-f0-9]{64}$/.test(id)));
+  const repeat = new RendererProgress({ path: join(root, 'repeat.json') });
+  repeat.onBegin(undefined, { allTests: () => [...tests].reverse() });
+  for (const fixture of [...tests].reverse()) repeat.onTestEnd(fixture, { status: 'passed', duration: 1 });
+  repeat.onEnd({ status: 'passed' });
+  assert.deepEqual(JSON.parse(readFileSync(join(root, 'repeat.timings.json'), 'utf8')).caseTimings.map(entry => entry.id), ids);
   assert.doesNotMatch(readFileSync(timings, 'utf8'), /test title|gk-renderer-spec-timings/);
 });
 

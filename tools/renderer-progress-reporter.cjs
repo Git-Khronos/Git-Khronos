@@ -1,6 +1,7 @@
 // Optional Playwright reporter for local validation. Counts are observations,
 // not a test verdict, and a retry updates the same test's latest result.
 const { renameSync, writeFileSync } = require('node:fs');
+const { createHash } = require('node:crypto');
 const { basename } = require('node:path');
 
 function displaySpec(test) {
@@ -20,6 +21,7 @@ class RendererProgress {
     this.testPhaseStart = 0;
     this.attemptDurationMs = 0;
     this.durationBySpec = new Map();
+    this.durationByCase = new Map();
     this.active = new Map();
     this.timer = null;
     this.writeFailed = false;
@@ -66,6 +68,7 @@ class RendererProgress {
       const duration = Math.round(result.duration);
       this.attemptDurationMs += duration;
       if (spec) {
+        this.durationByCase.set(test.id, duration);
         const timing = this.durationBySpec.get(spec) ?? { durationMs: 0, timedAttempts: 0, maxAttemptMs: 0 };
         timing.durationMs += duration;
         if (!timing.timedAttempts || duration > timing.maxAttemptMs) {
@@ -108,11 +111,17 @@ class RendererProgress {
       .map(([spec, { durationMs, timedAttempts }]) => ({ spec, durationMs, cases: timedAttempts }));
     // Do not seed a shard timing baseline from missing data, retries,
     // interruptions, or timeouts. The small live progress receipt is separate.
-    if (specs.reduce((total, spec) => total + spec.cases, 0) !== this.total) return;
+    if (this.durationByCase.size !== this.total
+      || specs.reduce((total, spec) => total + spec.cases, 0) !== this.total) return;
+    // Opaque IDs let repeated runs compare the same cases without recording
+    // Playwright titles, filesystem paths, or fixture values.
+    const caseTimings = [...this.durationByCase].map(([id, durationMs]) => ({
+      id: createHash('sha256').update(id).digest('hex'), durationMs,
+    })).sort((a, b) => a.id.localeCompare(b.id));
     const path = this.path.replace(/\.json$/, '') + '.timings.json';
     try {
       const temporary = `${path}.${process.pid}.tmp`;
-      writeFileSync(temporary, JSON.stringify({ version: 1, totalCases: this.total, specs }),
+      writeFileSync(temporary, JSON.stringify({ version: 1, totalCases: this.total, specs, caseTimings }),
         { flag: 'wx', mode: 0o600 });
       renameSync(temporary, path);
     } catch (error) {
