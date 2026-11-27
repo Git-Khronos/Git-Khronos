@@ -178,7 +178,7 @@ test('an edited LFS lock fixture selects its packaged suite with an explicit arc
   f.write('artifacts/check.deb');
   f.write('tools/native_lfs_lock_ui_scenarios.py');
   const plan = f.run('--native-package', 'artifacts/check.deb');
-  assert.match(plan, /"desktop:native-lfs-lock-actions" "--output-style=static" "--" "--package"/);
+  assert.match(plan, /"desktop:native-lfs-lock-actions" "--output-style=stream" "--" "--package"/);
   assert.doesNotMatch(plan, /desktop:e2e|--installed/);
 });
 
@@ -317,7 +317,7 @@ test('editor fixture changes cover editing, file tools and draft recovery withou
     f.write(`e2e/renderer/${name}.spec.ts`);
   }
   const plan = f.run('--webkit', '--workers=2');
-  assert.ok(plan.includes('"desktop:e2e:editor" "--output-style=static" "--" "--workers=2" "--project=webkit"'));
+  assert.ok(plan.includes('"desktop:e2e:editor" "--output-style=stream" "--" "--workers=2" "--project=webkit"'));
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 
@@ -487,7 +487,7 @@ test('mapped native scenario edits require an explicit archive and do not start 
 
   const packaged = f.run('--native-package', archive, '--webkit');
   assert.match(packaged, /"desktop:native-harness-test"/);
-  assert.ok(packaged.includes('"desktop:native-sparse-checkout" "--output-style=static" "--" "--package" '
+  assert.ok(packaged.includes('"desktop:native-sparse-checkout" "--output-style=stream" "--" "--package" '
     + JSON.stringify(join(f.cwd, archive))));
   assert.doesNotMatch(packaged, /desktop:e2e|desktop:check|project=webkit/);
 });
@@ -514,8 +514,8 @@ test('updater fixture edits select offline package checks, not an installed upda
   f.write('artifacts/candidate.deb');
   f.write('tools/native_application_updates_scenarios.py');
   const plan = f.run('--native-package', 'artifacts/candidate.deb');
-  assert.match(plan, /"desktop:native-application-updates" "--output-style=static" "--" "--package"/);
-  assert.match(plan, /"desktop:native-application-update-release-link" "--output-style=static" "--" "--package"/);
+  assert.match(plan, /"desktop:native-application-updates" "--output-style=stream" "--" "--package"/);
+  assert.match(plan, /"desktop:native-application-update-release-link" "--output-style=stream" "--" "--package"/);
   assert.doesNotMatch(plan, /application-update-consent|--installed|desktop:native-full|desktop:e2e/);
 });
 
@@ -540,7 +540,7 @@ test('rebase fixture edits select both packaged rebase reviews without a browser
   f.write('tools/native_feature_rebase_scenarios.py');
   const plan = f.run('--native-package', 'artifacts/rebase.deb');
   for (const target of ['native-feature-rebase', 'native-merge-rebase-review']) {
-    assert.ok(plan.includes(`"desktop:${target}" "--output-style=static" "--" "--package" `
+    assert.ok(plan.includes(`"desktop:${target}" "--output-style=stream" "--" "--package" `
       + JSON.stringify(join(f.cwd, 'artifacts/rebase.deb'))));
   }
   assert.doesNotMatch(plan, /--installed|desktop:native-full|desktop:e2e/);
