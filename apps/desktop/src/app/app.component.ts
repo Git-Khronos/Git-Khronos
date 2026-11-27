@@ -14792,7 +14792,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected setPaletteBranchRenameName(value: string, request: PendingBranchRename): void {
-    if (this.pendingBranchRename() === request && this.ownsCheckoutVisitReview(request) && !this.git.busy()) {
+    if (this.pendingBranchRename() === request && this.ownsCheckoutVisitReview(request)) {
       this.contextRenameName.set(value);
     }
   }

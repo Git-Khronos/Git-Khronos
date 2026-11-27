@@ -174,26 +174,34 @@ test('an outgoing palette rename field cannot overwrite a replacement draft', as
   await expect(field).toHaveValue('replacement-draft');
 });
 
-test('context rename keeps draft input while another operation blocks submission', async ({ page }) => {
-  await page.getByRole('button', { name: 'Local branch feature/partial-staging', exact: true }).first().click({ button: 'right' });
-  const field = page.locator('#context-rename-name');
-  const submit = page.locator('.context-branch-form').getByRole('button', { name: 'Rename', exact: true });
-  await expect(field).toHaveValue('feature/partial-staging');
-  await page.evaluate(() => (window as any).__renameScope.git.branchMutationPending.set(true));
-  await field.fill('renamed-while-busy');
-  await expect(submit).toBeDisabled();
-  await field.evaluate(input => input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-  const renameCalls = () => page.evaluate(() => (window as any).__renameScope.calls.filter((call: any) => call.command === 'rename_branch'));
-  expect(await renameCalls()).toEqual([]);
-  await page.evaluate(() => (window as any).__renameScope.git.branchMutationPending.set(false));
-  await expect(field).toHaveValue('renamed-while-busy');
-  await expect(submit).toBeEnabled();
-  await submit.scrollIntoViewIfNeeded();
-  await submit.click();
-  await expect.poll(renameCalls).toMatchObject([
-    { args: { oldName: 'feature/partial-staging', newName: 'renamed-while-busy' } },
-  ]);
-});
+for (const surface of ['context', 'palette']) {
+  test(`${surface} rename keeps draft input while another operation blocks submission`, async ({ page }) => {
+    if (surface === 'context') {
+      await page.getByRole('button', { name: 'Local branch feature/partial-staging', exact: true }).first().click({ button: 'right' });
+    } else {
+      await page.evaluate(() => (window as any).__renameScope.open());
+    }
+    const field = surface === 'context' ? page.locator('#context-rename-name') : page.getByRole('textbox', { name: 'New branch name' });
+    const submit = surface === 'context'
+      ? page.locator('.context-branch-form').getByRole('button', { name: 'Rename', exact: true })
+      : page.getByRole('button', { name: 'Rename Branch', exact: true });
+    await expect(field).toHaveValue(surface === 'context' ? 'feature/partial-staging' : 'renamed-topic');
+    await page.evaluate(() => (window as any).__renameScope.git.branchMutationPending.set(true));
+    await field.fill('renamed-while-busy');
+    await expect(submit).toBeDisabled();
+    await field.evaluate(input => input.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    const renameCalls = () => page.evaluate(() => (window as any).__renameScope.calls.filter((call: any) => call.command === 'rename_branch'));
+    expect(await renameCalls()).toEqual([]);
+    await page.evaluate(() => (window as any).__renameScope.git.branchMutationPending.set(false));
+    await expect(field).toHaveValue('renamed-while-busy');
+    await expect(submit).toBeEnabled();
+    await submit.scrollIntoViewIfNeeded();
+    await submit.click();
+    await expect.poll(renameCalls).toMatchObject([
+      { args: { oldName: 'feature/partial-staging', newName: 'renamed-while-busy' } },
+    ]);
+  });
+}
 
 for (const change of ['repository', 'path', 'revisit']) {
   test(`context rename refuses a pre-effect ${change} change`, async ({ page }) => {
