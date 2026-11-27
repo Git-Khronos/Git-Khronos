@@ -99,6 +99,17 @@ test('LFS dialog edits select the focused LFS profile without duplicate specs', 
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('file and repository history panels share one focused search retest', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/file-history.component.ts');
+  f.write('apps/desktop/src/app/history-search.component.ts');
+  f.write('e2e/renderer/history-search-lifecycle.spec.ts');
+  const plan = f.run();
+  assert.equal(plan.match(/"desktop:e2e:history-search"/g)?.length, 1);
+  assert.ok(!plan.includes('e2e/renderer/history-search-lifecycle[.]spec[.]ts$'));
+  assert.doesNotMatch(plan, /"desktop:e2e:history"|desktop:check/);
+});
+
 test('an edited LFS lock fixture selects its packaged suite with an explicit archive', t => {
   const f = fixture(t);
   f.write('.gitignore', 'artifacts/\n');

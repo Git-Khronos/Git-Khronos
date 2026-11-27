@@ -22,7 +22,7 @@ const profiles = [
   [/^graph-viewport\.component\.(?:ts|html|scss)$/, 'graph'],
   [/^(?:discard-recovery-display\.ts|saved-discard-list\.component\.(?:ts|html|scss))$/, 'discard'],
   [/^stash-(?:options|delete|clear)-dialog\.component\.(?:ts|html|scss)$/, 'stash'],
-  [/^history-search\.component\.(?:ts|html|scss)$/, 'history'],
+  [/^(?:file-history|history-search)\.component\.(?:ts|html|scss)$/, 'history-search'],
   [/^fetch-options-dialog\.component\.(?:ts|html|scss)$/, 'transport'],
   [/^application-updates-dialog\.component\./, 'updates'],
 ];
