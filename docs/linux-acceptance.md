@@ -1,5 +1,14 @@
 # Linux packaged acceptance
 
+## Download hosted CI evidence
+
+For Desktop CI, download `ubuntu-package` for the tested Debian archive,
+`SHA256SUMS`, and the build ABI report. Verify the archive with
+`sha256sum --check SHA256SUMS` from the download directory. The
+`packaged-native-<suite>-<run-id>` artifact contains the separate native
+reports and failure diagnostics, not a second copy of the archive. Download
+both artifacts from the same run when investigating a failure.
+
 ## Renderer recovery evidence
 
 The installed X11 recovery probe requires the replacement renderer to

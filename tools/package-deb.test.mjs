@@ -316,10 +316,13 @@ test('checks the installed launcher and executable bytes even when the package v
   assert.throws(check, /is not installed/);
 });
 
-test('packaged CI skips diagnostics when no package was built, but preserves evidence of acceptance failures', async () => {
+test('packaged CI uploads one verified archive and preserves separate acceptance diagnostics', async () => {
   const ci = (await readFile(join(repositoryRoot, '.github/workflows/ci.yml'), 'utf8')).replaceAll('\r\n', '\n');
-  assert.match(ci, /name: Build and verify Debian package\n\s+id: package\n/);
-  assert.match(ci, /name: Upload packaged acceptance diagnostics\n\s+uses: actions\/upload-artifact@v4\n\s+if: \$\{\{ !cancelled\(\) && steps\.package\.outcome == 'success' \}\}/);
+  const archive = ci.indexOf('name: ubuntu-package');
+  const acceptance = ci.indexOf('name: Run packaged WebKitGTK acceptance');
+  assert.ok(archive > 0 && acceptance > archive, 'Upload the package before acceptance can fail');
+  assert.match(ci, /node tools\/check-linux-abi\.mjs[\s\S]*?sha256sum --check SHA256SUMS\)[\s\S]*?id: native-package-artifact\n\s+with:\n\s+name: ubuntu-package\n\s+path: ubuntu-package\/\*/);
+  assert.match(ci, /name: Upload packaged acceptance diagnostics\n\s+uses: actions\/upload-artifact@v4\n\s+if: \$\{\{ !cancelled\(\) && steps\.native-package-artifact\.outcome == 'success' \}\}[\s\S]*?name: packaged-native-[^\n]+\n\s+path: test-results\/native\/\n/);
 });
 
 test('installed review diagnostics continue after a sibling failure without publishing qualification evidence', async () => {

@@ -243,10 +243,7 @@ jobs:
       - name: Prefetch locked Cargo metadata for offline package notices
         run: cargo metadata --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu > /dev/null
       - name: Build and verify Debian package
-        id: package
-        run: |
-          pnpm nx run desktop:package-ubuntu --output-style=static
-          echo "path=$(task --silent package:deb:path)" >> "$GITHUB_OUTPUT"
+        run: pnpm nx run desktop:package-ubuntu --output-style=static
       - name: Gate the release ABI and capture one immutable runtime-test artifact
         run: |
           package=$(task --silent package:deb:path)
@@ -255,6 +252,7 @@ jobs:
           cp -- "$package" ubuntu-package/
           (cd ubuntu-package && sha256sum -- *.deb > SHA256SUMS && sha256sum --check SHA256SUMS)
       - uses: actions/upload-artifact@v4
+        id: native-package-artifact
         with:
           name: ubuntu-package
           path: ubuntu-package/*
@@ -288,12 +286,10 @@ jobs:
             python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$package"
       - name: Upload packaged acceptance diagnostics
         uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.native-package-artifact.outcome == 'success' }}
         with:
           name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}
-          path: |
-            ${{ steps.package.outputs.path }}
-            test-results/native/
+          path: test-results/native/
           if-no-files-found: error
           retention-days: 14
 
