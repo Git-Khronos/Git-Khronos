@@ -353,6 +353,22 @@ test('registered package specs share one filtered Node test run', t => {
   assert.doesNotMatch(broad, /desktop:package-test:focused/);
 });
 
+test('Debian workflow scripts select package tests, while Taskfile edits keep broader checks', t => {
+  const f = fixture(t);
+  f.write('tools/package-deb.test.mjs');
+  f.commit();
+  f.write('tools/build-linux-package.sh');
+  f.write('tools/package-build-receipt.mjs');
+  const focused = f.run();
+  assert.match(focused, /"desktop:package-test:focused" "--output-style=static" "--" "tools\/package-deb.test.mjs"/);
+  assert.doesNotMatch(focused, /desktop:check|desktop:e2e/);
+  f.write('Taskfile.yml');
+  const broad = f.run();
+  assert.match(broad, /"desktop:package-test"/);
+  assert.match(broad, /desktop:check[\s\S]*desktop:e2e/);
+  assert.doesNotMatch(broad, /desktop:package-test:focused/);
+});
+
 test('selects an individual renderer unit spec without starting Playwright', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/shortcut-labels.spec.ts');

@@ -62,6 +62,11 @@ const packagedScenarios = new Map([
     'native-discard-stale-review', 'native-discard-large', 'native-discard-limit',
   ]],
 ]);
+const debianWorkflowSources = new Set([
+  'tools/build-linux-package.sh', 'tools/manage-linux-package.sh',
+  'tools/finish-linux-package-cache.mjs', 'tools/package-build-receipt.mjs',
+  'tools/check-linux-package-watcher.mjs',
+]);
 // These are named #[cfg(test)] modules, not shared helpers or production code.
 const gitCoreTestModules = new Set([
   'branch_comparison_tests', 'no_commit_replay_tests', 'ordered_revert_tests',
@@ -203,6 +208,15 @@ for (const path of changed) {
     for (const spec of rendererFixtureSpecs.get(path)) specs.add(`e2e/renderer/${spec}.spec.ts`);
     if (path === 'e2e/renderer/graph-layout-test-helpers.ts') graphTypecheck = true;
     plan = 'all direct renderer fixture consumers';
+  } else if ((path === 'Taskfile.yml' || debianWorkflowSources.has(path))
+    && isPackageTest('tools/package-deb.test.mjs')) {
+    packageSpecs.add('tools/package-deb.test.mjs');
+    if (path === 'Taskfile.yml' || !existsSync(join(cwd, path))) {
+      broad = true;
+      plan = 'package tooling and broader checks (shared or removed file)';
+    } else {
+      plan = 'Debian package workflow tests';
+    }
   } else if (isPackageTest(path)) {
     packageSpecs.add(path);
     plan = 'individual package tooling spec';
