@@ -14721,7 +14721,8 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected setContextBranchRenameName(value: string, menu: ContextMenuState): void {
-    if (this.ownsContextBranchRename(menu) && !this.git.busy()) this.contextRenameName.set(value);
+    // Busy blocks submission, not drafting in the still-owned input.
+    if (this.ownsContextBranchRename(menu)) this.contextRenameName.set(value);
   }
 
   /** Keeps per-repository branch preferences attached to a branch after it is renamed. */
