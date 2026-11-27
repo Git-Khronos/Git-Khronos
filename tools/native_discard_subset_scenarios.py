@@ -89,8 +89,16 @@ def discard_root_subset(driver, fixtures, report):
     choose()
     search = chooser + ' input[type="search"]'
     driver.wait(f"return !!document.querySelector({search!r})")
-    driver.script("""const field = document.querySelector(arguments[0]);
-      field.value = 'KEPT ROOT'; field.dispatchEvent(new Event('input', {bubbles: true}));""", search)
+
+    def filter_paths(value):
+        driver.script("""const field = document.querySelector(arguments[0]);
+          field.value = arguments[1]; field.dispatchEvent(new Event('input', {bubbles: true}));""", search, value)
+
+    driver.click_scrolled_text(chooser + ' button', 'Clear selection', wait_for_ready=True)
+    filter_paths('fixture.txt')
+    driver.click_scrolled_text(chooser + ' button', 'Select shown files', wait_for_ready=True)
+    driver.wait(f"return document.querySelector({select_root!r})?.checked === true")
+    filter_paths('KEPT ROOT')
     driver.wait(f"""const chooser = document.querySelector({chooser!r});
       return !document.querySelector({select_root!r})
         && chooser?.querySelector('[role="status"]')?.textContent.includes('1 selected outside the filter.')
