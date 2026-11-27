@@ -3048,6 +3048,12 @@ test('resizes reference sections with accessible keyboard splitters', async ({ p
 });
 
 test('navigates worktree and submodule action menus from the keyboard', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (value: string) => { document.body.dataset.copiedSidebarValue = value; },
+    } });
+  });
+  const status = page.locator('[data-git-operation-status]');
   const worktreeActions = page.locator('.worktree-list-actions').nth(1);
   await expect(worktreeActions).toHaveAttribute('aria-haspopup', 'menu');
   await worktreeActions.focus();
@@ -3059,6 +3065,11 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
   await page.keyboard.press('ArrowDown');
   await expect(menu.getByRole('menuitem', { name: 'Copy worktree path' })).toBeFocused();
   await page.keyboard.press('Escape');
+  await expect(worktreeActions).toBeFocused();
+
+  await worktreeActions.press('Enter');
+  await menu.getByRole('menuitem', { name: 'Copy worktree path' }).click();
+  await expect(status).toHaveText('Git status: Copied worktree path');
   await expect(worktreeActions).toBeFocused();
 
   await worktreeActions.click();
@@ -3094,11 +3105,6 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
     'Manage submodules · Review state, sync, check out, deinitialize, or remove',
   );
 
-  await page.evaluate(() => {
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
-      writeText: async (value: string) => { document.body.dataset.copiedSubmodulePath = value; },
-    } });
-  });
   const submoduleActions = page.locator('.submodule-actions').first();
   await expect(submoduleActions).toHaveAttribute('aria-haspopup', 'menu');
   await submoduleActions.focus();
@@ -3115,7 +3121,12 @@ test('navigates worktree and submodule action menus from the keyboard', async ({
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     return app.git.repository().submodules[0].path;
   });
-  await expect(page.locator('body')).toHaveAttribute('data-copied-submodule-path', expectedSubmodulePath);
+  await expect(page.locator('body')).toHaveAttribute('data-copied-sidebar-value', expectedSubmodulePath);
+  await expect(status).toHaveText('Git status: Copied submodule path');
+  await expect(submoduleActions).toBeFocused();
+  await submoduleActions.press('Enter');
+  await menu.getByRole('menuitem', { name: 'Copy remote URL' }).click();
+  await expect(status).toHaveText('Git status: Copied submodule URL');
   await expect(submoduleActions).toBeFocused();
   await page.evaluate(() => {
     const pending: { resolve: () => void; reject: (reason: Error) => void }[] = [];

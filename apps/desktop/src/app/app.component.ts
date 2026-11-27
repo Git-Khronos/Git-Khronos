@@ -7483,8 +7483,14 @@ export class AppComponent implements OnInit, OnDestroy {
       const generation = ++this.sidebarCopyGeneration;
       const scope = this.git.activeRepositoryReadScope();
       void this.copyText(value).then(copied => {
-        if (!copied && generation === this.sidebarCopyGeneration && scope === this.git.activeRepositoryReadScope()) {
+        if (generation !== this.sidebarCopyGeneration || scope !== this.git.activeRepositoryReadScope()) return;
+        if (!copied) {
           this.git.error.set('Could not copy the sidebar item. Clipboard access is unavailable.');
+        } else if (!this.git.busy()) {
+          // A URL may contain credentials and paths may be private. Announce
+          // what was copied, not the clipboard value.
+          this.git.activity.set(action === 'copy-url' ? 'Copied submodule URL'
+            : view.kind === 'worktree' ? 'Copied worktree path' : 'Copied submodule path');
         }
       });
       return;
