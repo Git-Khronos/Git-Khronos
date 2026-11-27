@@ -1996,6 +1996,15 @@ and retains its initial-asset report when available, including a recorded
 budget failure. Packaged
 native and exact-installer acceptance continue in their separate jobs.
 
+Keep round-robin sharding for now. All four Chromium shards in
+[run 46047378531](https://github.com/Git-Khronos/Git-Khronos/actions/runs/46047378531)
+passed, covering 2,912 cases. Using their per-spec timings,
+`tools/compare-renderer-shard-load.mjs` estimated only a 3-second reduction
+(0.33%) in the longest shard's summed case durations from weighting the
+assignment. Actual job durations ranged from 14:22 to 19:10. The estimate
+does not explain that gap; measure job steps and runner overhead before
+changing the shard assignment.
+
 Reproduce one shard on a machine with the lockfile dependencies and Chromium
 installed:
 
