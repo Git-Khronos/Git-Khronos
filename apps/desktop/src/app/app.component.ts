@@ -329,14 +329,17 @@ interface DeferredGitActionLease {
   readonly stash: StashDialogRequest | null;
 }
 
-interface SparseCheckoutReview extends RepositoryReviewScope {
+interface CheckoutVisitReview extends RepositoryReviewScope {
   readonly checkoutVisit: string;
+}
+
+interface SparseCheckoutReview extends CheckoutVisitReview {
   readonly action: 'set' | 'disable';
   readonly paths: string[];
   readonly sparseIndex: boolean;
 }
 
-type PendingWorktreeRemoval = WorktreeRemovalReview & RepositoryReviewScope;
+type PendingWorktreeRemoval = WorktreeRemovalReview & CheckoutVisitReview;
 type PendingForcePushReview = ForcePushReview & RepositoryReviewScope;
 
 interface RepositoryConfirmationLease {
@@ -1453,8 +1456,8 @@ export class AppComponent implements OnInit, OnDestroy {
     if (submodule && !this.ownsRepositoryScope(submodule)) untracked(() => this.closeSubmoduleDialog(false));
     if (remote && !this.ownsRepositoryScope(remote)) untracked(() => this.closeRemoteDialog(false));
     if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
-    if (sparseReview && !this.ownsSparseCheckoutReview(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
-    if (worktreeRemoval && !this.ownsRepositoryScope(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
+    if (sparseReview && !this.ownsCheckoutVisitReview(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
+    if (worktreeRemoval && !this.ownsCheckoutVisitReview(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
     if (fetch && !this.ownsFetchOptions(fetch)) untracked(() => this.closeFetchOptions(fetch, false));
     if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
     if (lock && !this.ownsWorktreeLock(lock)) untracked(() => this.closeWorktreeLock(lock, false));
@@ -6545,19 +6548,19 @@ export class AppComponent implements OnInit, OnDestroy {
       returnFocus: opener, action: 'disable', paths: [], sparseIndex: false });
   }
 
-  private ownsSparseCheckoutReview(review: SparseCheckoutReview): boolean {
+  private ownsCheckoutVisitReview(review: CheckoutVisitReview): boolean {
     return this.git.activeRepositoryReadScope() === review.checkoutVisit;
   }
 
   protected closeSparseCheckoutConfirmation(restoreFocus = true, expected = this.pendingSparseCheckoutReview()): void {
     if (this.pendingSparseCheckoutReview() !== expected) return;
     this.pendingSparseCheckoutReview.set(null);
-    if (restoreFocus && expected && this.ownsSparseCheckoutReview(expected)) this.restoreRepositoryReviewFocus(expected);
+    if (restoreFocus && expected && this.ownsCheckoutVisitReview(expected)) this.restoreRepositoryReviewFocus(expected);
   }
 
   protected editReviewedSparseCheckout(expected: SparseCheckoutReview | null): void {
     if (!expected || expected.action !== 'set' || this.pendingSparseCheckoutReview() !== expected
-      || !this.ownsSparseCheckoutReview(expected) || this.git.busy()) return;
+      || !this.ownsCheckoutVisitReview(expected) || this.git.busy()) return;
     this.closeSparseCheckoutConfirmation(false, expected);
     this.openPreferences('git', expected.returnFocus, true);
     this.sparseCheckoutPaths.set(expected.paths.join('\n'));
@@ -6566,10 +6569,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmSparseCheckoutAction(expected = this.pendingSparseCheckoutReview()): Promise<void> {
     const review = this.pendingSparseCheckoutReview();
-    if (!review || review !== expected || !this.ownsSparseCheckoutReview(review) || this.git.busy()) return;
+    if (!review || review !== expected || !this.ownsCheckoutVisitReview(review) || this.git.busy()) return;
     if (review.action === 'disable') await this.git.disableSparseCheckout();
     else await this.git.setSparseCheckout([...review.paths], review.sparseIndex);
-    if (this.pendingSparseCheckoutReview() !== review || !this.ownsSparseCheckoutReview(review)) return;
+    if (this.pendingSparseCheckoutReview() !== review || !this.ownsCheckoutVisitReview(review)) return;
     this.closeSparseCheckoutConfirmation(true, review);
     if (review.action === 'set' && !this.git.error()) this.loadSparseCheckoutDraft();
   }
@@ -7507,7 +7510,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.sidebarActionMenuReturnFocus = null;
     this.forceWorktreeRemoval.set(false);
     this.pendingWorktreeAction.set({
-      ...owner, returnFocus,
+      ...owner, returnFocus, checkoutVisit: this.git.activeRepositoryReadScope(),
       path: worktree.path,
       branch: worktree.branch,
       deleteBranch,
@@ -7519,17 +7522,17 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.pendingWorktreeAction() !== expected) return;
     this.pendingWorktreeAction.set(null);
     this.forceWorktreeRemoval.set(false);
-    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
+    if (restoreFocus && expected && this.ownsCheckoutVisitReview(expected)) this.restoreRepositoryReviewFocus(expected);
   }
 
   protected setWorktreeRemovalForce(value: boolean, expected = this.pendingWorktreeAction()): void {
-    if (!expected || this.pendingWorktreeAction() !== expected || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    if (!expected || this.pendingWorktreeAction() !== expected || !this.ownsCheckoutVisitReview(expected) || this.git.busy()) return;
     this.forceWorktreeRemoval.set(value);
   }
 
   protected async confirmWorktreeRemoval(expected = this.pendingWorktreeAction()): Promise<void> {
     const action = this.pendingWorktreeAction();
-    if (!action || action !== expected || !this.ownsRepositoryScope(action) || this.git.busy()) return;
+    if (!action || action !== expected || !this.ownsCheckoutVisitReview(action) || this.git.busy()) return;
     const force = action.changes > 0 && this.forceWorktreeRemoval();
     this.closeWorktreeRemoval(true, action);
     await this.git.removeWorktree(

@@ -168,8 +168,9 @@ for (const switchRepository of [false, true]) {
 
 for (const [review, action] of [
   ['sparse-set', 'Apply Selection'], ['sparse-set', 'Back to Edit'], ['sparse-disable', 'Restore All Files'],
+  ['worktree', 'Remove worktree'],
 ] as const) {
-  test(`returning to a checkout cannot reuse the previous sparse review: ${action}`, async ({ page }) => {
+  test(`returning to a checkout cannot reuse the previous review: ${review} / ${action}`, async ({ page }) => {
     const modal = await open(page, review);
     await modal.getByRole('button', { name: action }).evaluate((outgoing: HTMLButtonElement) => {
       const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;

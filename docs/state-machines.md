@@ -363,6 +363,14 @@ The force follow-up uses the safe deletion's own native refusal. A
 background refresh or another action clearing or replacing the global
 error cannot turn that refusal into success or erase an unrelated error.
 
+### Worktree removal and sparse checkout
+
+These confirmations belong to the checkout visit in which they opened. A
+switch away and back invalidates the previous review even if the repository
+ID and path are unchanged. An old confirmation control cannot dispatch
+removal or change sparse checkout; force removal and returning to the sparse
+editor also require the active review to belong to the current visit.
+
 ### Remote branch rename and deletion
 
 Before sending a rename or deletion, native checks that Git's configured
