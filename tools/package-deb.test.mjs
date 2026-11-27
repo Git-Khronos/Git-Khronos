@@ -375,6 +375,9 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   assert.ok(check);
   assert.match(native, /if: \$\{\{ !cancelled\(\) && steps\.verify-native-package\.outcome == 'success' \}\}[\s\S]*?name: packaged-native-[^\n]+\n\s+path: test-results\/native\/\n/);
   assert.match(ci, /pnpm nx run desktop:e2e --output-style=stream --skipNxCache/);
+  assert.match(ci, /WORKERS: \$\{\{ inputs\.renderer-workers \|\| '1' \}\}/);
+  assert.match(ci, /\[\[ "\$WORKERS" == 1 \|\| "\$WORKERS" == 2 \]\]/);
+  assert.match(ci, /--test-list "\$plan\/selected" --workers="\$WORKERS" --retries=0/);
   const bufferedNativeCommands = native.split('\n').filter(line => line.includes('pnpm nx run') && line.includes('--output-style=static'));
   assert.deepEqual(bufferedNativeCommands, []);
   assert.match(native, /- name: Run required packaged file tools acceptance\n\s+if: matrix\.lane == 'supplemental'\n\s+run: pnpm nx run desktop:native-file-tools --output-style=stream -- --package "\$PACKAGE"\n/);

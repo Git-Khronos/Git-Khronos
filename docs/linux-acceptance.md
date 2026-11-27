@@ -2049,7 +2049,11 @@ This adds a local browser project; it does not change the default Chromium
 shards or test the packaged app's system WebKitGTK and native bridge.
 
 Desktop CI runs four Playwright shards on independent Ubuntu 24.04 runners.
-Each uses one browser worker and no retries. Failure in one shard does not
+Pushes and pull requests use one browser worker per shard and no retries.
+A manual Desktop CI dispatch can set `renderer-workers` to `2` to measure
+parallel execution on the same full test list; this does not change the
+default or skip any gate. Each shard logs its worker and logical CPU counts.
+Failure in one shard does not
 cancel the other shards; each failed shard uploads any available report, traces,
 and screenshots under `renderer-failure-<run>-attempt-<attempt>-shard-<shard>`.
 The hosted Chromium setup uses Playwright's locked system dependency list

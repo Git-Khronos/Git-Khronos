@@ -14,6 +14,12 @@ on:
         options:
           - full
           - performance
+      renderer-workers:
+        description: Browser workers per shard (two is experimental)
+        required: true
+        default: "1"
+        type: choice
+        options: ["1", "2"]
 
 permissions:
   contents: read
@@ -172,6 +178,7 @@ jobs:
       - name: Run the renderer acceptance shard
         env:
           NODE_OPTIONS: --max-old-space-size=2048
+          WORKERS: ${{ inputs.renderer-workers || '1' }}
           SHARD: ${{ matrix.shard }}
           SHARD_TOTAL: ${{ strategy.job-total }}
           GIT_KHRONOS_RENDERER_OUTPUT_DIR: test-results/renderer/shard-${{ matrix.shard }}
@@ -179,6 +186,8 @@ jobs:
           GIT_KHRONOS_RENDERER_PROGRESS_FILE: test-results/renderer-progress/shard-${{ matrix.shard }}.json
         run: |
           set -euo pipefail
+          [[ "$WORKERS" == 1 || "$WORKERS" == 2 ]]
+          printf 'Renderer shard %s/%s: %s browser workers, %s logical CPUs\n' "$SHARD" "$SHARD_TOTAL" "$WORKERS" "$(nproc)"
           mkdir -p -- "$(dirname -- "$GIT_KHRONOS_RENDERER_PROGRESS_FILE")"
           plan="$(mktemp -d "$RUNNER_TEMP/renderer-shard.XXXXXX")"
           pnpm exec playwright test --list --reporter=line > "$plan/all"
@@ -186,7 +195,7 @@ jobs:
           pnpm exec playwright test --list --reporter=line --test-list "$plan/selected" > "$plan/resolved"
           diff -u "$plan/selected" <(sed -n '/^  \[chromium\] › /p' "$plan/resolved")
           pnpm nx run desktop:e2e --output-style=stream --skipNxCache -- \
-            --test-list "$plan/selected" --workers=1 --retries=0
+            --test-list "$plan/selected" --workers="$WORKERS" --retries=0
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
