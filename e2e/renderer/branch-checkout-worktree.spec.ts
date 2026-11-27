@@ -207,6 +207,33 @@ test('copies the recorded owning path when the checkout is unavailable', async (
     .getByRole('button', { name: 'Local branch ' + fixture.branch, exact: false }).first()).toBeFocused();
 });
 
+test('a delayed clipboard denial offers manual copy without taking moved focus', async ({ page }) => {
+  const fixture = await setup(page);
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: () => new Promise((_resolve, reject) => {
+        (window as any).__denyWorktreeCopy = () => reject(new Error('Clipboard denied'));
+      }),
+    } });
+  });
+  const dialog = await requestCheckout(page, fixture.branch);
+  await dialog.getByRole('button', { name: 'Copy owning path' }).press('Enter');
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__denyWorktreeCopy)).toBe('function');
+  await page.keyboard.press('Tab');
+  const open = dialog.getByRole('button', { name: 'Open existing checkout' });
+  await expect(open).toBeFocused();
+  await page.evaluate(() => (window as any).__denyWorktreeCopy());
+  const field = dialog.getByRole('textbox', { name: 'Owning checkout path for manual copy' });
+  await expect(field).toHaveValue(fixture.ownerPath);
+  await expect(open).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(field).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__checkoutWorktree.calls
+    .filter((entry: any) => ['checkout_branch', 'open_repository'].includes(entry.command)))).toEqual([]);
+});
+
 test('Shift+Enter on an occupied sidebar branch reviews its existing checkout without running Git', async ({ page }) => {
   const fixture = await setup(page);
   const branch = page.getByRole('list', { name: 'Local branches' })
