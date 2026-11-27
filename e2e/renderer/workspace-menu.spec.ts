@@ -10,12 +10,14 @@ test('main menu Tab resumes normal focus order on the repository screen', async 
   const expected = page.locator('[data-main-menu-tab-target]');
   await toggle.click();
   const menu = page.getByRole('menu', { name: 'Git Khronos menu', exact: true });
-  await expect(menu.getByRole('menuitem').first()).toBeFocused();
+  // The deferred menu can temporarily focus its Cancel loading control.
+  const manageRepositories = menu.getByRole('menuitem', { name: /^Manage Repositories/ });
+  await expect(manageRepositories).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(menu).toHaveCount(0);
   await expect(expected).toBeFocused();
   await toggle.click();
-  await expect(menu.getByRole('menuitem').first()).toBeFocused();
+  await expect(manageRepositories).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(toggle).toBeFocused();
 });
