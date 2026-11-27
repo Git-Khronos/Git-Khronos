@@ -2006,6 +2006,20 @@ test step alone ranged from 13:19 to 18:22, whereas Chromium provisioning
 took 19–35 seconds. The estimate does not explain the test-step gap;
 measure per-case duration and runner variance before changing the assignment.
 
+For two clean runs of the same Chromium test set, download and unpack the
+successful `renderer-progress-<run>-attempt-<attempt>-shard-<shard>`
+artifacts into separate directories. Compare **only** their timing sidecars,
+in shard order:
+
+```sh
+node tools/compare-renderer-case-timings.mjs baseline/*/*.timings.json -- repeat/*/*.timings.json
+```
+
+This requires the newer per-case timing sidecars and refuses duplicate or
+different test sets. A ratio above 1 means the same tests ran slower in the
+repeat. Check several runs before attributing a difference to the runner or
+to scheduling. Case durations exclude job setup and artifact upload.
+
 Reproduce one shard on a machine with the lockfile dependencies and Chromium
 installed:
 
