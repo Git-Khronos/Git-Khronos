@@ -4393,3 +4393,14 @@ The same archive subsequently passed all 11 `gitlab-fork-ui` scenarios in
 catalogue readiness, and one-click navigation without paint frames.
 Evidence: `test-results/native/gitlab-fork-ui-1795736468788653639/`.
 This is extracted-archive evidence, not an installed release qualification.
+
+### Checkout-visit confirmation candidate
+
+The local Debian package built from `34ea3d8` passed the checkout input
+guard and package verification. The retained archive under
+`target/local-review/checkout-visit-34ea3d8/` has SHA-256
+`83e2e72054e2d6b923d912a395fca824f00c58fe2e6ec22e99933030cfdb0c88`.
+All 79 extracted-package scenarios passed: remote reviews (32), worktrees
+(29), sparse checkout (7), and GitLab fork catalogue (11). Each suite log
+identifies its separate native evidence directory. The package was not
+installed, and these results do not qualify Windows shortcut launch.
