@@ -14,6 +14,13 @@ start independently after the package build uploads the verified archive.
 Both use that same archive; neither rebuilds it or waits for the other
 test job to finish.
 
+In the first hosted comparison of `dev` push runs (`46034264516` before
+the split, `46044831941` after), the first installed lane started **13 s**
+after artifact upload, down from **12 min 8 s**. All eight installed
+lanes finished in **3 min 23 s** after upload, down from **14 min 59 s**.
+These numbers measure time to installed-matrix feedback, not the whole
+workflow: the Jammy native run and renderer shards can still finish later.
+
 The installed-matrix job summary lists which suites passed, failed, or were
 interrupted. For an ordinary failure, the job log also prints the command
 to rerun just the failed suites in the same environment.
