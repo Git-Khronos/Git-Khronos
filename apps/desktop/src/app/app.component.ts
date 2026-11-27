@@ -11464,6 +11464,21 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.branchWorkflowRequest() === request && this.git.activeRepositoryReadScope() === request.scope;
   }
 
+  protected closeBranchWorkflows(request: BranchWorkflowDialogRequest): void {
+    if (!this.ownsBranchWorkflow(request)) return;
+    const outgoing = document.activeElement?.closest('gk-branch-workflow-dialog') ?? null;
+    this.branchWorkflowRequest.set(null);
+    afterNextRender(() => {
+      if (this.branchWorkflowRequest() || this.git.activeRepositoryReadScope() !== request.scope
+        || !this.canRestoreFocusFrom(outgoing)) return;
+      const usable = (element: HTMLElement | null) => element?.isConnected && element.getClientRects().length
+        && !element.matches(':disabled, [aria-disabled="true"]') && !element.closest('[inert]');
+      const target = [request.returnFocus, document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')]
+        .find(element => usable(element));
+      target?.focus({ preventScroll: true });
+    }, { injector: this.injector });
+  }
+
   protected showWorkflowConflicts(request: BranchWorkflowDialogRequest, target: WorkflowConflictTarget): void {
     const repo = this.git.repository();
     if (!this.ownsBranchWorkflow(request) || this.git.busy() || !repo?.status.mergeInProgress

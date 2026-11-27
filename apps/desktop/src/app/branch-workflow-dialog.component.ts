@@ -307,7 +307,7 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
   }
   private describe(reason: unknown): string { const e = reason as { message?: string; hint?: string }; return e?.message ? `${e.message}${e.hint ? ' ' + e.hint : ''}` : String(reason); }
   close(): void { if (this.busy()) { this.closing = true; void this.cancel(); } else this.finishClose(); }
-  private finishClose(): void { if (this.closedOnce || this.destroyed) return; this.closedOnce = true; const opener = this.request().returnFocus; this.invalidate(); this.closed.emit(); setTimeout(() => { if (opener?.isConnected && opener.getClientRects().length) opener.focus(); else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus(); }); }
+  private finishClose(): void { if (this.closedOnce || this.destroyed) return; this.closedOnce = true; this.invalidate(); this.closed.emit(); }
   ngOnDestroy(): void { this.destroyed = true; this.invalidate(); if (this.operation) void ipc.cancel_git_operation({ operationId: this.operation.id }).catch(() => undefined); }
   private focusFirst(): void { this.dialog()?.nativeElement.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); }
   @HostListener('document:focusin') containFocus(): void { const dialog = this.dialog()?.nativeElement; if (!this.destroyed && dialog && !dialog.contains(document.activeElement)) this.focusFirst(); }

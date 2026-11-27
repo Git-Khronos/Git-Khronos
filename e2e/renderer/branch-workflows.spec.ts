@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 async function open(page: Page) {
   await page.getByRole('button', { name: /^Workspace: / }).click();
@@ -10,7 +11,7 @@ async function open(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/'); await expect(page.locator('.branch-item').first()).toBeVisible();
+  await openPreviewRepository(page, page.locator('.branch-item').first());
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app')); const git = app.git;
     git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
@@ -358,6 +359,25 @@ for (const theme of ['khronos', 'midnight']) test(`${theme} compact dialog conta
   await expect(page.getByRole('button', { name: /^Workspace: / })).toBeFocused();
 });
 
+
+test('closing a workflow does not restore focus to the opener after leaving its workspace', async ({ page }) => {
+  const dialog = await open(page);
+  const close = dialog.getByRole('button', { name: 'Close', exact: true });
+  const opener = page.getByRole('button', { name: /^Workspace: / });
+  await close.focus();
+  await dialog.evaluate(element => {
+    element.addEventListener('keydown', event => {
+      if ((event as KeyboardEvent).key !== 'Escape') return;
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      git.activeWorkspaceId.set('workspace-after-workflow-close');
+    }, { once: true });
+  });
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  // Let any scheduled focus restoration from the outgoing dialog run.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(opener).not.toBeFocused();
+});
 
 test('controls remain unavailable while an applied workflow refreshes its repository', async ({ page }) => {
   const dialog = await open(page);

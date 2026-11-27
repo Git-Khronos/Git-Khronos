@@ -2327,7 +2327,7 @@
 
 @if (branchWorkflowRequest(); as request) {
   @defer (on immediate) {
-    <gk-branch-workflow-dialog [request]="request" (closed)="branchWorkflowRequest.set(null)" (featureRebaseRequested)="openWorkflowFeatureRebase(request, $event)" (conflictsRequested)="showWorkflowConflicts(request, $event)" />
+    <gk-branch-workflow-dialog [request]="request" (closed)="closeBranchWorkflows(request)" (featureRebaseRequested)="openWorkflowFeatureRebase(request, $event)" (conflictsRequested)="showWorkflowConflicts(request, $event)" />
   } @placeholder {
     <ng-container [ngTemplateOutlet]="dialogFallback" [ngTemplateOutletContext]="{ kind: 'branchWorkflow', owner: request, failed: false }" />
   } @error {
