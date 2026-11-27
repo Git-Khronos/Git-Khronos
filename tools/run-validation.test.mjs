@@ -59,6 +59,41 @@ syncBuiltinESMExports();\n`);
   assert.doesNotMatch(readFileSync(join(evidence, 'output.log'), 'utf8'), /Exporting|Installing/);
 });
 
+test('a running renderer stops its owned child when evidence storage gets low', t => {
+  const root = mkdtempSync(join(tmpdir(), 'gk-renderer-pressure-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const bin = join(root, 'bin');
+  const evidence = join(root, 'run');
+  const marker = join(root, 'running');
+  const artifact = join(evidence, 'renderer-artifacts', 'fixture-screenshot.png');
+  mkdirSync(bin);
+  const preload = join(root, 'space-pressure.mjs');
+  writeFileSync(preload, `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+fs.statfsSync = () => ({ bsize: 4096n, bavail: fs.existsSync(process.env.SPACE_MARKER) ? 2048n : 524288n });
+syncBuiltinESMExports();\n`);
+  writeFileSync(join(bin, 'pnpm'), `#!${process.execPath}
+const fs = require('node:fs');
+const path = require('node:path');
+const output = process.env.FIXTURE_ARTIFACT;
+fs.mkdirSync(path.dirname(output));
+fs.writeFileSync(output, 'exported evidence');
+process.on('SIGINT', () => { console.log('owned test stopped'); process.exit(0); });
+fs.writeFileSync(process.env.SPACE_MARKER, 'running');
+setInterval(() => {}, 1000);
+`, { mode: 0o700 });
+  const run = spawnSync(process.execPath, ['--import', preload, launcher, 'run', evidence,
+    'run', 'desktop:e2e'], { cwd: root, encoding: 'utf8', timeout: 8000,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, SPACE_MARKER: marker, FIXTURE_ARTIFACT: artifact } });
+  assert.ifError(run.error);
+  assert.equal(run.status, 1, run.stderr);
+  const status = readStatus(evidence);
+  assert.equal(status.state, 'failed');
+  assert.match(status.error, /less than 1 GiB free.*8 MiB available/);
+  assert.equal(readFileSync(artifact, 'utf8'), 'exported evidence');
+  assert.match(readFileSync(join(evidence, 'output.log'), 'utf8'), /owned test stopped/);
+});
+
 test('guarded validation rejects changed bytes even when the Git status names stay the same', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-run-guard-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

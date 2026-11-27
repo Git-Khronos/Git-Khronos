@@ -1507,8 +1507,9 @@ screenshot. Trace filmstrips are off by default to limit temporary disk usage.
 For a focused visual diagnosis, set `GIT_KHRONOS_RENDERER_TRACE_SCREENCAST=1`.
 
 Named renderer snapshots refuse to start if the run directory's filesystem
-has less than 2 GiB available to your user. This is a startup floor, not a
-disk quota or a guarantee that a full run will fit. If space is tight, use a
+has less than 2 GiB available to your user. Named renderer runs also stop their
+owned test processes if a periodic check finds less than 1 GiB free, retaining
+logs and exported artifacts. These thresholds are not disk quotas. If space is tight, use a
 run directory on a filesystem with more headroom or run `task clean:archives`
 to preview reclaimable caches from older qualification runs. Keep the
 package, checksum, source commit, and test receipts for any build you plan

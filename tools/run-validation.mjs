@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
 import { currentBootId, processStart, validationStatus } from './validation-status.mjs';
 import { validationSourceFingerprint } from './validation-source.mjs';
-import { requireRendererSnapshotSpace } from './validation-space.mjs';
+import { requireRendererRunSpace, requireRendererSnapshotSpace } from './validation-space.mjs';
 
 function reclaimSnapshotCaches(source, output) {
   let failures = 0;
@@ -256,6 +256,7 @@ async function runValidation() {
   process.on('SIGTERM', onTerminate);
   let rendererPort;
   let sourceCheck;
+  let spaceTimer;
   const finish = (exitCode, signal, error) => {
     closeSync(output);
     writeReceipt('result.json', {
@@ -279,8 +280,18 @@ async function runValidation() {
     if (guardSource) {
       source.inputFingerprint = validationSourceFingerprint(commandCwd, gitEnv);
     }
+    if (commit && rendererRun) requireRendererSnapshotSpace(directory);
+    if (rendererRun) {
+      const checkSpace = () => requireRendererRunSpace(directory);
+      checkSpace();
+      spaceTimer = setInterval(() => {
+        if (controller.signal.aborted) return;
+        try { checkSpace(); }
+        catch (error) { controller.abort(error); }
+      }, 2000);
+      spaceTimer.unref();
+    }
     if (commit) {
-      if (rendererRun) requireRendererSnapshotSpace(directory);
       const archive = join(directory, 'snapshot.tar');
       mkdirSync(commandCwd);
       await prepare('Exporting committed source', 'git', [...gitArgs, 'archive', '--format=tar',
@@ -322,6 +333,7 @@ async function runValidation() {
     outcome = [interrupted === 'SIGINT' ? 130 : interrupted === 'SIGTERM' ? 143 : 1,
       interrupted ?? null, String(error)];
   } finally {
+    clearInterval(spaceTimer);
     process.removeListener('SIGINT', onInterrupt);
     process.removeListener('SIGTERM', onTerminate);
   }
