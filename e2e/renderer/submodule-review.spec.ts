@@ -564,9 +564,10 @@ test('deinit is offered only for clean recorded checkouts and reports kept data 
   await synced.getByRole('button', { name: 'Deinitialize…' }).click();
   const confirm = dialog.getByRole('group', { name: 'Deinitialize synced', exact: true });
   await expect(confirm).toContainText('repository data, its branches, the recorded commit and .gitmodules stay');
-  await expect(confirm.getByRole('button', { name: 'Deinitialize', exact: true })).toBeFocused();
-  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(confirm.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(synced.getByRole('button', { name: 'Deinitialize…' })).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__submoduleReview.calls.some((call: any) => call.command === 'deinit_submodule'))).toBe(false);
   await synced.getByRole('button', { name: 'Deinitialize…' }).click();
   await confirm.getByRole('button', { name: 'Deinitialize', exact: true }).click();
   const notice = dialog.locator('[data-submodule-sync]');
@@ -590,7 +591,12 @@ test('removal stages only reviewed declared entries and explains what remains', 
   await idle.getByRole('button', { name: 'Remove from project…' }).click();
   const confirm = dialog.getByRole('group', { name: 'Remove plugins/diff-driver from the project', exact: true });
   await expect(confirm).toContainText('nothing is committed');
-  await expect(confirm.getByRole('button', { name: 'Stage removal', exact: true })).toBeFocused();
+  await expect(confirm.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  const opener = idle.getByRole('button', { name: 'Remove from project…' });
+  await expect(opener).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__submoduleReview.calls.some((call: any) => call.command === 'remove_submodule'))).toBe(false);
+  await opener.click();
   await confirm.getByRole('button', { name: 'Stage removal', exact: true }).click();
   const notice = dialog.locator('[data-submodule-sync]');
   await expect(notice).toContainText('Staged removal of plugins/diff-driver and its declaration. Commit to finish.');

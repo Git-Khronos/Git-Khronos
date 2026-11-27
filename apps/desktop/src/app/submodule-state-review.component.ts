@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, computed, effect, inject, Injector, input, output, signal, untracked, viewChild } from '@angular/core';
 import { ipc } from '@git-khronos/contracts';
 import type { SubmoduleDeinitResult, SubmoduleRemovalResult, SubmoduleRecordedCheckoutResult, SubmoduleState, SubmoduleStateReview, SubmoduleTrackingBranchResult, SubmoduleUrlSyncResult } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
@@ -107,7 +107,7 @@ import { submoduleFindings } from './submodule-findings';
                           <button type="button" [disabled]="unavailable() || syncing() || git.busy()" (click)="runSingle(entry, operation)">
                             {{ operation === 'initialize' ? 'Initialize submodule' : 'Update from remote' }}</button>
                           <button type="button" data-single-submodule-cancel [attr.data-initialize-one-cancel]="operation === 'initialize' ? '' : null"
-                            [disabled]="syncing()" (click)="cancel(operation + '-open', entry.path)">Cancel</button>
+                            [disabled]="syncing()" (click)="cancel(operation, entry.path)">Cancel</button>
                         </div>
                       </div>
                     } @else {
@@ -135,7 +135,7 @@ import { submoduleFindings } from './submodule-findings';
                         }
                         @if (syncing()) { <p role="status">Saving tracking branch…</p> }
                         <div class="row"><button type="button" data-branch-confirm [disabled]="unavailable() || syncing() || (trackingBranchMode() === 'specific' && !trackingBranchName().trim())" (click)="saveTrackingBranch(entry)">Save tracking branch</button>
-                          <button type="button" [disabled]="syncing()" (click)="cancel('branch-open', entry.path)">Cancel</button></div>
+                          <button type="button" [disabled]="syncing()" (click)="cancel('branch', entry.path)">Cancel</button></div>
                       </div>
                     } @else {
                       <button type="button" [attr.data-branch-open]="entry.path" [disabled]="unavailable() || syncing() || !!confirming()" (click)="openTrackingBranch(entry)">Change tracking branch…</button>
@@ -184,7 +184,7 @@ import { submoduleFindings } from './submodule-findings';
                           branches, the recorded commit and .gitmodules stay; Initialize restores the files.</p>
                         @if (syncing()) { <p role="status">Deinitializing…</p> }
                         <div class="row"><button type="button" data-deinit-confirm [disabled]="unavailable() || syncing()" (click)="deinit(entry)">Deinitialize</button>
-                          <button type="button" [disabled]="syncing()" (click)="cancel('deinit-open', entry.path)">Cancel</button></div>
+                          <button type="button" data-submodule-destructive-cancel [disabled]="syncing()" (click)="cancel('deinit', entry.path)">Cancel</button></div>
                       </div>
                     } @else {
                       <button type="button" [attr.data-deinit-open]="entry.path" [disabled]="unavailable() || syncing() || !!confirming()"
@@ -199,7 +199,7 @@ import { submoduleFindings } from './submodule-findings';
                           submodule repository data and local settings are kept, and other staged changes stay.</p>
                         @if (syncing()) { <p role="status">Staging removal…</p> }
                         <div class="row"><button type="button" data-remove-confirm [disabled]="unavailable() || syncing()" (click)="remove(entry)">Stage removal</button>
-                          <button type="button" [disabled]="syncing()" (click)="cancel('remove-open', entry.path)">Cancel</button></div>
+                          <button type="button" data-submodule-destructive-cancel [disabled]="syncing()" (click)="cancel('remove', entry.path)">Cancel</button></div>
                       </div>
                     } @else {
                       <button type="button" [attr.data-remove-open]="entry.path" [disabled]="unavailable() || syncing() || !!confirming()"
@@ -289,6 +289,7 @@ import { submoduleFindings } from './submodule-findings';
 })
 export class SubmoduleStateReviewComponent {
   readonly git = inject(GitKhronosService);
+  private readonly injector = inject(Injector);
   readonly request = input<WorktreeRegistrationRequest | null>(null);
   readonly closed = output<void>();
   readonly review = signal<SubmoduleStateReview | null>(null);
@@ -400,14 +401,30 @@ export class SubmoduleStateReviewComponent {
     });
   }
 
-  open(kind: string, path: string): void {
-    this.confirming.set(`${kind}:${path}`);
-    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(`[data-${kind}-confirm]`)?.focus());
+  open(kind: 'deinit' | 'remove', path: string): void {
+    const target = this.request();
+    if (!this.ownsRequest(target) || this.unavailable() || this.syncing() || this.confirming()) return;
+    const review = `${kind}:${path}`;
+    const origin = document.activeElement;
+    this.confirming.set(review);
+    this.focusReviewControl(target, review, origin, '[data-submodule-destructive-cancel]');
   }
 
-  cancel(attribute: string, path: string): void {
+  cancel(kind: 'branch' | 'deinit' | 'remove' | 'initialize' | 'update', path: string): void {
+    const target = this.request();
+    if (!this.ownsRequest(target) || this.syncing() || this.confirming() !== `${kind}:${path}`) return;
+    const origin = document.activeElement;
     this.confirming.set(null);
-    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(`[data-${attribute}="${CSS.escape(path)}"]`)?.focus());
+    this.focusReviewControl(target, null, origin, `[data-${kind}-open="${CSS.escape(path)}"]`);
+  }
+
+  private focusReviewControl(target: WorktreeRegistrationRequest | null, review: string | null, origin: Element | null, selector: string): void {
+    afterNextRender(() => {
+      if (this.ownsRequest(target) && this.confirming() === review &&
+        (document.activeElement === document.body || document.activeElement === origin)) {
+        this.dialog()?.nativeElement.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true });
+      }
+    }, { injector: this.injector });
   }
 
   deinit(entry: SubmoduleState): Promise<void> {
