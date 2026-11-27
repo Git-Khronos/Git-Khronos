@@ -2001,9 +2001,10 @@ Keep round-robin sharding for now. All four Chromium shards in
 passed, covering 2,912 cases. Using their per-spec timings,
 `tools/compare-renderer-shard-load.mjs` estimated only a 3-second reduction
 (0.33%) in the longest shard's summed case durations from weighting the
-assignment. Actual job durations ranged from 14:22 to 19:10. The estimate
-does not explain that gap; measure job steps and runner overhead before
-changing the shard assignment.
+assignment. Actual job durations ranged from 14:22 to 19:10. The browser
+test step alone ranged from 13:19 to 18:22, whereas Chromium provisioning
+took 19–35 seconds. The estimate does not explain the test-step gap;
+measure per-case duration and runner variance before changing the assignment.
 
 Reproduce one shard on a machine with the lockfile dependencies and Chromium
 installed:
