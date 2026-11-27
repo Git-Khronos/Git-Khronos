@@ -233,14 +233,25 @@ receives no upgrade. It does not fetch, authorize or install an update.
 With `PACKAGE` (absolute path), `VERSION`, `PRIVATE_KEY_FILE`, `PUBLIC_KEY_FILE`,
 `STAGING_PARENT` (existing directory), and `QUALIFIED_PACKAGE_SHA256` set:
 
-```sh
-printf '%s  %s\n' "$QUALIFIED_PACKAGE_SHA256" "$PACKAGE" | sha256sum --check --strict || exit 1
-pnpm exec tauri signer sign --private-key-path "$PRIVATE_KEY_FILE" \
-  --app-version "$VERSION" "$PACKAGE" || exit 1
+```bash
+(
+  set +x
+  set -e
+  unset TAURI_SIGNING_PRIVATE_KEY
+  export TAURI_SIGNING_PRIVATE_KEY_PATH="$PRIVATE_KEY_FILE"
+  read -rsp 'Signing key passphrase: ' TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  printf '\n'
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  bash tools/sign-qualified-debian.sh "$PACKAGE" "$QUALIFIED_PACKAGE_SHA256" "v$VERSION"
+) || exit 1
 cargo run --locked -p git-khronos-desktop --example stage-debian-update -- \
   "$PACKAGE" "$PACKAGE.sig" "$PUBLIC_KEY_FILE" "$STAGING_PARENT" \
   "$QUALIFIED_PACKAGE_SHA256"
 ```
+
+The signing helper refuses a checksum mismatch or an existing sidecar. The
+passphrase stays in the signing subshell; do not paste it into GitHub or chat.
+Only the resulting public `.deb.sig` is needed by the publication workflow.
 
 The stager prints a new directory containing the verified package, a
 `latest.json` manifest, and `update-assets.sha256`. It streams the signed bytes
