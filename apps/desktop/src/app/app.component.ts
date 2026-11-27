@@ -14151,6 +14151,18 @@ export class AppComponent implements OnInit, OnDestroy {
     this.blockedDiscardChoiceSelectedPaths.set(all ? [...candidates] : []);
   }
 
+  protected selectShownBlockedDiscardChoicePaths(shown: readonly string[], action = this.pendingFileAction()): void {
+    const candidates = this.blockedDiscardChoicePaths();
+    if (!action || !this.ownsFileActionReview(action) || !candidates
+      || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
+    const selected = this.blockedDiscardChoiceSelectedPaths();
+    const requested = new Set([...selected, ...shown]);
+    const eligible = candidates.filter(path => requested.has(path));
+    if (eligible.length === selected.length) return;
+    this.blockedDiscardChoiceError.set(null);
+    this.blockedDiscardChoiceSelectedPaths.set(eligible);
+  }
+
   protected returnToBlockedDiscardReview(action = this.pendingFileAction()): void {
     if (!action || !this.ownsFileActionReview(action) || this.git.busy() || this.blockedDiscardChoiceLoading()) return;
     this.blockedDiscardChoiceRequest++;

@@ -36,6 +36,8 @@ the user's selection before any changes are made.
 The path filter only changes which eligible files are shown. The chooser
 reports any selected files outside the filter; those selections remain
 included in the fresh preview unless explicitly cleared.
+**Select shown files** adds the matching eligible files to the selection
+without clearing any hidden selections or preparing a preview.
 If every path in a whole-worktree request is blocked, the review lists the
 blockers and offers a fresh eligibility check. It cannot be confirmed and
 does not generate a recovery capture. A direct single-file refusal remains

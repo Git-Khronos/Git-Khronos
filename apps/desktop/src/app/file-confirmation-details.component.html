@@ -23,6 +23,9 @@
         <legend>Eligible files</legend>
         <div class="blocked-discard-selection">
           <button type="button" [attr.aria-disabled]="paths.length === selectedPaths().length" (click)="selectAllChanged.emit(true)">Select all eligible</button>
+          @if (visibleChoicePaths().length > 0 && visibleChoicePaths().length < paths.length) {
+            <button type="button" [attr.aria-disabled]="allShownSelected()" (click)="selectShownRequested.emit(visibleChoicePaths())">Select shown files</button>
+          }
           <button type="button" [attr.aria-disabled]="!selectedPaths().length" (click)="selectAllChanged.emit(false)">Clear selection</button>
         </div>
         @if (paths.length > 1) {

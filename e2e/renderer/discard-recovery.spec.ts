@@ -1150,9 +1150,14 @@ test('offers a fresh root-file preview after blocking a mixed discard request', 
   await expect(rootA).toHaveCount(0);
   await expect(rootB).not.toBeChecked();
   await expect(eligible.getByRole('status')).toContainText('1 selected outside the filter.');
+  const selectShown = eligible.getByRole('button', { name: 'Select shown files' });
+  await selectShown.click();
+  await expect(selectShown).toBeDisabled();
+  await expect(rootB).toBeChecked();
+  await expect(eligible.getByRole('status')).toContainText('2 of 2 eligible files selected.');
   await filter.fill('nested/link');
   await expect(eligible).toContainText('No eligible paths match this filter.');
-  await expect(eligible.getByRole('status')).toContainText('1 of 2 eligible files selected.');
+  await expect(eligible.getByRole('status')).toContainText('2 selected outside the filter.');
   await filter.clear();
   await expect(rootA).toBeChecked();
   await clear.click();

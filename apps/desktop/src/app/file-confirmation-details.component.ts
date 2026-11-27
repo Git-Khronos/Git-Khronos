@@ -34,6 +34,7 @@ export class FileConfirmationDetailsComponent {
   readonly ready = output<PendingFileAction>();
   readonly togglePath = output<string>();
   readonly selectAllChanged = output<boolean>();
+  readonly selectShownRequested = output<readonly string[]>();
   protected readonly displayRecoveryPath = displayRecoveryPath;
   protected readonly oversizedPaths = computed(() => new Set(this.action().preview?.oversizedPaths ?? []));
   protected readonly pathQuery = signal('');
@@ -47,6 +48,7 @@ export class FileConfirmationDetailsComponent {
     const visible = new Set(this.visibleChoicePaths());
     return this.selectedPaths().filter(path => !visible.has(path)).length;
   });
+  protected readonly allShownSelected = computed(() => this.visibleChoicePaths().every(path => this.selectedPathSet().has(path)));
 
   constructor() {
     afterRenderEffect(() => {

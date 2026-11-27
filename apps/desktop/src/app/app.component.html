@@ -2068,7 +2068,8 @@
               [selectedPaths]="blockedDiscardChoiceSelectedPaths()" [busy]="git.busy() || !currentReview"
               [loading]="blockedDiscardChoiceLoading()" [error]="blockedDiscardChoiceError()"
               (ready)="markFileConfirmationDetailsReady($event)" (togglePath)="toggleBlockedDiscardChoicePath($event, action)"
-              (selectAllChanged)="selectBlockedDiscardChoicePaths($event, action)" />
+              (selectAllChanged)="selectBlockedDiscardChoicePaths($event, action)"
+              (selectShownRequested)="selectShownBlockedDiscardChoicePaths($event, action)" />
           } @loading {
             <p role="status">Loading file action review…</p>
           } @error {
