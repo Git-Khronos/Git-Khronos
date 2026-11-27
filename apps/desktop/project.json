@@ -217,6 +217,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite setup-keyboard --headless" }
     },
+    "native-remote-reviews": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite remote-reviews --headless" }
+    },
     "native-sparse-checkout": {
       "executor": "nx:run-commands",
       "cache": false,
