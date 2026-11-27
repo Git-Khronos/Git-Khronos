@@ -1188,7 +1188,7 @@ export class GitKhronosService implements OnDestroy {
     }, repository.id, null, true, false);
   }
 
-  async openExternalUrl(url: string, successMessage = 'Link opened'): Promise<void> {
+  async openExternalUrl(url: string, successMessage = 'Browser launch requested'): Promise<void> {
     if (!url.startsWith('https://')) {
       this.error.set('Only secure HTTPS links can be opened.');
       return;

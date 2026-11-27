@@ -732,15 +732,15 @@ fn open_repository_in_file_manager(
 
 #[tauri::command]
 #[specta::specta]
-fn open_external_url(url: String) -> Result<(), AppError> {
+async fn open_external_url(url: String) -> Result<(), AppError> {
     validate_external_url(&url)?;
 
     #[cfg(target_os = "linux")]
-    let child = Command::new("xdg-open").arg(&url).spawn();
+    let child = tokio::process::Command::new("xdg-open").arg(&url).spawn();
     #[cfg(target_os = "macos")]
-    let child = Command::new("open").arg(&url).spawn();
+    let child = tokio::process::Command::new("open").arg(&url).spawn();
     #[cfg(target_os = "windows")]
-    let child = Command::new("rundll32.exe")
+    let child = tokio::process::Command::new("rundll32.exe")
         .args(["url.dll,FileProtocolHandler", &url])
         .spawn();
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -750,11 +750,32 @@ fn open_external_url(url: String) -> Result<(), AppError> {
         hint: None,
     });
 
-    child.map(|_| ()).map_err(|_| AppError {
+    await_external_opener(child, std::time::Duration::from_millis(500)).await
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+async fn await_external_opener(
+    child: std::io::Result<tokio::process::Child>,
+    deadline: std::time::Duration,
+) -> Result<(), AppError> {
+    let unavailable = || AppError {
         kind: "externalUrlUnavailable".into(),
         message: "The link could not be opened.".into(),
         hint: Some("Check that a default web browser is installed and available.".into()),
-    })
+    };
+    let mut child = child.map_err(|_| unavailable())?;
+    match tokio::time::timeout(deadline, child.wait()).await {
+        Ok(Ok(status)) if status.success() => Ok(()),
+        Ok(_) => Err(unavailable()),
+        Err(_) => {
+            // Some desktop launchers remain attached to the browser. Stop
+            // waiting on the UI, but reap the helper when it eventually exits.
+            tokio::spawn(async move {
+                let _ = child.wait().await;
+            });
+            Ok(())
+        }
+    }
 }
 
 fn validate_external_url(url: &str) -> Result<(), AppError> {
@@ -4663,6 +4684,8 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
 
 #[cfg(all(test, unix))]
 mod tests {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    use super::await_external_opener;
     use super::{repository_watch_paths, validate_external_url};
     use notify::{EventKind, RecursiveMode, Watcher};
     use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
@@ -4692,6 +4715,55 @@ mod tests {
         assert!(
             validate_external_url(&format!("https://example.test/{}", "a".repeat(2_049))).is_err()
         );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn external_opener_reports_refusal_and_leaves_long_lived_browser_running() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let directory = tempfile::tempdir().unwrap();
+            let missing = tokio::process::Command::new(directory.path().join("absent")).spawn();
+            assert_eq!(
+                await_external_opener(missing, Duration::from_secs(1))
+                    .await
+                    .unwrap_err()
+                    .kind,
+                "externalUrlUnavailable"
+            );
+            for (code, succeeds) in [("0", true), ("7", false)] {
+                let child = tokio::process::Command::new("sh")
+                    .args(["-c", "exit \"$1\"", "opener-fixture", code])
+                    .spawn();
+                assert_eq!(
+                    await_external_opener(child, Duration::from_secs(2))
+                        .await
+                        .is_ok(),
+                    succeeds
+                );
+            }
+            let child = tokio::process::Command::new("sh")
+                .args([
+                    "-c",
+                    "i=0; while [ ! -f allow-exit ] && [ \"$i\" -lt 80 ]; do sleep 0.05; i=$((i+1)); done; test -f allow-exit && : > completed",
+                ])
+                .current_dir(directory.path())
+                .spawn();
+            await_external_opener(child, Duration::from_millis(50))
+                .await
+                .expect("a browser still running past the deadline is not a refusal");
+            fs::write(directory.path().join("allow-exit"), "").unwrap();
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while !directory.path().join("completed").is_file() {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .expect("the launcher must remain alive past the deadline");
+        });
     }
 
     #[test]

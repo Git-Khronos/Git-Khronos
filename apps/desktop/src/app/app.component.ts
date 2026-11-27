@@ -12912,7 +12912,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openHostedReviewRequests(): void {
     const destination = this.hostedReviewRequests();
     if (!destination) return;
-    void this.git.openExternalUrl(destination.reviewRequestsUrl, `${destination.provider} review requests opened`);
+    void this.git.openExternalUrl(destination.reviewRequestsUrl, `Browser launch requested for ${destination.provider} review requests`);
   }
 
   protected maximizeReferenceSection(section: ReferenceSection): void {

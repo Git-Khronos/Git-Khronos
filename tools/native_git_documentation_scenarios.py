@@ -13,6 +13,7 @@ def documentation_environment(fixtures):
     opener.write_text(
         '#!/bin/sh\n'
         f'printf \'%s\\0\' "$@" >> {shlex.quote(str(capture))}\n'
+        f'[ ! -f {shlex.quote(str(fixtures.root / "documentation-browser-refuse"))} ]\n'
     )
     opener.chmod(0o700)
     return {'PATH': str(binary_dir) + ':' + fixtures.env['PATH']}
@@ -42,10 +43,26 @@ def git_documentation(driver, fixtures, repository, report):
         time.sleep(.05)
     assert capture.read_bytes() == expected
     driver.wait('return !!document.querySelector("gk-git-documentation-dialog [data-docs-close]:enabled")', 5)
+    refusal = fixtures.root / 'documentation-browser-refuse'
+    refusal.touch()
+    manual = dialog + ' details[open] .manuals button:first-child'
+    driver.click_visible(manual)
+    driver.wait('return document.activeElement.matches("gk-git-documentation-dialog [role=alert]") '
+                '&& document.activeElement.textContent.includes("could not be opened")', 8)
+    assert capture.read_bytes() == expected * 2
+    refusal.unlink()
+    driver.click_visible(manual)
+    driver.wait('return !!document.querySelector("gk-git-documentation-dialog [data-docs-close]:enabled") '
+                '&& !document.querySelector("gk-git-documentation-dialog [role=alert]")')
+    assert capture.read_bytes() == expected * 3
     driver.key('\ue00c')  # Escape
     driver.wait('return !document.querySelector("gk-git-documentation-dialog [role=dialog]") '
                 '&& document.activeElement.matches("#preference-remote-updates .preference-help-action")')
-    assert capture.read_bytes() == expected
+    assert capture.read_bytes() == expected * 3
     assert checkout_footprint(fixtures, repository) == before
-    report['gitDocumentation'] = {'url': expected[:-1].decode(), 'launches': 1, 'checkoutUnchanged': True}
-    report['scenarios'].append('native-contextual-git-help-keyboard-launches-exact-manual-and-restores-focus')
+    report['gitDocumentation'] = {'url': expected[:-1].decode(), 'launches': 3,
+                                  'launcherFailureExposedAndRetried': True, 'checkoutUnchanged': True}
+    report['scenarios'].extend([
+        'native-contextual-git-help-keyboard-launches-exact-manual-and-restores-focus',
+        'native-contextual-git-help-reports-launcher-refusal-and-allows-retry',
+    ])

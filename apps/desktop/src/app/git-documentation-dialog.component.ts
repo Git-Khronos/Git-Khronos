@@ -101,7 +101,7 @@ export class GitDocumentationDialogComponent {
     this.opening.set(true);
     this.error.set('');
     try {
-      await this.git.openExternalUrl(url, 'Official Git documentation opened');
+      await this.git.openExternalUrl(url, 'Browser launch requested for the official Git manual');
       const error = this.git.error();
       if (error) this.error.set(error);
     } finally {

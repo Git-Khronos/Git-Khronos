@@ -26,9 +26,11 @@ pnpm nx run desktop:native-git-documentation -- --package "$archive"
 
 The packaged app opens contextual Fetch help, moves from the selected topic
 to its manual link by keyboard, and restores focus on Escape. A disposable
-`xdg-open` fixture records the exact URL once without starting a browser or
-contacting an external site. Git independently verifies that HEAD, refs,
-index, config, and working files stay unchanged.
+`xdg-open` fixture records the exact URL for each explicit request without
+starting a browser or contacting an external site. It also refuses one
+request so the suite can verify that an error is focused and retry works.
+Git independently verifies that HEAD, refs, index, config, and working files
+stay unchanged.
 
 ## Renderer recovery evidence
 
