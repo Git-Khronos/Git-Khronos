@@ -132,13 +132,15 @@ Use the exact fixture-key build or production candidate selected for review.
 Run this focused suite in a prepared Linux acceptance environment:
 
 ```sh
-python3 tools/native_acceptance.py --suite stash-review --headless --package "$PACKAGE"
+pnpm nx run desktop:native-stash-review --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$SHA256"
+pnpm nx run desktop:native-stash-selection --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$SHA256"
 ```
 
-This reuses the toolbar, staged/working/untracked content, and keyboard
-checks from the larger publisher-environment suite; it does not replace
-that required release check. Without `--installed` the harness extracts
-the provided package into its isolated fixtures.
+The review suite reuses the toolbar, staged/working/untracked content, and
+keyboard checks from the publisher-environment suite. The selection suite
+covers exact path scope, filtering, pagination, and apply collisions. Neither
+replaces the required release check. They extract the reviewed package into
+isolated fixtures without installing it.
 
 ## Latest 0.1.6 local qualification
 

@@ -57,6 +57,7 @@ const packagedScenarios = new Map([
   ['tools/native_context_branch_scenarios.py', ['native-setup-keyboard']],
   ['tools/native_main_menu_scenarios.py', ['native-smoke']],
   ['tools/native_remote_review_scenarios.py', ['native-remote-reviews']],
+  ['tools/native_stash_review_scenarios.py', ['native-stash-review', 'native-stash-selection']],
   ['tools/native_commit_signing_scenarios.py', ['native-signed-commit']],
   ['tools/native_signed_tag_scenarios.py', ['native-signed-tag']],
   ['tools/native_x509_signing_fixture.py', ['native-signed-commit', 'native-signed-tag']],

@@ -242,6 +242,16 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite remote-reviews --headless" }
     },
+    "native-stash-review": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite stash-review --headless" }
+    },
+    "native-stash-selection": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite stash-selection --headless" }
+    },
     "native-sparse-checkout": {
       "executor": "nx:run-commands",
       "cache": false,

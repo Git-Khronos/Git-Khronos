@@ -595,6 +595,17 @@ test('changes to the shared launcher fixture retest browser and file manager han
   assert.doesNotMatch(plan, /"desktop:native-application-updates"|desktop:e2e|desktop:check/);
 });
 
+test('stash scenario edits retest the two consumers without full native acceptance', t => {
+  const f = fixture(t);
+  f.write('candidate.deb');
+  f.commit();
+  f.write('tools/native_stash_review_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-stash-review"/);
+  assert.match(plan, /"desktop:native-stash-selection"/);
+  assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+});
+
 test('commit signing fixture edits select the focused packaged UI suite', t => {
   const f = fixture(t);
   f.write('candidate.deb');
