@@ -419,7 +419,7 @@
         </div>
         <div class="toolbar-divider history-divider" aria-hidden="true"></div>
         <div class="toolbar-split toolbar-primary-fetch" (click)="$event.stopPropagation()">
-          <button class="tool-button split-main" type="button" aria-label="Fetch all remotes" title="Fetch all remotes" (click)="runAutoFetchNow()" [disabled]="git.busy() || git.backgroundFetchBusy() || !toolbarRemotes().length"><span><gk-icon name="refresh" /></span><small>Fetch</small></button>
+          <button class="tool-button split-main" type="button" aria-label="Fetch all remotes" title="Fetch all remotes" (click)="runAutoFetchNow()" [disabled]="fetchAllUnavailableReason() !== null"><span><gk-icon name="refresh" /></span><small>Fetch</small></button>
           <button class="split-toggle" type="button" title="Fetch options" aria-label="Fetch options" aria-haspopup="menu" [attr.aria-controls]="fetchMenuOpen() ? 'fetch-options-menu' : null" [attr.aria-expanded]="fetchMenuOpen()" (click)="toggleToolbarOptions($event, 'fetch')" [disabled]="git.busy() || git.backgroundFetchBusy()"><gk-icon name="chevron-down" [size]="10" /></button>
           @if (fetchMenuOpen()) { <ng-container [ngTemplateOutlet]="toolbarOptionsMenu" /> }
         </div>

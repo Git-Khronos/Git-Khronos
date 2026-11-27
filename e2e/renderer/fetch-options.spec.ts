@@ -329,7 +329,7 @@ test('Fetch All command palette action really fetches all rather than the curren
   expect(call.args.remote).toBeUndefined();
 });
 
-test('no-remotes state explains why scoped fetch is unavailable', async ({ page }) => {
+test('no-remotes state explains why ordinary and scoped fetch are unavailable', async ({ page }) => {
   await setup(page);
   await page.evaluate(() => {
     const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
@@ -337,10 +337,51 @@ test('no-remotes state explains why scoped fetch is unavailable', async ({ page 
     git.repositories.update((repositories: any[]) => repositories.map((repository) =>
       repository.id === id ? { ...repository, remotes: [] } : repository));
   });
+  await expect(page.getByRole('button', { name: 'Fetch all remotes', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  const search = page.getByRole('combobox', { name: 'Search commands', exact: true });
+  await search.fill('Fetch All');
+  const action = page.getByRole('option', { name: /^Fetch All/ });
+  await expect(action).toBeDisabled();
+  await expect(action).toContainText('Add a remote before fetching');
+  await search.press('Escape');
+  await expect(search).toHaveCount(0);
+  await page.keyboard.press('Control+L');
+  expect(await page.evaluate(() => (window as any).__fetchFixture.calls.map((call: any) => call.command)))
+    .not.toContain('fetch_repository');
   await openOptions(page);
   const dialog = page.getByRole('dialog', { name: 'Fetch branches with options' });
   await expect(dialog.getByRole('alert')).toContainText('add a remote before fetching');
   await expect(dialog.getByRole('button', { name: 'Fetch branches', exact: true })).toBeDisabled();
+});
+
+test('Fetch All palette and shortcut respect the same active automatic fetch guard as the toolbar', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    (window as any).__activeFetch = git.operations.beginBackground(git.activeRepositoryId());
+  });
+  const toolbar = page.getByRole('button', { name: 'Fetch all remotes', exact: true });
+  await expect(toolbar).toBeDisabled();
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  const search = page.getByRole('combobox', { name: 'Search commands', exact: true });
+  await search.fill('Fetch All');
+  const action = page.getByRole('option', { name: /^Fetch All/ });
+  await expect(action).toBeDisabled();
+  await expect(action).toContainText('Wait for automatic fetch to finish');
+  await search.press('Escape');
+  await expect(search).toHaveCount(0);
+  const calls = () => page.evaluate(() => (window as any).__fetchFixture.calls.filter((call: any) =>
+    call.command === 'fetch_repository').length);
+  await page.keyboard.press('Control+L');
+  expect(await calls()).toBe(0);
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    git.operations.completeBackground((window as any).__activeFetch);
+  });
+  await expect(toolbar).toBeEnabled();
+  await page.keyboard.press('Control+L');
+  await expect.poll(calls).toBe(1);
 });
 
 test('complete history hides depth choices; shallow history requires one remote and sends typed deepen options', async ({ page }) => {

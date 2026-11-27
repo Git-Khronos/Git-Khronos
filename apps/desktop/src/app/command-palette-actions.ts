@@ -30,6 +30,7 @@ function commandMatchScore(query: string, action: CommandAction): number {
 export function buildCommandActions(source: CommandPaletteActionSources, search: string, scope: CommandPaletteScope): CommandAction[] {
   const repository = source.git.repository();
   const busy = source.git.busy();
+  const fetchUnavailable = source.fetchAllUnavailableReason();
   const repositoryReadScope = source.git.activeRepositoryReadScope();
   const canReviewStash = !!repository?.headOid && !repository.bare && !repository.status.conflicted && !busy;
   const bisectTarget = source.bisectVoteTarget();
@@ -75,7 +76,7 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
     { id: 'maintenance', group: 'Repository', label: 'Perform Repository Maintenance', detail: 'Check integrity, pack refs/commit graph; no pruning', enabled: !!repository && !busy, icon: 'settings' },
     { id: 'undo', group: 'Edit', label: source.git.undoLabel() ?? 'Undo', detail: source.git.undoLabel() ? 'Reverse the latest supported repository action' : 'No supported repository action to undo', shortcut: source.undoShortcut, enabled: !!source.git.undoLabel() && !busy, icon: 'undo' },
     { id: 'redo', group: 'Edit', label: source.git.redoLabel() ?? 'Redo', detail: source.git.redoLabel() ? 'Repeat the last repository action that was undone' : 'No supported repository action to redo', shortcut: source.redoShortcut, enabled: !!source.git.redoLabel() && !busy, icon: 'redo' },
-    { id: 'fetch', group: 'Remote', label: 'Fetch All', detail: 'Fetch updates without pruning', enabled: !!repository && !busy, icon: 'refresh' },
+    { id: 'fetch', group: 'Remote', label: 'Fetch All', detail: fetchUnavailable ?? 'Fetch updates without pruning', enabled: fetchUnavailable === null, icon: 'refresh' },
     { id: 'fetch-options', group: 'Remote', label: 'Fetch branches with options', detail: 'Choose remote and pruning; leave tags unchanged', enabled: !!repository && !busy, icon: 'remote' },
     { id: 'add-remote', group: 'Remote', label: 'Add Remote', detail: 'Connect another tracked Git repository', enabled: !!repository && !busy, icon: 'remote' },
     { id: 'pull', group: 'Remote', label: 'Pull', detail: 'Fetch and integrate upstream changes', enabled: !!repository && !busy, icon: 'pull' },

@@ -1749,7 +1749,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'fetch': {
         const remoteCount = this.toolbarRemotes().length;
         return { ...identity(kind, 'Fetch'), kind, remoteCount, detail: this.fetchMenuDetail(),
-          disabled: busy || this.git.backgroundFetchBusy() || !remoteCount };
+          disabled: this.fetchAllUnavailableReason() !== null };
       }
       case 'pull': return { ...identity(kind, 'Pull'), kind, destination: target(), behind: this.currentBranchSync().behind,
         strategy: this.pullStrategy(), hasSubmodules: !!repo.submodules.length };
@@ -1777,7 +1777,7 @@ export class AppComponent implements OnInit, OnDestroy {
       selectedRemote: remote?.name ?? null,
       remoteTarget: remote && branch ? remote.name + '/' + branch : null,
       remotes: remotes.map(({ name }) => ({ name, icon: this.remoteIcon(name) })),
-      busy, fetchDisabled: busy || this.git.backgroundFetchBusy() || !remotes.length,
+      busy, fetchDisabled: this.fetchAllUnavailableReason() !== null,
       terminalShown: this.terminalOpen() && this.terminalRepositoryId() === repo.id,
       undoLabel: this.git.undoLabel(), redoLabel: this.git.redoLabel(),
       undoShortcut: this.undoShortcut, redoShortcut: this.redoShortcut,
@@ -2967,6 +2967,15 @@ export class AppComponent implements OnInit, OnDestroy {
     // Branch rows supply optional tracking metadata, not checkout identity.
     return repository.branches.find(candidate => !candidate.remote && candidate.current
       && candidate.name === repository.status.branch && candidate.oid === repository.headOid) ?? null;
+  });
+
+  protected readonly fetchAllUnavailableReason = computed(() => {
+    const repository = this.git.repository();
+    if (!repository) return 'Open a repository before fetching';
+    if (!repository.remotes.length) return 'Add a remote before fetching';
+    if (this.git.backgroundFetchBusy()) return 'Wait for automatic fetch to finish';
+    if (this.git.busy()) return 'Wait for the current Git operation to finish';
+    return null;
   });
 
   protected readonly toolbarRemotes = computed(() => {
@@ -4220,6 +4229,7 @@ export class AppComponent implements OnInit, OnDestroy {
     branchPickerMatches: this.branchPickerMatches.bind(this),
     changesOpen: () => this.changesOpen(),
     currentBranch: () => this.currentBranch(),
+    fetchAllUnavailableReason: () => this.fetchAllUnavailableReason(),
     fileContentDialog: () => this.fileContentDialog(),
     remoteIcon: this.remoteIcon.bind(this),
     remoteLocationName: this.remoteLocationName.bind(this),
@@ -5260,7 +5270,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (key === 'l') {
       event.preventDefault();
-      if (!this.git.busy()) void this.git.remote('fetch_repository');
+      void this.runAutoFetchNow();
       return;
     }
     if (key === 'w' && this.git.activeRepositoryId()) {
@@ -6612,7 +6622,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.git.incomingRepositoryLinksPending()) { this.openIncomingLinks(); return; }
     const repoId = this.git.activeRepositoryId();
     if (repoId && this.git.repositoryLinkPolicies()[repoId]?.autoFetchPaused) void this.git.resumeRepositoryLinkAutoFetch();
-    else this.runAutoFetchNow();
+    else void this.runAutoFetchNow();
   }
 
   protected openIncomingLinks(returnFocus: HTMLElement | null = null): void {
@@ -6657,8 +6667,8 @@ export class AppComponent implements OnInit, OnDestroy {
     if (oid) this.selectCommit(oid);
   }
 
-  protected runAutoFetchNow(): void {
-    void this.git.remote('fetch_repository');
+  protected async runAutoFetchNow(): Promise<void> {
+    if (!this.fetchAllUnavailableReason()) await this.git.remote('fetch_repository');
   }
 
   protected openFetchOptions(returnFocus: HTMLElement | null = null): void {
@@ -12151,6 +12161,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async runCommand(action: CommandAction): Promise<void> {
     if (!action.enabled) return;
+    if (action.id === 'fetch' && this.fetchAllUnavailableReason()) return;
     const previous = this.previousBranchLookup();
     if (previous && (previous.hideActions || !this.ownsPreviousBranchLookup(previous))) return;
     const stashReview = action.stashReview;
@@ -12279,7 +12290,7 @@ export class AppComponent implements OnInit, OnDestroy {
       case 'maintenance': await this.git.performRepositoryMaintenance(); break;
       case 'undo': await this.git.undo(); break;
       case 'redo': await this.git.redo(); break;
-      case 'fetch': await this.git.remote('fetch_repository'); break;
+      case 'fetch': await this.runAutoFetchNow(); break;
       case 'fetch-options': this.openFetchOptions(paletteReturnFocus); break;
       case 'add-remote': this.openAddRemoteDialog(paletteReturnFocus); break;
       case 'pull': await this.pullCurrentBranch(); break;
