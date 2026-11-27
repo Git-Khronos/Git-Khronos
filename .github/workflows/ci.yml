@@ -174,7 +174,9 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: renderer-progress-${{ github.run_id }}-attempt-${{ github.run_attempt }}-shard-${{ matrix.shard }}
-          path: test-results/renderer-progress/shard-${{ matrix.shard }}.json
+          path: |
+            test-results/renderer-progress/shard-${{ matrix.shard }}.json
+            test-results/renderer-progress/shard-${{ matrix.shard }}.timings.json
           if-no-files-found: ignore
           retention-days: 7
       - uses: actions/upload-artifact@v4

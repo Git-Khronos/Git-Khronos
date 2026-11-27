@@ -71,6 +71,11 @@ It covers startup, occupied branches, working-tree scroll and discard,
 stash review, GitLab catalogue navigation, and update consent. It does
 not replace the full renderer suite or native/package qualification.
 
+Hosted renderer-progress artifacts also carry a per-spec timing summary
+for clean shards that finish without retries or skips. Compare summaries
+from the same browser and runner class before changing shard allocation;
+summed test times describe workload, not total job wall time.
+
 New renderer snapshots discard their private dependency and build caches
 when the run ends. A finished historical snapshot may still hold its own
 `node_modules` or renderer caches. Reclaim those from one identified run

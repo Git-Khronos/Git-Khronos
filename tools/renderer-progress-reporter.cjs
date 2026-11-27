@@ -94,7 +94,30 @@ class RendererProgress {
     clearTimeout(this.timer);
     this.timer = null;
     this.active.clear();
-    if (this.total !== null) this.publish(result.status);
+    if (this.total !== null) {
+      this.publish(result.status);
+      this.publishCompleteTimings(result.status);
+    }
+  }
+
+  publishCompleteTimings(status) {
+    if (status !== 'passed' || !this.total || this.observed.size !== this.total
+      || this.counts.passed !== this.total || this.attempts !== this.total) return;
+    const specs = [...this.durationBySpec]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([spec, { durationMs, timedAttempts }]) => ({ spec, durationMs, cases: timedAttempts }));
+    // Do not seed a shard timing baseline from missing data, retries,
+    // interruptions, or timeouts. The small live progress receipt is separate.
+    if (specs.reduce((total, spec) => total + spec.cases, 0) !== this.total) return;
+    const path = this.path.replace(/\.json$/, '') + '.timings.json';
+    try {
+      const temporary = `${path}.${process.pid}.tmp`;
+      writeFileSync(temporary, JSON.stringify({ version: 1, totalCases: this.total, specs }),
+        { flag: 'wx', mode: 0o600 });
+      renameSync(temporary, path);
+    } catch (error) {
+      process.stderr.write(`Could not record completed renderer timings: ${error.code ?? 'unknown error'}\n`);
+    }
   }
 
   publish(playwrightStatus) {

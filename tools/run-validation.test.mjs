@@ -390,6 +390,7 @@ test('renderer progress updates retry outcomes without deciding the validation r
   reporter.onTestEnd(first, { status: 'passed', duration: 200 });
   reporter.onTestEnd(second, { status: 'skipped', duration: 0 });
   reporter.onEnd({ status: 'passed' });
+  assert.ok(!existsSync(join(root, 'renderer-progress.timings.json')), 'retries or skips must not seed a timing baseline');
   writeFileSync(join(root, 'result.json'), JSON.stringify({ ...runner, exitCode: 7, signal: null }));
   const final = readStatus(root);
   assert.equal(final.state, 'failed', 'Playwright progress must not override the owned command receipt');
@@ -454,6 +455,30 @@ test('renderer progress updates retry outcomes without deciding the validation r
   const invalid = readStatus(root);
   assert.equal(invalid.state, 'failed');
   assert.equal(invalid.rendererProgress, undefined);
+});
+
+test('a complete clean renderer run emits per-spec timing evidence separately from progress', t => {
+  const root = mkdtempSync(join(tmpdir(), 'gk-renderer-spec-timings-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const reporter = new RendererProgress({ path: join(root, 'renderer-progress.json') });
+  const tests = ['longer', 'shorter', 'longer'].map((spec, index) => ({
+    id: String(index), title: 'test title must stay out of the timing sidecar',
+    location: { file: join(root, spec + '.spec.ts'), line: index + 1 },
+  }));
+  const timings = join(root, 'renderer-progress.timings.json');
+  reporter.onBegin(undefined, { allTests: () => tests });
+  reporter.onTestEnd(tests[0], { status: 'passed', duration: 500 });
+  reporter.onTestEnd(tests[1], { status: 'passed', duration: 100 });
+  assert.ok(!existsSync(timings));
+  reporter.onTestEnd(tests[2], { status: 'passed', duration: 200 });
+  reporter.onEnd({ status: 'passed' });
+  assert.deepEqual(JSON.parse(readFileSync(timings, 'utf8')), {
+    version: 1, totalCases: 3, specs: [
+      { spec: 'longer.spec.ts', cases: 2, durationMs: 700 },
+      { spec: 'shorter.spec.ts', cases: 1, durationMs: 100 },
+    ],
+  });
+  assert.doesNotMatch(readFileSync(timings, 'utf8'), /test title|gk-renderer-spec-timings/);
 });
 
 test('renderer progress bounds recent failure locations and reports the newest first', t => {
