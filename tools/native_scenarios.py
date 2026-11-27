@@ -918,6 +918,33 @@ def blame_and_history_navigation(driver, fixtures, report, large, revision, inde
     driver.click_text('.diff-insight-toggle button', 'History')
     assert driver.script("return document.querySelectorAll('gk-file-history .history-entry').length") == len(expected_history), "Returning to history lost its loaded results"
     assert driver.script("return !![...document.querySelectorAll('gk-file-history button')].find(button => button.textContent.trim() === 'Reload file history' && !button.disabled)")
+    gate = fixtures.history_gate
+    hold, started = gate / "hold", gate / "started"
+    started.unlink(missing_ok=True)
+    (gate / "target").write_text(str(large))
+    hold.touch()
+    try:
+        driver.click_visible('gk-file-history button', 'Reload file history')
+        driver.wait("""const cancel = [...document.querySelectorAll('gk-file-history button')]
+          .find(button => button.textContent.trim() === 'Cancel file history');
+          return cancel?.getClientRects().length > 0;""", timeout=5)
+        deadline = time.monotonic() + 5
+        while not started.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert started.exists(), "The packaged file-history reload did not run owned Git"
+        assert driver.script("""const cancel = [...document.querySelectorAll('gk-file-history button')]
+          .find(button => button.textContent.trim() === 'Cancel file history');
+          cancel?.focus();
+          return !!cancel && document.activeElement === cancel;""")
+    finally:
+        hold.unlink(missing_ok=True)
+        (gate / "target").unlink(missing_ok=True)
+    driver.wait("""const history = document.querySelector('gk-file-history');
+      return history?.querySelector('section')?.getAttribute('aria-busy') === 'false'
+        && history.contains(document.activeElement)
+        && document.activeElement?.textContent.trim() === 'Reload file history';""", timeout=5)
+    assert driver.script("return document.querySelectorAll('gk-file-history .history-entry').length") == len(expected_history)
+    report["scenarios"].append("native-file-history-final-page-returns-focus-to-reload")
     driver.script("document.querySelector('#repository-reference-panel').focus()")
     driver.key("\ue036")
     assert driver.script("return document.activeElement?.matches('gk-file-history .history-list')"), "F6 skipped the visible file history viewport"
