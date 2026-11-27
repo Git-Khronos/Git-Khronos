@@ -50,7 +50,8 @@ def signed_commit_creation(driver, fixtures, report):
         ("commit.gpgsign", "false"),
     ):
         fixtures.git(ssh_repository, "config", "--local", name, value)
-    _sign_commit_in_ui(driver, fixtures, ssh_repository, "SSH", "SSH SIGNATURE", report)
+    _sign_commit_in_ui(driver, fixtures, ssh_repository, "SSH", "SSH SIGNATURE", report,
+                       missing_key=fixtures.root / "missing-commit-signing-key")
 
     x509_repository = fixtures.repository("signed-commit-ui-x509", commits=3)
     configure_x509_signing(fixtures, x509_repository)
@@ -58,7 +59,7 @@ def signed_commit_creation(driver, fixtures, report):
     return x509_repository, x509_repo_id
 
 
-def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_header, report):
+def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_header, report, *, missing_key=None):
     parent = fixtures.git(repository, "rev-parse", "HEAD")
     payload = repository / "signed-ui-payload.txt"
     payload.write_text("Explicitly signed through the commit form.\n", encoding="utf-8")
@@ -72,6 +73,25 @@ def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_head
     driver.wait("return !!document.querySelector('.commit-form input[name=signCommit]')")
     driver.click_visible('.commit-form input[name="signCommit"]')
     driver.wait("return document.querySelector('.commit-form input[name=signCommit]')?.checked === true")
+    if missing_key is not None:
+        key = fixtures.git(repository, "config", "--local", "--get", "user.signingkey")
+        fixtures.git(repository, "config", "--local", "user.signingkey", str(missing_key))
+        failure_config = (repository / ".git/config").read_bytes()
+        staged = fixtures.git(repository, "diff", "--cached", "--binary")
+        payload_bytes = payload.read_bytes()
+        driver.click_visible('.commit-form button[type="submit"]')
+        driver.wait("""const toast = document.querySelector('gk-error-toast');
+          return /sign|private key/i.test(toast?.textContent ?? '') &&
+            !document.querySelector('.commit-form button[type=submit]')?.disabled;""")
+        assert driver.script("return document.querySelector('.commit-form #commit-summary').value") == message
+        assert driver.script("return document.querySelector('.commit-form input[name=signCommit]').checked")
+        assert fixtures.git(repository, "for-each-ref", "--format=%(refname) %(objectname)") == existing_refs
+        assert fixtures.git(repository, "diff", "--cached", "--binary") == staged
+        assert payload.read_bytes() == payload_bytes
+        assert (repository / ".git/config").read_bytes() == failure_config
+        report["scenarios"].append("native-ssh-signing-failure-preserves-commit-draft-and-staged-changes")
+        fixtures.git(repository, "config", "--local", "user.signingkey", key)
+        config = (repository / ".git/config").read_bytes()
     driver.click_visible('.commit-form button[type="submit"]')
     driver.wait(
         "return [...document.querySelectorAll('.commit-row[data-commit-oid]')].some(row => "

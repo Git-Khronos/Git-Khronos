@@ -3939,7 +3939,10 @@ OpenPGP, SSH, and X.509 test keys. For each format, Git verifies the new
 commit's signature; the suite checks its parent, tree content, valid signature
 indicator, and unchanged repository configuration. It uses the same
 signing-tool preflight as the tag suite and fails before launch if a tool is
-missing.
+missing. A missing SSH identity also exercises Git's real signing refusal:
+the draft, sign checkbox, refs, staged changes, working file and Git
+configuration remain unchanged. Restoring the fixture key permits an explicit
+retry of the same draft, with no unsigned fallback.
 `desktop:native-empty-commit` verifies that an unchanged-tree commit stays
 disabled until the user enables the explicit commit policy, then records an
 empty commit without staging pre-existing unstaged edits. It checks the original
