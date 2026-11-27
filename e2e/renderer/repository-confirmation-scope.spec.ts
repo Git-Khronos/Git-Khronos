@@ -234,6 +234,7 @@ for (const change of ['revisit', 'replacement'] as const) {
       } else {
         const commit = original.commits.find((candidate: any) => candidate.oid !== app.contextMenu().oid);
         app.openContextMenu('commit', commit.oid, 'Replacement graph menu', new MouseEvent('contextmenu'));
+        button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
       }
       (button as HTMLButtonElement).click();
     }, change);

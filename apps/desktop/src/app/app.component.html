@@ -1885,7 +1885,7 @@
     </div>
   }
   @if (stashContextMenu(); as menu) {
-    <div #actionMenuElement class="context-menu graph-action-menu stash-context-menu" role="menu" aria-label="Stash actions" [style.left.px]="menu.x" [style.top.px]="menu.y" [style.--context-menu-top.px]="menu.y" (click)="$event.stopPropagation()" (keydown)="handleContextMenuKeydown($event)">
+    <div #actionMenuElement class="context-menu graph-action-menu stash-context-menu" role="menu" aria-label="Stash actions" [style.left.px]="menu.x" [style.top.px]="menu.y" [style.--context-menu-top.px]="menu.y" (click)="$event.stopPropagation()" (keydown)="handleContextMenuKeydown($event, menu)">
       @defer (on immediate) {
         <gk-stash-action-menu [request]="menu" [busy]="git.busy()" [hidden]="isStashHidden(menu.stash.oid)"
           [canHideAll]="hiddenStashOids().length < (git.repository()?.stashes?.length ?? 0)" [canShowAll]="hiddenStashOids().length > 0"
@@ -1938,16 +1938,16 @@
       [style.top.px]="menu.y"
       [style.--context-menu-top.px]="menu.y"
       (click)="$event.stopPropagation()"
-      (keydown)="handleContextMenuKeydown($event)"
+      (keydown)="handleContextMenuKeydown($event, menu)"
     >
       @defer (on immediate) {
-        <gk-graph-action-menu [context]="menu" [presenter]="graphActionMenuView()" (ready)="graphActionMenuReady()" />
+        <gk-graph-action-menu [context]="menu" [presenter]="graphActionMenuView()" (ready)="graphActionMenuReady(menu)" />
       } @placeholder {
         <p role="status">Loading actions…</p>
-        <button type="button" role="menuitem" #graphMenuLoaderClose (click)="dismissGraphActionMenu(true)">Cancel</button>
+        <button type="button" role="menuitem" #graphMenuLoaderClose (click)="closeGraphMenuLoader(menu)">Cancel</button>
       } @error {
         <p role="alert">Actions could not load. Close and restart to retry. No command was run.</p>
-        <button type="button" role="menuitem" #graphMenuLoaderClose (click)="dismissGraphActionMenu(true)">Close</button>
+        <button type="button" role="menuitem" #graphMenuLoaderClose (click)="closeGraphMenuLoader(menu)">Close</button>
       }
     </div>
   }

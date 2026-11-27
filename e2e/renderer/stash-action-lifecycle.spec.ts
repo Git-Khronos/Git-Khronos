@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 async function prepare(page: Page) {
-  await page.goto('/');
-  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await openPreviewRepository(page, page.locator('.commit-row').first());
   await page.evaluate(() => {
     const root = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = root.git;
@@ -51,14 +51,57 @@ test('a stash menu owned by another repository cannot start a mutation', async (
   await prepare(page);
   await page.evaluate(async () => {
     const state = (window as any).__stashAction;
+    const checkoutVisit = state.git.activeRepositoryReadScope();
     state.git.repositories.set([state.repository, { ...state.repository, id: 'other-repository' }]);
     state.git.activeRepositoryId.set('other-repository');
-    state.root.actionOverlays.open({ kind: 'stash', value: { repositoryId: state.repository.id, stash: state.stash, x: 100, y: 100 } });
+    state.root.actionOverlays.open({ kind: 'stash', value: { checkoutVisit, repositoryId: state.repository.id, stash: state.stash, x: 100, y: 100 } });
     void state.root.applyStashFromMenu(true);
   });
   expect(await page.evaluate(() => (window as any).__stashAction.calls.filter(
     (call: { command: string }) => call.command !== 'working_tree_change_summary'))).toHaveLength(0);
 });
+
+test('apply uses the selected object without replacing its inspection in a later checkout visit', async ({ page }) => {
+  await prepare(page);
+  await page.evaluate(() => {
+    const s = (window as any).__stashAction;
+    s.pending = s.root.applyStashFromMenu(false);
+  });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__stashAction.finish)).toBe('function');
+  await page.evaluate(async () => {
+    const s = (window as any).__stashAction;
+    s.git.repositories.update((items: any[]) => [...items, { ...s.repository, id: 'stash-result-other', path: '/owned/stash-result-other' }]);
+    s.git.activateRepository('stash-result-other');
+    s.git.activateRepository(s.repository.id);
+    s.root.selectedCommit.set(s.stash.oid);
+    s.finish(s.repository);
+    await s.pending;
+  });
+  expect(await page.evaluate(() => (window as any).__stashAction.root.selectedCommit())).toBe('a'.repeat(40));
+});
+
+for (const label of ['Apply Stash', 'Pop Stash']) {
+  test(`an old ${label} menu cannot dispatch after returning to the same checkout`, async ({ page }) => {
+    await prepare(page);
+    await page.evaluate(() => {
+      const { root, stash } = (window as any).__stashAction;
+      root.openStashMenu(new MouseEvent('contextmenu', { clientX: 100, clientY: 100 }), stash, false);
+    });
+    const menu = page.getByRole('menu', { name: 'Stash actions', exact: true });
+    const action = menu.getByRole('menuitem', { name: label, exact: true });
+    await expect(action).toBeVisible();
+    await action.evaluate(button => {
+      const { git, repository } = (window as any).__stashAction;
+      git.repositories.update((items: any[]) => [...items, { ...repository, id: 'stash-menu-other', path: '/owned/stash-menu-other' }]);
+      git.activateRepository('stash-menu-other');
+      git.activateRepository(repository.id);
+      (button as HTMLButtonElement).click();
+    });
+    expect(await page.evaluate(() => (window as any).__stashAction.calls.filter(
+      (call: { command: string }) => ['apply_stash', 'pop_stash', 'pop_stash_entry'].includes(call.command)))).toEqual([]);
+    await expect(menu).toBeHidden();
+  });
+}
 
 for (const change of ['shifted-stack', 'other-repository']) {
   test(`captured palette stash actions reject a ${change}`, async ({ page }) => {

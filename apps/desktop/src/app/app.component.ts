@@ -566,6 +566,7 @@ export interface StashContextMenuState {
   y: number;
   stash: StashEntry;
   repositoryId: string;
+  readonly checkoutVisit: string;
   preferredPosition: { x: number; y: number };
 }
 
@@ -1075,8 +1076,9 @@ export class AppComponent implements OnInit, OnDestroy {
     return active.value.repositoryVisit === undefined
       || active.value.repositoryVisit === this.git.activeRepositoryReadScope() ? active.value : null;
   });
-  private readonly contextMenuVisit = effect(() => {
-    if (this.actionOverlays.activeOverlay()?.kind === 'context' && !this.contextMenu()) {
+  private readonly graphMenuVisit = effect(() => {
+    const kind = this.actionOverlays.activeOverlay()?.kind;
+    if ((kind === 'context' && !this.contextMenu()) || (kind === 'stash' && !this.stashContextMenu())) {
       untracked(() => this.dismissGraphActionMenu(false));
     }
   });
@@ -1114,7 +1116,8 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   protected readonly stashContextMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
-    return active?.kind === 'stash' ? active.value : null;
+    return active?.kind === 'stash' && active.value.checkoutVisit === this.git.activeRepositoryReadScope()
+      ? active.value : null;
   });
   protected readonly selectedPanelFiles = signal<string[]>([]);
   protected readonly panelFileSelectionSource = signal<'commit' | 'comparison' | null>(null);
@@ -13240,9 +13243,14 @@ export class AppComponent implements OnInit, OnDestroy {
       ?.focus({ preventScroll: true }));
   }
 
-  protected handleContextMenuKeydown(event: KeyboardEvent): void {
+  protected handleContextMenuKeydown(event: KeyboardEvent, expected: ContextMenuState | StashContextMenuState): void {
     // The dismissed menu can receive a key before Angular removes its element.
-    if (!this.contextMenu() && !this.stashContextMenu()) return;
+    const current = this.contextMenu() ?? this.stashContextMenu();
+    if (!current) return;
+    if (current !== expected) {
+      event.stopPropagation();
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
@@ -13407,6 +13415,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.actionOverlays.open({ kind: 'stash', value: {
       stash,
       repositoryId,
+      checkoutVisit: this.git.activeRepositoryReadScope(),
       preferredPosition,
       x: Math.max(VIEWPORT_MENU_GUTTER, Math.min(
         preferredPosition.x,
@@ -13475,6 +13484,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async applyStashFromMenu(pop: boolean): Promise<void> {
     const menu = this.stashContextMenu();
+    if (this.actionOverlays.activeOverlay()?.kind === 'stash' && !menu) return;
     const stash = menu?.stash ?? this.selectedStash();
     const repositoryId = menu?.repositoryId ?? this.git.activeRepositoryId();
     if (!stash || !repositoryId) return;
@@ -13484,11 +13494,13 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private async runSelectedStash(pop: boolean, stash: StashEntry, repositoryId: string): Promise<void> {
     if (this.git.busy()) return;
+    const checkoutVisit = this.git.activeRepositoryReadScope();
     const inspection = this.selectedCommit();
     const succeeded = pop
       ? await this.git.popStashEntry(stash.reference, stash.oid, repositoryId)
       : await this.git.applyStash(stash.reference, stash.oid, repositoryId);
-    if (succeeded && this.git.activeRepositoryId() === repositoryId && this.selectedCommit() === inspection) this.selectWip();
+    if (succeeded && this.git.activeRepositoryReadScope() === checkoutVisit
+      && this.git.activeRepositoryId() === repositoryId && this.selectedCommit() === inspection) this.selectWip();
   }
 
   protected requestStashDelete(stash?: StashEntry): void {
@@ -15668,16 +15680,20 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected graphActionMenuReady(): void {
+  protected graphActionMenuReady(expected: ContextMenuState): void {
     const menu = this.contextMenu();
     const element = this.actionMenuElement()?.nativeElement;
-    if (!menu || !element?.querySelector('gk-graph-action-menu')) return;
+    if (menu !== expected || !element?.querySelector('gk-graph-action-menu')) return;
     // The first measurement may have sized the loading escape. Refit the actual
     // content and transfer focus only if the user is still inside this menu.
     const focusMenu = element.contains(document.activeElement)
       || (document.activeElement === document.body && this.contextMenuReturnFocus !== null);
     element.classList.remove('positioned');
     this.settleGraphActionMenuPosition('context', `${menu.kind}:${menu.oid}`, menu, focusMenu);
+  }
+
+  protected closeGraphMenuLoader(expected: ContextMenuState): void {
+    if (this.contextMenu() === expected) this.dismissGraphActionMenu(true);
   }
 
   protected stashActionMenuReady(request: StashContextMenuState): void {

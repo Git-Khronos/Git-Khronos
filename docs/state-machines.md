@@ -399,6 +399,8 @@ control, so a stale click cannot open a review for a replacement selection.
 Stash options also belong to one checkout visit. Leaving the checkout retires
 the form, including its draft and focus intent, whether saving, applying a
 stash or one file, branching from it, or stashing before switching branches.
+The stash menu uses the same boundary for immediate Apply and Pop. A late
+result must not replace the inspected commit after switching away and back.
 
 ### Remote branch rename and deletion
 
