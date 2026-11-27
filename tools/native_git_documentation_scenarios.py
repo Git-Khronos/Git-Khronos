@@ -1,12 +1,12 @@
 """Drive packaged Git help through its real Linux launcher without opening a browser."""
 import time
 
-from native_browser_launcher_fixture import browser_launcher_paths
+from native_desktop_launcher_fixture import desktop_launcher_paths
 from native_worktree_scenarios import checkout_footprint
 
 
 def git_documentation(driver, fixtures, repository, report):
-    capture, refusal = browser_launcher_paths(fixtures)
+    capture, refusal = desktop_launcher_paths(fixtures)
     before = checkout_footprint(fixtures, repository)
     driver.click_visible('[aria-label="Preferences"]')
     driver.click_visible('#preferences-tab-git')

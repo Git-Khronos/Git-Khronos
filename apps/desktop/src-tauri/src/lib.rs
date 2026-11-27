@@ -98,6 +98,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -722,12 +723,12 @@ async fn load_more_changes(repo_id: String, app: AppHandle) -> Result<Repository
 
 #[tauri::command(rename_all = "camelCase")]
 #[specta::specta]
-fn open_repository_in_file_manager(
+async fn open_repository_in_file_manager(
     repo_id: String,
     state: tauri::State<'_, AppState>,
 ) -> Result<(), AppError> {
     let session = repository_session(&repo_id, &state)?;
-    open_path_in_file_manager(&session.path)
+    open_path_in_file_manager(&session.path).await
 }
 
 #[tauri::command]
@@ -750,25 +751,35 @@ async fn open_external_url(url: String) -> Result<(), AppError> {
         hint: None,
     });
 
-    await_external_opener(child, std::time::Duration::from_millis(500)).await
+    await_desktop_opener(
+        child,
+        std::time::Duration::from_millis(500),
+        browser_unavailable,
+    )
+    .await
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-async fn await_external_opener(
-    child: std::io::Result<tokio::process::Child>,
-    deadline: std::time::Duration,
-) -> Result<(), AppError> {
-    let unavailable = || AppError {
+fn browser_unavailable() -> AppError {
+    AppError {
         kind: "externalUrlUnavailable".into(),
         message: "The link could not be opened.".into(),
         hint: Some("Check that a default web browser is installed and available.".into()),
-    };
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+async fn await_desktop_opener(
+    child: std::io::Result<tokio::process::Child>,
+    deadline: std::time::Duration,
+    unavailable: fn() -> AppError,
+) -> Result<(), AppError> {
     let mut child = child.map_err(|_| unavailable())?;
     match tokio::time::timeout(deadline, child.wait()).await {
         Ok(Ok(status)) if status.success() => Ok(()),
         Ok(_) => Err(unavailable()),
         Err(_) => {
-            // Some desktop launchers remain attached to the browser. Stop
+            // Some launchers remain attached to the desktop app. Stop
             // waiting on the UI, but reap the helper when it eventually exits.
             tokio::spawn(async move {
                 let _ = child.wait().await;
@@ -4273,25 +4284,36 @@ fn default_shell() -> String {
         .unwrap_or_else(|| "/bin/sh".into())
 }
 
-fn open_path_in_file_manager(path: &Path) -> Result<(), AppError> {
+async fn open_path_in_file_manager(path: &Path) -> Result<(), AppError> {
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    let unavailable = || AppError {
+        kind: "fileManagerUnavailable".into(),
+        message: "The repository folder could not be opened.".into(),
+        hint: Some("Check that a system file manager is installed and available.".into()),
+    };
     #[cfg(target_os = "linux")]
-    let child = Command::new("xdg-open").arg(path).spawn();
-    #[cfg(target_os = "macos")]
-    let child = Command::new("open").arg(path).spawn();
-    #[cfg(target_os = "windows")]
-    let child = Command::new("explorer.exe").arg(path).spawn();
+    {
+        let child = tokio::process::Command::new("xdg-open").arg(path).spawn();
+        await_desktop_opener(child, std::time::Duration::from_millis(500), unavailable).await
+    }
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        #[cfg(target_os = "macos")]
+        let command = "open";
+        #[cfg(target_os = "windows")]
+        let command = "explorer.exe";
+        Command::new(command)
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| unavailable())
+    }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     return Err(AppError {
         kind: "fileManagerUnsupported".into(),
         message: "Opening the system file manager is not supported on this platform.".into(),
         hint: None,
     });
-
-    child.map(|_| ()).map_err(|_| AppError {
-        kind: "fileManagerUnavailable".into(),
-        message: "The repository folder could not be opened.".into(),
-        hint: Some("Check that a system file manager is installed and available.".into()),
-    })
 }
 
 #[cfg(windows)]
@@ -4685,7 +4707,7 @@ pub fn ipc_registry() -> tauri_specta::Builder<tauri::Wry> {
 #[cfg(all(test, unix))]
 mod tests {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    use super::await_external_opener;
+    use super::{await_desktop_opener, browser_unavailable};
     use super::{repository_watch_paths, validate_external_url};
     use notify::{EventKind, RecursiveMode, Watcher};
     use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
@@ -4728,7 +4750,7 @@ mod tests {
             let directory = tempfile::tempdir().unwrap();
             let missing = tokio::process::Command::new(directory.path().join("absent")).spawn();
             assert_eq!(
-                await_external_opener(missing, Duration::from_secs(1))
+                await_desktop_opener(missing, Duration::from_secs(1), browser_unavailable)
                     .await
                     .unwrap_err()
                     .kind,
@@ -4739,7 +4761,7 @@ mod tests {
                     .args(["-c", "exit \"$1\"", "opener-fixture", code])
                     .spawn();
                 assert_eq!(
-                    await_external_opener(child, Duration::from_secs(2))
+                    await_desktop_opener(child, Duration::from_secs(2), browser_unavailable)
                         .await
                         .is_ok(),
                     succeeds
@@ -4752,7 +4774,7 @@ mod tests {
                 ])
                 .current_dir(directory.path())
                 .spawn();
-            await_external_opener(child, Duration::from_millis(50))
+            await_desktop_opener(child, Duration::from_millis(50), browser_unavailable)
                 .await
                 .expect("a browser still running past the deadline is not a refusal");
             fs::write(directory.path().join("allow-exit"), "").unwrap();

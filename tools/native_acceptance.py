@@ -1421,7 +1421,7 @@ def main():
         return 2
     suites = (
         "smoke", "full", "environment", "performance", "recovery", "integrity-ui", "gitlab", "gitlab-connect", "gitlab-connect-after-smoke",
-        "gitlab-connect-refused", "gitlab-fork-ui", "file-tools", "configured-tools", "git-documentation",
+        "gitlab-connect-refused", "gitlab-fork-ui", "file-tools", "configured-tools", "git-documentation", "file-manager-launch",
         "worktrees", "setup-keyboard", "remote-reviews", "transport-error-guidance", "incoming-links", "application-updates", "application-update-consent", "application-update-release-link",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close", "working-file-editor",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
@@ -1656,9 +1656,9 @@ def main():
             if args.suite == "workspace-batch":
                 from native_workspace_batch_scenarios import workspace_fetch_environment
                 application_env.update(workspace_fetch_environment(fixtures))
-            if args.suite in ("git-documentation", "application-update-release-link"):
-                from native_browser_launcher_fixture import browser_launcher_environment
-                application_env.update(browser_launcher_environment(fixtures))
+            if args.suite in ("git-documentation", "application-update-release-link", "file-manager-launch"):
+                from native_desktop_launcher_fixture import desktop_launcher_environment
+                application_env.update(desktop_launcher_environment(fixtures))
             if args.suite == "first-status":
                 from native_first_status_scenarios import first_status_environment
                 application_env.update(first_status_environment(fixtures))
@@ -1743,6 +1743,9 @@ def main():
                 repository = fixtures.repository("git-documentation")
                 repo_id = open_ui(driver, repository)
                 git_documentation(driver, fixtures, repository, report)
+            elif args.suite == "file-manager-launch":
+                from native_file_manager_scenarios import file_manager_launch
+                repository, repo_id = file_manager_launch(driver, fixtures, report)
             elif args.suite == "workspace-clone":
                 from native_workspace_clone_scenarios import workspace_clone
                 repository, repo_id = workspace_clone(driver, fixtures, report)

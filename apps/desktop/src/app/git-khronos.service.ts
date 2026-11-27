@@ -1184,7 +1184,7 @@ export class GitKhronosService implements OnDestroy {
     if (!repository) return;
     await this.run('Opening repository folder…', async report => {
       await ipc.open_repository_in_file_manager({ repoId: repository.id });
-      report('Repository folder opened');
+      report('File manager launch requested');
     }, repository.id, null, true, false);
   }
 

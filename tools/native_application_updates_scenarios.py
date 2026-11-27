@@ -235,14 +235,14 @@ def application_update_consent(driver, fixtures, report):
 
 def application_update_release_link(driver, fixtures, report):
     from native_acceptance import open_ui
-    from native_browser_launcher_fixture import browser_launcher_paths
+    from native_desktop_launcher_fixture import desktop_launcher_paths
 
     assert driver.owned_display, 'The clipboard probe requires an owned headless display'
     repository = fixtures.repository('application-updates-release-link', commits=2)
     repo_id = open_ui(driver, repository)
     before = checkout_footprint(fixtures, repository)
     status_before = driver.invoke('application_update_status')
-    capture, refusal = browser_launcher_paths(fixtures)
+    capture, refusal = desktop_launcher_paths(fixtures)
     refusal.touch()
     modal = 'gk-application-updates-dialog [role=dialog]'
     expected_url = 'https://github.com/Git-Khronos/Git-Khronos/releases'

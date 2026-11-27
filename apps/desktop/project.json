@@ -82,6 +82,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite git-documentation --headless" }
     },
+    "native-file-manager-launch": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite file-manager-launch --headless" }
+    },
     "native-integrity-ui": {
       "executor": "nx:run-commands",
       "cache": false,

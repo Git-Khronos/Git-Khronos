@@ -50,6 +50,11 @@ uses keyboard copy and paste on a private Xvfb display to verify the exact
 fallback address, then retries the launcher. It does not install an update,
 contact a release server, or read the host clipboard.
 
+`pnpm nx run desktop:native-file-manager-launch -- --package "$archive"`
+uses the same owned Linux launcher to verify that the app reports an
+immediate file-manager refusal. Retrying hands off one absolute checkout
+path, including spaces, without changing repository state.
+
 ## Renderer recovery evidence
 
 The installed X11 recovery probe requires the replacement renderer to

@@ -482,15 +482,16 @@ test('updater fixture edits select offline package checks, not an installed upda
   assert.doesNotMatch(plan, /application-update-consent|--installed|desktop:native-full|desktop:e2e/);
 });
 
-test('changes to the shared launcher fixture retest Git help and the manual release address', t => {
+test('changes to the shared launcher fixture retest browser and file manager handoffs', t => {
   const f = fixture(t);
   f.write('.gitignore', 'candidate.deb\n');
   f.commit();
   f.write('candidate.deb');
-  f.write('tools/native_browser_launcher_fixture.py');
+  f.write('tools/native_desktop_launcher_fixture.py');
   const plan = f.run('--native-package', 'candidate.deb');
   assert.match(plan, /"desktop:native-git-documentation"/);
   assert.match(plan, /"desktop:native-application-update-release-link"/);
+  assert.match(plan, /"desktop:native-file-manager-launch"/);
   assert.doesNotMatch(plan, /"desktop:native-application-updates"|desktop:e2e|desktop:check/);
 });
 
