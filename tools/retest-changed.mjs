@@ -58,6 +58,8 @@ const packagedScenarios = new Map([
   ['tools/native_main_menu_scenarios.py', ['native-smoke']],
   ['tools/native_remote_review_scenarios.py', ['native-remote-reviews']],
   ['tools/native_commit_signing_scenarios.py', ['native-signed-commit']],
+  ['tools/native_signed_tag_scenarios.py', ['native-signed-tag']],
+  ['tools/native_x509_signing_fixture.py', ['native-signed-commit', 'native-signed-tag']],
   ['tools/native_lfs_lock_ui_scenarios.py', ['native-lfs-lock-actions']],
   ['tools/native_feature_rebase_scenarios.py', ['native-feature-rebase', 'native-merge-rebase-review']],
   ['tools/native_gitlab_fork_scenarios.py', ['native-gitlab-fork-ui']],

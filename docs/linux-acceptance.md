@@ -3934,10 +3934,12 @@ plus SSH- and X.509-signed annotated tags through native IPC. It verifies all
 three signatures and checks tag objects, peeled targets, and unchanged
 worktree/index state. A signing-tool preflight reports missing `gpg`,
 `ssh-keygen`, `gpgsm`, or `openssl` before launching the application.
-`desktop:native-signed-commit` exercises the explicit Sign commit control in
-the commit form, confirms the new commit's parent, tree content, signature, and
-signature display, and checks that Git configuration is unchanged. It needs
-`gpg` and fails before launch with a missing-tool diagnostic.
+`desktop:native-signed-commit` exercises the explicit Sign commit control with
+OpenPGP, SSH, and X.509 test keys. For each format, Git verifies the new
+commit's signature; the suite checks its parent, tree content, valid signature
+indicator, and unchanged repository configuration. It uses the same
+signing-tool preflight as the tag suite and fails before launch if a tool is
+missing.
 `desktop:native-empty-commit` verifies that an unchanged-tree commit stays
 disabled until the user enables the explicit commit policy, then records an
 empty commit without staging pre-existing unstaged edits. It checks the original

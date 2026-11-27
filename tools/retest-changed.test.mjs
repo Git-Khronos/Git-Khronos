@@ -603,6 +603,11 @@ test('commit signing fixture edits select the focused packaged UI suite', t => {
   const plan = f.run('--native-package', 'candidate.deb');
   assert.match(plan, /"desktop:native-signed-commit"/);
   assert.doesNotMatch(plan, /desktop:native-signed-tag|desktop:native-full|desktop:e2e/);
+  f.write('tools/native_x509_signing_fixture.py');
+  const shared = f.run('--native-package', 'candidate.deb');
+  assert.equal(shared.match(/"desktop:native-signed-commit"/g)?.length, 1);
+  assert.equal(shared.match(/"desktop:native-signed-tag"/g)?.length, 1);
+  assert.doesNotMatch(shared, /desktop:native-full|desktop:e2e/);
 });
 
 test('rebase fixture edits select both packaged rebase reviews without a browser run', t => {

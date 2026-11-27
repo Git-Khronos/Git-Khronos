@@ -258,7 +258,7 @@ def probe_signed_tag_toolchain(fixtures, report):
 
 
 def probe_signed_commit_toolchain(fixtures, report):
-    probe_signing_toolchain(fixtures, report, ("gpg", "ssh-keygen"), "signedCommitTools")
+    probe_signing_toolchain(fixtures, report, ("gpg", "ssh-keygen", "gpgsm", "openssl"), "signedCommitTools")
 
 
 def webdriver_ports():

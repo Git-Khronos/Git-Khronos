@@ -3,6 +3,7 @@ import subprocess
 import json
 
 from native_acceptance import open_ui, run, seed_commit_draft
+from native_x509_signing_fixture import configure_x509_signing
 
 
 def signed_commit_creation(driver, fixtures, report):
@@ -32,7 +33,7 @@ def signed_commit_creation(driver, fixtures, report):
     ):
         fixtures.git(repository, "config", "--local", name, value)
 
-    _sign_commit_in_ui(driver, fixtures, repository, "OpenPGP", "PGP", report)
+    _sign_commit_in_ui(driver, fixtures, repository, "OpenPGP", "PGP SIGNATURE", report)
 
     ssh_repository = fixtures.repository("signed-commit-ui-ssh", commits=3)
     key = fixtures.root / "commit-ssh-signing-key"
@@ -49,8 +50,12 @@ def signed_commit_creation(driver, fixtures, report):
         ("commit.gpgsign", "false"),
     ):
         fixtures.git(ssh_repository, "config", "--local", name, value)
-    ssh_repo_id = _sign_commit_in_ui(driver, fixtures, ssh_repository, "SSH", "SSH", report)
-    return ssh_repository, ssh_repo_id
+    _sign_commit_in_ui(driver, fixtures, ssh_repository, "SSH", "SSH SIGNATURE", report)
+
+    x509_repository = fixtures.repository("signed-commit-ui-x509", commits=3)
+    configure_x509_signing(fixtures, x509_repository)
+    x509_repo_id = _sign_commit_in_ui(driver, fixtures, x509_repository, "X.509", "SIGNED MESSAGE", report)
+    return x509_repository, x509_repo_id
 
 
 def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_header, report):
@@ -76,7 +81,7 @@ def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_head
     assert oid != parent, "The UI did not create a new commit"
     assert fixtures.git(repository, "rev-parse", "HEAD^") == parent
     commit_object = fixtures.git(repository, "cat-file", "commit", oid)
-    assert f"gpgsig -----BEGIN {signature_header} SIGNATURE-----" in commit_object, commit_object
+    assert f"gpgsig -----BEGIN {signature_header}-----" in commit_object, commit_object
     verify = subprocess.run(
         ["git", "-C", str(repository), "verify-commit", oid],
         env=fixtures.env, capture_output=True, text=True, timeout=120,
@@ -93,6 +98,6 @@ def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_head
     assert existing_refs.splitlines() == [f"refs/heads/main {parent}"], existing_refs
     assert refs_after.splitlines() == [f"refs/heads/main {oid}"], refs_after
     report["scenarios"].append(
-        f"native-ui-creates-and-verifies-explicitly-{format_name.lower()}-signed-commit"
+        f"native-ui-creates-and-verifies-explicitly-{format_name.lower().replace('.', '')}-signed-commit"
     )
     return repo_id
