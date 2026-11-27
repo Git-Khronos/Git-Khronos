@@ -3,7 +3,6 @@ version: '3'
 vars:
   TAURI_CONFIG: apps/desktop/src-tauri/tauri.conf.json
   CARGO_OUTPUT: '{{.CARGO_TARGET_DIR | default "target"}}'
-  RELEASE_BINARY: '{{if eq OS "windows"}}target\release\git-khronos.exe{{else}}./target/release/git-khronos{{end}}'
 
 tasks:
   default:
@@ -54,7 +53,7 @@ tasks:
     desc: Build if needed, then run the optimized native executable
     deps: [build]
     cmds:
-      - '{{.RELEASE_BINARY}}'
+      - '"${CARGO_TARGET_DIR:-target}/release/git-khronos{{if eq OS "windows"}}.exe{{end}}"'
 
   bundle:
     desc: Build the native executable and platform installer packages

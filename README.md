@@ -134,12 +134,16 @@ task doctor
 task dev
 ```
 
-Build and run the optimized native executable:
+Build and run the optimized native executable with `task run`; it runs
+`task build` first. To reuse a Cargo output directory on another filesystem,
+set `CARGO_TARGET_DIR` for the command:
 
 ```bash
-task build
-task run
+CARGO_TARGET_DIR="/path/to/shared cargo output" task run
 ```
+
+Use `task preview` for browser-only UI changes or `task dev` for native
+development without building a release installer each time.
 
 Useful checks include `task test`, `task test:e2e`, `task check`, and `task ci`.
 For desktop TypeScript unit tests without compiling Rust or opening a browser,

@@ -49,6 +49,33 @@ test('local package preflight refuses insufficient build space before allocating
     else process.env.CI = ci;
   }
 });
+test('task run follows the Cargo output directory without falling back to an old executable', { skip: process.platform === 'win32' }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'gk-cargo-launch-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await copyFile(join(repositoryRoot, 'Taskfile.yml'), join(root, 'Taskfile.yml'));
+  const bin = join(root, 'bin');
+  await mkdir(bin);
+  for (const tool of ['node', 'pnpm', 'rustc', 'git']) {
+    await writeFile(join(bin, tool), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  }
+
+  for (const [name, target, directory] of [
+    ['default', '', join(root, 'target')],
+    ['relative', 'reuse cache $literal', join(root, 'reuse cache $literal')],
+    ['absolute', join(root, 'absolute cache'), join(root, 'absolute cache')],
+  ]) {
+    const release = join(directory, 'release');
+    await mkdir(release, { recursive: true });
+    await writeFile(join(release, 'git-khronos'), `#!/bin/sh\nprintf '%s\\n' 'ran-${name}'\n`, { mode: 0o755 });
+    const result = spawnSync('task', ['run'], {
+      cwd: root, encoding: 'utf8', timeout: 10_000,
+      env: { ...process.env, PATH: bin + delimiter + process.env.PATH, CARGO_TARGET_DIR: target },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), `ran-${name}`);
+  }
+});
+
 test('launcher probe help describes archive verification without starting a desktop', () => {
   const script = join(repositoryRoot, 'tools', 'check-installed-x11-launch.sh');
   for (const flag of ['--help', '-h']) {
