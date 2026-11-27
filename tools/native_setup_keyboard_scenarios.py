@@ -222,14 +222,16 @@ def setup_keyboard_isolation(driver, fixtures, report):
     assert not marker.exists()
     report['scenarios'].append('native-palette-branch-rename-isolates-shortcuts-and-preserves-dirty-state')
 
-    # The renamed row can render from the refreshed snapshot before the
-    # operation releases its busy guard. Inputs during that window are ignored.
+    # The renamed row may appear before Git is idle, and the deferred menu
+    # must settle before editing its off-screen input with the keyboard.
     driver.wait("return !document.querySelector('.progress-line')")
     driver.context_click('[aria-label="Local branch owned-palette-renamed"]')
-    driver.wait("""const field = document.querySelector('#context-rename-name');
-      return field?.value === 'owned-palette-renamed' && !document.querySelector('.progress-line');""")
-    driver.script('''const field = document.querySelector('#context-rename-name');
-      field.value = 'owned-palette-rename'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
+    rename_field = '.graph-action-menu.positioned #context-rename-name'
+    driver.click_scrolled_text(rename_field, wait_for_ready=True)
+    driver.wait(f"""const field = document.querySelector({json.dumps(rename_field)});
+      return field === document.activeElement && field.value === 'owned-palette-renamed';""")
+    driver.key('\ue010')  # End
+    driver.key('\ue003')  # Backspace: remove the trailing d.
     driver.click_scrolled_text('.context-branch-form button[type=submit]', 'Rename', wait_for_ready=True)
     driver.wait('return !!document.querySelector(\'[aria-label="Local branch owned-palette-rename"]\')')
     assert checkout_footprint(fixtures, repository, ('fixture.txt', 'unstaged-note.txt')) == rename_before
