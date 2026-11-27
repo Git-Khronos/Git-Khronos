@@ -18,6 +18,12 @@ tasks:
       - rustc --version
       - git --version
 
+  doctor:wslg:
+    desc: Diagnose WSLg graphics transport without restarting WSL or launching the app
+    platforms: [linux]
+    cmds:
+      - python3 tools/check-wslg-transport.py {{.CLI_ARGS}}
+
   install:
     desc: Install the pinned frontend dependencies
     deps: [doctor]

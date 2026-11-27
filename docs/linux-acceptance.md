@@ -384,8 +384,11 @@ window opens, redraws after a resize, and can minimize, restore, and close.
 Repeat from the Windows Start menu and the Linux terminal only if the pin
 fails, closing the app between attempts so an already running process
 does not satisfy a launch check. Record the failing path and whether
-the window was missing, blank, or unresponsive. Collect WSLg transport
-diagnostics before changing the shortcut or restarting WSL.
+the window was missing, blank, or unresponsive. From the affected WSL
+distribution, run `task doctor:wslg` before changing the shortcut or
+restarting WSL. This reads the compositor log without starting or stopping
+anything; its result is not a window visibility check. Run
+`task doctor:wslg -- --log "$saved_log"` to inspect a previously captured log.
 
 ## GitLab catalogue stale-element regression
 
