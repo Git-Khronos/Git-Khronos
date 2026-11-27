@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
 import { currentBootId, processStart, validationStatus } from './validation-status.mjs';
 import { validationSourceFingerprint } from './validation-source.mjs';
+import { requireRendererSnapshotSpace } from './validation-space.mjs';
 
 function reclaimSnapshotCaches(source, output) {
   let failures = 0;
@@ -249,6 +250,7 @@ async function runValidation() {
       source.inputFingerprint = validationSourceFingerprint(commandCwd, gitEnv);
     }
     if (commit) {
+      if (rendererRun) requireRendererSnapshotSpace(directory);
       const archive = join(directory, 'snapshot.tar');
       mkdirSync(commandCwd);
       await prepare('Exporting committed source', 'git', [...gitArgs, 'archive', '--format=tar',

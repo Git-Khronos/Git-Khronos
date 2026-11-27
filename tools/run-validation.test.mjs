@@ -9,12 +9,25 @@ import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { currentBootId, processStart } from './validation-status.mjs';
 import { validationSourceFingerprint } from './validation-source.mjs';
+import { requireRendererSnapshotSpace } from './validation-space.mjs';
 import RendererProgress from './renderer-progress-reporter.cjs';
 
 const launcher = fileURLToPath(new URL('./run-validation.mjs', import.meta.url));
 
 const readStatus = directory => JSON.parse(execFileSync(process.execPath,
   [launcher, 'status', directory], { encoding: 'utf8' }));
+
+test('renderer snapshot space uses free blocks available to the invoking user on the run filesystem', () => {
+  const blocksAtFloor = 524288n;
+  const stats = bavail => (path, options) => {
+    assert.equal(path, '/owned/evidence');
+    assert.equal(options.bigint, true);
+    return { bsize: 4096n, bavail, bfree: blocksAtFloor * 100n };
+  };
+  assert.throws(() => requireRendererSnapshotSpace('/owned/evidence', stats(blocksAtFloor - 1n)),
+    /at least 2 GiB free.*2047 MiB available/);
+  assert.doesNotThrow(() => requireRendererSnapshotSpace('/owned/evidence', stats(blocksAtFloor)));
+});
 
 test('guarded validation rejects changed bytes even when the Git status names stay the same', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-run-guard-'));

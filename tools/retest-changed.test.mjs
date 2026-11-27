@@ -143,7 +143,7 @@ test('editing the retest planner selects tooling checks without launching browse
 test('editing renderer artifact tooling or the validation runner selects browser-free tests', t => {
   const f = fixture(t);
   for (const path of ['tools/renderer-artifacts.test.mjs', 'tools/run-validation.mjs', 'tools/validation-status.mjs',
-    'tools/renderer-progress-reporter.cjs']) {
+    'tools/renderer-progress-reporter.cjs', 'tools/validation-space.mjs']) {
     f.write(path);
     const plan = f.run();
     assert.match(plan, /desktop:owned-process-test/);
