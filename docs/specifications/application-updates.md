@@ -455,6 +455,29 @@ changes and deletion.
    unverified rather than substituting the offline rehearsal. An already
    published tag is not a repair target for this workflow.
 
+### Verify a manually downloaded Debian installer
+
+For releases with a `.deb.sig` asset, use the publisher's public key obtained
+from a source you already trust—not a key furnished alongside an untrusted
+download. The Tauri key and sidecar are Base64-wrapped
+[Minisign](https://jedisct1.github.io/minisign/) files. With `PACKAGE`
+set to the downloaded installer and `PUBLIC_KEY_FILE` set to the trusted Tauri
+public key:
+
+```sh
+(
+  set -e
+  verification=$(mktemp -d)
+  base64 -d "$PUBLIC_KEY_FILE" > "$verification/publisher.pub"
+  base64 -d "$PACKAGE.sig" > "$verification/package.minisig"
+  minisign -Vm "$PACKAGE" -x "$verification/package.minisig" -p "$verification/publisher.pub"
+)
+```
+
+Confirm that the verified trusted comment's `version:` matches the release
+you intended to download. This checks publisher authenticity, not just whether
+the download matches a checksum listed on the same page.
+
 ### Verify automatic updates after the first signed release
 
 Before a newer release exists, opt in to the read-only live baseline check
