@@ -263,8 +263,9 @@ workflows run in the packaged desktop application—not merely in a browser mock
 - [x] Confirmed force push with remote-update lease protection
 - [x] On-demand signer executable and key-selection diagnostics
 - [x] Searchable Git command hints with contextual help and official manual links
-  (original explanations and scope/safety guidance; native browser-opening and
-  packaged accessibility acceptance remain)
+  (original explanations and scope/safety guidance; packaged keyboard coverage
+  verifies the exact HTTPS URL passed to the Linux launcher without touching
+  the checkout. Actual browser startup and assistive-technology review remain)
 - [x] Read-only worktree registration and explicit-expiry prune dry-run review
   (bounded complete registration parsing)
 - [x] Recoverable single-registration removal for missing, unlocked worktrees

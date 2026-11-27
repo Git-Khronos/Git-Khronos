@@ -50,6 +50,7 @@ const packagedScenarios = new Map([
   ['tools/native_lfs_lock_ui_scenarios.py', ['native-lfs-lock-actions']],
   ['tools/native_feature_rebase_scenarios.py', ['native-feature-rebase', 'native-merge-rebase-review']],
   ['tools/native_gitlab_fork_scenarios.py', ['native-gitlab-fork-ui']],
+  ['tools/native_git_documentation_scenarios.py', ['native-git-documentation']],
   ['tools/native_gitlab_scenarios.py', ['native-gitlab', 'native-gitlab-fork-ui']],
   ['tools/native_gitlab_ssh_fixture.py', ['native-gitlab']],
   ['tools/native_gitlab_ssh_scenarios.py', ['native-gitlab']],

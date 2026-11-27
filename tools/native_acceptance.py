@@ -1421,7 +1421,7 @@ def main():
         return 2
     suites = (
         "smoke", "full", "environment", "performance", "recovery", "integrity-ui", "gitlab", "gitlab-connect", "gitlab-connect-after-smoke",
-        "gitlab-connect-refused", "gitlab-fork-ui", "file-tools", "configured-tools",
+        "gitlab-connect-refused", "gitlab-fork-ui", "file-tools", "configured-tools", "git-documentation",
         "worktrees", "setup-keyboard", "remote-reviews", "transport-error-guidance", "incoming-links", "application-updates", "application-update-consent",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close", "working-file-editor",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
@@ -1656,6 +1656,9 @@ def main():
             if args.suite == "workspace-batch":
                 from native_workspace_batch_scenarios import workspace_fetch_environment
                 application_env.update(workspace_fetch_environment(fixtures))
+            if args.suite == "git-documentation":
+                from native_git_documentation_scenarios import documentation_environment
+                application_env.update(documentation_environment(fixtures))
             if args.suite == "first-status":
                 from native_first_status_scenarios import first_status_environment
                 application_env.update(first_status_environment(fixtures))
@@ -1735,6 +1738,11 @@ def main():
                 from native_workspace_batch_scenarios import workspace_batch_stop
                 repository = workspace_batch_stop(driver, fixtures, report)
                 repo_id = driver.invoke("open_repository", path=str(repository))["id"]
+            elif args.suite == "git-documentation":
+                from native_git_documentation_scenarios import git_documentation
+                repository = fixtures.repository("git-documentation")
+                repo_id = open_ui(driver, repository)
+                git_documentation(driver, fixtures, repository, report)
             elif args.suite == "workspace-clone":
                 from native_workspace_clone_scenarios import workspace_clone
                 repository, repo_id = workspace_clone(driver, fixtures, report)

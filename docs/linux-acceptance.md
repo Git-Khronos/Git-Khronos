@@ -18,6 +18,18 @@ The installed-matrix job summary lists which suites passed, failed, or were
 interrupted. For an ordinary failure, the job log also prints the command
 to rerun just the failed suites in the same environment.
 
+## Focused Git command reference
+
+```sh
+pnpm nx run desktop:native-git-documentation -- --package "$archive"
+```
+
+The packaged app opens contextual Fetch help, moves from the selected topic
+to its manual link by keyboard, and restores focus on Escape. A disposable
+`xdg-open` fixture records the exact URL once without starting a browser or
+contacting an external site. Git independently verifies that HEAD, refs,
+index, config, and working files stay unchanged.
+
 ## Renderer recovery evidence
 
 The installed X11 recovery probe requires the replacement renderer to

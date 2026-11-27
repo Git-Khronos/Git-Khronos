@@ -72,6 +72,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite gitlab-fork-ui --headless" }
     },
+    "native-git-documentation": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite git-documentation --headless" }
+    },
     "native-integrity-ui": {
       "executor": "nx:run-commands",
       "cache": false,
