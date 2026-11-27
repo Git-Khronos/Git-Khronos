@@ -564,7 +564,7 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
   const run = (args = [], evidenceDigest = digest, matrix = 'complete') => spawnSync('bash', [wrapper, ...args], {
     cwd: root, encoding: 'utf8', env: { ...process.env, HOME: root, OWNED_QUALIFIED_DIGEST: evidenceDigest, OWNED_MATRIX: matrix },
   });
-  assert.match(run().stderr, /Expected exactly one/);
+  assert.match(run().stderr, /No unsigned qualified release found/);
   const selected = await create('run-1');
   const one = run();
   assert.equal(one.status, 0, one.stderr);
@@ -579,7 +579,7 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
   assert.ok(!run().stdout.includes(join('run-1', 'qualified download', 'candidate', candidate)));
   await mkdir(join(second, 'candidate'));
   await writeFile(join(second, 'candidate', candidate + '.sig'), 'another public signature');
-  assert.match(run().stderr, /Expected exactly one unsigned/);
+  assert.match(run().stderr, /No unsigned qualified release found/);
   const mismatch = run([selected], 'b'.repeat(64));
   assert.equal(mismatch.status, 1);
   assert.match(mismatch.stderr, /evidence and saved checksum disagree/);

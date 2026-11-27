@@ -24,7 +24,10 @@ else
     fi
     unsigned+=("$candidate")
   done
-  if (( ${#unsigned[@]} != 1 )); then
+  if (( ${#unsigned[@]} == 0 )); then
+    echo 'No unsigned qualified release found. Download a qualified candidate with task release:download first.' >&2
+    exit 2
+  elif (( ${#unsigned[@]} > 1 )); then
     echo 'Expected exactly one unsigned qualified download. Use task sign -- QUALIFIED_RELEASE_DIRECTORY to select it.' >&2
     exit 2
   fi
