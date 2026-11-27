@@ -367,7 +367,8 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   assert.match(ci, /pnpm nx run desktop:e2e --output-style=stream --skipNxCache/);
   const bufferedNativeCommands = native.split('\n').filter(line => line.includes('pnpm nx run') && line.includes('--output-style=static'));
   assert.deepEqual(bufferedNativeCommands, []);
-  assert.match(native, /Run focused packaged signing and tag-navigation acceptance\n\s+if: matrix\.lane == 'supplemental'[\s\S]*?pnpm nx run desktop:native-file-tools /);
+  assert.match(native, /- name: Run required packaged file tools acceptance\n\s+if: matrix\.lane == 'supplemental'\n\s+run: pnpm nx run desktop:native-file-tools --output-style=stream -- --package "\$PACKAGE"\n/);
+  assert.equal(native.match(/pnpm nx run desktop:native-file-tools /g)?.length, 1);
   for (const line of native.split('\n').filter(line => /pnpm nx run .*desktop:native-|--suite gitlab/.test(line))) {
     assert.ok(line.endsWith('--package "$PACKAGE"'), line);
   }

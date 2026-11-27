@@ -343,6 +343,9 @@ jobs:
           pnpm nx run desktop:native-git-documentation --output-style=stream -- --package "$PACKAGE"
           pnpm nx run desktop:native-application-update-release-link --output-style=stream -- --package "$PACKAGE"
           pnpm nx run desktop:native-file-manager-launch --output-style=stream -- --package "$PACKAGE"
+      - name: Run required packaged file tools acceptance
+        if: matrix.lane == 'supplemental'
+        run: pnpm nx run desktop:native-file-tools --output-style=stream -- --package "$PACKAGE"
       - name: Run focused packaged signing and tag-navigation acceptance
         if: matrix.lane == 'supplemental'
         run: |
@@ -354,7 +357,6 @@ jobs:
           pnpm nx run desktop:native-tag-preview --output-style=stream -- --package "$PACKAGE"
           pnpm nx run desktop:native-file-history --output-style=stream -- --package "$PACKAGE"
           pnpm nx run desktop:native-conflict-navigation --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-file-tools --output-style=stream -- --package "$PACKAGE"
           pnpm nx run desktop:native-working-tree-recaps --output-style=stream -- --package "$PACKAGE"
           pnpm nx run desktop:native-discard-busy --output-style=stream -- --package "$PACKAGE"
           pnpm nx run desktop:native-integrity-ui --output-style=stream -- --package "$PACKAGE"
