@@ -928,6 +928,10 @@ if (process.argv[2] === '--version') {
   console.log('12.14.0');
 } else {
   const appimage = !!process.env.EXPECT_APPIMAGE;
+  if (appimage ? process.env.GIT_KHRONOS_BUILD_INPUT_ID !== undefined
+    : !/^[a-f0-9]{12}$/.test(process.env.GIT_KHRONOS_BUILD_INPUT_ID ?? '')) {
+    throw new Error('Unexpected package build ID for this bundle');
+  }
   const expected = [
     'exec', 'tauri', 'build', '--bundles', appimage ? 'appimage' : 'deb', '--config',
     'apps/desktop/src-tauri/tauri.conf.json'
@@ -1184,6 +1188,7 @@ test('package build ID distinguishes source inputs, format, and public trust wit
   assert.notEqual(identify('owned-input', 'ubuntu-jammy', 'owned-public-key').stdout, base.stdout);
   assert.notEqual(identify('owned-input', 'local', 'different-key').stdout, base.stdout);
   assert.equal(identify('owned-input', 'unknown', 'owned-public-key').status, 1);
+  assert.equal(identify('appimage-jammy:uncached', 'ubuntu-jammy-appimage', 'owned-public-key').status, 1);
 });
 
 test('standalone renderer and native integration test edits do not rebuild the Debian package', async t => {

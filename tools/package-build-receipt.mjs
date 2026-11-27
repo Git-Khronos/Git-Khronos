@@ -113,7 +113,7 @@ async function main() {
     fail('Usage: package-build-receipt.mjs {begin|complete|check|build-id} <Task source checksum> [flavor]');
   }
   if (action === 'build-id') {
-    if (!['local', 'ubuntu-jammy', 'ubuntu-jammy-appimage'].includes(flavor)) fail('Expected a known Linux package flavor.');
+    if (!['local', 'ubuntu-jammy'].includes(flavor)) fail('Expected a Debian package flavor.');
     const identity = createHash('sha256').update(JSON.stringify([checksum, flavor, buildConfiguration])).digest('hex');
     console.log(identity.slice(0, 12));
     return;

@@ -48,8 +48,14 @@ fi
 cargo clean --release --workspace --locked
 export TMPDIR="${TMPDIR:-$PWD/target/package-tmp}"
 mkdir -p -- "$TMPDIR"
-build_input_id="$(node tools/package-build-receipt.mjs build-id "$checksum" "$flavor")"
-export GIT_KHRONOS_BUILD_INPUT_ID="$build_input_id"
+if [[ "$bundle" == deb ]]; then
+  build_input_id="$(node tools/package-build-receipt.mjs build-id "$checksum" "$flavor")"
+  export GIT_KHRONOS_BUILD_INPUT_ID="$build_input_id"
+else
+  # AppImage currently has no task source digest. Do not publish a misleading
+  # constant ID or carry an inherited ID from a different build.
+  unset GIT_KHRONOS_BUILD_INPUT_ID
+fi
 pnpm exec tauri build --bundles "$bundle" --config "$tauri_config" "${extra_config[@]}"
 if [[ "$bundle" == deb ]]; then
   tools/manage-linux-package.sh name
