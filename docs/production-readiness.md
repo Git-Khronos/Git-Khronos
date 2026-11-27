@@ -5,6 +5,17 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Dev package validation — 2026-11-28
+
+The local Debian archive built from `94e8436` passed 339 full native
+scenarios, 52 GitLab catalogue scenarios, and 11 GitLab fork UI scenarios
+on Ubuntu 26.04 under WSL2. All three suites checked the same exact archive
+before extraction:
+`734304c1c316ce09d27a70fd44206ad6c06162664586c5d8df68bffd548d57dc`.
+The archive, build receipt, and reports are retained under
+`target/local-review/dev-94e8436/`. This evidence is for the development
+package, not the separately qualified production-key release candidate.
+
 ## Dev follow-up after the 0.1.6 candidate — 2026-11-26
 
 Linked worktrees can be locked with an optional user-supplied reason. Git's
