@@ -3,7 +3,7 @@
 set -euo pipefail
 
 usage() {
-  echo 'Usage: bash tools/run-native-suites.sh PACKAGE SUITE[:inherited] [SUITE[:inherited] ...]'
+  echo 'Usage: bash tools/run-native-suites.sh [--expect-package-sha256 SHA256] PACKAGE SUITE[:inherited] [SUITE[:inherited] ...]'
   echo 'Tests an already installed package in temporary repositories; does not install it.'
   echo 'Set GIT_KHRONOS_NATIVE_OUTPUT to retain reports in a separate directory.'
   echo 'Set GIT_KHRONOS_ACCEPTANCE_PYTHON to an absolute interpreter path if python3 is unavailable.'
@@ -12,6 +12,15 @@ usage() {
 if (( $# == 1 )) && [[ $1 == --help || $1 == -h ]]; then
   usage
   exit 0
+fi
+checksum=()
+if [[ ${1:-} == --expect-package-sha256 ]]; then
+  if [[ ! ${2:-} =~ ^[0-9A-Fa-f]{64}$ ]]; then
+    printf 'Expected exactly 64 hexadecimal characters after --expect-package-sha256.\n' >&2
+    exit 2
+  fi
+  checksum=("$1" "${2,,}")
+  shift 2
 fi
 if (( $# < 2 )); then
   usage >&2
@@ -70,7 +79,7 @@ for lane; do
   context=()
   if [[ "$lane" != "$suite" ]]; then context=(--inherited-git-environment); fi
   printf '\nInstalled native suite: %s\n' "$lane"
-  if "$python" "$runner" --suite "$suite" --headless --installed --package "$package" "${context[@]}" "${output[@]}"; then
+  if "$python" "$runner" --suite "$suite" --headless --installed --package "$package" "${context[@]}" "${checksum[@]}" "${output[@]}"; then
     passed=$((passed + 1))
     summary_rows+=("| \`${lane}\` | Passed |")
     printf 'Installed native suite passed: %s\n' "$lane"
@@ -94,7 +103,7 @@ printf 'Installed native suite summary: %s/%s passed.\n' "$passed" "$#"
 if (( ${#failed[@]} )); then
   printf 'Failed installed native suites (suite:exit): %s\n' "${failed[*]}" >&2
   printf 'Rerun only failed suites (from the same directory and environment):\n  bash' >&2
-  printf ' %q' "${BASH_SOURCE[0]}" "$package" "${failed_lanes[@]}" >&2
+  printf ' %q' "${BASH_SOURCE[0]}" "${checksum[@]}" "$package" "${failed_lanes[@]}" >&2
   printf '\n' >&2
   exit 1
 fi

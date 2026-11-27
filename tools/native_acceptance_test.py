@@ -82,7 +82,7 @@ class AbstractDisplayTests(unittest.TestCase):
 
 class InstalledSuiteBatchTests(unittest.TestCase):
     def run_batch(self, suites, *, have_package=True, separate_output=False, python_override=None,
-                  ci_summary=None):
+                  ci_summary=None, checksum=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             package = root / 'owned fixture.deb'
@@ -107,6 +107,10 @@ class InstalledSuiteBatchTests(unittest.TestCase):
                 'test "$7" = "$OWNED_PACKAGE" || exit 99\n'
                 'suite="$3"; shift 7\n'
                 'if [ "${1:-}" = --inherited-git-environment ]; then suite="$suite:inherited"; shift; fi\n'
+                'if [ -n "$OWNED_CHECKSUM" ]; then\n'
+                '  test "$1" = --expect-package-sha256 && test "$2" = "$OWNED_CHECKSUM" || exit 99\n'
+                '  shift 2\n'
+                'fi\n'
                 'if [ -n "$GIT_KHRONOS_NATIVE_OUTPUT" ]; then\n'
                 '  test "$#" = 2 && test "$1" = --output && test "$2" = "$GIT_KHRONOS_NATIVE_OUTPUT" || exit 99\n'
                 'else\n'
@@ -119,9 +123,10 @@ class InstalledSuiteBatchTests(unittest.TestCase):
             python.chmod(0o700)
             runner = Path(__file__).with_name('run-native-suites.sh')
             result = subprocess.run(
-                ['bash', str(runner), str(package), *suites],
+                ['bash', str(runner), *([] if checksum is None else ['--expect-package-sha256', checksum]),
+                 str(package), *suites],
                 env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
-                     'OWNED_PACKAGE': str(package), 'OWNED_CALLS': str(log),
+                     'OWNED_PACKAGE': str(package), 'OWNED_CALLS': str(log), 'OWNED_CHECKSUM': (checksum or '').lower(),
                      'GITHUB_STEP_SUMMARY': str(ci_summary) if ci_summary is not None else '',
                      'GIT_KHRONOS_NATIVE_OUTPUT': str(root / 'separate results') if separate_output else '',
                      'GIT_KHRONOS_ACCEPTANCE_PYTHON': {'valid': str(python),
@@ -169,6 +174,15 @@ class InstalledSuiteBatchTests(unittest.TestCase):
         self.assertEqual(Path(runner).name, 'run-native-suites.sh')
         self.assertEqual(Path(archive).name, 'owned fixture.deb')
         self.assertEqual(lanes, ['broken:inherited', 'broken'])
+
+    def test_reviewed_checksum_is_forwarded_and_kept_in_failed_suite_hint(self):
+        result, calls = self.run_batch(['smoke', 'broken:inherited'], checksum='A' * 64)
+        self.assertEqual((result.returncode, calls), (1, ['smoke', 'broken:inherited']))
+        command = shlex.split(result.stderr.splitlines()[-1].strip())
+        self.assertEqual(command[2:4], ['--expect-package-sha256', 'a' * 64])
+        self.assertEqual(command[-1], 'broken:inherited')
+        invalid, calls = self.run_batch(['smoke'], checksum='not-a-sha')
+        self.assertEqual((invalid.returncode, calls), (2, []))
 
     def test_interrupted_harness_does_not_start_the_next_suite(self):
         result, calls = self.run_batch(['interrupted', 'gitlab'])
