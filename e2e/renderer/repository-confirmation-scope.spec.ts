@@ -218,6 +218,35 @@ for (const revisit of [false, true]) {
 }
 
 for (const change of ['revisit', 'replacement'] as const) {
+  test(`a graph menu cannot open a history review after ${change}`, async ({ page }) => {
+    await page.getByRole('button', { name: 'Commit actions for Polish repository activity drawer', exact: true }).click();
+    const menu = page.locator('.graph-action-menu');
+    const action = menu.getByRole('menuitem', { name: 'Revert commit', exact: true });
+    await expect(action).toBeEnabled();
+    await action.evaluate((button, change) => {
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      const git = app.git, original = git.repository();
+      if (change === 'revisit') {
+        const other = { ...original, id: 'external-menu-checkout', path: '/owned/external-menu-checkout' };
+        git.repositories.update((items: any[]) => [...items, other]);
+        git.activateRepository(other.id);
+        git.activateRepository(original.id);
+      } else {
+        const commit = original.commits.find((candidate: any) => candidate.oid !== app.contextMenu().oid);
+        app.openContextMenu('commit', commit.oid, 'Replacement graph menu', new MouseEvent('contextmenu'));
+      }
+      (button as HTMLButtonElement).click();
+    }, change);
+    const dialog = page.locator('gk-history-review-dialog');
+    await expect(dialog).toBeHidden();
+    if (change === 'revisit') await expect(menu).toBeHidden();
+    else {
+      await expect(menu).toHaveAttribute('aria-label', /Replacement graph menu/);
+      await action.click();
+      await expect(dialog).toContainText('Replacement graph menu');
+    }
+  });
+
   test(`a history confirmation cannot dispatch after ${change}`, async ({ page }) => {
     await page.evaluate(() => {
       const app = (window as any).ng.getComponent(document.querySelector('gk-app'));

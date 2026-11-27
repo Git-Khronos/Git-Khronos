@@ -80,13 +80,13 @@
         @if (menu.oids.length === 1 && menu.repositoryId === view.git.activeRepositoryId() && menu.repositoryPath === view.git.repository()?.path) {
           <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.headOid" (click)="view.prepareContextCommitFixup()"><span><gk-icon name="git-commit" [size]="13" /></span>Prepare fixup commit from staged changes…</button>
         }
-        <button type="button" role="menuitem" (click)="view.requestHistoryAction('cherry-pick')"><span><gk-icon name="cherry-pick" [size]="13" /></span>Cherry-pick {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
-        <button type="button" role="menuitem" (click)="view.requestHistoryAction('revert')"><span><gk-icon name="revert" [size]="13" /></span>Revert {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
+        <button type="button" role="menuitem" (click)="view.requestHistoryAction('cherry-pick', menu)"><span><gk-icon name="cherry-pick" [size]="13" /></span>Cherry-pick {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
+        <button type="button" role="menuitem" (click)="view.requestHistoryAction('revert', menu)"><span><gk-icon name="revert" [size]="13" /></span>Revert {{ menu.oids.length === 1 ? 'commit' : menu.oids.length + ' commits' }}</button>
         <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.status?.branch" (click)="view.openSelectedRebase()"><span><gk-icon name="edit" [size]="13" /></span>{{ menu.oids.length === 1 ? 'Edit history from this commit…' : 'Edit selected range…' }}</button>
         <button type="button" role="menuitem" [disabled]="menu.oids.length > 1 || !view.canStartBisectAt(menu.oid)" (click)="view.requestBisectFromContext()"><span><gk-icon name="history" [size]="13" /></span>Start bisect from here…</button>
         <div class="context-divider"></div>
         <div class="context-section-label context-section-label-danger" aria-hidden="true">Move current branch</div>
-        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="view.requestHistoryAction('reset')"><span><gk-icon name="reset" [size]="13" /></span>Reset to this commit…</button>
+        <button class="danger-item" type="button" role="menuitem" [disabled]="menu.oids.length > 1" (click)="view.requestHistoryAction('reset', menu)"><span><gk-icon name="reset" [size]="13" /></span>Reset to this commit…</button>
       } @else if (menu.kind === 'branch') {
         <button type="button" role="menuitem" [disabled]="view.git.busy() || !view.git.repository()?.headOid" (click)="view.previewContextMerge()"><span><gk-icon name="merge" [size]="13" /></span>Preview merge conflicts…</button>
         <div class="context-divider"></div>

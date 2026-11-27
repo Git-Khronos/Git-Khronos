@@ -392,6 +392,9 @@ Commit history confirmations carry both checkout-visit and rendered-review
 identity. An obsolete control cannot execute, change the options of, or
 dismiss a replacement review. Reset previews and mutation completions can
 update only the review that started them.
+Graph menus captured in a previous visit retire without returning focus to
+that checkout. History actions also require the menu that rendered the
+control, so a stale click cannot open a review for a replacement selection.
 
 Stash options also belong to one checkout visit. Leaving the checkout retires
 the form, including its draft and focus intent, whether saving, applying a

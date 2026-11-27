@@ -1071,7 +1071,14 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly actionOverlays = new OverlayController<ActionOverlay>();
   protected readonly contextMenu = computed(() => {
     const active = this.actionOverlays.activeOverlay();
-    return active?.kind === 'context' ? active.value : null;
+    if (active?.kind !== 'context') return null;
+    return active.value.repositoryVisit === undefined
+      || active.value.repositoryVisit === this.git.activeRepositoryReadScope() ? active.value : null;
+  });
+  private readonly contextMenuVisit = effect(() => {
+    if (this.actionOverlays.activeOverlay()?.kind === 'context' && !this.contextMenu()) {
+      untracked(() => this.dismissGraphActionMenu(false));
+    }
   });
   protected readonly fileToolsDialog = signal<FileToolsDialogRequest | null>(null);
   protected openFileTools(action: FileToolsDialogRequest['action'] = null, returnFocus: HTMLElement | null = null): void {
@@ -14943,9 +14950,11 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
-  protected requestHistoryAction(kind: Exclude<PendingHistoryAction['kind'], 'checkout-commit'>): void {
-    const menu = this.contextMenu();
-    if (!menu || menu.kind !== 'commit') return;
+  protected requestHistoryAction(
+    kind: Exclude<PendingHistoryAction['kind'], 'checkout-commit'>,
+    menu: ContextMenuState,
+  ): void {
+    if (this.contextMenu() !== menu || menu.kind !== 'commit') return;
     const oids = kind === 'cherry-pick' ? menu.oids : kind === 'revert' ? [...menu.oids].reverse() : [menu.oid];
     const returnFocus = this.contextMenuReturnFocus;
     this.dismissGraphActionMenu();
