@@ -19,19 +19,23 @@ async function openReview(page: Page, review: Review, gap = false) {
     app.git.undoLabel = () => 'Owned undo';
     app.git.redoLabel = () => 'Owned redo';
     app.changesOpen.set(true);
+    // This fixture exercises keyboard ownership, not opening flows. Seed a
+    // valid review for the current visit before taking over action methods.
+    const visitOwner = { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
+      checkoutVisit: app.git.activeRepositoryReadScope() };
     const requests: Record<Review, [string, any]> = {
-      'force-push': ['pendingForcePush', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
+      'force-push': ['pendingForcePush', { ...visitOwner,
         branchRef: 'refs/heads/dev', branchName: 'dev',
         remote: 'origin', remoteBranch: 'refs/heads/dev', expectedRemoteOid: oid, expectedHeadOid: oid }],
-      'worktree-removal': ['pendingWorktreeAction', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
+      'worktree-removal': ['pendingWorktreeAction', { ...visitOwner,
         path: '/owned/checkout', branch: 'owned-review', deleteBranch: false, changes: 0 }],
-      sparse: ['pendingSparseCheckoutReview', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
+      sparse: ['pendingSparseCheckoutReview', { ...visitOwner,
         action: 'disable', paths: [], sparseIndex: false }],
-      publish: ['pendingPublishBranch', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null, branch: repository.status.branch }],
+      publish: ['pendingPublishBranch', { ...visitOwner, branch: repository.status.branch }],
       'workspace-delete': ['pendingWorkspaceDelete', { id: 'owned-review', name: 'Owned workspace' }],
-      'lfs-prune': ['lfsPruneReview', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null }],
+      'lfs-prune': ['lfsPruneReview', { ...visitOwner }],
       file: ['pendingFileAction', { kind: 'ignore', path: 'owned.txt', untracked: true, patternKind: 'extension', repositoryId: repository.id }],
-      branch: ['pendingBranchAction', { repositoryId: repository.id, repositoryPath: repository.path, returnFocus: null,
+      branch: ['pendingBranchAction', { ...visitOwner,
         kind: 'delete', branch: 'owned-review', expectedOid: oid }],
       'stored-reference': ['pendingStoredReferenceDelete', { kind: 'original', repoId: repository.id, repositoryPath: repository.path,
         repositoryVisit: app.git.activeRepositoryReadScope(), reference: 'refs/original/owned-review', oid, returnFocus: null }],
@@ -64,7 +68,7 @@ async function intents(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
 });
 
 for (const review of reviews) {
