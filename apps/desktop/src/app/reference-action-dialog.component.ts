@@ -7,6 +7,7 @@ export interface ReferenceActionRequest {
   action: 'push-tag' | 'delete-tag' | 'delete-remote-tag' | 'delete-remote-branch' | 'rename-tag' | 'rename-remote-branch';
   repositoryId: string;
   repositoryPath: string;
+  readonly checkoutVisit: string;
   name: string;
   oid: string;
   remote?: string;

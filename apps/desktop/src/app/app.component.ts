@@ -1463,7 +1463,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
     if (lock && !this.ownsWorktreeLock(lock)) untracked(() => this.closeWorktreeLock(lock, false));
     if (stash && !this.ownsCheckoutVisitReview(stash)) untracked(() => this.closeStashDialog(stash, false));
-    if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
+    if (reference && !this.ownsCheckoutVisitReview(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (contextCreation && !this.ownsRepositoryScope(contextCreation)) untracked(() => this.dismissGraphActionMenu(false));
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
     if (branchReview && !this.ownsCheckoutVisitReview(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
@@ -1520,7 +1520,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private savedDiscardsReturnFocus: HTMLElement | null = null;
   protected readonly referenceAction = signal<ReferenceActionRequest | null>(null);
   protected readonly ownsReferenceAction = (request: ReferenceActionRequest): boolean =>
-    this.referenceAction() === request && this.ownsRepositoryScope(request);
+    this.referenceAction() === request && this.ownsCheckoutVisitReview(request);
 
   protected closeReferenceAction(request: ReferenceActionRequest, restoreFocus = true): void {
     if (this.referenceAction() !== request) return;
@@ -1528,7 +1528,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const focusLease = this.deferredGitActionLease();
     if (restoreFocus) queueMicrotask(() => {
       const opener = request.returnFocus;
-      if (this.canRestoreDeferredFocus(focusLease, request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+      if (this.ownsCheckoutVisitReview(request) && this.canRestoreDeferredFocus(focusLease, request)
+        && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
     });
   }
 
@@ -2561,7 +2562,6 @@ export class AppComponent implements OnInit, OnDestroy {
         this.savedDiscards.set(null);
         this.savedDiscardsRepositoryId.set(null);
         this.savedDiscardsReturnFocus = null;
-        this.referenceAction.set(null);
         this.mergePreviewRequest.set(null);
       });
     });
@@ -14610,8 +14610,9 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected requestReferenceAction(action: ReferenceActionRequest['action'], menu = this.contextMenu()): void {
     const owner = this.captureRepositoryEditorOwner();
+    const checkoutVisit = this.git.activeRepositoryReadScope();
     if (!menu || this.contextMenu() !== menu || !owner || menu.repositoryId !== owner.repositoryId
-      || menu.repositoryPath !== owner.repositoryPath || this.git.busy()) return;
+      || menu.repositoryPath !== owner.repositoryPath || menu.repositoryVisit !== checkoutVisit || this.git.busy()) return;
     const remoteAction = action === 'delete-remote-branch' || action === 'rename-remote-branch';
     if (remoteAction ? menu.kind !== 'remote' : menu.kind !== 'tag') return;
     const remote = menu.kind === 'remote' ? this.remoteLocationName(menu.label) : undefined;
@@ -14619,7 +14620,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const returnFocus = this.contextMenuReturnFocus;
     this.actionOverlays.close('context');
     this.git.dismissError();
-    this.referenceAction.set({ action, ...owner, name, oid: menu.oid, remote, returnFocus });
+    this.referenceAction.set({ action, ...owner, checkoutVisit, name, oid: menu.oid, remote, returnFocus });
   }
 
   protected async verifyContextTag(): Promise<void> {
@@ -14655,7 +14656,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected handleReferenceRenamed(renamed: ReferenceRenamed): void {
-    if (this.ownsRepositoryScope(renamed.request) && renamed.kind === 'remote-branch' && renamed.remote) {
+    if (this.ownsReferenceAction(renamed.request) && renamed.kind === 'remote-branch' && renamed.remote) {
       this.followRenamedBranch(`${renamed.remote}/${renamed.name}`, `${renamed.remote}/${renamed.newName}`, false);
     }
   }

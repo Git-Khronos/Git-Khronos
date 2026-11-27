@@ -395,6 +395,10 @@ stash or one file, branching from it, or stashing before switching branches.
 
 ### Remote branch rename and deletion
 
+Tag and remote-branch actions require a menu and rendered review from the
+current checkout visit. An old action cannot dispatch or update branch
+filters after leaving and returning.
+
 Before sending a rename or deletion, native checks that Git's configured
 fetch mappings uniquely resolve the selected tracking ref to the same
 remote branch name. A displayed alias can share its commit with another

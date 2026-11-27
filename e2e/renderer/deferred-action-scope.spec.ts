@@ -145,7 +145,8 @@ for (const kind of ['reference', 'stash']) {
       const opener = document.createElement('button'); opener.id = 'owned-deferred-opener'; opener.textContent = 'Owned deferred opener';
       document.body.append(opener); opener.focus();
       const owner = { repositoryId: s.repository.id, repositoryPath: s.repository.path, returnFocus: opener };
-      if (kind === 'reference') s.app.referenceAction.set({ ...owner, action: 'delete-tag', name: 'v0.1.0', oid: s.repository.headOid });
+      if (kind === 'reference') s.app.referenceAction.set({ ...owner, action: 'delete-tag', name: 'v0.1.0', oid: s.repository.headOid,
+        checkoutVisit: s.git.activeRepositoryReadScope() });
       else s.app.stashDialog.set({ ...owner, action: 'save', checkoutVisit: s.git.activeRepositoryReadScope() });
     }, kind);
     await expect(page.locator(kind === 'reference' ? 'gk-reference-action-dialog [role=alertdialog]' : 'gk-stash-options-dialog [role=dialog]')).toBeVisible();

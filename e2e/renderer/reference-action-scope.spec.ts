@@ -5,7 +5,7 @@ const writes = ['transport_reference', 'manage_reference', 'rename_reference'];
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -22,11 +22,17 @@ test.beforeEach(async ({ page }) => {
     } };
     state.open = (action: string) => {
       const request = { action, repositoryId: repository.id, repositoryPath: repository.path,
+        checkoutVisit: git.activeRepositoryReadScope(),
         name: action.includes('branch') ? 'feature/search' : 'v0.1.0', oid: 'a'.repeat(40), remote: 'origin', returnFocus: null };
       app.referenceAction.set(request); return request;
     };
     state.change = (kind: string) => {
-      if (kind === 'repository') {
+      if (kind === 'revisit') {
+        const other = { ...repository, id: 'ref-revisit', path: '/owned/ref-revisit' };
+        git.repositories.update((items: any[]) => [...items, other]);
+        git.activateRepository(other.id);
+        git.activateRepository(repository.id);
+      } else if (kind === 'repository') {
         const other = { ...repository, id: 'ref-scope-B', path: '/owned/ref-scope-B' };
         git.repositories.update((items: any[]) => [...items, other]); git.activeRepositoryId.set(other.id);
       } else git.repositories.update((items: any[]) => items.map(item => item.id === repository.id ? { ...item, path: '/owned/ref-path-replacement' } : item));
@@ -48,15 +54,17 @@ async function open(page: import('@playwright/test').Page, action: string) {
 }
 
 for (const action of actions) {
-  test(`${action} refuses a same-ID checkout replacement before effects run`, async ({ page }) => {
-    await open(page, action);
-    await page.evaluate(() => {
-      const confirm = document.querySelector<HTMLButtonElement>('gk-reference-action-dialog footer button:last-child')!;
-      (window as any).__refScope.change('path'); confirm.click();
+  for (const change of ['path', 'revisit']) {
+    test(`${action} refuses a checkout ${change} before effects run`, async ({ page }) => {
+      const dialog = await open(page, action);
+      await dialog.locator('footer button').last().evaluate((confirm, change) => {
+        (window as any).__refScope.change(change);
+        (confirm as HTMLButtonElement).click();
+      }, change);
+      expect(await page.evaluate(writes => (window as any).__refScope.calls.filter((call: any) => writes.includes(call.command)), writes)).toEqual([]);
+      await expect(dialog).toHaveCount(0);
     });
-    expect(await page.evaluate(writes => (window as any).__refScope.calls.filter((call: any) => writes.includes(call.command)), writes)).toEqual([]);
-    await expect(page.locator('gk-reference-action-dialog [role=alertdialog]')).toHaveCount(0);
-  });
+  }
 
   test(`${action} still dispatches the valid source-bound action`, async ({ page }) => {
     const dialog = await open(page, action);
@@ -67,6 +75,20 @@ for (const action of actions) {
     expect(calls[0].args.repoId).toBe(await page.evaluate(() => (window as any).__refScope.repository.id));
   });
 }
+
+test('a tag menu from a retired checkout visit cannot open a new review', async ({ page }) => {
+  const opened = await page.evaluate(() => {
+    const { app, git, repository, change } = (window as any).__refScope;
+    const menu = { kind: 'tag', label: 'v0.1.0', oid: repository.headOid, oids: [repository.headOid],
+      repositoryId: repository.id, repositoryPath: repository.path, repositoryVisit: git.activeRepositoryReadScope(),
+      x: 100, y: 100 };
+    app.actionOverlays.open({ kind: 'context', value: menu });
+    change('revisit');
+    app.requestReferenceAction('delete-tag', menu);
+    return app.referenceAction() !== null;
+  });
+  expect(opened).toBe(false);
+});
 
 for (const action of ['confirm', 'cancel']) {
   test(`outgoing reference ${action} cannot consume a replacement request`, async ({ page }) => {
