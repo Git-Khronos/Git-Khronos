@@ -188,6 +188,11 @@ test('submodule review explains each state with exact commits and invokes only t
   const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
   await expect(dialog.getByRole('status')).toContainText('6 submodule paths; 6 need attention.');
   await expect(dialog.getByRole('status')).toBeFocused();
+  const bulk = dialog.getByRole('group', { name: 'All submodule actions' });
+  await expect(bulk.getByRole('button', { name: 'Update all from remotes' })).toBeDisabled();
+  await expect(bulk.getByRole('button', { name: 'Update all from remotes' }))
+    .toHaveAccessibleDescription('Initialize missing submodules before updating all.');
+  await expect(bulk.getByText('Initialize missing submodules before updating all.')).toBeVisible();
   const lane = dialog.getByRole('listitem', { name: 'Submodule vendor/lane-engine', exact: true });
   await expect(lane).toContainText('Different commit checked out');
   await expect(lane).toContainText(`Checked out ${'b'.repeat(10)}; recorded ${'a'.repeat(10)}`);

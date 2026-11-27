@@ -51,7 +51,11 @@ import { submoduleFindings } from './submodule-findings';
                 <button type="button" data-initialize-all-open [disabled]="!initializableCount(result) || unavailable() || syncing() || !!confirming()"
                   (click)="openBulk('initialize-all')">Initialize missing <span>{{ initializableCount(result) || '' }}</span></button>
                 <button type="button" data-update-all-open [disabled]="!canUpdateAll(result) || unavailable() || syncing() || !!confirming()"
-                  [title]="updateAllReason(result)" (click)="openBulk('update-all')">Update all from remotes</button>
+                  [attr.aria-describedby]="!canUpdateAll(result) ? 'submodule-update-all-reason' : null"
+                  (click)="openBulk('update-all')">Update all from remotes</button>
+                @if (!canUpdateAll(result)) {
+                  <small class="bulk-reason" id="submodule-update-all-reason">{{ updateAllReason(result) }}</small>
+                }
               </div>
               @if (confirming() === 'initialize-all') {
                 <div class="confirm bulk-confirm" role="group" aria-label="Initialize all missing submodules">
@@ -265,6 +269,7 @@ import { submoduleFindings } from './submodule-findings';
     .entry-filters small { line-height: 34px; }
     .bulk-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; margin: 10px 0 12px; padding: 10px 11px; border: 1px solid var(--inspector-divider); border-radius: 6px; background: color-mix(in srgb, var(--inspector-row) 70%, transparent); }
     .bulk-actions > div { min-width: 0; display: grid; gap: 1px; } .bulk-actions strong { font-size: 12px; } .bulk-actions small { color: var(--muted); font-size: 11px; }
+    .bulk-reason { grid-column: 1 / -1; }
     .bulk-actions button { margin: 0; white-space: nowrap; } .bulk-actions button span { min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; background: var(--inspector-row); font-size: 11px; }
     .bulk-confirm { margin-bottom: 12px; }
     .empty-state { display: grid; gap: 3px; padding: 18px; border: 1px dashed var(--inspector-divider); border-radius: 6px; color: var(--muted); text-align: center; }
@@ -575,9 +580,11 @@ export class SubmoduleStateReviewComponent {
   }
 
   updateAllReason(result: SubmoduleStateReview): string {
-    if (this.canUpdateAll(result)) return 'Fetch and check out the latest configured remote commits recursively';
-    if (this.initializableCount(result)) return 'Initialize missing submodules first';
-    return 'Resolve conflicts and local file changes before updating every submodule';
+    if (this.initializableCount(result)) return 'Initialize missing submodules before updating all.';
+    if (result.entries.some(entry => entry.conflict || entry.trackedChanges || entry.untrackedChanges)) {
+      return 'Resolve conflicts and review local file changes before updating all.';
+    }
+    return 'Each submodule needs a declaration, a recorded commit, and an initialized checkout before updating all.';
   }
 
   private canRunBulk(action: 'initialize-all' | 'update-all'): boolean {
