@@ -184,6 +184,25 @@ test('renderer shards spread adjacent cases, preserve their identities, and reje
   assert.equal(run('1', '3').status, 1);
 });
 
+test('shard comparison estimates balanced workload without trusting incomplete timing reports', async () => {
+  const { compareRendererShardLoad } = await import('./compare-renderer-shard-load.mjs');
+  const cases = Array.from({ length: 6 }, (_item, index) =>
+    `  [chromium] › ${index % 2 ? 'light' : 'heavy'}.spec.ts:${index + 1}:1 › case ${index + 1}`);
+  const listing = cases.join('\n') + '\nTotal: 6 tests in 2 files\n';
+  const reports = [
+    { version: 1, totalCases: 3, specs: [{ spec: 'heavy.spec.ts', cases: 3, durationMs: 300 }] },
+    { version: 1, totalCases: 3, specs: [{ spec: 'light.spec.ts', cases: 3, durationMs: 3 }] },
+  ];
+  const comparison = compareRendererShardLoad(listing, 2, reports);
+  assert.equal(comparison.estimatedLongestRoundRobinMs, 300);
+  assert.equal(comparison.estimatedLongestGreedyMs, 200);
+  assert.equal(comparison.greedy.reduce((total, item) => total + item.cases, 0), cases.length);
+  assert.throws(() => compareRendererShardLoad(listing, 2, reports.slice(0, 1)), /do not match/);
+  assert.throws(() => compareRendererShardLoad(listing, 2, [...reports, reports[0]]), /do not match/);
+  assert.throws(() => compareRendererShardLoad(listing, 2, [{ ...reports[0], totalCases: 4 }, reports[1]]), /totals/);
+  assert.throws(() => compareRendererShardLoad(listing, 2, [{ ...reports[0], specs: [reports[0].specs[0], reports[0].specs[0]] }]), /duplicate/);
+});
+
 test('validation help shows the Nx run form and missing commands create no run directory', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-validation-help-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

@@ -75,6 +75,11 @@ Hosted renderer-progress artifacts also carry a per-spec timing summary
 for clean shards that finish without retries or skips. Compare summaries
 from the same browser and runner class before changing shard allocation;
 summed test times describe workload, not total job wall time.
+An advisory comparison of round-robin and duration-weighted placement is
+available with `node tools/compare-renderer-shard-load.mjs "$listing" 4 "$reports"/*.timings.json`.
+Use a Chromium Playwright listing (`--list --reporter=line`) from the same
+revision and timing reports from one complete run. The comparison neither
+changes the shard plan nor estimates runner setup time.
 
 New renderer snapshots discard their private dependency and build caches
 when the run ends. A finished historical snapshot may still hold its own
