@@ -13,6 +13,56 @@ from prune_local_build_caches import prune
 
 
 class PruneTest(unittest.TestCase):
+    def test_legacy_node_caches_require_verified_package_and_recognized_pnpm(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            run = root / "target/local-review/jammy-legacy-node"
+            work = run / "work"
+            source = work / "source"
+            cache = source / "target/package-tmp/node-compile-cache"
+            pnpm = work / "node-tools/lib/node_modules/pnpm"
+            cache.mkdir(parents=True)
+            pnpm.mkdir(parents=True)
+            (source / "target/CACHEDIR.TAG").touch()
+            (source / "Cargo.toml").touch()
+            lock = source / "target/.git-khronos-linux-package.lock"
+            lock.touch()
+            artifact = work / "artifacts/Git-Khronos_0.1.6_amd64.deb"
+            artifact.parent.mkdir()
+            stored = b"qualified bytes"
+            artifact.write_bytes(stored)
+            manifest = artifact.with_name("SHA256SUMS")
+            old = time.time() - 8 * 86400
+            for path in (run, lock, artifact, cache, pnpm):
+                os.utime(path, (old, old))
+            package_json = pnpm / "package.json"
+            package_json.write_text('{"name":"unrecognized","version":"12.14.0"}')
+            os.utime(pnpm, (old, old))
+
+            def record(checksum):
+                manifest.write_text(f"{checksum}  {artifact.name}\n")
+                os.utime(manifest, (old, old))
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                record("0" * 64)
+                self.assertEqual(prune(root, 7, True), 0)
+                self.assertTrue(cache.is_dir())
+                self.assertTrue(pnpm.is_dir())
+                record(hashlib.sha256(stored).hexdigest())
+                with lock.open("rb") as handle:
+                    fcntl.flock(handle, fcntl.LOCK_EX)
+                    self.assertEqual(prune(root, 7, True), 0)
+                    self.assertTrue(cache.is_dir())
+                    self.assertTrue(pnpm.is_dir())
+                self.assertEqual(prune(root, 7, True), 0)
+                self.assertFalse(cache.exists())
+                self.assertTrue(pnpm.is_dir())
+                package_json.write_text('{"name":"pnpm","version":"12.14.0"}')
+                self.assertEqual(prune(root, 7, True), 0)
+                self.assertFalse(pnpm.exists())
+            self.assertEqual(artifact.read_bytes(), stored)
+            self.assertTrue(manifest.is_file())
+
     def test_old_owned_cache_is_removed_only_with_apply_and_no_build_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

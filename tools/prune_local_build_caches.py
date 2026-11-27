@@ -18,12 +18,33 @@ CACHE_PATHS = (
     *(f"source/target/release/{part}" for part in
       ("deps", "build", "incremental", ".fingerprint", "examples")),
 )
+# The old container builder provisioned pnpm and Node's compile cache under
+# each run instead of sharing them. Require preserved package bytes before
+# deleting these extra legacy caches, even when Cargo marked its cache.
+LEGACY_CACHE_PATHS = (
+    "node-tools/lib/node_modules/pnpm",
+    "source/target/package-tmp/node-compile-cache",
+)
 DEBIAN_NAME = r"Git-Khronos_[A-Za-z0-9.+_~-]+\.deb"
 
 
 def owned_directory(path):
     return (path.is_dir() and path.resolve() == path
             and path.stat().st_uid == os.getuid() and not path.is_mount())
+
+
+def known_legacy_cache(path, name):
+    if name != LEGACY_CACHE_PATHS[0]:
+        return True
+    try:
+        package = path / "package.json"
+        meta = package.lstat()
+        if not stat.S_ISREG(meta.st_mode) or not 0 < meta.st_size <= 65536:
+            return False
+        record = json.loads(package.read_text())
+        return record["name"] == "pnpm" and bool(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", record["version"]))
+    except (OSError, ValueError, KeyError, TypeError, RecursionError):
+        return False
 
 
 def verified_debian_archive(work, cutoff):
@@ -114,15 +135,26 @@ def prune(root, days, apply):
                 continue
             if max(run.stat().st_mtime, lock.stat().st_mtime) > cutoff:
                 continue
-            if (target / "CACHEDIR.TAG").is_file():
-                if source.stat().st_mtime > cutoff:
+            archive_verified = None
+            marked_cache = (target / "CACHEDIR.TAG").is_file()
+            source_old = source.stat().st_mtime <= cutoff
+            if not marked_cache:
+                archive_verified = verified_debian_archive(work, cutoff)
+                if not archive_verified:
                     continue
-            elif not verified_debian_archive(work, cutoff):
-                continue
-            for name in CACHE_PATHS:
+            for name in (*CACHE_PATHS, *LEGACY_CACHE_PATHS):
                 path = work / name
                 if (not owned_directory(path) or path.stat().st_mtime > cutoff
                         or any(mount.is_relative_to(path) for mount in mounts)):
+                    continue
+                if name in LEGACY_CACHE_PATHS:
+                    if not known_legacy_cache(path, name):
+                        continue
+                    if archive_verified is None:
+                        archive_verified = verified_debian_archive(work, cutoff)
+                    if not archive_verified:
+                        continue
+                elif marked_cache and not source_old:
                     continue
                 try:
                     if apply:
