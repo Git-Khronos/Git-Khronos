@@ -1437,6 +1437,12 @@ advances only the newly selected local branch. The suite also sets
 checkout without merging a divergent checkout. No external transport is used.
 The exact-artifact Ubuntu 24.04 CI job runs this suite on the installed package.
 
+To reproduce just this scenario against a verified archive without installing it:
+
+```sh
+pnpm nx run desktop:native-workspace-batch -- --package "$archive"
+```
+
 ## Focused removal of unopened saved paths
 
 Use `--suite workspace-saved-removal` to verify that Repository overview

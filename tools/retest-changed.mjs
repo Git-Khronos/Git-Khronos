@@ -54,6 +54,7 @@ const packagedScenarios = new Map([
   ['tools/native_gitlab_ssh_fixture.py', ['native-gitlab']],
   ['tools/native_gitlab_ssh_scenarios.py', ['native-gitlab']],
   ['tools/native_unstaged_summary_scenarios.py', ['native-working-tree-recaps']],
+  ['tools/native_workspace_batch_scenarios.py', ['native-workspace-batch']],
   ['tools/native_workspace_locate_scenarios.py', ['native-workspace-bulk-locate']],
   ['tools/native_worktree_scenarios.py', ['native-worktrees', 'native-worktree-reservation']],
   ['tools/native_sparse_checkout_scenarios.py', ['native-sparse-checkout']],

@@ -525,6 +525,18 @@ test('GitLab SSH fixture changes select the catalogue only, not the fork UI suit
   assert.doesNotMatch(plan, /"desktop:native-gitlab-fork-ui"|desktop:e2e|desktop:check/);
 });
 
+test('workspace batch changes select the real-Git package scenario without unrelated suites', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'candidate.deb\n');
+  f.commit();
+  f.write('candidate.deb');
+  f.write('tools/native_workspace_batch_scenarios.py');
+  assert.doesNotMatch(f.run(), /"desktop:native-workspace-batch"/);
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-workspace-batch"/);
+  assert.doesNotMatch(plan, /"desktop:native-(?:workspace-bulk-locate|worktrees)"|desktop:e2e|desktop:check/);
+});
+
 test('changed Git core unit modules share one Cargo run without Playwright or browser flags', t => {
   const f = fixture(t);
   f.write('crates/git-core/src/branch_comparison_tests.rs');

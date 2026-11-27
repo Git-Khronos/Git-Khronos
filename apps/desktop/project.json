@@ -182,6 +182,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite workspace-bulk-locate --headless" }
     },
+    "native-workspace-batch": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite workspace-batch --headless" }
+    },
     "native-worktrees": {
       "executor": "nx:run-commands",
       "cache": false,
