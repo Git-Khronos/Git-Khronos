@@ -213,13 +213,23 @@ test('manual release browsing uses the fixed URL without update trust or an inst
   expect(await calls()).toEqual([]);
   await browse.focus();
   await page.keyboard.press('Enter');
-  await expect(dialog.getByRole('alert')).toContainText(official);
+  await expect(dialog.getByRole('alert')).toContainText('Could not open the browser');
   await expect(browse).toBeFocused();
+  const address = dialog.getByRole('textbox', { name: 'Official release page address', exact: true });
+  await expect(address).toHaveValue(official);
+  await expect(address).not.toBeEditable();
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Refresh status', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(address).toBeFocused();
+  await expect.poll(() => address.evaluate((field: HTMLInputElement) =>
+    field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0))).toBe(official);
   const openBrowser = { command: 'open_external_url', args: { url: official } };
   expect(await calls()).toEqual([openBrowser]);
   await page.evaluate(() => { (window as any).__updates.rejectBrowser = false; });
   await browse.click();
   await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect(address).toHaveCount(0);
   expect(await calls()).toEqual([openBrowser, openBrowser]);
   await expect(dialog.getByRole('checkbox')).not.toBeChecked();
 });

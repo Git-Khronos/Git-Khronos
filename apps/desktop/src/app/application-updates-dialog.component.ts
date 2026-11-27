@@ -68,7 +68,14 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
             <button type="button" [disabled]="updates.installing()" [attr.aria-disabled]="openingReleases() ? 'true' : null" (click)="browseReleases(target)">Browse official releases (opens browser)</button>
             <button type="button" [disabled]="updates.actionPending()" (click)="refresh(target)">Refresh status</button>
           </footer>
-          @if (releaseError()) { <p class="release-error" role="alert">Could not open the browser. Copy <code>{{ officialReleasesUrl }}</code> into your browser to check manually.</p> }
+          @if (releaseError()) {
+            <div class="release-error">
+              <p role="alert">Could not open the browser. Copy the official release page address into your browser to check manually.</p>
+              <label class="release-address">Official release page address
+                <input #releaseUrlField type="url" readonly [value]="officialReleasesUrl" (focus)="releaseUrlField.select()" />
+              </label>
+            </div>
+          }
           <p class="help">Updates never change your repositories. Installation and restart are separate: a confirmed install does not mean this running window has switched versions.</p>
         }
         @if (updates.statusError(); as explanation) { <p role="alert">{{ explanation }}</p> }
@@ -89,7 +96,8 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
     .help { color: var(--muted); font-size: 12px; } .feedback { padding: 12px; border: 1px solid var(--overlay-border); border-radius: 5px; }
     .verified { color: var(--accent); font-size: 13px; } [role=alert] { color: var(--danger); } .notes p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
     footer { flex-wrap: wrap; margin-top: 16px; } progress { width: 100%; accent-color: var(--accent); }
-    .release-error { overflow-wrap: anywhere; }
+    .release-address { display: grid; gap: 6px; }
+    .release-address input { width: 100%; min-width: 0; box-sizing: border-box; padding: 8px; border: 1px solid var(--overlay-border); border-radius: 5px; background: var(--inspector-row); color: var(--text); font-family: monospace; }
   `],
 })
 export class ApplicationUpdatesDialogComponent {
