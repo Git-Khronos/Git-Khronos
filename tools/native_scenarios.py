@@ -1143,6 +1143,7 @@ def copy_reference_namespaces(driver, fixtures, report):
     fixtures.git(repository, "tag", "origin/main")
     refs = fixtures.git(repository, "show-ref")
     index = (repository / ".git/index").read_bytes()
+    config = (repository / ".git/config").read_bytes()
     repo_id = open_ui(driver, repository)
     driver.invoke("refresh_repository", repoId=repo_id)
     tag = '.tag-item[aria-label="Tag main"]'
@@ -1160,6 +1161,8 @@ def copy_reference_namespaces(driver, fixtures, report):
         driver.context_click(selector)
         driver.click_visible('.graph-action-menu button', 'Copy full ref')
         driver.wait("return !document.querySelector('.graph-action-menu')")
+        driver.wait("""return document.querySelector('[data-git-operation-status]')?.textContent.trim()
+          === 'Git status: Copied full Git ref'""")
         driver.script("""
           const input = document.createElement('input');
           input.id = 'owned-clipboard-paste';
@@ -1187,9 +1190,11 @@ def copy_reference_namespaces(driver, fixtures, report):
     assert fixtures.git(repository, "show-ref") == refs
     assert fixtures.git(repository, "symbolic-ref", "HEAD") == "refs/heads/main"
     assert (repository / ".git/index").read_bytes() == index
+    assert (repository / ".git/config").read_bytes() == config
     assert not fixtures.git(repository, "status", "--porcelain=v1")
     report["scenarios"].append("native-ui-copies-ambiguous-local-remote-and-tag-namespaces-without-git-mutation")
     report["scenarios"].append("native-ui-full-ref-keyboard-copy-restores-branch-focus")
+    report["scenarios"].append("native-ui-full-ref-copy-announces-success-without-echoing-reference")
     return repository, repo_id
 
 
