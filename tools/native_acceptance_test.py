@@ -1117,6 +1117,18 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual(request.call_count, 2)
         self.assertEqual(request.call_args.args, ('POST', '/session/owned/element/ready-navigation/click', {}))
 
+    def test_scrolled_click_accepts_an_icon_control_with_no_text_filter(self):
+        driver = Driver('http://127.0.0.1:1'); driver.session = 'owned'
+        selector = 'button[aria-label="Discard all unstaged changes"]'
+        element = {'element-6066-11e4-a52e-4f735466cecf': 'discard'}
+        with patch.object(driver, 'wait', return_value=[element]) as wait, \
+                patch.object(driver, 'request', side_effect=[{'interactable': True}, None]) as request:
+            driver.click_scrolled_text(selector, wait_for_ready=True)
+        self.assertIn('text === null', wait.call_args.args[0])
+        self.assertTrue(wait.call_args.args[0].endswith(', null);'))
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args.args, ('POST', '/session/owned/element/discard/click', {}))
+
     def test_navigation_readiness_still_refuses_ambiguity_and_times_out_without_a_click(self):
         driver = Driver('http://127.0.0.1:1'); driver.session = 'owned'
         element = {'element-6066-11e4-a52e-4f735466cecf': 'ambiguous'}

@@ -488,7 +488,7 @@ def discard_large_untracked_batch(driver, fixtures, report):
         if (event.isTrusted && event.target.closest(arguments[0])) window.__largeDiscardClick = true;
       }, { capture: true, once: true });
     """, discard)
-    driver.click_visible(discard)
+    driver.click_scrolled_text(discard, wait_for_ready=True)
     assert driver.script("return window.__largeDiscardClick"), 'the bulk discard button did not receive the trusted click'
     dialog = '[role="alertdialog"]'
     confirm = dialog + ' .confirm-action'

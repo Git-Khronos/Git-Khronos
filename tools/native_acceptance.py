@@ -535,11 +535,12 @@ class Driver:
             raise ValueError(f"Expected one {selector!r} with text {text!r}, found {len(elements)}")
         self._click_element(elements[0])
 
-    def click_scrolled_text(self, selector, text, *, wait_for_ready=False):
+    def click_scrolled_text(self, selector, text=None, *, wait_for_ready=False):
         """Scroll normally, verify the painted hit target, then click exactly once."""
         lookup = """(selector, text) => [...document.querySelectorAll(selector)].filter(element =>
           element.getClientRects().length && getComputedStyle(element).visibility === 'visible'
-          && !element.matches(':disabled') && !element.closest('[inert]') && element.textContent.trim() === text)"""
+          && !element.matches(':disabled') && !element.closest('[inert]')
+          && (text === null || element.textContent.trim() === text))"""
         if wait_for_ready:
             # Capture the ready element in the same read-only poll. A separate
             # DOM-presence wait can finish before the control is actually laid out.
