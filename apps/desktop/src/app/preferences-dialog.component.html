@@ -90,7 +90,7 @@
         <label>Auto-fetch<select aria-label="Automatic fetch interval" [ngModel]="host.autoFetchIntervalMinutes()" (ngModelChange)="host.setAutoFetchInterval($event)">
           <option [ngValue]="0">Off</option><option [ngValue]="1">Every minute</option><option [ngValue]="5">Every 5 minutes</option><option [ngValue]="15">Every 15 minutes</option><option [ngValue]="30">Every 30 minutes</option>
         </select></label>
-        <small>Fetches and prunes remote references. It never pulls or changes working files.</small>
+        <small>Updates remote-tracking references without pruning. It never pulls or changes working files.</small>
         <button #fetchHelp class="preference-help-action" type="button" (click)="documentation.open('fetch', fetchHelp)" aria-haspopup="dialog">Learn about fetch and pruning…</button>
       </div>
       <div id="preference-signing" class="preference-group signing-preferences" [hidden]="host.preferencesSection() !== 'git'">

@@ -319,7 +319,9 @@ test('Fetch All command palette action really fetches all rather than the curren
   await setup(page);
   await page.getByRole('button', { name: 'Command palette', exact: true }).click();
   await page.getByRole('combobox', { name: 'Search commands', exact: true }).fill('Fetch All');
-  await page.getByRole('option', { name: /^Fetch All/ }).click();
+  const action = page.getByRole('option', { name: /^Fetch All/ });
+  await expect(action).toContainText('Fetch updates without pruning');
+  await action.click();
 
   const observedFetch = () => page.evaluate(() => (window as any).__fetchFixture.calls.find((call: any) => call.command === 'fetch_repository'));
   await expect.poll(observedFetch).toBeDefined();

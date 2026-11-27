@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
 
 for (const outcome of ['cancel', 'failure'] as const) {
   test(`the lazy command catalogue is keyboard-contained on ${outcome}`, async ({ page }) => {
-    const commands = /Fetch and prune remote references/;
+    const commands = /Choose remote and pruning; leave tags unchanged/;
     let release!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; });
     let requests = 0;

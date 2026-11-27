@@ -9442,12 +9442,12 @@ test('keeps the commit inspector usable in a compact desktop window', async ({ p
   expect(wideCommitOptions[1].y).toBe(wideCommitOptions[0].y);
 });
 
-test('persists automatic remote refresh without implying a pull', async ({ page }) => {
+test('persists automatic remote refresh without implying pruning or pull', async ({ page }) => {
   await page.getByRole('button', { name: 'Preferences', exact: true }).click();
   await page.getByRole('dialog', { name: 'Preferences' }).getByRole('tab', { name: /^Git/ }).click();
   const interval = page.getByLabel('Automatic fetch interval');
   await expect(interval.locator('option:checked')).toHaveText('Every 5 minutes');
-  await expect(page.getByText('It never pulls or changes working files.')).toBeVisible();
+  await expect(page.getByText('Updates remote-tracking references without pruning. It never pulls or changes working files.')).toBeVisible();
 
   await interval.selectOption({ label: 'Every 15 minutes' });
   await expect.poll(() => page.evaluate(() => localStorage.getItem('git-khronos.remote.auto-fetch-minutes'))).toBe('15');
