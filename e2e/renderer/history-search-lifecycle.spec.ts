@@ -47,6 +47,22 @@ async function showHistory(page: Page, file: boolean) {
   return page.getByRole('region', { name: 'File history', exact: true });
 }
 
+test('file history moves focus from Cancel to Reload when the final page completes', async ({ page }) => {
+  await prepare(page, true);
+  const pane = await showHistory(page, true);
+  const cancel = pane.getByRole('button', { name: 'Cancel file history', exact: true });
+  await cancel.focus();
+  await expect(cancel).toBeFocused();
+  await page.evaluate(async () => {
+    const state = (window as any).__historyLifecycle;
+    state.finishInitial({ entries: [], cursor: null, complete: true, scanned: 0 });
+    await state.initial;
+  });
+  await expect(cancel).toHaveCount(0);
+  await expect(pane.getByRole('button', { name: 'All available file history loaded' })).toBeDisabled();
+  await expect(pane.getByRole('button', { name: 'Reload file history', exact: true })).toBeFocused();
+});
+
 for (const action of ['Load older file history', 'Reload file history']) {
   test(`file history keeps keyboard focus on ${action} during and after a read`, async ({ page }) => {
     await prepare(page, true);

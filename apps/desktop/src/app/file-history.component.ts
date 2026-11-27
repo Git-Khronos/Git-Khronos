@@ -50,7 +50,7 @@ import { HistorySearchService } from './history-search.service';
       </div>
       <footer>
         <button #retryButton type="button" [attr.aria-disabled]="canLoadMore() ? null : 'true'" (click)="loadMore()">{{ owned() && history.fileComplete() ? 'All available file history loaded' : owned() && history.fileError() ? 'Retry file history page' : 'Load older file history' }}</button>
-        <button type="button" [attr.aria-disabled]="canChangeStart() ? null : 'true'" title="Read history again from the selected starting point" (click)="reload()">Reload file history</button>
+        <button #reloadButton type="button" [attr.aria-disabled]="canChangeStart() ? null : 'true'" title="Read history again from the selected starting point" (click)="reload()">Reload file history</button>
         @if (owned() && history.fileBusy()) {
           <button #cancelButton type="button" [attr.aria-disabled]="history.fileCancelling() ? 'true' : null"
             (click)="!history.fileCancelling() && history.cancelFile()">{{ history.fileCancelling() ? 'Stopping…' : history.fileCancellationRequested() ? 'Retry cancellation' : 'Cancel file history' }}</button>
@@ -111,6 +111,7 @@ export class FileHistoryComponent {
   readonly draft = linkedSignal({ source: () => [this.revision(), this.path()], computation: (): string => '' });
   private readonly injector = inject(Injector);
   private readonly retryButton = viewChild.required<ElementRef<HTMLButtonElement>>('retryButton');
+  private readonly reloadButton = viewChild.required<ElementRef<HTMLButtonElement>>('reloadButton');
   private readonly cancelButton = viewChild<ElementRef<HTMLButtonElement>>('cancelButton');
   private wasBusy = false;
   private copyGeneration = 0;
@@ -154,10 +155,14 @@ export class FileHistoryComponent {
   constructor() {
     effect(() => {
       const busy = this.owned() && this.history.fileBusy();
-      if (this.wasBusy && !busy && document.activeElement === this.cancelButton()?.nativeElement) {
+      const cancel = this.cancelButton()?.nativeElement;
+      if (this.wasBusy && !busy && this.owned() && cancel && document.activeElement === cancel) {
+        const context = this.copyContext();
         afterNextRender(() => {
-          const button = this.retryButton().nativeElement;
-          if (document.activeElement === document.body && this.canLoadMore() && button.getClientRects().length) button.focus();
+          if (cancel.isConnected || document.activeElement !== document.body ||
+            this.copyContext() !== context || !this.owned() || this.history.fileBusy()) return;
+          const button = (this.canLoadMore() ? this.retryButton() : this.reloadButton()).nativeElement;
+          if (button.getClientRects().length) button.focus();
         }, { injector: this.injector });
       }
       this.wasBusy = busy;
