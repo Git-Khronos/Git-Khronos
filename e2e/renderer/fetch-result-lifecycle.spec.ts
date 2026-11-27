@@ -149,3 +149,37 @@ for (const kind of ['fetchUpdatesLocalBranch', 'fetchAllPolicyUnavailable']) {
     });
   });
 }
+
+test('Fetch All discloses a partial refresh without reporting success', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await page.evaluate(() => {
+    const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    const repository = git.repository();
+    const tracking = repository.branches.find((branch: any) => branch.remote === true || typeof branch.remote === 'string');
+    if (!tracking) throw new Error('Expected a remote-tracking branch in the preview.');
+    const oid = '8'.repeat(40);
+    const refreshed = { ...repository, branches: repository.branches.map((branch: any) => branch === tracking ? { ...branch, oid } : branch) };
+    (window as any).__partialFetch = { git, name: tracking.name, oid };
+    git.systemInfo.update((info: any) => ({ ...info, appVersion: 'renderer test' }));
+    (window as any).__TAURI_INTERNALS__ = { invoke: async (command: string) => {
+      if (command === 'fetch_repository') throw {
+        kind: 'gitTransportFailure', message: 'Git transport failed.',
+        hint: 'Some remotes may have updated even though Fetch All did not complete. Review the remote branches before retrying. Check the remote URL.',
+      };
+      if (command === 'refresh_repository' || command === 'refresh_repository_metadata') return refreshed;
+      if (command === 'refresh_repository_status') return refreshed.status;
+      return null;
+    } };
+  });
+  await page.getByRole('button', { name: 'Command palette', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search commands', exact: true }).fill('Fetch All');
+  await page.getByRole('option', { name: /^Fetch All/ }).click();
+  await expect(page.locator('.error-toast')).toContainText('Some remotes may have updated');
+  await expect(page.locator('.error-toast')).toContainText('Check the remote URL.');
+  await expect.poll(() => page.evaluate(() => {
+    const { git, name, oid } = (window as any).__partialFetch;
+    return git.repository().branches.some((branch: any) => branch.name === name && branch.oid === oid);
+  })).toBe(true);
+  await expect(page.locator('.activity-status')).not.toContainText('Fetch complete');
+});
