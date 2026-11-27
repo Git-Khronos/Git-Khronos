@@ -578,7 +578,7 @@ esac
   }
 });
 
-test('signed publication requires installed reports from the selected candidate attempt', async () => {
+test('signed publication requires installed reports and the exact archive from the selected candidate attempt', async t => {
   const runtime = await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8');
   const publish = await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8');
   for (const platform of ['ubuntu', 'debian']) {
@@ -589,7 +589,27 @@ test('signed publication requires installed reports from the selected candidate 
   const beforeStaging = publish.split('name: Prepare and reverify exactly the assets to upload')[0];
   assert.match(beforeStaging, /report-installed-acceptance\.mjs --verify-release[\s\S]*?--reports-dir candidate-matrix/);
   assert.match(beforeStaging, /--reports-dir candidate-matrix[\s\S]*?id: qualified-bytes[\s\S]*?check-debian-update-evidence\.mjs --release-package[\s\S]*?candidate-evidence\/report\.json/);
-  assert.ok(publish.includes('GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256: ${{ steps.qualified-bytes.outputs.sha256 }}'));
+  assert.ok(publish.includes('package-sha256: ${{ steps.qualified-bytes.outputs.sha256 }}'));
+  assert.ok(publish.includes('GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256: ${{ needs.qualify.outputs.package-sha256 }}'));
+  assert.match(publish, /  verify:\n\s+name: [^\n]+\n\s+needs: qualify/);
+  const qualification = publish.split('  verify:\n')[0];
+  assert.doesNotMatch(qualification, /inputs\.signature|secrets\.|contents: write|environment: signed-release/);
+  assert.match(beforeStaging, /name: Recheck the transferred archive[\s\S]*?needs\.qualify\.outputs\.package-sha256[\s\S]*?sha256sum --check --strict/);
+  const script = beforeStaging.match(/name: Recheck the transferred archive[^\n]*\n[\s\S]*?run: \|\n([\s\S]*?)(?=      - uses:)/)?.[1]
+    .replace(/^          /gm, '');
+  assert.ok(script);
+  const root = await mkdtemp(join(tmpdir(), 'gk-release-archive-recheck-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'candidate'));
+  const file = join(root, 'candidate/Git-Khronos_0.1.6_amd64.deb');
+  const bytes = 'qualified workspace fixture';
+  const checksum = createHash('sha256').update(bytes).digest('hex');
+  const check = () => spawnSync('bash', ['-c', script], { cwd: root,
+    env: { ...process.env, QUALIFIED_SHA256: checksum, RELEASE_TAG: 'v0.1.6' } }).status;
+  await writeFile(file, bytes);
+  assert.equal(check(), 0);
+  await writeFile(file, 'replaced workspace fixture');
+  assert.equal(check(), 1);
 });
 
 test('Linux runtime CI provisions authenticated X11, D-Bus and matching WebDriver packages', async (t) => {

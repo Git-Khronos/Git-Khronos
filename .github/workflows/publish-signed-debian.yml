@@ -26,8 +26,8 @@ env:
   RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
-  verify:
-    name: Validate candidate evidence and signed assets
+  qualify:
+    name: Validate qualification evidence before signing or staging
     if: github.ref == 'refs/heads/main' && github.repository == 'Git-Khronos/Git-Khronos'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -36,8 +36,9 @@ jobs:
       contents: read
     outputs:
       tag-commit: ${{ steps.candidate.outputs.commit }}
-      artifact-id: ${{ steps.assets.outputs.artifact-id }}
-      checksums-sha256: ${{ steps.prepare.outputs.checksums_sha256 }}
+      attempt: ${{ steps.candidate.outputs.attempt }}
+      package-sha256: ${{ steps.qualified-bytes.outputs.sha256 }}
+      lanes: ${{ steps.qualified-bytes.outputs.lanes }}
     steps:
       - name: Require a reviewer-protected main-only release environment before publication
         if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'
@@ -60,34 +61,24 @@ jobs:
             echo '::error::Restrict the signed-release environment to exactly one branch policy for main and no tag rules.'
             exit 1
           fi
-      - name: Check publisher key and signature inputs
+      - name: Record the publisher public key
         env:
           PUBLIC_KEY: ${{ vars.GIT_KHRONOS_UPDATER_PUBLIC_KEY }}
-          PACKAGE_SIGNATURE: ${{ inputs.signature }}
         run: |
           set -euo pipefail
           if [[ ! "$PUBLIC_KEY" =~ [^[:space:]] ]]; then
             echo "::error::Set the GIT_KHRONOS_UPDATER_PUBLIC_KEY Actions variable to the production public key."
             exit 1
           fi
-          if [[ ! "$PACKAGE_SIGNATURE" =~ [^[:space:]] ]]; then
-            echo "::error::Supply the public .deb.sig content for the qualified package."
-            exit 1
-          fi
           umask 077
           printf '%s' "$PUBLIC_KEY" > "$RUNNER_TEMP/publisher.pub"
-          printf '%s' "$PACKAGE_SIGNATURE" > "$RUNNER_TEMP/package.sig"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 12.23.0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: pnpm
       - name: Verify updater public key format before candidate work
         env:
           GIT_KHRONOS_UPDATER_PUBLIC_KEY: ${{ vars.GIT_KHRONOS_UPDATER_PUBLIC_KEY }}
@@ -152,7 +143,8 @@ jobs:
             "candidate/Git-Khronos_${RELEASE_TAG#v}_amd64.deb" candidate/build-receipt.json \
             candidate-evidence/report.json "$RUNNER_TEMP/publisher.pub")"
           [[ "$checksum" =~ ^[a-f0-9]{64}$ ]]
-          printf 'sha256=%s\n' "$checksum" >> "$GITHUB_OUTPUT"
+          lanes="$(jq -er '.releaseMatrix | select(.complete == true) | .checks | length' "$RUNNER_TEMP/installed-release-matrix.json")"
+          printf 'sha256=%s\nlanes=%s\n' "$checksum" "$lanes" >> "$GITHUB_OUTPUT"
       - name: Retain the verified matrix for release reviewers
         uses: actions/upload-artifact@v4
         with:
@@ -160,6 +152,71 @@ jobs:
           path: ${{ runner.temp }}/installed-release-matrix.json
           if-no-files-found: error
           retention-days: 7
+
+  verify:
+    name: Validate signed assets and rehearse the updater
+    needs: qualify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      tag-commit: ${{ needs.qualify.outputs.tag-commit }}
+      artifact-id: ${{ steps.assets.outputs.artifact-id }}
+      checksums-sha256: ${{ steps.prepare.outputs.checksums_sha256 }}
+    steps:
+      - name: Check publisher key and signature inputs
+        env:
+          PUBLIC_KEY: ${{ vars.GIT_KHRONOS_UPDATER_PUBLIC_KEY }}
+          PACKAGE_SIGNATURE: ${{ inputs.signature }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PUBLIC_KEY" =~ [^[:space:]] ]]; then
+            echo "::error::Set the GIT_KHRONOS_UPDATER_PUBLIC_KEY Actions variable to the production public key."
+            exit 1
+          fi
+          if [[ ! "$PACKAGE_SIGNATURE" =~ [^[:space:]] ]]; then
+            echo "::error::Supply the public .deb.sig content for the qualified package."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$PUBLIC_KEY" > "$RUNNER_TEMP/publisher.pub"
+          printf '%s' "$PACKAGE_SIGNATURE" > "$RUNNER_TEMP/package.sig"
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+          name: debian-candidate-${{ needs.qualify.outputs.attempt }}
+          path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+          name: debian-candidate-evidence-${{ needs.qualify.outputs.attempt }}
+          path: candidate-evidence
+      - name: Recheck the transferred archive against the qualified digest
+        env:
+          QUALIFIED_SHA256: ${{ needs.qualify.outputs.package-sha256 }}
+        run: |
+          set -euo pipefail
+          [[ "$QUALIFIED_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          package="candidate/Git-Khronos_${RELEASE_TAG#v}_amd64.deb"
+          [[ -f "$package" && ! -L "$package" ]]
+          printf '%s  %s\n' "$QUALIFIED_SHA256" "$package" | sha256sum --check --strict
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.99.0
@@ -182,7 +239,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GIT_KHRONOS_STAGED_RELEASE_DIR: ${{ steps.prepare.outputs.directory }}
-          GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256: ${{ steps.qualified-bytes.outputs.sha256 }}
+          GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256: ${{ needs.qualify.outputs.package-sha256 }}
         run: |
           set -euo pipefail
           baseline="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
@@ -206,18 +263,19 @@ jobs:
           retention-days: 7
       - name: Summarize the verified release handoff
         env:
-          TAG_COMMIT: ${{ steps.candidate.outputs.commit }}
+          TAG_COMMIT: ${{ needs.qualify.outputs.tag-commit }}
+          LANES: ${{ needs.qualify.outputs.lanes }}
           ASSET_ID: ${{ steps.assets.outputs.artifact-id }}
           CHECKSUMS_SHA256: ${{ steps.prepare.outputs.checksums_sha256 }}
           PUBLICATION_ENABLED: ${{ vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' }}
         run: |
           set -euo pipefail
-          lanes="$(jq -er '.releaseMatrix | select(.complete == true) | .checks | length' "$RUNNER_TEMP/installed-release-matrix.json")"
+          [[ "$LANES" =~ ^[1-9][0-9]*$ ]]
           {
             printf '### Signed assets verified for %s\n\n' "$RELEASE_TAG"
             printf -- '- Tag commit: `%s`\n' "$TAG_COMMIT"
             printf -- '- Verified asset artifact ID: `%s`\n' "$ASSET_ID"
-            printf -- '- Verified installed lanes: %s\n' "$lanes"
+            printf -- '- Verified installed lanes: %s\n' "$LANES"
             printf -- '- SHA256SUMS digest: `%s`\n\n' "$CHECKSUMS_SHA256"
             if [[ "$PUBLICATION_ENABLED" == true ]]; then
               printf 'Verification does not publish a release. See the protected publish job for the publication result.\n'
