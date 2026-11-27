@@ -168,7 +168,7 @@ jobs:
           node tools/plan-renderer-shard.mjs "$plan/all" "$SHARD" "$SHARD_TOTAL" > "$plan/selected"
           pnpm exec playwright test --list --reporter=line --test-list "$plan/selected" > "$plan/resolved"
           diff -u "$plan/selected" <(sed -n '/^  \[chromium\] › /p' "$plan/resolved")
-          pnpm nx run desktop:e2e --output-style=static --skipNxCache -- \
+          pnpm nx run desktop:e2e --output-style=stream --skipNxCache -- \
             --test-list "$plan/selected" --workers=1 --retries=0
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -317,28 +317,28 @@ jobs:
           echo "PACKAGE=$PWD/${packages[0]}" >> "$GITHUB_ENV"
       - name: Run packaged WebKitGTK acceptance
         if: matrix.lane == 'primary'
-        run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static -- --package "$PACKAGE"
+        run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=stream -- --package "$PACKAGE"
       - name: Verify packaged browser and file manager handoffs
         if: matrix.lane == 'supplemental'
         run: |
-          pnpm nx run desktop:native-git-documentation --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-application-update-release-link --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-file-manager-launch --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-git-documentation --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-application-update-release-link --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-file-manager-launch --output-style=stream -- --package "$PACKAGE"
       - name: Run focused packaged signing and tag-navigation acceptance
         if: matrix.lane == 'supplemental'
         run: |
-          pnpm nx run desktop:native-signed-commit --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-empty-commit --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-merge-preview --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-signed-tag --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-lfs-lock-actions --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-tag-preview --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-file-history --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-conflict-navigation --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-file-tools --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-working-tree-recaps --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-discard-busy --output-style=static -- --package "$PACKAGE"
-          pnpm nx run desktop:native-integrity-ui --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-signed-commit --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-empty-commit --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-merge-preview --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-signed-tag --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-lfs-lock-actions --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-tag-preview --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-file-history --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-conflict-navigation --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-file-tools --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-working-tree-recaps --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-discard-busy --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-integrity-ui --output-style=stream -- --package "$PACKAGE"
       - name: Run focused packaged GitLab fork navigation acceptance
         if: matrix.lane == 'supplemental'
         run: |

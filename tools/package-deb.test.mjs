@@ -363,6 +363,9 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   const check = native.match(/id: verify-native-package\n\s+run: \|\n([\s\S]*?)(?=      - name:)/)?.[1].replace(/^          /gm, '');
   assert.ok(check);
   assert.match(native, /if: \$\{\{ !cancelled\(\) && steps\.verify-native-package\.outcome == 'success' \}\}[\s\S]*?name: packaged-native-[^\n]+\n\s+path: test-results\/native\/\n/);
+  assert.match(ci, /pnpm nx run desktop:e2e --output-style=stream --skipNxCache/);
+  const bufferedNativeCommands = native.split('\n').filter(line => line.includes('pnpm nx run') && line.includes('--output-style=static'));
+  assert.deepEqual(bufferedNativeCommands, []);
   for (const line of native.split('\n').filter(line => /pnpm nx run .*desktop:native-|--suite gitlab/.test(line))) {
     assert.ok(line.endsWith('--package "$PACKAGE"'), line);
   }
