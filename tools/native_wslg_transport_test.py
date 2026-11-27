@@ -1,6 +1,8 @@
 """CLI checks using private fixture logs; no WSL host is required."""
 
+import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import tempfile
@@ -14,16 +16,17 @@ ENABLED = "RDP backend: use_gfxredir = 1\n"
 
 
 class WslgTransportTest(unittest.TestCase):
-    def diagnostic(self, contents):
+    def diagnostic(self, contents, *options, environment=None):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / "weston.log"
             if contents is not None:
                 log.write_text(contents, encoding="utf-8")
             return subprocess.run(
-                [sys.executable, str(SCRIPT), "--log", str(log)],
+                [sys.executable, str(SCRIPT), "--log", str(log), *options],
                 text=True,
                 capture_output=True,
                 check=False,
+                env=environment,
             )
 
     def test_matching_transport_failure_suggests_recovery_without_dumping_log(self):
@@ -49,3 +52,19 @@ class WslgTransportTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("Cannot read", result.stderr)
         self.assertEqual(result.stdout, "")
+
+    def test_endpoint_check_distinguishes_a_socket_from_a_file_without_showing_paths(self):
+        with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX) as endpoint:
+            path = Path(directory) / "private-display"
+            endpoint.bind(str(path))
+            environment = dict(os.environ, XDG_RUNTIME_DIR=directory, WAYLAND_DISPLAY=path.name, DISPLAY="remote:0")
+            present = self.diagnostic(ENABLED, "--endpoints", environment=environment)
+            self.assertEqual(present.returncode, 0, present.stderr)
+            self.assertIn("Wayland: local socket present", present.stdout)
+            self.assertIn("X11: not a local Unix display", present.stdout)
+            self.assertNotIn(directory, present.stdout)
+            path.unlink()
+            path.touch()
+            missing = self.diagnostic(ENABLED, "--endpoints", environment=environment)
+            self.assertIn("Wayland: local socket missing", missing.stdout)
+            self.assertIn("does not establish display access", missing.stdout)

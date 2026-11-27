@@ -1,7 +1,9 @@
 """Read the WSLg compositor log without changing the running session."""
 
 import argparse
+import os
 from pathlib import Path
+import re
 
 
 def transport_status(lines):
@@ -23,10 +25,45 @@ def transport_status(lines):
     return status
 
 
+def display_endpoints(environment):
+    """Describe local socket presence, without connecting to the compositor."""
+    wayland = environment.get("WAYLAND_DISPLAY")
+    runtime = environment.get("XDG_RUNTIME_DIR")
+    if not wayland:
+        wayland_status = "WAYLAND_DISPLAY is unset"
+    elif not Path(wayland).is_absolute() and not (runtime and Path(runtime).is_absolute()):
+        wayland_status = "no absolute XDG_RUNTIME_DIR for the relative socket name"
+    else:
+        socket = Path(wayland) if Path(wayland).is_absolute() else Path(runtime) / wayland
+        wayland_status = socket_presence(socket)
+
+    display = environment.get("DISPLAY")
+    if not display:
+        x11_status = "DISPLAY is unset"
+    elif match := re.fullmatch(r"(?:unix)?:([0-9]{1,6})(?:\.[0-9]{1,6})?", display):
+        x11_status = socket_presence(Path("/tmp/.X11-unix") / f"X{match.group(1)}")
+    else:
+        x11_status = "not a local Unix display; not probed"
+    return wayland_status, x11_status
+
+
+def socket_presence(path):
+    try:
+        return "local socket present" if path.is_socket() else "local socket missing"
+    except (OSError, ValueError):
+        return "local socket could not be inspected"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", type=Path, default=Path("/mnt/wslg/weston.log"), help="WSLg Weston log path")
+    parser.add_argument("--endpoints", action="store_true", help="Check whether this shell can see the local display sockets")
     args = parser.parse_args()
+    if args.endpoints:
+        wayland, x11 = display_endpoints(os.environ)
+        print(f"Wayland: {wayland}.")
+        print(f"X11: {x11}.")
+        print("Socket presence does not establish display access or prove that a window renders.")
     try:
         with args.log.open(encoding="utf-8", errors="replace") as log:
             status = transport_status(log)
