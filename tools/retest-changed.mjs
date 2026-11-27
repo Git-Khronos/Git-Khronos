@@ -36,7 +36,7 @@ const rendererFixtureSpecs = new Map([
   ['e2e/renderer/preview-repository-ready.ts', [
     'branch-rename-scope', 'branch-workflows', 'confirmation-keyboard', 'history-review-loading', 'lfs-tracking', 'mainline-replay', 'operation-recovery',
     'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-action-lifecycle', 'stash-delete-lifecycle', 'stash-review-scope',
-    'deferred-action-scope', 'reference-action-scope', 'reference-actions',
+    'deferred-action-scope', 'reference-action-scope', 'reference-actions', 'worktree-registration',
   ]],
   ['e2e/renderer/graph-layout-test-helpers.ts', ['graph-columns', 'graph-layout-readiness']],
   ['e2e/renderer/lazy-chunk-routing.ts', [

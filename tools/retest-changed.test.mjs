@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, delimiter, join } from 'node:path';
 import test from 'node:test';
@@ -125,9 +125,12 @@ test('changing preview startup selects every direct consumer of that fixture', t
   const f = fixture(t);
   f.write('e2e/renderer/preview-repository-ready.ts');
   const plan = f.run();
-  for (const name of ['branch-rename-scope', 'branch-workflows', 'confirmation-keyboard', 'history-review-loading', 'lfs-tracking', 'mainline-replay', 'operation-recovery',
-    'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-action-lifecycle', 'stash-delete-lifecycle', 'stash-review-scope',
-    'deferred-action-scope', 'reference-action-scope', 'reference-actions']) {
+  const renderer = new URL('../e2e/renderer/', import.meta.url);
+  const consumers = readdirSync(renderer).filter(name => name.endsWith('.spec.ts') &&
+    /\bfrom\s+['"]\.\/preview-repository-ready['"]/.test(readFileSync(new URL(name, renderer), 'utf8')));
+  assert.ok(consumers.length > 0, 'expected real renderer specs using the startup helper');
+  for (const spec of consumers) {
+    const name = spec.slice(0, -'.spec.ts'.length);
     assert.ok(plan.includes(`e2e/renderer/${name}[.]spec[.]ts$`), name);
   }
   assert.doesNotMatch(plan, /desktop:check/);
