@@ -3473,9 +3473,12 @@ missing from the store, setup fails rather than using the live checkout.
 means Nx actually started, and both receipts identify the isolated directory.
 Use normal mode for Git-history-dependent targets such as `nx affected`.
 
-When a renderer snapshot finishes, the runner removes the snapshot's
-`node_modules` and Angular/Nx caches. It keeps the exported source, receipts,
-logs, traces, and screenshots. After a reboot, reclaim any stranded caches
+When an Nx snapshot finishes, including a build-only snapshot, the runner
+removes its `node_modules` and Angular/Nx caches. The exported source, build
+outputs, receipts, logs, traces, and screenshots are kept. To remove these
+caches from a legacy finished snapshot with matching ownership receipts, use
+`node tools/run-validation.mjs reclaim <run-directory> --completed`.
+After a reboot, reclaim stranded renderer caches
 with `node tools/run-validation.mjs reclaim <run-directory>`. This requires
 a renderer snapshot receipt from a different boot and refuses a live run.
 It also works if the reboot interrupted dependency setup, before a browser

@@ -687,10 +687,16 @@ if (args[0] === 'install') {
     fs.writeFileSync(path + '/owned-cache', 'generated and disposable');
   }
 } else {
-  assert.deepEqual(args, ['nx', 'run', 'desktop:e2e']);
   assert.equal(fs.readFileSync('offline-install', 'utf8'), 'owned dependency setup');
-  assert.match(process.env.PLAYWRIGHT_PORT, /^[0-9]+$/);
-  fs.writeFileSync('tested', process.env.PLAYWRIGHT_PORT);
+  if (args[2] === 'desktop:build') {
+    assert.deepEqual(args, ['nx', 'run', 'desktop:build']);
+    fs.mkdirSync('dist');
+    fs.writeFileSync('dist/build-output', 'retained build evidence');
+  } else {
+    assert.deepEqual(args, ['nx', 'run', 'desktop:e2e']);
+    assert.match(process.env.PLAYWRIGHT_PORT, /^[0-9]+$/);
+    fs.writeFileSync('tested', process.env.PLAYWRIGHT_PORT);
+  }
 }
 `, { mode: 0o700 });
     const options = { cwd, env: { ...env, PATH: `${bin}:${process.env.PATH}`, CI: '', FIXTURE_SPEC: spec,
@@ -719,6 +725,13 @@ if (args[0] === 'install') {
       { ...options, env: { ...options.env, PLAYWRIGHT_PORT: '44213' } });
     assert.equal(readFileSync(join(specified, 'source/tested'), 'utf8'), '44213');
     assert.equal(JSON.parse(readFileSync(join(specified, 'result.json'), 'utf8')).rendererPort, '44213');
+
+    const build = join(cwd, 'build evidence');
+    execFileSync(process.execPath, [launcher, 'run', build, '--snapshot', commit, 'run', 'desktop:build'], options);
+    assert.equal(existsSync(join(build, 'source/node_modules')), false);
+    assert.equal(existsSync(join(build, 'source/.angular/cache')), false);
+    assert.equal(existsSync(join(build, 'source/.nx/cache')), false);
+    assert.equal(readFileSync(join(build, 'source/dist/build-output'), 'utf8'), 'retained build evidence');
 
     const failed = join(cwd, 'failed evidence');
     assert.throws(() => execFileSync(process.execPath, [launcher, 'run', failed, '--snapshot', commit, 'run', 'desktop:e2e'],
@@ -834,7 +847,7 @@ test('reclaim removes only disposable caches from a renderer snapshot on a previ
   assert.equal(readStatus(directory).state, 'stopped-without-result');
 });
 
-test('reclaim can opt into a finished legacy renderer snapshot but refuses live or mismatched receipts',
+test('reclaim can opt into a finished legacy build snapshot but refuses live or mismatched receipts',
   { skip: process.platform !== 'linux' }, t => {
     const directory = mkdtempSync(join(tmpdir(), 'gk-reclaim-finished-'));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -843,7 +856,7 @@ test('reclaim can opt into a finished legacy renderer snapshot but refuses live 
     writeFileSync(join(source, 'source.ts'), 'snapshot');
     writeFileSync(join(directory, 'output.log'), 'retained log');
     const started = '2025-01-01T00:00:00.000Z';
-    const command = ['pnpm', 'nx', 'run', 'desktop:e2e'];
+    const command = ['pnpm', 'nx', 'run', 'desktop:build'];
     const snapshot = { mode: 'commit-snapshot', commandCwd: source, cwd: directory, commit: 'a'.repeat(40) };
     const oldRunner = spawnSync(process.execPath, ['-e', '']).pid;
     assert.ok(oldRunner && processStart(oldRunner) === null);

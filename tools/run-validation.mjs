@@ -76,7 +76,8 @@ Use start for a detached run, or run to wait in the foreground.
 Without --snapshot the run uses the current checkout; with it, it uses the named local commit.
 --guard-source refuses a passing result if Git-visible checkout files differ at the end.
 Use wait to observe an existing run and return its exit code, without taking ownership.
-Use reclaim to remove disposable caches from an interrupted renderer snapshot after a reboot.
+Use reclaim to remove disposable caches from a finished snapshot (--completed)
+or an interrupted renderer snapshot after a reboot.
 Use --completed for an older finished renderer snapshot whose paired receipts match and whose runner is no longer live.
 --discard-worker-scratch also removes raw Playwright worker recordings, including unfinished-test diagnostics.
 It keeps exported failure screenshots and trace archives, progress, and logs.
@@ -107,18 +108,18 @@ if (mode === 'reclaim') {
   // A boot can interrupt pnpm install before the run has a renderer port.
   // Classify the recorded Nx command, not the later Playwright metadata.
   const command = status.command;
-  const rendererSnapshot = Array.isArray(command) && command.every(arg => typeof arg === 'string')
-    && command[0] === 'pnpm' && command[1] === 'nx'
-    && rendererSelection(command.slice(2)).rendererRun;
+  const nxSnapshot = Array.isArray(command) && command.every(arg => typeof arg === 'string')
+    && command[0] === 'pnpm' && command[1] === 'nx' && command.length > 2;
+  const rendererSnapshot = nxSnapshot && rendererSelection(command.slice(2)).rendererRun;
   if (status.source?.mode !== 'commit-snapshot' || status.source.commandCwd !== source
-    || !rendererSnapshot
+    || !(completed ? nxSnapshot : rendererSnapshot)
     || realpathSync(directory) !== directory || realpathSync(source) !== source
     || (completed ? !completedSnapshotRetired(directory, status)
       || statSync(directory).uid !== process.getuid() || statSync(source).uid !== process.getuid()
       || existsSync(join(source, '.git'))
       : status.state !== 'stopped-without-result' || status.stopReason !== 'different-boot')) {
     throw new Error(completed
-      ? 'Refusing to reclaim: expected matching receipts for a finished renderer snapshot with no live runner.'
+      ? 'Refusing to reclaim: expected matching receipts for a finished Nx snapshot with no live runner.'
       : 'Refusing to reclaim: expected an owned renderer snapshot interrupted on a previous boot.');
   }
   const failures = reclaimSnapshotCaches(source, process.stderr.fd);
@@ -127,7 +128,7 @@ if (mode === 'reclaim') {
     const count = discardRendererWorkerScratch(directory);
     console.log(`Reclaimed disposable renderer snapshot caches and ${count} raw Playwright worker directories. Exported reports and traces, sources, progress and logs are untouched.`);
   } else {
-    console.log('Reclaimed disposable renderer snapshot caches. Sources, logs, and evidence are untouched.');
+    console.log('Reclaimed disposable snapshot caches. Sources, logs, and evidence are untouched.');
   }
   process.exit(0);
 }
@@ -344,9 +345,9 @@ async function runValidation() {
     process.removeListener('SIGINT', onInterrupt);
     process.removeListener('SIGTERM', onTerminate);
   }
-  // Renderer artifacts are written outside the exported source. Keep those
-  // and the source itself; reclaim only generated caches in our own snapshot.
-  if (commit && rendererRun) reclaimSnapshotCaches(commandCwd, output);
+  // Keep the source and validation outputs, including exported packages.
+  // Dependency and build caches are disposable for any owned Nx snapshot.
+  if (commit) reclaimSnapshotCaches(commandCwd, output);
   // Persist once, outside the command catch: a reporting failure must remain a
   // nonzero worker failure, not trigger another close or masquerade as success.
   finish(...outcome);
