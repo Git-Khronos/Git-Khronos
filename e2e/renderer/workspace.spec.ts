@@ -2379,14 +2379,14 @@ test('keeps the smallest toolbar collision-free and expands commit search on dem
   }
 
   await moreActions.click();
-  compactActionMenuBox = await compactActionMenu.boundingBox();
-  expect(compactActionMenuBox).not.toBeNull();
-  expect(compactActionMenuBox!.x).toBeGreaterThanOrEqual(9);
-  expect(compactActionMenuBox!.x + compactActionMenuBox!.width).toBeLessThanOrEqual(351);
   const currentRemoteOption = compactActionMenu.getByRole('menuitemradio', { name: /origin Current pull and push remote/ });
   const alternateRemoteOption = compactActionMenu.getByRole('menuitemradio', { name: /upstream Use for pull and push/ });
   const compactBranchSwitcher = compactActionMenu.getByRole('menuitem', { name: /Switch branch/ });
   await expect(compactBranchSwitcher).toBeFocused();
+  await expect.poll(async () => {
+    const box = await compactActionMenu.boundingBox();
+    return box && box.x >= 9 && box.x + box.width <= 351 ? 'fits' : box;
+  }, { message: 'The reopened compact repository menu should fit inside the viewport' }).toBe('fits');
   await expect(currentRemoteOption).toBeVisible();
   await expect(currentRemoteOption).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('ArrowDown');
