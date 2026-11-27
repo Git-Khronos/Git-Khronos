@@ -25,16 +25,26 @@
           <button type="button" [attr.aria-disabled]="paths.length === selectedPaths().length" (click)="selectAllChanged.emit(true)">Select all eligible</button>
           <button type="button" [attr.aria-disabled]="!selectedPaths().length" (click)="selectAllChanged.emit(false)">Clear selection</button>
         </div>
-        <p role="status">{{ selectedPaths().length }} of {{ paths.length }} eligible files selected.</p>
-        @for (path of paths; track path) {
+        @if (paths.length > 1) {
+          <label class="discard-path-filter">Filter eligible files by path
+            <input #filter type="search" [value]="pathQuery()" (input)="pathQuery.set(filter.value)" />
+          </label>
+        }
+        <p role="status">{{ selectedPaths().length }} of {{ paths.length }} eligible files selected.
+          @if (visibleChoicePaths().length !== paths.length) {
+            {{ visibleChoicePaths().length }} shown. The filter does not change the selection.
+            @if (hiddenSelectedCount(); as hidden) { {{ hidden }} selected outside the filter. }
+          }
+        </p>
+        @for (path of visibleChoicePaths(); track path) {
           <label>
-            <input type="checkbox" [checked]="selectedPaths().includes(path)"
+            <input type="checkbox" [checked]="selectedPathSet().has(path)"
               aria-label="Select {{ path }} for fresh discard review"
               (change)="togglePath.emit(path)">
             <code>{{ path }}</code>
           </label>
         } @empty {
-          <p>No files are currently eligible.</p>
+          <p>{{ paths.length ? 'No eligible paths match this filter.' : 'No files are currently eligible.' }}</p>
         }
       </fieldset>
       @if (error()) { <p class="blocked-discard-choice-error" role="alert">{{ error() }}</p> }

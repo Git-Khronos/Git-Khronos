@@ -14,5 +14,7 @@ p + p, p + ul, ul + p { margin-top: 8px; }
 .blocked-discard-choice label:hover { background: #302f46; }
 .blocked-discard-choice input { flex: none; margin: 2px 0 0; accent-color: var(--accent); }
 .blocked-discard-choice input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.blocked-discard-choice .discard-path-filter { display: grid; gap: 4px; cursor: default; font-size: 12px; }
+.discard-path-filter input { min-width: 0; padding: 5px 7px; border: 1px solid #49485f; border-radius: 3px; background: #151520; color: #d7d5e0; }
 .blocked-discard-choice code { min-width: 0; overflow-wrap: anywhere; color: inherit; font-size: 12px; }
 .blocked-discard-choice-error { color: #ff9ab2 !important; }
