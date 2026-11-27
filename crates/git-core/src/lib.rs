@@ -23096,6 +23096,25 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
         dependency.write("engine.txt", "version four\n");
         stage_all(&dependency.path).unwrap();
         commit(&dependency.path, "Dependency v4").unwrap();
+        let child_tips = |path| {
+            ["HEAD", "refs/remotes/origin/HEAD"].map(|reference| {
+                let result = run_git(path, &["rev-parse", reference]).unwrap();
+                assert!(result.status.success());
+                result.stdout
+            })
+        };
+        let before_bulk = [child_tips(&checkout), child_tips(&sibling)];
+        assert_eq!(
+            update_all_submodules_cancellable(&repository.path, &CancellationToken::default())
+                .unwrap_err()
+                .kind,
+            "submoduleUpdateUnsafe"
+        );
+        assert_eq!(
+            [child_tips(&checkout), child_tips(&sibling)],
+            before_bulk,
+            "a dirty sibling must block bulk updating before any checkout or fetch"
+        );
         update_submodule(&repository.path, "vendor/engine")
             .expect("an unrelated dirty sibling must not block the selected update");
         assert_eq!(
@@ -23117,6 +23136,17 @@ exec "$GIT_KHRONOS_REWRITE_CHECKOUT_GIT" "$@"
                 .unwrap()
                 .stdout,
             parent_index
+        );
+        repository.git(&["-C", "vendor/sibling", "restore", "--", "engine.txt"]);
+        update_all_submodules_cancellable(&repository.path, &CancellationToken::default())
+            .expect("update both submodules after cleaning the sibling");
+        assert_eq!(child_tips(&checkout), child_tips(&sibling));
+        assert_eq!(
+            run_git(&repository.path, &["ls-files", "--stage", "-z"])
+                .unwrap()
+                .stdout,
+            parent_index,
+            "bulk updating must leave the new gitlinks unstaged"
         );
     }
 
