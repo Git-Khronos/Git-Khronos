@@ -1999,6 +1999,10 @@ Desktop CI runs four Playwright shards on independent Ubuntu 24.04 runners.
 Each uses one browser worker and no retries. Failure in one shard does not
 cancel the other shards; each failed shard uploads any available report, traces,
 and screenshots under `renderer-failure-<run>-attempt-<attempt>-shard-<shard>`.
+The hosted Chromium setup uses Playwright's locked system dependency list
+with only the signed Ubuntu archive enabled for that APT invocation. It
+then downloads Chromium's headless shell as the runner user. Headed local
+debugging still requires the regular Chromium install.
 The existing **Checks and renderer acceptance** status passes only after the
 Linux production renderer build, TypeScript/Rust/harness checks, and all
 renderer shards succeed. The production build runs before the Rust tests
