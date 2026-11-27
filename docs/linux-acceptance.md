@@ -39,6 +39,12 @@ that time is now overlapped, not removed from validation. Measure the
 end-to-end effect in hosted CI; the slowest renderer shard may still finish
 after all Jammy jobs.
 
+The first hosted split run (46071498371) passed the dedicated fixture job.
+Its Debian build step started at 21:39:24 UTC while the fixture action was
+still running (it passed at 21:39:45 UTC). This confirms the dependency was
+removed without dropping the check. It does not by itself measure a
+whole-workflow speedup.
+
 In run 46058006158 the primary native report contained 335 distinct
 scenarios. All named scenarios from the focused file-tools, merge-preview,
 and working-tree-recaps reports also appeared in that primary report.
