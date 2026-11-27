@@ -2692,6 +2692,10 @@ and does not prove the runner is still alive. A green
 process exit alone does not satisfy a requested scenario. For example,
 `branch-workflow-ui` checks setup/start/finish, whereas
 `branch-workflow-recovery` checks a paused merge, conflicts, restart and stop.
+To rerun just these scenarios against an archive, use
+`pnpm nx run desktop:native-branch-workflow-ui -- --package "$archive"`
+or replace the target with `native-branch-workflow-recovery`,
+`native-feature-rebase`, or `native-merge-rebase-review`.
 The `bisect-voting` suite runs the same custom-term, unique-result, and
 inconclusive-result scenarios as the detached-checkout gate, without
 running unrelated checkout and recovery scenarios. Use the complete Git
@@ -4467,3 +4471,13 @@ all four scenarios passed in three consecutive runs on the same archive
 bytes and preservation of staged data and HEAD. Both the failures and the
 passes are retained with the package; no application rebuild, installation,
 or release was needed for this retest.
+
+### Branch workflow candidate
+
+The guarded Debian package built from `979df50` passed package verification
+with the source unchanged. Its archive under
+`target/local-review/branch-workflow-979df50/` has SHA-256
+`0310d0e6d5d79c16d50d964b048f6ff46387cf5764a997de1b6b6ba593d29a50`.
+All eight extracted-package scenarios passed: setup/start/finish (4),
+recovery (3), and feature rebase (1). The archive predates the Tab-order
+fix in `3055cd2`; that fix has Chromium and WebKit evidence only.

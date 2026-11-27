@@ -107,6 +107,26 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite merge-preview --headless" }
     },
+    "native-branch-workflow-ui": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite branch-workflow-ui --headless" }
+    },
+    "native-branch-workflow-recovery": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite branch-workflow-recovery --headless" }
+    },
+    "native-feature-rebase": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite feature-rebase --headless" }
+    },
+    "native-merge-rebase-review": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite merge-rebase-review --headless" }
+    },
     "native-lfs-lock-actions": {
       "executor": "nx:run-commands",
       "cache": false,

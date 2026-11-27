@@ -390,6 +390,20 @@ test('updater fixture edits select offline package checks, not an installed upda
   assert.doesNotMatch(plan, /application-update-consent|--installed|desktop:native-full|desktop:e2e/);
 });
 
+test('rebase fixture edits select both packaged rebase reviews without a browser run', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'artifacts/\n');
+  f.commit();
+  f.write('artifacts/rebase.deb');
+  f.write('tools/native_feature_rebase_scenarios.py');
+  const plan = f.run('--native-package', 'artifacts/rebase.deb');
+  for (const target of ['native-feature-rebase', 'native-merge-rebase-review']) {
+    assert.ok(plan.includes(`"desktop:${target}" "--output-style=static" "--" "--package" `
+      + JSON.stringify(join(f.cwd, 'artifacts/rebase.deb'))));
+  }
+  assert.doesNotMatch(plan, /--installed|desktop:native-full|desktop:e2e/);
+});
+
 test('an invalid native archive fails before scheduling checks', t => {
   const f = fixture(t);
   f.write('tools/native_sparse_checkout_scenarios.py');
