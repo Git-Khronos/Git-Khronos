@@ -1366,8 +1366,9 @@ to exercise the updater directly, without running the unrelated native smoke
 scenarios first. Keep `desktop:native-smoke` as a separate general package check.
 Always pass `--package` when reviewing a copied archive: several development
 builds can have the same version, and the default selects the workspace bundle,
-not the reviewed copy. The report records the archive SHA-256; compare it with
-the retained checksum before using the result as evidence.
+not the reviewed copy. Add `--expect-package-sha256 "$sha256"` to refuse a
+different archive before extraction or launch. Use the checksum from the
+reviewed evidence, not a new checksum calculated from a possibly replaced file.
 
 The local Debian build from `0455ecb` passed the focused suite with and without
 an independently derived expected **Running build ID** (`d78ec63e86a0`).

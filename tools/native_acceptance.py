@@ -1438,6 +1438,8 @@ def main():
     forced_inherited = ("environment",)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path)
+    parser.add_argument("--expect-package-sha256", metavar="SHA256",
+                        help="Refuse to extract or launch unless the explicit archive matches this SHA-256")
     parser.add_argument("--suite", choices=suites, default="smoke")
     parser.add_argument("--describe-runner", action="store_true",
                         help="Print the local distribution and suite capabilities as JSON without running a test")
@@ -1450,6 +1452,15 @@ def main():
                         help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
     args = parser.parse_args()
+    expected_package_sha256 = getattr(args, "expect_package_sha256", None)
+    if expected_package_sha256 is not None:
+        if args.package is None or args.describe_runner:
+            parser.error("--expect-package-sha256 requires an explicit --package and a test suite run")
+        if len(expected_package_sha256) != 64 or any(
+            char not in "0123456789abcdefABCDEF" for char in expected_package_sha256
+        ):
+            parser.error("--expect-package-sha256 requires exactly 64 hexadecimal characters")
+        expected_package_sha256 = expected_package_sha256.lower()
     delegate_file_tools = getattr(args, "delegate_file_tools", False)
     if delegate_file_tools and (args.suite != "full" or not args.headless or args.installed
                                 or args.inherited_git_environment or args.describe_runner):
@@ -1552,6 +1563,10 @@ def main():
         report["package"] = str(package)
         with staged_package.open("rb") as package_data:
             report["packageSha256"] = hashlib.file_digest(package_data, "sha256").hexdigest()
+        if expected_package_sha256 is not None:
+            report["expectedPackageSha256"] = expected_package_sha256
+            if report["packageSha256"] != expected_package_sha256:
+                raise RuntimeError("Debian archive SHA-256 does not match the reviewed checksum; no app was launched.")
         fixtures = Fixtures(temporary_directory.name)
         outside = None
         if inherited_git_environment:

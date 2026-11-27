@@ -532,6 +532,30 @@ class PackageIdentityTests(unittest.TestCase):
             self.assertIn(f"('0.0.0', '{version}')", report["failure"])
             self.assertEqual(report["failurePhase"], "package-preflight")
 
+    def test_wrong_reviewed_checksum_is_reported_without_extraction_or_launch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            version, filename = expected_debian_package()
+            package = root / filename
+            package.write_bytes(b"package fixture")
+            args = SimpleNamespace(package=package, output=root / "evidence", suite="smoke",
+                                   describe_runner=False, headless=False, inherited_git_environment=False,
+                                   installed=False, expect_package_sha256="A" * 64)
+            with patch("native_acceptance.argparse.ArgumentParser.parse_args", return_value=args), \
+                    patch("native_acceptance.shutil.which", return_value="/fixture/tool"), \
+                    patch("native_acceptance.run", side_effect=lambda *command: {
+                        "Package": "git-khronos", "Architecture": "amd64", "Version": version,
+                    }.get(command[-1], "fixture")) as run, \
+                    patch("native_acceptance.Driver") as driver, patch("builtins.print"):
+                self.assertEqual(main(), 1)
+            driver.assert_not_called()
+            self.assertFalse(any(item.args[:2] == ("dpkg-deb", "-x") for item in run.call_args_list))
+            report = json.loads(next(args.output.glob("*/report.json")).read_text())
+            self.assertFalse(report["passed"])
+            self.assertEqual(report["failurePhase"], "package-preflight")
+            self.assertEqual(report["expectedPackageSha256"], "a" * 64)
+            self.assertEqual(report["packageSha256"], hashlib.sha256(b"package fixture").hexdigest())
+
     def test_full_suite_requires_git_lfs_before_starting_webdriver(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
