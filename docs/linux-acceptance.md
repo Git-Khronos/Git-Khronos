@@ -1226,7 +1226,11 @@ This package predates the Updates dialog keyboard fix.
 ## Focused offline update consent check
 
 The separate `application-updates` suite checks keyboard recovery in the
-Updates dialog without contacting an update feed. The rebuilt local package
+Updates dialog without contacting an update feed. Run
+`pnpm nx run desktop:native-application-updates -- --package "$package"`
+to exercise the updater directly, without running the unrelated native smoke
+scenarios first. Keep `desktop:native-smoke` as a separate general package check.
+The rebuilt local package
 `9ec4da38b0c1103ce691e9da7c0abe8f45f51a81a3a4fd19a0149ccac9733aee`
 passed all 22 installed scenarios in offline Ubuntu 26.04. WebKitGTK reported
 Shift+Tab with `key: Unidentified` and `code: Tab`; focus reached the last

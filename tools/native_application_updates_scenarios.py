@@ -11,7 +11,7 @@ def application_updates_workflow(driver, fixtures, report):
     (repository / 'fixture.txt').write_text('Owned updater staged data.\n')
     fixtures.git(repository, 'add', 'fixture.txt')
     (repository / 'update-note.txt').write_text('Owned updater untracked data.\n')
-    open_ui(driver, repository)
+    repo_id = open_ui(driver, repository)
     before = checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt'))
     driver.click('[aria-label="Main menu"]')
     driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Updates')
@@ -122,7 +122,7 @@ def application_updates_workflow(driver, fixtures, report):
         assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
         report['scenarios'].append('native-updates-menu-recognizes-publisher-trust-with-default-off-and-no-installable-offer')
         verify_palette_entry()
-        return
+        return repository, repo_id
 
     assert state['automatic'] is False and state['automaticDisabled']
     assert state['checkDisabled'] and state['installButtons'] == 0
@@ -148,6 +148,7 @@ def application_updates_workflow(driver, fixtures, report):
     assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
     report['scenarios'].append('native-updater-refuses-manual-check-and-automatic-consent-without-trust-and-preserves-owned-git-data')
     verify_palette_entry()
+    return repository, repo_id
 
 
 def application_update_consent(driver, fixtures, report):

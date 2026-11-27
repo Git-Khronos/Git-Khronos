@@ -1918,6 +1918,10 @@ def main():
             elif args.suite == "diff-rendering":
                 from native_diff_line_selection_scenarios import wrapped_diff_rendering
                 repository, repo_id = wrapped_diff_rendering(driver, fixtures, report)
+            elif args.suite == "application-updates":
+                progress.enter_phase("application-updates")
+                from native_application_updates_scenarios import application_updates_workflow
+                repository, repo_id = application_updates_workflow(driver, fixtures, report)
             elif args.suite == "application-update-consent":
                 from native_application_updates_scenarios import application_update_consent
                 repository, repo_id = application_update_consent(driver, fixtures, report)
@@ -2062,10 +2066,6 @@ def main():
                 progress.enter_phase("incoming-links")
                 from native_incoming_link_scenarios import incoming_repository_links
                 incoming_repository_links(driver, fixtures, repository, report)
-            if args.suite == "application-updates":
-                progress.enter_phase("application-updates")
-                from native_application_updates_scenarios import application_updates_workflow
-                application_updates_workflow(driver, fixtures, report)
             if args.suite in ("full", "environment", "worktrees"):
                 progress.enter_phase("occupied-worktree-navigation")
                 from native_worktree_scenarios import occupied_branch_navigation, worktree_recovery_before_removal
