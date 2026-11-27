@@ -104,12 +104,13 @@ def lfs_lock_dialog_actions(driver, fixtures, report):
         driver.wait("return document.querySelector('gk-lfs-tracking-dialog .lock-result')?.textContent.includes('Other Editor')")
 
         driver.click_scrolled_text('[aria-label="Review force unlock of remote.psd"]', wait_for_ready=True)
-        driver.wait("return !!document.querySelector('gk-lfs-tracking-dialog .force-review')")
-        driver.click_scrolled_text("gk-lfs-tracking-dialog .force-review button", "Keep lock", wait_for_ready=True)
+        driver.wait("""return document.activeElement?.matches(
+          'gk-lfs-tracking-dialog .force-review [data-lfs-keep-lock]');""")
+        driver.key('\ue007')  # Enter keeps the lock by default.
         # The click can return before Angular paints the dismissed review.
         # Observe the restored action without replaying the click.
         driver.wait("""const dialog = document.querySelector('gk-lfs-tracking-dialog');
-          return !!dialog?.querySelector('[aria-label="Review force unlock of remote.psd"]')
+          return document.activeElement === dialog?.querySelector('[aria-label="Review force unlock of remote.psd"]')
             && !dialog.querySelector('.force-review');""")
         assert any(lock["id"] == "remote-41" for lock in locks), "Cancel removed the collaborator lock"
 
