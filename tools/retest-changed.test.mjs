@@ -28,6 +28,20 @@ function fixture(t) {
   return { cwd, git, write, commit, run };
 }
 
+test('renderer budget tooling changes verify emitted production assets without running UI E2E', t => {
+  const f = fixture(t);
+  f.write('tools/report-initial-renderer.mjs', 'baseline');
+  f.write('tools/report-initial-renderer.test.mjs', 'baseline');
+  f.commit();
+  f.write('tools/report-initial-renderer.mjs', 'updated');
+  const plan = f.run();
+  assert.match(plan, /"desktop:package-test:focused"[^\n]*"tools\/report-initial-renderer\.test\.mjs"/);
+  assert.match(plan, /"desktop:build:production"/);
+  assert.doesNotMatch(plan, /desktop:check|desktop:e2e/);
+  f.git('rm', 'tools/report-initial-renderer.test.mjs');
+  assert.match(f.run(), /desktop:check/, 'do not select a narrow plan without its test');
+});
+
 test('selects an untracked renderer spec and a staged feature edit', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/worktree-lock-dialog.component.ts', 'baseline');

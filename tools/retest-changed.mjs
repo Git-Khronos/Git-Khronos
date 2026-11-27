@@ -170,6 +170,7 @@ let nativeHarnessTests = false;
 let archiveCacheTests = false;
 let unmappedNativeSource = false;
 let graphTypecheck = false;
+let productionRendererBuild = false;
 let broad = false;
 for (const path of changed) {
   let plan;
@@ -232,6 +233,11 @@ for (const path of changed) {
     } else {
       plan = 'Debian package workflow tests (local only; hosted qualification is separate)';
     }
+  } else if (path === 'tools/report-initial-renderer.mjs' && existsSync(join(cwd, path))
+    && isPackageTest('tools/report-initial-renderer.test.mjs')) {
+    packageSpecs.add('tools/report-initial-renderer.test.mjs');
+    productionRendererBuild = true;
+    plan = 'renderer budget tooling and a production build';
   } else if (packageSourceTests.has(path) && existsSync(join(cwd, path))
     && isPackageTest(packageSourceTests.get(path))) {
     packageSpecs.add(packageSourceTests.get(path));
@@ -281,6 +287,7 @@ const filters = broad ? [] : filtersFor(selected);
 const directSpecs = [...specs].filter(path => !filters.some(filter => filter.test(path)));
 const extraChecks = [
   ...(packageSpecs.size ? [broad ? ['desktop:package-test'] : ['desktop:package-test:focused', '--', ...packageSpecs]] : []),
+  ...(productionRendererBuild ? [['desktop:build:production']] : []),
   ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
   ...(archiveCacheTests ? [['desktop:archive-cache-test']] : []),
   ...(nativePackage ? [...nativeSuites].map(suite => ['desktop:' + suite, '--', '--package', nativePackage]) : []),
