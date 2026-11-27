@@ -480,6 +480,48 @@ cat metadata.json
   }
 });
 
+test('signer only signs qualified bytes and never replaces a sidecar', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'gk-qualified-signer-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const archive = join(root, 'Git-Khronos_0.1.6_amd64.deb');
+  const fixture = 'qualified bytes';
+  const digest = createHash('sha256').update(fixture).digest('hex');
+  await writeFile(archive, fixture);
+  const marker = join(root, 'signer-called');
+  await writeFile(join(root, 'pnpm'), `#!/bin/sh
+set -eu
+test "$#" = 7
+test "$1 $2 $3 $4 $5 $6" = 'exec tauri signer sign --app-version 0.1.6'
+test "$TAURI_SIGNING_PRIVATE_KEY" = fixture-private-key
+test "$(cat "$7")" = 'qualified bytes'
+touch "$FIXTURE_MARKER"
+echo "$TAURI_SIGNING_PRIVATE_KEY" >&2
+printf '%s' 'public signature' > "$7.sig"
+if [ "$FIXTURE_MUTATE" = true ]; then printf '%s' 'changed' > "$7"; fi
+`, { mode: 0o755 });
+  const run = (sha, mutate = '') => spawnSync('bash', ['tools/sign-qualified-debian.sh', archive, sha, 'v0.1.6'], {
+    encoding: 'utf8', env: { ...process.env, PATH: `${root}:${process.env.PATH}`,
+      TAURI_SIGNING_PRIVATE_KEY: 'fixture-private-key', TAURI_SIGNING_PRIVATE_KEY_PATH: '',
+      FIXTURE_MARKER: marker, FIXTURE_MUTATE: mutate },
+  });
+  const wrong = run('0'.repeat(64));
+  assert.equal(wrong.status, 1);
+  assert.match(wrong.stderr, /does not match the qualified SHA-256/);
+  await assert.rejects(stat(marker), { code: 'ENOENT' });
+  const changed = run(digest, 'true');
+  assert.equal(changed.status, 1);
+  assert.match(changed.stderr, /Installer changed/);
+  await assert.rejects(stat(archive + '.sig'), { code: 'ENOENT' });
+  const good = run(digest);
+  assert.equal(good.status, 0, good.stderr);
+  assert.doesNotMatch(good.stdout + good.stderr, /fixture-private-key/);
+  assert.equal(await readFile(archive + '.sig', 'utf8'), 'public signature');
+  await writeFile(archive + '.sig', 'existing signature');
+  assert.match(run(digest).stderr, /Refusing to replace/);
+  assert.equal(await readFile(archive + '.sig', 'utf8'), 'existing signature');
+  assert.equal(await readFile(archive, 'utf8'), fixture);
+});
+
 test('publication fails closed without reviewer protection and a main-only branch policy', async t => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const [verify, publish] = workflow.split('\n  publish:\n');
