@@ -366,6 +366,16 @@ No public release or production-key qualification was performed.
 
 ## Manual Windows taskbar pin check
 
+The qualified `v0.1.6` Debian candidate from GitHub run `46037054803`
+(SHA-256 `b5a0ca5aea4d6cebc04ae6c530a02aa5c093776828ad715620024a97856e6590`)
+was also extracted and launched on WSLg with a disposable profile and
+private session bus. Native Wayland committed a non-null buffer to the
+Git Khronos top-level surface despite Mesa/Zink and EGL warnings. XWayland
+mapped an owned window and returned 412 distinct colors from that window
+despite DRI3 warnings. These checks show that those messages alone do not
+establish a blank-window failure. They did not exercise the Windows pin,
+the user's existing profile, or the Windows desktop compositing path.
+
 Use the installed build and profile you intend to qualify. First compare
 the installed files with the reviewed archive using
 `task install:linux:status -- "$archive"`. Save work, quit Git Khronos,
