@@ -4791,6 +4791,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.documentation.request() || this.worktreeRegistrationRequest() || this.mergeRebaseReview()
       || this.pendingMergeRebaseReview() || this.mergePreviewRequest() || this.integrationRequest()
       || this.workspaceCenterRequest() || this.branchWorkflowRequest()) return;
+    if (isTabKey(event) && !event.defaultPrevented && this.appMenuOpen()) {
+      const opener = this.appMenuToggle()?.nativeElement;
+      // The loading item may have been removed just before this key arrived.
+      if (opener && (event.target === document.body || event.target === opener)) {
+        this.exitAppMenuByTab(document.querySelector<HTMLElement>('.app-menu-popover'));
+        return;
+      }
+    }
     // Disabling a focused item can move focus out of the menu. Its local
     // keydown handler may then never receive Tab, but dismissal must still work.
     if (event.key === 'Tab' && this.workspaceMenuOpen()) {
@@ -11393,16 +11401,20 @@ export class AppComponent implements OnInit, OnDestroy {
       this.closeAppMenu(true);
       return;
     } else if (event.key === 'Tab') {
-      // Angular removes the menu after this event; exclude its items now so
-      // native Tab navigation can continue from the opener without losing focus.
-      menu.inert = true;
-      this.appMenuToggle()?.nativeElement.focus({ preventScroll: true });
-      this.appMenuOpen.set(false);
+      this.exitAppMenuByTab(menu);
       return;
     }
     if (next === null) return;
     event.preventDefault();
     items[next].focus();
+  }
+
+  private exitAppMenuByTab(menu: HTMLElement | null): void {
+    // Angular removes the menu after this event; exclude its items now so
+    // native Tab navigation can continue from the opener without losing focus.
+    if (menu) menu.inert = true;
+    this.appMenuToggle()?.nativeElement.focus({ preventScroll: true });
+    this.appMenuOpen.set(false);
   }
 
   private closeAppMenu(restoreFocus = false): void {

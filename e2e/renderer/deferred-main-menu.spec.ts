@@ -112,6 +112,32 @@ for (const key of ['Tab', 'Shift+Tab']) {
   });
 }
 
+test('main menu Tab resumes from the opener if deferred content loses focus', async ({ page }) => {
+  const chunk = await interceptMenu(page);
+  try {
+    await page.goto('/');
+    const toggle = page.getByRole('button', { name: 'Main menu', exact: true });
+    await toggle.focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('body')).not.toBeFocused();
+    await page.evaluate(() => document.activeElement?.setAttribute('data-menu-focus-gap-target', 'true'));
+
+    await toggle.click();
+    const menu = page.getByRole('menu', { name: 'Git Khronos menu', exact: true });
+    const loading = menu.getByRole('menuitem', { name: 'Cancel', exact: true });
+    await expect(loading).toBeFocused();
+    // Model the focus gap between retiring the loader and focusing the real menu.
+    await loading.evaluate(item => (item as HTMLElement).blur());
+    await expect(page.locator('body')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(menu).toHaveCount(0);
+    await expect(page.locator('[data-menu-focus-gap-target]')).toBeFocused();
+    chunk.release();
+    await chunk.delivery;
+    await expect(menu).toHaveCount(0);
+  } finally { await chunk.finish(); }
+});
+
 test('retired main-menu DOM does not consume the next key', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Main menu', exact: true }).click();
