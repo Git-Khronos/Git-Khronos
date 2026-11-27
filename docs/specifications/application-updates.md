@@ -427,8 +427,9 @@ changes and deletion.
    Sign those exact package bytes without rebuilding. The artifact is retained
    for seven days; preserve it and the evidence separately for longer reviews.
    On the publisher's Linux checkout, run `task sign` from a terminal to sign
-   the sole qualified download under `target/local-review/hosted-release-integration`.
-   For another location or multiple downloads, use
+   the sole unsigned qualified download under
+   `target/local-review/hosted-release-integration`. Already signed downloads
+   are left alone. For another location or multiple unsigned downloads, use
    `task sign -- /path/to/qualified-release-directory`. This prompts locally
    and writes only the public sidecar; it does not publish.
 4. Dispatch **Publish signed Debian release** on `main` with the tag, candidate

@@ -570,9 +570,16 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
   assert.equal(one.status, 0, one.stderr);
   assert.match(one.stdout, /signer: v0\.1\.6/);
   assert.ok(one.stdout.includes('qualified download/candidate/' + candidate));
-  await create('run-2');
+  const second = await create('run-2');
   assert.match(run().stderr, /Expected exactly one/);
   assert.equal(run([selected]).status, 0);
+  await mkdir(join(selected, 'candidate'));
+  await writeFile(join(selected, 'candidate', candidate + '.sig'), 'existing public signature');
+  assert.ok(run().stdout.includes(join('run-2', 'qualified download', 'candidate', candidate)));
+  assert.ok(!run().stdout.includes(join('run-1', 'qualified download', 'candidate', candidate)));
+  await mkdir(join(second, 'candidate'));
+  await writeFile(join(second, 'candidate', candidate + '.sig'), 'another public signature');
+  assert.match(run().stderr, /Expected exactly one unsigned/);
   const mismatch = run([selected], 'b'.repeat(64));
   assert.equal(mismatch.status, 1);
   assert.match(mismatch.stderr, /evidence and saved checksum disagree/);
