@@ -2,6 +2,7 @@ import contextlib
 import fcntl
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -72,3 +73,40 @@ class PruneTest(unittest.TestCase):
                     self.assertEqual(prune(root, 7, True), 0)
                 self.assertEqual(cache.exists(), retain)
                 self.assertEqual(artifact.read_bytes(), archive_bytes)
+
+    def test_old_jammy_build_receipt_can_verify_a_retained_archive_without_sha256sums(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            run = root / "target/local-review/jammy-receipt"
+            source = run / "work/source"
+            release = source / "target/release"
+            cache = release / "deps"
+            cache.mkdir(parents=True)
+            lock = source / "target/.git-khronos-linux-package.lock"
+            lock.touch()
+            (source / "Cargo.toml").touch()
+            artifact = run / "work/artifacts/Git-Khronos_0.1.6_amd64.deb"
+            artifact.parent.mkdir()
+            data = b"retained package"
+            artifact.write_bytes(data)
+            receipt = release / ".git-khronos-package-build.v1.json"
+            digest = hashlib.sha256(data).hexdigest()
+            old = time.time() - 8 * 86400
+            for path in (run, cache, lock, artifact):
+                os.utime(path, (old, old))
+            for checksum, sha, size, retained in (
+                ("local:fixture", digest, str(len(data)), True),
+                ("ubuntu-jammy:fixture", "0" * 64, str(len(data)), True),
+                ("ubuntu-jammy:fixture", digest, "1", True),
+                ("ubuntu-jammy:fixture", digest, str(len(data)), False),
+            ):
+                receipt.write_text(json.dumps({
+                    "version": 1, "checksum": checksum,
+                    "outputs": {"package": {"path": "/other/userspace/" + artifact.name, "bytes": size, "sha256": sha}},
+                }))
+                os.utime(receipt, (old, old))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(prune(root, 7, True), 0)
+                self.assertEqual(cache.exists(), retained)
+                self.assertEqual(artifact.read_bytes(), data)
+                self.assertTrue(receipt.is_file())

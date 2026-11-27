@@ -3,6 +3,7 @@
 import argparse
 import fcntl
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -17,6 +18,7 @@ CACHE_PATHS = (
     *(f"source/target/release/{part}" for part in
       ("deps", "build", "incremental", ".fingerprint", "examples")),
 )
+DEBIAN_NAME = r"Git-Khronos_[A-Za-z0-9.+_~-]+\.deb"
 
 
 def owned_directory(path):
@@ -29,25 +31,50 @@ def verified_debian_archive(work, cutoff):
     artifacts = work / "artifacts"
     if not owned_directory(artifacts):
         return False
+    def matches(name, digest, size=None):
+        if not re.fullmatch(DEBIAN_NAME, name) or not re.fullmatch(r"[a-f0-9]{64}", digest):
+            return False
+        package = artifacts / name
+        try:
+            meta = package.lstat()
+            if (not stat.S_ISREG(meta.st_mode) or not 0 < meta.st_size <= 128 * 1024**2
+                    or meta.st_mtime > cutoff or (size is not None and size != str(meta.st_size))):
+                return False
+            with package.open("rb") as data:
+                return hashlib.file_digest(data, "sha256").hexdigest() == digest
+        except OSError:
+            return False
+
     manifest = artifacts / "SHA256SUMS"
     try:
         meta = manifest.lstat()
-        if not stat.S_ISREG(meta.st_mode) or meta.st_size > 16384 or meta.st_mtime > cutoff:
-            return False
-        for line in manifest.read_text().splitlines():
-            match = re.fullmatch(r"([a-f0-9]{64}) [ *](Git-Khronos_[A-Za-z0-9.+_~-]+\.deb)", line)
-            if not match:
-                continue
-            package = artifacts / match[2]
-            meta = package.lstat()
-            if not stat.S_ISREG(meta.st_mode) or not 0 < meta.st_size <= 128 * 1024**2 or meta.st_mtime > cutoff:
-                continue
-            with package.open("rb") as data:
-                if hashlib.file_digest(data, "sha256").hexdigest() == match[1]:
+        if stat.S_ISREG(meta.st_mode) and meta.st_size <= 16384 and meta.st_mtime <= cutoff:
+            for line in manifest.read_text().splitlines():
+                match = re.fullmatch(r"([a-f0-9]{64}) [ *](.+)", line)
+                if match and matches(match[2], match[1]):
                     return True
     except (OSError, UnicodeError):
+        pass
+
+    # Older local containers left the package hash only in the build receipt.
+    # Use its basename as an identifier, never follow the recorded build path.
+    release = work / "source/target/release"
+    if not owned_directory(release):
         return False
-    return False
+    receipt = release / ".git-khronos-package-build.v1.json"
+    try:
+        meta = receipt.lstat()
+        if not stat.S_ISREG(meta.st_mode) or meta.st_size > 16384 or meta.st_mtime > cutoff:
+            return False
+        record = json.loads(receipt.read_text())
+        checksum = record["checksum"]
+        if record["version"] != 1 or not isinstance(checksum, str) or not checksum.startswith("ubuntu-jammy:"):
+            return False
+        package = record["outputs"]["package"]
+        path, digest, size = package["path"], package["sha256"], package["bytes"]
+        return all(isinstance(value, str) for value in (path, digest, size)) and matches(Path(path).name, digest, size)
+    except (OSError, ValueError, TypeError, KeyError, RecursionError):
+        return False
 
 
 def prune(root, days, apply):
