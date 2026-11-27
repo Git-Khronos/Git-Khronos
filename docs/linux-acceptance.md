@@ -2018,8 +2018,11 @@ in shard order:
 node tools/compare-renderer-case-timings.mjs baseline/*/*.timings.json -- repeat/*/*.timings.json
 ```
 
-This requires the newer per-case timing sidecars and refuses duplicate or
-different test sets. A ratio above 1 means the same tests ran slower in the
+This requires the newer per-case timing sidecars. By default it refuses
+different test sets. For diagnosis across test additions or removals,
+prefix the report paths with `--shared-only`; the output counts IDs
+excluded from each run. Duplicate IDs are always rejected.
+A ratio above 1 means the same tests ran slower in the
 repeat. Check several runs before attributing a difference to the runner or
 to scheduling. Case durations exclude job setup and artifact upload.
 

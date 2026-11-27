@@ -21,18 +21,22 @@ function collect(reports) {
   });
 }
 
-export function compareRendererCaseTimings(baseline, repeat) {
+export function compareRendererCaseTimings(baseline, repeat, { sharedOnly = false } = {}) {
   const before = collect(baseline).flat();
   const after = collect(repeat);
   const byId = new Map(before.map(({ id, durationMs }) => [id, durationMs]));
-  if (after.reduce((total, shard) => total + shard.length, 0) !== before.length
-    || after.some(shard => shard.some(({ id }) => !byId.has(id)))) {
+  const repeatCases = after.reduce((total, shard) => total + shard.length, 0);
+  const matched = after.map(shard => shard.filter(({ id }) => byId.has(id)));
+  const totalCases = matched.reduce((total, shard) => total + shard.length, 0);
+  if (!sharedOnly && (totalCases !== before.length || totalCases !== repeatCases)) {
     throw new Error('The timing runs do not cover the same case IDs.');
   }
+  if (!totalCases) throw new Error('The timing runs have no cases in common.');
   const quantile = (sorted, q) => sorted.length ? sorted[Math.ceil(sorted.length * q) - 1] : null;
   return {
-    totalCases: before.length,
-    repeatShards: after.map((shard, index) => {
+    totalCases,
+    ...(sharedOnly ? { baselineOnlyCases: before.length - totalCases, repeatOnlyCases: repeatCases - totalCases } : {}),
+    repeatShards: matched.map((shard, index) => {
       const ratios = shard.filter(({ id }) => byId.get(id) > 0)
         .map(({ id, durationMs }) => durationMs / byId.get(id)).sort((a, b) => a - b);
       return {
@@ -51,12 +55,14 @@ export function compareRendererCaseTimings(baseline, repeat) {
 if (isCliEntry(import.meta)) {
   try {
     const args = process.argv.slice(2);
+    const sharedOnly = args[0] === '--shared-only';
+    if (sharedOnly) args.shift();
     const split = args.indexOf('--');
     if (split < 1 || split === args.length - 1 || args.lastIndexOf('--') !== split) {
-      throw new Error('Usage: node tools/compare-renderer-case-timings.mjs BASELINE-JSON... -- REPEAT-JSON...');
+      throw new Error('Usage: node tools/compare-renderer-case-timings.mjs [--shared-only] BASELINE-JSON... -- REPEAT-JSON...');
     }
     const read = path => JSON.parse(readFileSync(path, 'utf8'));
-    const result = compareRendererCaseTimings(args.slice(0, split).map(read), args.slice(split + 1).map(read));
+    const result = compareRendererCaseTimings(args.slice(0, split).map(read), args.slice(split + 1).map(read), { sharedOnly });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } catch (error) {
     console.error(`Git Khronos: ${error.message}`);

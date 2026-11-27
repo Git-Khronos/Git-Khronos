@@ -24,3 +24,16 @@ test('rejects missing, duplicate and replaced case IDs rather than comparing par
   assert.throws(() => compareRendererCaseTimings([report(['a', 1])], [report(['a', 1]), report(['a', 1])]), /duplicate/);
   assert.throws(() => compareRendererCaseTimings([report(['a', 1])], [{ version: 1, totalCases: 1 }]), /complete/);
 });
+
+test('shared-only mode counts coverage differences and excludes them from timing totals', () => {
+  const baseline = [report(['a', 10], ['b', 900])];
+  const repeat = [report(['a', 20]), report(['c', 800])];
+  const result = compareRendererCaseTimings(baseline, repeat, { sharedOnly: true });
+  assert.deepEqual(result, {
+    totalCases: 1, baselineOnlyCases: 1, repeatOnlyCases: 1, repeatShards: [
+      { shard: 1, cases: 1, comparedRatios: 1, baselineDurationMs: 10, repeatDurationMs: 20, medianRatio: 2, p90Ratio: 2 },
+      { shard: 2, cases: 0, comparedRatios: 0, baselineDurationMs: 0, repeatDurationMs: 0, medianRatio: null, p90Ratio: null },
+    ],
+  });
+  assert.throws(() => compareRendererCaseTimings(baseline, [repeat[1]], { sharedOnly: true }), /no cases in common/);
+});
