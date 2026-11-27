@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, effect, inject, Injector, input, output, signal, untracked, viewChild } from '@angular/core';
 import { ipc } from '@git-khronos/contracts';
 import type { WorktreeRegistration, WorktreeRegistrationPruneResult, WorktreeRegistrationReview } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
@@ -73,7 +73,7 @@ export interface WorktreeRegistrationRequest {
                           </ul>
                           <p>Uncommitted work in a disconnected directory is not recovered. Reconnect storage first if it still exists.</p>
                           <button type="button" data-prune-execute [disabled]="unavailable()" (click)="prune(entry)">Remove registration</button>
-                          <button type="button" [disabled]="pending()" (click)="cancelPrune(entry)">Cancel</button>
+                          <button type="button" data-prune-cancel [disabled]="pending()" (click)="cancelPrune(entry)">Cancel</button>
                         </div>
                       } @else {
                         <button type="button" [attr.data-prune-open]="entry.path" [disabled]="unavailable()"
@@ -117,6 +117,7 @@ export interface WorktreeRegistrationRequest {
 })
 export class WorktreeRegistrationDialogComponent {
   readonly git = inject(GitKhronosService);
+  private readonly injector = inject(Injector);
   readonly request = input<WorktreeRegistrationRequest | null>(null);
   readonly closed = output<void>();
   readonly review = signal<WorktreeRegistrationReview | null>(null);
@@ -162,17 +163,32 @@ export class WorktreeRegistrationDialogComponent {
   }
 
   confirm(entry: WorktreeRegistration): void {
-    if (this.unavailable() || !this.review()?.registrations.includes(entry)) return;
+    const target = this.request();
+    if (!this.ownsRequest(target) || this.unavailable() || !this.review()?.registrations.includes(entry)) return;
+    const opener = document.activeElement;
     this.pruned.set(null);
     this.error.set('');
     this.confirming.set(entry);
-    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-prune-execute]')?.focus());
+    afterNextRender(() => {
+      if (this.ownsRequest(target) && this.confirming() === entry &&
+        (document.activeElement === document.body || document.activeElement === opener)) {
+        this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-prune-cancel]')?.focus({ preventScroll: true });
+      }
+    }, { injector: this.injector });
   }
 
   cancelPrune(entry: WorktreeRegistration): void {
+    const target = this.request();
+    if (!this.ownsRequest(target) || this.confirming() !== entry || this.pending()) return;
+    const origin = document.activeElement;
     this.confirming.set(null);
-    setTimeout(() => [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('[data-prune-open]') ?? [])]
-      .find(button => button.dataset['pruneOpen'] === entry.path)?.focus());
+    afterNextRender(() => {
+      if (this.ownsRequest(target) && !this.confirming() &&
+        (document.activeElement === document.body || document.activeElement === origin)) {
+        [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('[data-prune-open]') ?? [])]
+          .find(button => button.dataset['pruneOpen'] === entry.path)?.focus({ preventScroll: true });
+      }
+    }, { injector: this.injector });
   }
 
   async prune(entry: WorktreeRegistration): Promise<void> {

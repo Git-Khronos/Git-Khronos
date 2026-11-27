@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 const independentBackgroundReads = ['working_tree_change_summary', 'refresh_repository_status'];
 
@@ -7,8 +8,7 @@ test.afterEach(async ({ page }) => {
 });
 
 async function setup(page: Page): Promise<void> {
-  await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await openPreviewRepository(page, page.locator('#unstaged-files-list'));
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -227,8 +227,8 @@ test('reviewed registration removal confirms scope, sends the exact expected ide
   await expect(confirm).toContainText('without force');
   await expect(confirm).toContainText('branch topic is not deleted');
   await expect(confirm).toContainText('Uncommitted work in a disconnected directory is not recovered');
-  await expect(confirm.getByRole('button', { name: 'Remove registration', exact: true })).toBeFocused();
-  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(confirm.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(confirm).toHaveCount(0);
   await expect(opener).toBeFocused();
   expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) => call.command === 'prune_worktree_registration'))).toBe(false);
