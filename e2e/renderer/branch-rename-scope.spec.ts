@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await openPreviewRepository(page, page.locator('#unstaged-files-list'));
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -22,7 +22,12 @@ test.beforeEach(async ({ page }) => {
     } };
     state.open = () => { app.requestPaletteBranchRename(branch); app.contextRenameName.set('renamed-topic'); };
     state.change = (kind: string) => {
-      if (kind === 'repository') {
+      if (kind === 'revisit') {
+        const other = { ...repository, id: 'rename-revisit', path: '/owned/rename-revisit' };
+        git.repositories.update((items: any[]) => [...items, other]);
+        git.activateRepository(other.id);
+        git.activateRepository(repository.id);
+      } else if (kind === 'repository') {
         const other = { ...repository, id: 'rename-scope-B', path: '/owned/rename-B' };
         git.repositories.update((items: any[]) => [...items, other]);
         git.activeRepositoryId.set(other.id);
@@ -32,7 +37,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-for (const change of ['repository', 'path']) {
+for (const change of ['repository', 'path', 'revisit']) {
   test(`branch rename refuses a pre-effect ${change} change`, async ({ page }) => {
     await page.evaluate(() => (window as any).__renameScope.open());
     const dialog = page.getByRole('dialog', { name: /^Rename branch / });
@@ -116,7 +121,9 @@ test('rename dialog traps focus, isolates background shortcuts and restores its 
   await field.press('Control+p');
   await expect(page.locator('gk-command-palette')).toHaveCount(0);
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Rename Branch', exact: true }).focus();
+  const submit = dialog.getByRole('button', { name: 'Rename Branch', exact: true });
+  await submit.focus();
+  await expect(submit).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(field).toBeFocused();
   await page.keyboard.press('Shift+Tab');
@@ -153,7 +160,21 @@ test('failed rename does not follow preferences or create undo history', async (
   })).toEqual({ pinned: 'feature/partial-staging', hidden: ['feature/partial-staging'], history: null });
 });
 
-for (const change of ['repository', 'path']) {
+test('an outgoing palette rename field cannot overwrite a replacement draft', async ({ page }) => {
+  await page.evaluate(() => (window as any).__renameScope.open());
+  const field = page.getByRole('textbox', { name: 'New branch name' });
+  await expect(field).toHaveValue('renamed-topic');
+  await field.evaluate(input => {
+    const s = (window as any).__renameScope;
+    s.open();
+    s.app.contextRenameName.set('replacement-draft');
+    (input as HTMLInputElement).value = 'stale-input';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await expect(field).toHaveValue('replacement-draft');
+});
+
+for (const change of ['repository', 'path', 'revisit']) {
   test(`context rename refuses a pre-effect ${change} change`, async ({ page }) => {
     await page.getByRole('button', { name: 'Local branch feature/partial-staging', exact: true }).first().click({ button: 'right' });
     const field = page.locator('#context-rename-name');

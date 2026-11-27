@@ -32,7 +32,7 @@ const rendererSourceChecks = [
 ];
 const rendererFixtureSpecs = new Map([
   ['e2e/renderer/preview-repository-ready.ts', [
-    'confirmation-keyboard', 'history-review-loading', 'mainline-replay', 'operation-recovery',
+    'branch-rename-scope', 'confirmation-keyboard', 'history-review-loading', 'mainline-replay', 'operation-recovery',
     'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-review-scope',
     'deferred-action-scope', 'reference-action-scope', 'reference-actions',
   ]],

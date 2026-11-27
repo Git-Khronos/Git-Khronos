@@ -364,6 +364,10 @@ background refresh or another action clearing or replacing the global
 error cannot turn that refusal into success or erase an unrelated error.
 Leaving the checkout also retires branch deletion and rebase confirmations;
 a late refusal cannot open a force-delete follow-up in a new visit.
+Local branch rename likewise requires the current checkout visit in both
+the context menu and command palette. A retired field cannot change a
+replacement draft, and late success cannot rewrite the new visit's pinned
+or filtered branch preferences.
 
 ### Worktree removal and sparse checkout
 

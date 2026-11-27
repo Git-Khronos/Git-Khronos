@@ -318,7 +318,7 @@ interface RepositoryReviewScope extends RepositoryEditorOwner {
   readonly returnFocus: HTMLElement | null;
 }
 
-interface PendingBranchRename extends RepositoryReviewScope {
+interface PendingBranchRename extends CheckoutVisitReview {
   readonly branch: string;
 }
 
@@ -1465,7 +1465,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (stash && !this.ownsCheckoutVisitReview(stash)) untracked(() => this.closeStashDialog(stash, false));
     if (reference && !this.ownsCheckoutVisitReview(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (contextCreation && !this.ownsRepositoryScope(contextCreation)) untracked(() => this.dismissGraphActionMenu(false));
-    if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
+    if (rename && !this.ownsCheckoutVisitReview(rename)) untracked(() => this.closeBranchRename(false, rename));
     if (branchReview && !this.ownsCheckoutVisitReview(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
     if (publish && !this.ownsCheckoutVisitReview(publish)) untracked(() => this.closePublishBranch(false, publish));
     if (force && !this.ownsCheckoutVisitReview(force)) untracked(() => this.closeForcePush(false, force));
@@ -3718,6 +3718,7 @@ export class AppComponent implements OnInit, OnDestroy {
     previewContextMerge: this.previewContextMerge.bind(this),
     remoteUpstreamBranches: this.remoteUpstreamBranches,
     renameContextBranch: this.renameContextBranch.bind(this),
+    setContextBranchRenameName: this.setContextBranchRenameName.bind(this),
     requestBisectFromContext: this.requestBisectFromContext.bind(this),
     requestContextBranchDelete: this.requestContextBranchDelete.bind(this),
     requestContextRebase: this.requestContextRebase.bind(this),
@@ -14631,15 +14632,24 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected async renameContextBranch(menu = this.contextMenu()): Promise<void> {
-    if (this.contextMenu() !== menu) return;
     const name = this.contextRenameName().trim();
-    const owner = this.captureRepositoryEditorOwner();
-    if (!menu || menu.kind !== 'branch' || !owner || menu.repositoryId !== owner.repositoryId
-      || menu.repositoryPath !== owner.repositoryPath || !name || name === menu.label || this.git.busy()) return;
+    if (!menu || !this.ownsContextBranchRename(menu) || !name || name === menu.label || this.git.busy()) return;
+    const checkoutVisit = this.git.activeRepositoryReadScope();
     const wasPinned = this.pinnedBranch() === menu.label;
     this.actionOverlays.close('context');
     const renamed = await this.git.renameBranch(menu.label, name);
-    if (renamed && this.ownsRepositoryScope(owner)) this.followRenamedBranch(menu.label, name, wasPinned);
+    if (renamed && checkoutVisit === this.git.activeRepositoryReadScope()) this.followRenamedBranch(menu.label, name, wasPinned);
+  }
+
+  private ownsContextBranchRename(menu: ContextMenuState): boolean {
+    const owner = this.git.repository();
+    return this.contextMenu() === menu && menu.kind === 'branch'
+      && !!owner && menu.repositoryId === owner.id && menu.repositoryPath === owner.path
+      && menu.repositoryVisit === this.git.activeRepositoryReadScope();
+  }
+
+  protected setContextBranchRenameName(value: string, menu: ContextMenuState): void {
+    if (this.ownsContextBranchRename(menu) && !this.git.busy()) this.contextRenameName.set(value);
   }
 
   /** Keeps per-repository branch preferences attached to a branch after it is renamed. */
@@ -14664,12 +14674,12 @@ export class AppComponent implements OnInit, OnDestroy {
   private requestPaletteBranchRename(branch: string): void {
     const owner = this.captureRepositoryEditorOwner();
     if (!owner || this.git.busy() || !this.git.repository()?.branches.some((candidate) => !candidate.remote && candidate.name === branch)) return;
-    const request: PendingBranchRename = { ...owner, branch,
+    const request: PendingBranchRename = { ...owner, branch, checkoutVisit: this.git.activeRepositoryReadScope(),
       returnFocus: document.activeElement instanceof HTMLElement ? document.activeElement : null };
     this.contextRenameName.set(branch);
     this.pendingBranchRename.set(request);
     afterNextRender(() => {
-      if (this.pendingBranchRename() !== request || !this.ownsRepositoryScope(request)) return;
+      if (this.pendingBranchRename() !== request || !this.ownsCheckoutVisitReview(request)) return;
       this.branchRenameInput()?.nativeElement.focus();
       this.branchRenameInput()?.nativeElement.select();
     }, { injector: this.injector });
@@ -14680,12 +14690,12 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pendingBranchRename.set(null);
     if (restoreFocus) queueMicrotask(() => {
       const opener = request.returnFocus;
-      if (!this.pendingBranchRename() && this.ownsRepositoryScope(request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+      if (!this.pendingBranchRename() && this.ownsCheckoutVisitReview(request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
     });
   }
 
   protected handleBranchRenameKey(event: KeyboardEvent, request: PendingBranchRename): void {
-    if (this.pendingBranchRename() !== request || !this.ownsRepositoryScope(request)) return;
+    if (this.pendingBranchRename() !== request || !this.ownsCheckoutVisitReview(request)) return;
     event.stopPropagation();
     // Stopping propagation does not cancel WebKit's implicit form submission.
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey || event.altKey
@@ -14699,13 +14709,19 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmPaletteBranchRename(request = this.pendingBranchRename()): Promise<void> {
     if (!request || this.pendingBranchRename() !== request) return;
-    if (!this.ownsRepositoryScope(request)) { this.closeBranchRename(false, request); return; }
+    if (!this.ownsCheckoutVisitReview(request)) { this.closeBranchRename(false, request); return; }
     const name = this.contextRenameName().trim();
     if (!name || name === request.branch || this.git.busy()) return;
     const wasPinned = this.pinnedBranch() === request.branch;
     this.closeBranchRename(false, request);
     const renamed = await this.git.renameBranch(request.branch, name);
-    if (renamed && this.ownsRepositoryScope(request)) this.followRenamedBranch(request.branch, name, wasPinned);
+    if (renamed && this.ownsCheckoutVisitReview(request)) this.followRenamedBranch(request.branch, name, wasPinned);
+  }
+
+  protected setPaletteBranchRenameName(value: string, request: PendingBranchRename): void {
+    if (this.pendingBranchRename() === request && this.ownsCheckoutVisitReview(request) && !this.git.busy()) {
+      this.contextRenameName.set(value);
+    }
   }
 
   private requestPaletteBranchDelete(branch: string, returnFocus: HTMLElement | null = null): void {

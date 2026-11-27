@@ -2217,7 +2217,7 @@
           <h2>{{ request.branch }}</h2>
           <p class="form-help repository-editor-source">Checkout: <code>{{ request.repositoryPath }}</code></p>
           <p>Enter the new branch name. Existing commits and working-tree changes remain unchanged.</p>
-          <input #branchRenameInput class="stash-rename-input" name="branchRenameName" aria-label="New branch name" autocomplete="off" [gkTextValue]="contextRenameName()" (gkTextValueChange)="contextRenameName.set($event)" autofocus />
+          <input #branchRenameInput class="stash-rename-input" name="branchRenameName" aria-label="New branch name" autocomplete="off" [gkTextValue]="contextRenameName()" (gkTextValueChange)="setPaletteBranchRenameName($event, request)" autofocus />
         </div>
         <footer><button type="button" (click)="closeBranchRename(true, request)">Cancel</button><button class="confirm-action" type="submit" [disabled]="!contextRenameName().trim() || contextRenameName().trim() === request.branch || git.busy()">Rename Branch</button></footer>
       </form>

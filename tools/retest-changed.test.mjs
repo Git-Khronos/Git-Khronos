@@ -82,7 +82,7 @@ test('changing preview startup selects every direct consumer of that fixture', t
   const f = fixture(t);
   f.write('e2e/renderer/preview-repository-ready.ts');
   const plan = f.run();
-  for (const name of ['confirmation-keyboard', 'history-review-loading', 'mainline-replay', 'operation-recovery',
+  for (const name of ['branch-rename-scope', 'confirmation-keyboard', 'history-review-loading', 'mainline-replay', 'operation-recovery',
     'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-review-scope',
     'deferred-action-scope', 'reference-action-scope', 'reference-actions']) {
     assert.ok(plan.includes(`e2e/renderer/${name}[.]spec[.]ts$`), name);

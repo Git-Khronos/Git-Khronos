@@ -121,7 +121,7 @@
         <div class="context-section-label" aria-hidden="true">Manage branch</div>
         <form novalidate class="context-branch-form" (submit)="$event.preventDefault(); view.renameContextBranch(menu)">
           <label for="context-rename-name">Rename branch</label>
-          <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [gkTextValue]="view.contextRenameName()" (gkTextValueChange)="view.contextRenameName.set($event)" /><button type="submit" [disabled]="!view.contextRenameName().trim() || view.contextRenameName().trim() === menu.label || view.git.busy()">Rename</button></div>
+          <div><input id="context-rename-name" name="contextRenameName" autocomplete="off" [gkTextValue]="view.contextRenameName()" (gkTextValueChange)="view.setContextBranchRenameName($event, menu)" /><button type="submit" [disabled]="!view.contextRenameName().trim() || view.contextRenameName().trim() === menu.label || view.git.busy()">Rename</button></div>
         </form>
         <button class="danger-item" type="button" role="menuitem" [disabled]="menu.label === view.git.repository()?.status?.branch || view.git.busy()" (click)="view.requestContextBranchDelete(menu)"><span><gk-icon name="trash" [size]="13" /></span>Delete branch…</button>
       }
