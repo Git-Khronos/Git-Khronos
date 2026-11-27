@@ -455,6 +455,29 @@ changes and deletion.
    unverified rather than substituting the offline rehearsal. An already
    published tag is not a repair target for this workflow.
 
+### Verify automatic updates after the first signed release
+
+Use a disposable supported Debian or Ubuntu desktop with working polkit.
+Install the first official signed Debian release once from its GitHub release
+assets. Leave automatic updates off until a **strictly newer** signed Debian
+release with the same pinned key is public and its `latest.json` is available.
+Then, in the older installation:
+
+1. Open **Updates** and confirm the old running version. Enable automatic
+   updates without pressing **Check for updates**, **Download**, or **Install**.
+   Enabling resets the next-check deadline; let the scheduler run.
+2. Keep Git operations, terminal sessions, and editors idle. Observe the offer
+   and verification; approve only the OS authorization for the expected
+   update. An authorization prompt is compatible with automatic dispatch.
+3. When the app reports that a restart is needed, quit and relaunch. Confirm
+   the newer running version and the installed package version with
+   `dpkg-query -W git-khronos`. Record the baseline, both release tags, the
+   published package checksum, and whether any manual action besides consent,
+   OS authorization, and relaunch was required.
+
+Downloading or installing the second release by hand does not pass this check.
+Neither does validating just the manifest or testing the offline updater.
+
 On Linux, a verified package can be downloaded even if the desktop cannot
 authorize an in-app installation. For Debian and RPM, a missing or unusable
 `/usr/bin/pkexec` disables the install action and suppresses automatic installer
