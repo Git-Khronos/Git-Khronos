@@ -8904,6 +8904,7 @@ test('navigates unstaged and staged files from the central diff', async ({ page 
   await expect(diff.locator('.diff-file-identity strong')).toHaveText('app.component.scss');
   await expect(navigation.getByRole('button', { name: 'Next changed file' })).toBeEnabled();
   await page.keyboard.press('Alt+ArrowDown');
+  await expect(navigation).toContainText('3 of 4 files');
   await expect(navigation.getByRole('button', { name: 'Next changed file' })).toBeEnabled();
   await page.keyboard.press('Alt+ArrowDown');
   await expect(navigation).toContainText('4 of 4 files');

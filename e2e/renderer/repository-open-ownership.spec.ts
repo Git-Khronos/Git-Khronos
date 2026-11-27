@@ -113,11 +113,13 @@ test('Open Repository shortcut cannot override a checkout selected during its na
   await requested(page, 'picker');
   await reply(page, 'picker', FIRST);
   await requested(page, FIRST);
-  await page.locator('.repo-tab-main').nth(1).click();
-  const selection = await selectedPath(page).innerText();
+  const otherTab = page.locator('.repo-tab-main').nth(1);
+  await otherTab.click();
+  await expect(otherTab).toHaveAttribute('aria-selected', 'true');
+  await expect(selectedPath(page)).toHaveText(OTHER_TAB);
   await reply(page, FIRST);
   await expect(page.locator('.app-shell')).not.toHaveClass(/is-busy/);
-  await expect(selectedPath(page)).toHaveText(selection);
+  await expect(selectedPath(page)).toHaveText(OTHER_TAB);
   await expect(page.locator('.repo-tab-main')).toHaveCount(2);
 });
 

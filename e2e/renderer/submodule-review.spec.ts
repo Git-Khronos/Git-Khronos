@@ -321,7 +321,8 @@ test('updates all clean initialized submodules from remotes only after confirmat
   await page.evaluate(() => { (window as any).__submoduleReview.clean = true; });
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
-  const update = dialog.getByRole('button', { name: 'Update all from remotes' });
+  const update = dialog.getByRole('group', { name: 'All submodule actions' })
+    .getByRole('button', { name: 'Update all from remotes', exact: true });
   await expect(update).toBeEnabled();
   await update.click();
   const confirmation = dialog.getByRole('group', { name: 'Update all submodules from remotes' });
