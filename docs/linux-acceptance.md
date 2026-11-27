@@ -45,6 +45,12 @@ still running (it passed at 21:39:45 UTC). This confirms the dependency was
 removed without dropping the check. It does not by itself measure a
 whole-workflow speedup.
 
+From the package build job's start to the verified artifact upload, run
+46067064552 took 9 min 10 s and run 46071498371 took 7 min 10 s. The
+earlier in-job fixture step accounts for 52 seconds of the baseline time;
+provisioning and compilation also differed. This is a two-run observation
+of artifact availability, not a guaranteed two-minute improvement.
+
 In run 46058006158 the primary native report contained 335 distinct
 scenarios. All named scenarios from the focused file-tools, merge-preview,
 and working-tree-recaps reports also appeared in that primary report.
