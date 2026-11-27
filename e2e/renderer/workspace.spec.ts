@@ -8919,6 +8919,38 @@ test('navigates unstaged and staged files from the central diff', async ({ page 
   await expect(selectedFile).toBeFocused();
 });
 
+for (const denied of [false, true]) {
+  test(`diff copy ignores a late ${denied ? 'failure' : 'success'} after changing files`, async ({ page }) => {
+    const initial = 'apps/desktop/src/app/app.component.html';
+    const next = 'apps/desktop/src/app/app.component.scss';
+    await page.getByTitle(`View changes in ${initial}`).click();
+    const diff = page.getByLabel('Diff viewer');
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: (text: string) => new Promise<void>((resolve, reject) => {
+          (window as any).__deferredDiffCopy = { text, resolve, reject };
+        }) },
+      });
+    });
+    await diff.getByRole('button', { name: `Copy path for ${initial}`, exact: true }).click();
+    expect(await page.evaluate(() => (window as any).__deferredDiffCopy.text)).toBe(initial);
+    await diff.getByRole('button', { name: 'Next changed file' }).click();
+    await expect(diff.getByRole('button', { name: `Copy path for ${next}`, exact: true })).toBeVisible();
+    await diff.getByRole('button', { name: 'Previous changed file' }).click();
+    const original = diff.getByRole('button', { name: `Copy path for ${initial}`, exact: true });
+    await expect(original).toBeVisible();
+    await page.evaluate(async denied => {
+      const pending = (window as any).__deferredDiffCopy;
+      if (denied) pending.reject(new Error('Clipboard denied'));
+      else pending.resolve();
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }, denied);
+    await expect(diff.getByRole('status').filter({ hasText: 'Repository-relative path copied.' })).toHaveCount(0);
+    await expect(page.locator('gk-error-toast').filter({ hasText: 'Could not copy the diff path' })).toHaveCount(0);
+  });
+}
+
 test('jumps from commit details to a parent commit', async ({ page }) => {
   await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
 
