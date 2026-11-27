@@ -330,10 +330,33 @@ test('checks the installed launcher and executable bytes even when the package v
 test('packaged CI gates both runtime lanes on one verified archive, not on each other', async t => {
   const ci = (await readFile(join(repositoryRoot, '.github/workflows/ci.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const [, build] = ci.split('\n  packaged-build:\n');
-  const [producer, tail] = build.split('\n  packaged-native:\n');
-  const [native, installed] = tail.split('\n  linux-runtime:\n');
+  const [producer, tail] = build.split('\n  packaged-native-lanes:\n');
+  const [native, remaining] = tail.split('\n  packaged-native:\n');
+  const [aggregate, installed] = remaining.split('\n  linux-runtime:\n');
   assert.match(producer, /node tools\/check-linux-abi\.mjs[\s\S]*?sha256sum --check SHA256SUMS\)[\s\S]*?name: ubuntu-package\n\s+path: ubuntu-package\/\*/);
   assert.match(native, /needs: packaged-build\n\s+if: \$\{\{ !cancelled\(\) \}\}/);
+  assert.match(native, /fail-fast: false\n\s+matrix:\n\s+lane: \[primary, supplemental\]/);
+  assert.match(native, /Run packaged WebKitGTK acceptance\n\s+if: matrix\.lane == 'primary'/);
+  for (const title of [
+    'Verify packaged browser and file manager handoffs',
+    'Run focused packaged signing and tag-navigation acceptance',
+    'Run focused packaged GitLab fork navigation acceptance',
+    'Run packaged GitLab catalogue acceptance',
+  ]) {
+    assert.ok(native.includes(`- name: ${title}\n        if: matrix.lane == 'supplemental'`), title);
+  }
+  assert.match(native, /name: packaged-native-[^\n]+-attempt-\$\{\{ github\.run_attempt \}\}-\$\{\{ matrix\.lane \}\}/);
+  assert.match(aggregate, /name: Jammy package and native acceptance\n\s+needs: \[packaged-build, packaged-native-lanes\]\n\s+if: always\(\)/);
+  const gate = aggregate.match(/run: \|\n([\s\S]*)/)?.[1].replace(/^          /gm, '');
+  assert.ok(gate);
+  for (const build of ['success', 'failure', 'cancelled', 'skipped']) {
+    for (const matrix of ['success', 'failure', 'cancelled', 'skipped']) {
+      const result = spawnSync('bash', ['-c', gate], {
+        env: { ...process.env, BUILD_RESULT: build, NATIVE_RESULT: matrix },
+      });
+      assert.equal(result.status, build === 'success' && matrix === 'success' ? 0 : 1);
+    }
+  }
   assert.match(native, /if \[\[ "\$BUILD_RESULT" != success \]\]; then[\s\S]*?exit 1/);
   assert.match(installed, /needs: packaged-build\n[\s\S]*?artifact-name: ubuntu-package/);
   assert.match(native, /uses: actions\/download-artifact@v4\n\s+with:\n\s+name: ubuntu-package\n\s+path: ubuntu-package/);

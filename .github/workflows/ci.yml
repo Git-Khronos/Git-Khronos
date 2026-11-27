@@ -253,12 +253,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  packaged-native:
-    name: Jammy package and native acceptance
+  packaged-native-lanes:
+    name: Jammy native acceptance (${{ matrix.lane }})
     needs: packaged-build
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [primary, supplemental]
     env:
       NATIVE_SUITE: ${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs['native-suite'] || 'full') }}
     steps:
@@ -312,13 +316,16 @@ jobs:
           test "$(cat SHA256SUMS)" = "$expected"
           echo "PACKAGE=$PWD/${packages[0]}" >> "$GITHUB_ENV"
       - name: Run packaged WebKitGTK acceptance
+        if: matrix.lane == 'primary'
         run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static -- --package "$PACKAGE"
       - name: Verify packaged browser and file manager handoffs
+        if: matrix.lane == 'supplemental'
         run: |
           pnpm nx run desktop:native-git-documentation --output-style=static -- --package "$PACKAGE"
           pnpm nx run desktop:native-application-update-release-link --output-style=static -- --package "$PACKAGE"
           pnpm nx run desktop:native-file-manager-launch --output-style=static -- --package "$PACKAGE"
       - name: Run focused packaged signing and tag-navigation acceptance
+        if: matrix.lane == 'supplemental'
         run: |
           pnpm nx run desktop:native-signed-commit --output-style=static -- --package "$PACKAGE"
           pnpm nx run desktop:native-empty-commit --output-style=static -- --package "$PACKAGE"
@@ -333,10 +340,12 @@ jobs:
           pnpm nx run desktop:native-discard-busy --output-style=static -- --package "$PACKAGE"
           pnpm nx run desktop:native-integrity-ui --output-style=static -- --package "$PACKAGE"
       - name: Run focused packaged GitLab fork navigation acceptance
+        if: matrix.lane == 'supplemental'
         run: |
           pnpm nx exec -p desktop --excludeTaskDependencies -- \
             python3 "$PWD/tools/native_acceptance.py" --suite gitlab-fork-ui --headless --package "$PACKAGE"
       - name: Run packaged GitLab catalogue acceptance
+        if: matrix.lane == 'supplemental'
         run: |
           pnpm nx exec -p desktop --excludeTaskDependencies -- \
             python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$PACKAGE"
@@ -344,10 +353,27 @@ jobs:
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.verify-native-package.outcome == 'success' }}
         with:
-          name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}
+          name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}-${{ matrix.lane }}
           path: test-results/native/
           if-no-files-found: error
           retention-days: 14
+
+  packaged-native:
+    # Preserve the existing aggregate status for branch protection.
+    name: Jammy package and native acceptance
+    needs: [packaged-build, packaged-native-lanes]
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require a successful build and both Jammy native lanes
+        env:
+          BUILD_RESULT: ${{ needs.packaged-build.result }}
+          NATIVE_RESULT: ${{ needs.packaged-native-lanes.result }}
+        run: |
+          printf 'Package build: %s\nJammy native matrix: %s\n' "$BUILD_RESULT" "$NATIVE_RESULT"
+          test "$BUILD_RESULT" = success && test "$NATIVE_RESULT" = success
 
   linux-runtime:
     name: Ubuntu and Debian exact-artifact acceptance

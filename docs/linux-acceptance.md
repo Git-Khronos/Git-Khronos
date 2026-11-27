@@ -5,14 +5,17 @@
 For Desktop CI, download `ubuntu-package` for the tested Debian archive,
 `SHA256SUMS`, and the build ABI report. Verify the archive with
 `sha256sum --check SHA256SUMS` from the download directory. The
-`packaged-native-<suite>-<run-id>` artifact contains the separate native
-reports and failure diagnostics, not a second copy of the archive. Download
-both artifacts from the same run when investigating a failure.
+`packaged-native-<suite>-<run-id>-attempt-<attempt>-<lane>` artifacts contain
+the native reports and failure diagnostics, not a second copy of the archive.
+Download the failing lane and the build artifact from the same run. Older
+runs used a single `packaged-native-<suite>-<run-id>` artifact.
 
 The Jammy extracted-package tests and the installed Ubuntu/Debian matrix
 start independently after the package build uploads the verified archive.
-Both use that same archive; neither rebuilds it or waits for the other
-test job to finish.
+The primary Jammy lane runs WebKitGTK acceptance; the supplemental lane
+runs the focused launcher, signing, file-review, and GitLab suites. Both
+verify the same archive independently. The existing **Jammy package and
+native acceptance** status requires the build and both lanes to pass.
 
 In the first hosted comparison of `dev` push runs (`46034264516` before
 the split, `46044831941` after), the first installed lane started **13 s**
