@@ -396,6 +396,28 @@ test('pending submodule review blocks dismissal and a repository switch discards
   await expect(dialog).toHaveCount(0);
 });
 
+for (const change of ['workspace', 'path']) {
+  test(`submodule URL review refuses a changed ${change} even with the same repository ID`, async ({ page }) => {
+    await setup(page);
+    await open(page);
+    const dialog = page.getByRole('dialog', { name: 'Manage submodules', exact: true });
+    await dialog.getByRole('button', { name: 'Sync local URL from .gitmodules…' }).click();
+    const confirm = dialog.getByRole('button', { name: 'Sync URL', exact: true });
+    await expect(confirm).toBeEnabled();
+    await confirm.evaluate((button, change) => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      if (change === 'workspace') git.activeWorkspaceId.set('another-submodule-workspace');
+      else git.repositories.update((items: any[]) => items.map(item =>
+        item.id === git.activeRepositoryId() ? { ...item, path: '/owned/replaced-submodule-checkout' } : item));
+      (button as HTMLButtonElement).click();
+    }, change);
+    await expect(dialog.getByRole('alert')).toContainText('active repository changed');
+    await expect(dialog.getByRole('list', { name: 'Submodule states' })).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__submoduleReview.calls.filter((call: any) =>
+      call.command === 'sync_submodule_url'))).toEqual([]);
+  });
+}
+
 test('submodule review fits a compact window, contains Tab focus and returns from contextual help', async ({ page }) => {
   await setup(page);
   await open(page);

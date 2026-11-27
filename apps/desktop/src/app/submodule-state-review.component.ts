@@ -23,13 +23,13 @@ import { submoduleFindings } from './submodule-findings';
           <p class="intro">Inspect every declared or recorded submodule using Git status, the index, .gitmodules and local
             configuration. A configured ignore setting does not hide changes here. Inspection changes nothing;
             available management actions explain their effects before they run.</p>
-          @if (target.repositoryId !== git.activeRepositoryId()) {
+          @if (!ownsRequest(target)) {
             <p role="alert" tabindex="-1">The active repository changed. Close this review and inspect the intended repository.</p>
           }
           @if (error()) { <p role="alert" tabindex="-1">{{ error() }}</p> }
           @if (loading()) { <p role="status">Inspecting submodules…</p> }
           @if (syncNotice()) { <p role="status" tabindex="-1" data-submodule-sync>{{ syncNotice() }}</p> }
-          @if (review(); as result) {
+          @if (ownsRequest(target) ? review() : null; as result) {
             <div class="review-summary" [class.attention]="attentionCount(result)" role="status" tabindex="-1" data-submodule-result>
               <strong>{{ result.entries.length }}</strong>
               <span>{{ summary(result) }}</span>
@@ -484,21 +484,27 @@ export class SubmoduleStateReviewComponent {
     this.syncNotice.set('');
     let failure = '';
     try {
-      this.syncNotice.set(await action(target));
+      const notice = await action(target);
+      if (this.ownsRequest(target)) this.syncNotice.set(notice);
     } catch (reason) {
       failure = this.message(reason);
     } finally {
       this.syncing.set(false);
       this.confirming.set(null);
     }
-    if (this.request() !== target) return;
+    if (!this.ownsRequest(target)) return;
     await this.reload();
+    if (!this.ownsRequest(target)) return;
     if (failure) this.error.set(failure);
     setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(failure ? '[role=alert]' : '[data-submodule-sync]')?.focus());
   }
 
   unavailable(): boolean {
-    return this.loading() || this.request()?.repositoryId !== this.git.activeRepositoryId();
+    return this.loading() || !this.ownsRequest(this.request());
+  }
+
+  ownsRequest(target: WorktreeRegistrationRequest | null): boolean {
+    return !!target && this.request() === target && target.scope === this.git.activeRepositoryReadScope();
   }
 
   summary(result: SubmoduleStateReview): string {
@@ -589,8 +595,9 @@ export class SubmoduleStateReviewComponent {
     const failure = succeeded ? '' : this.git.error() ?? 'The bulk submodule operation failed.';
     this.syncing.set(false);
     this.confirming.set(null);
-    if (this.request() !== target) return;
+    if (!this.ownsRequest(target)) return;
     await this.reload();
+    if (!this.ownsRequest(target)) return;
     if (failure) this.error.set(failure);
     else this.syncNotice.set(action === 'initialize-all'
       ? 'Initialized all missing submodules at their recorded commits.'
@@ -611,14 +618,14 @@ export class SubmoduleStateReviewComponent {
     this.error.set('');
     try {
       const review = await ipc.submodule_state_review({ repoId: target.repositoryId });
-      if (this.request() === target && target.repositoryId === this.git.activeRepositoryId()) this.review.set(review);
+      if (this.ownsRequest(target)) this.review.set(review);
     } catch (failure) {
-      if (this.request() === target) this.error.set(this.message(failure));
+      if (this.ownsRequest(target)) this.error.set(this.message(failure));
     } finally {
       this.loading.set(false);
     }
     if (this.request() !== target) return;
-    if (submoduleTarget && target.repositoryId === this.git.activeRepositoryId() && !this.error()) {
+    if (submoduleTarget && this.ownsRequest(target) && !this.error()) {
       const entry = this.review()?.entries.find(candidate => candidate.path === submoduleTarget.path);
       if (entry && this.reviewAction(entry) === submoduleTarget.action && !this.git.busy()) {
         this.openSingle(entry, submoduleTarget.action);
@@ -628,7 +635,7 @@ export class SubmoduleStateReviewComponent {
       this.error.set(`${submoduleTarget.path} is no longer available for ${reason}. Review its current state before continuing.`);
     }
     setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(
-      this.error() || target.repositoryId !== this.git.activeRepositoryId() ? '[role=alert]' : '[data-submodule-result]')?.focus());
+      this.error() || !this.ownsRequest(target) ? '[role=alert]' : '[data-submodule-result]')?.focus());
   }
 
   close(): void {

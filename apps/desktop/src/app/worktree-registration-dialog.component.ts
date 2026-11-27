@@ -13,6 +13,7 @@ export interface SubmoduleReviewTarget {
 
 export interface WorktreeRegistrationRequest {
   repositoryId: string;
+  scope: string;
   returnFocus: HTMLElement | null;
   submodules?: boolean;
   submoduleTarget?: SubmoduleReviewTarget;

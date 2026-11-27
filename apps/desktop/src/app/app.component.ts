@@ -7117,7 +7117,9 @@ export class AppComponent implements OnInit, OnDestroy {
       ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     this.actionOverlays.close('worktree');
     this.actionOverlays.close('submodule');
-    this.worktreeRegistrationRequest.set({ repositoryId, returnFocus: opener, submodules, submoduleTarget });
+    this.worktreeRegistrationRequest.set({
+      repositoryId, scope: this.git.activeRepositoryReadScope(), returnFocus: opener, submodules, submoduleTarget,
+    });
   }
 
   protected openLfsTracking(): void {
