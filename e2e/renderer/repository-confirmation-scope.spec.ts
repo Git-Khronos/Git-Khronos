@@ -169,6 +169,7 @@ for (const switchRepository of [false, true]) {
 for (const [review, action] of [
   ['sparse-set', 'Apply Selection'], ['sparse-set', 'Back to Edit'], ['sparse-disable', 'Restore All Files'],
   ['worktree', 'Remove worktree'],
+  ['branch', 'Delete branch'],
 ] as const) {
   test(`returning to a checkout cannot reuse the previous review: ${review} / ${action}`, async ({ page }) => {
     const modal = await open(page, review);

@@ -362,6 +362,8 @@ preflight does not lock out independent Git writers before Git starts.
 The force follow-up uses the safe deletion's own native refusal. A
 background refresh or another action clearing or replacing the global
 error cannot turn that refusal into success or erase an unrelated error.
+Leaving the checkout also retires branch deletion and rebase confirmations;
+a late refusal cannot open a force-delete follow-up in a new visit.
 
 ### Worktree removal and sparse checkout
 
@@ -375,6 +377,9 @@ Force-push review uses the same visit boundary. A destination lookup from a
 retired visit cannot enable confirmation, and a previously enabled button
 cannot initiate a push after leaving and returning. Native ref and destination
 leases still authorize the actual Git operation.
+
+LFS cleanup uses the same visit boundary for both the reviewed object list
+and retention-based prune. A retired preview cannot update a new visit.
 
 ### Remote branch rename and deletion
 

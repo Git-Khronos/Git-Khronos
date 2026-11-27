@@ -145,6 +145,20 @@ test('an obsolete publish selector cannot change a replacement draft', async ({ 
   expect(await page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).publishRemote())).toBe('replacement-choice');
 });
 
+for (const review of ['lfs', 'retention'] as const) {
+  test(`${review} refuses an outgoing confirmation after a synchronous checkout revisit`, async ({ page }) => {
+    const modal = await open(page, review);
+    const confirm = page.locator(selector(review));
+    await expect(confirm).toBeEnabled();
+    await confirm.evaluate(button => {
+      (window as any).__changeRemoteScope('revisit');
+      (button as HTMLButtonElement).click();
+    });
+    await expect(modal).toBeHidden();
+    expect(await calls(page)).toEqual([]);
+  });
+}
+
 for (const outcome of ['success', 'failure']) {
   test(`an old LFS preview ${outcome} cannot overwrite or close a newer review`, async ({ page }) => {
     await page.evaluate(() => (window as any).__holdPreviews = true);

@@ -493,7 +493,7 @@ type BranchAction = { kind: 'rebase'; branch: string; integration: ContextBranch
   unmerged?: boolean;
 };
 
-type PendingBranchAction = RepositoryReviewScope & BranchAction;
+type PendingBranchAction = CheckoutVisitReview & BranchAction;
 
 interface PendingBranchUpstream {
   repositoryId: string;
@@ -1325,7 +1325,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly remoteDialogIcon = signal<RemoteLocationIcon>('remote');
   protected readonly pendingRemoteRemoval = signal<Remote | null>(null);
   protected readonly remoteRemovalOwner = signal<RepositoryEditorOwner | null>(null);
-  protected readonly lfsPruneReview = signal<RepositoryReviewScope | null>(null);
+  protected readonly lfsPruneReview = signal<CheckoutVisitReview | null>(null);
   protected readonly pendingLfsPrune = computed(() => this.lfsPruneReview() !== null);
   protected readonly lfsPrunePreview = signal<LfsPrunePreview | null>(null);
   protected readonly lfsPruneReviewing = signal(false);
@@ -1465,10 +1465,10 @@ export class AppComponent implements OnInit, OnDestroy {
     if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (contextCreation && !this.ownsRepositoryScope(contextCreation)) untracked(() => this.dismissGraphActionMenu(false));
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
-    if (branchReview && !this.ownsRepositoryScope(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
+    if (branchReview && !this.ownsCheckoutVisitReview(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
     if (publish && !this.ownsRepositoryScope(publish)) untracked(() => this.closePublishBranch(false, publish));
     if (force && !this.ownsCheckoutVisitReview(force)) untracked(() => this.closeForcePush(false, force));
-    if (lfs && !this.ownsRepositoryScope(lfs)) untracked(() => this.closeLfsPrune(false, lfs));
+    if (lfs && !this.ownsCheckoutVisitReview(lfs)) untracked(() => this.closeLfsPrune(false, lfs));
   });
 
   private captureRepositoryEditorOwner(): RepositoryEditorOwner | null {
@@ -12593,7 +12593,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected requestLfsPrune(returnFocus?: HTMLElement | null): void {
     const owner = this.captureRepositoryEditorOwner();
     if (!owner) return;
-    const request = { ...owner, returnFocus: this.captureSecondaryConfirmationOpener(returnFocus) };
+    const request: CheckoutVisitReview = { ...owner, checkoutVisit: this.git.activeRepositoryReadScope(),
+      returnFocus: this.captureSecondaryConfirmationOpener(returnFocus) };
     this.toolbarOverlays.close('lfs');
     this.lfsPruneReview.set(request);
     this.lfsPrunePreview.set(null);
@@ -12601,14 +12602,14 @@ export class AppComponent implements OnInit, OnDestroy {
     void this.reviewLfsPrune(request);
   }
 
-  private async reviewLfsPrune(request: RepositoryReviewScope): Promise<void> {
+  private async reviewLfsPrune(request: CheckoutVisitReview): Promise<void> {
     let preview: LfsPrunePreview | null = null;
     try {
       preview = await this.git.previewLfsPrune(request.repositoryId);
     } finally {
-      if (this.lfsPruneReview() === request) this.lfsPruneReviewing.set(false);
+      if (this.lfsPruneReview() === request && this.ownsCheckoutVisitReview(request)) this.lfsPruneReviewing.set(false);
     }
-    if (this.lfsPruneReview() !== request || !this.ownsRepositoryScope(request)) return;
+    if (this.lfsPruneReview() !== request || !this.ownsCheckoutVisitReview(request)) return;
     if (!preview) {
       this.closeLfsPrune(true, request);
       return;
@@ -12621,13 +12622,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.lfsPruneReview.set(null);
     this.lfsPrunePreview.set(null);
     this.lfsPruneReviewing.set(false);
-    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
+    if (restoreFocus && expected && this.ownsCheckoutVisitReview(expected)) this.restoreRepositoryReviewFocus(expected);
   }
 
   protected async confirmLfsPrune(expected = this.lfsPruneReview()): Promise<void> {
     const request = this.lfsPruneReview();
     const preview = this.lfsPrunePreview();
-    if (!request || request !== expected || !this.ownsRepositoryScope(request)
+    if (!request || request !== expected || !this.ownsCheckoutVisitReview(request)
       || this.git.busy() || this.lfsPruneReviewing() || !preview?.objects.length) return;
     this.closeLfsPrune(true, request);
     await this.git.pruneLfsObjects(preview, request.repositoryId);
@@ -12635,7 +12636,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected async confirmLfsRetentionPrune(expected = this.lfsPruneReview()): Promise<void> {
     const request = this.lfsPruneReview();
-    if (!request || request !== expected || !this.ownsRepositoryScope(request) || this.git.busy() || this.lfsPruneReviewing()) return;
+    if (!request || request !== expected || !this.ownsCheckoutVisitReview(request) || this.git.busy() || this.lfsPruneReviewing()) return;
     this.closeLfsPrune(true, request);
     await this.git.lfs('lfs_prune');
   }
@@ -14898,16 +14899,16 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected setBranchForceDelete(value: boolean, expected = this.pendingBranchAction()): void {
-    if (!expected || this.pendingBranchAction() !== expected || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    if (!expected || this.pendingBranchAction() !== expected || !this.ownsCheckoutVisitReview(expected) || this.git.busy()) return;
     this.forceBranchDelete.set(value);
   }
 
   protected async confirmBranchAction(expected = this.pendingBranchAction()): Promise<void> {
     const action = this.pendingBranchAction();
-    if (!action || action !== expected || !this.ownsRepositoryScope(action) || this.git.busy()) return;
+    if (!action || action !== expected || !this.ownsCheckoutVisitReview(action) || this.git.busy()) return;
     if (action.kind === 'rebase') {
       await this.applyContextIntegration('rebase', action.integration);
-      if (this.pendingBranchAction() === action && this.ownsRepositoryScope(action)) this.dismissBranchConfirmation(false, action);
+      if (this.pendingBranchAction() === action && this.ownsCheckoutVisitReview(action)) this.dismissBranchConfirmation(false, action);
       return;
     }
     if (!this.contextBranchDeleteMatches(action.branch, action.expectedOid)) {
@@ -14916,7 +14917,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     const wasPinned = this.pinnedBranch() === action.branch;
     const outcome = await this.git.deleteBranch(action.branch, action.unmerged || this.forceBranchDelete(), action.expectedOid);
-    if (this.pendingBranchAction() !== action || !this.ownsRepositoryScope(action)) return;
+    if (this.pendingBranchAction() !== action || !this.ownsCheckoutVisitReview(action)) return;
     if (outcome === 'notMerged') {
       this.openBranchConfirmation({ kind: 'delete', branch: action.branch, expectedOid: action.expectedOid, unmerged: true }, action.returnFocus);
       return;
@@ -15203,7 +15204,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.pendingBranchAction() !== expected) return;
     this.pendingBranchAction.set(null);
     this.forceBranchDelete.set(false);
-    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
+    if (restoreFocus && expected && this.ownsCheckoutVisitReview(expected)) this.restoreRepositoryReviewFocus(expected);
   }
 
   private restoreRepositoryReviewFocus(review: RepositoryReviewScope): void {
@@ -15225,11 +15226,12 @@ export class AppComponent implements OnInit, OnDestroy {
     const activeElement = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    const request: PendingBranchAction = { ...action, ...owner, returnFocus: returnFocus ?? activeElement };
+    const request: PendingBranchAction = { ...action, ...owner,
+      checkoutVisit: this.git.activeRepositoryReadScope(), returnFocus: returnFocus ?? activeElement };
     this.forceBranchDelete.set(false);
     this.pendingBranchAction.set(request);
     queueMicrotask(() => requestAnimationFrame(() => {
-      if (this.pendingBranchAction() !== request || !this.ownsRepositoryScope(request)) return;
+      if (this.pendingBranchAction() !== request || !this.ownsCheckoutVisitReview(request)) return;
       this.branchConfirmationDialog()?.nativeElement
         .querySelector<HTMLElement>('[data-branch-dialog-cancel]')
         ?.focus();
