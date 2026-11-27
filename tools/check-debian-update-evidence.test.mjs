@@ -66,6 +66,10 @@ set -e
 [ "$6" != "$FIXTURE_EMPTY_ENDPOINT" ] || exit 0
 case "$6" in
   repos/Git-Khronos/Git-Khronos/releases/latest) echo '{"tag_name":"v0.1.5"}' ;;
+  repos/Git-Khronos/Git-Khronos/actions/workflows/release.yml)
+    printf '{"name":"%s","path":".github/workflows/release.yml","state":"active"}\n' "$FIXTURE_QUALIFY_WORKFLOW" ;;
+  repos/Git-Khronos/Git-Khronos/actions/workflows/publish-signed-debian.yml)
+    printf '{"name":"Publish signed Debian release","path":".github/workflows/publish-signed-debian.yml","state":"%s"}\n' "$FIXTURE_PUBLISH_WORKFLOW_STATE" ;;
   repos/Git-Khronos/Git-Khronos/git/ref/tags/v0.1.6)
     echo '{"ref":"refs/tags/v0.1.6","object":{"type":"tag"}}' ;;
   repos/Git-Khronos/Git-Khronos/actions/variables/GIT_KHRONOS_UPDATER_PUBLIC_KEY)
@@ -87,12 +91,21 @@ esac
     encoding: 'utf8', timeout: 5000,
     env: { ...process.env, PATH: `${root}:${process.env.PATH}`, FIXTURE_PUBLISHER: publisher,
       FIXTURE_ENVIRONMENT: JSON.stringify(environment),
+      FIXTURE_QUALIFY_WORKFLOW: 'Qualify Debian release candidate', FIXTURE_PUBLISH_WORKFLOW_STATE: 'active',
       FIXTURE_RULES: JSON.stringify({ total_count: rules.length, branch_policies: rules }), ...overrides },
   });
   const main = { name: 'main', type: 'branch' };
   const valid = check([main]);
   assert.equal(valid.status, 0, valid.stderr + valid.stdout);
   assert.match(valid.stdout, /exactly one branch rule for main/);
+  assert.match(valid.stdout, /Qualify Debian release candidate is registered and active/);
+  assert.match(valid.stdout, /Publish signed Debian release is registered and active/);
+  const legacy = check([main], { FIXTURE_QUALIFY_WORKFLOW: 'Debian release' });
+  assert.equal(legacy.status, 1);
+  assert.match(legacy.stdout, /Not confirmed: hosted workflow Qualify Debian release candidate/);
+  const disabled = check([main], { FIXTURE_PUBLISH_WORKFLOW_STATE: 'disabled_manually' });
+  assert.equal(disabled.status, 1);
+  assert.match(disabled.stdout, /Not confirmed: hosted workflow Publish signed Debian release/);
   assert.equal((valid.stdout + valid.stderr).includes(publisher), false);
   const tagged = check([main], {}, ['v0.1.6']);
   assert.equal(tagged.status, 0, tagged.stderr + tagged.stdout);
@@ -116,6 +129,8 @@ esac
   assert.match(unreadable.stdout, /Not confirmed: signed-release environment/);
   for (const [endpoint, label] of [
     ['releases/latest', 'latest public release'],
+    ['actions/workflows/release.yml', 'hosted workflow Qualify Debian release candidate'],
+    ['actions/workflows/publish-signed-debian.yml', 'hosted workflow Publish signed Debian release'],
     ['git/ref/tags/v0.1.6', 'requested tag v0.1.6'],
     ['actions/variables/GIT_KHRONOS_UPDATER_PUBLIC_KEY', 'publisher public key'],
     ['actions/variables/GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED', 'signed publication switch'],

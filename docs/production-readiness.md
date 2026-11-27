@@ -157,8 +157,9 @@ Treat an unavailable policy response as unverified, not as confirmation.
 To check these settings together, run
 `bash tools/check-hosted-debian-release.sh` from the checkout with a GitHub
 CLI login that can read the repository configuration. It prints the public
-release tag, checks the publisher key format without printing the key, and
-reports which settings are unconfirmed. Pass `v0.1.6` to also check for
+release tag, checks that the updated qualification and publication workflows
+are registered and active on GitHub, checks the publisher key format without
+printing the key, and reports which settings are unconfirmed. Pass `v0.1.6` to also check for
 that exact tag. It makes no remote writes. The
 publication switch should remain off for an offline rehearsal; a successful
 preflight is not evidence of hosted qualification or signature verification.

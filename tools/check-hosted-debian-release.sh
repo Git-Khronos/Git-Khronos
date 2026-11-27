@@ -25,6 +25,21 @@ else
   missing 'latest public release (missing or unreadable)'
 fi
 
+# A configured environment does not make a workflow on dev dispatchable.
+# GitHub registers workflow names and paths from the default branch.
+check_workflow() {
+  local file=$1 name=$2
+  if get "$root/actions/workflows/$file" 2>/dev/null |
+     one_json --arg path ".github/workflows/$file" --arg name "$name"        'length == 1 and (.[0] | .path == $path and .name == $name and .state == "active")' >/dev/null; then
+    printf 'Hosted workflow: %s is registered and active.\n' "$name"
+  else
+    missing "hosted workflow $name (merge the updated workflow into main and verify it is active)"
+  fi
+}
+
+check_workflow release.yml 'Qualify Debian release candidate'
+check_workflow publish-signed-debian.yml 'Publish signed Debian release'
+
 if [[ -n "$tag" ]]; then
   if get "$root/git/ref/tags/$tag" 2>/dev/null |
      one_json --arg ref "refs/tags/$tag" 'length == 1 and (.[0] | .ref == $ref and (.object.type == "tag" or .object.type == "commit"))' >/dev/null; then
