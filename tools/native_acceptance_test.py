@@ -80,7 +80,8 @@ class AbstractDisplayTests(unittest.TestCase):
 
 
 class InstalledSuiteBatchTests(unittest.TestCase):
-    def run_batch(self, suites, *, have_package=True, separate_output=False, python_override=None):
+    def run_batch(self, suites, *, have_package=True, separate_output=False, python_override=None,
+                  ci_summary=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             package = root / 'owned fixture.deb'
@@ -120,12 +121,34 @@ class InstalledSuiteBatchTests(unittest.TestCase):
                 ['bash', str(runner), str(package), *suites],
                 env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
                      'OWNED_PACKAGE': str(package), 'OWNED_CALLS': str(log),
+                     'GITHUB_STEP_SUMMARY': str(ci_summary) if ci_summary is not None else '',
                      'GIT_KHRONOS_NATIVE_OUTPUT': str(root / 'separate results') if separate_output else '',
                      'GIT_KHRONOS_ACCEPTANCE_PYTHON': {'valid': str(python),
                           'missing': str(root / 'missing python'), 'relative': 'python3.11'}.get(python_override, '')},
                 capture_output=True, text=True, timeout=10,
             )
             return result, log.read_text().splitlines() if log.exists() else []
+
+    def test_step_summary_reports_results_without_changing_exit_status_or_dispatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory) / 'summary'
+            summary.write_text('Earlier step output\n')
+            result, calls = self.run_batch(['smoke', 'broken:inherited', 'gitlab'], ci_summary=summary)
+            self.assertEqual((result.returncode, calls), (1, ['smoke', 'broken:inherited', 'gitlab']))
+            self.assertIn(
+                'Earlier step output\n### Installed native acceptance: 2/3 passed\n\n'
+                '| Suite | Result |\n| --- | --- |\n'
+                '| `smoke` | Passed |\n| `broken:inherited` | Failed (exit 7) |\n| `gitlab` | Passed |\n',
+                summary.read_text(),
+            )
+            summary.unlink()
+            result, calls = self.run_batch(['interrupted', 'gitlab'], ci_summary=summary)
+            self.assertEqual((result.returncode, calls), (130, ['interrupted']))
+            self.assertIn('Interrupted (exit 130)', summary.read_text())
+            self.assertNotIn('gitlab', summary.read_text())
+            result, _ = self.run_batch(['smoke'], ci_summary=Path(directory))
+            self.assertEqual(result.returncode, 0)
+            self.assertIn('Could not write the installed native acceptance step summary.', result.stderr)
 
     def test_ordinary_failure_keeps_later_suite_evidence_but_fails_the_batch(self):
         result, calls = self.run_batch(['smoke', 'broken', 'gitlab'])

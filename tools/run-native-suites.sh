@@ -55,6 +55,16 @@ fi
 failed=()
 failed_lanes=()
 passed=0
+summary_rows=()
+write_ci_summary() {
+  local heading=$1 rows
+  [[ -n ${GITHUB_STEP_SUMMARY:-} ]] || return 0
+  printf -v rows '%s\n' "${summary_rows[@]}"
+  if ! printf '### Installed native acceptance: %s\n\n| Suite | Result |\n| --- | --- |\n%s\n' \
+    "$heading" "$rows" >> "$GITHUB_STEP_SUMMARY"; then
+    printf 'Could not write the installed native acceptance step summary.\n' >&2
+  fi
+}
 for lane; do
   suite="${lane%:inherited}"
   context=()
@@ -62,6 +72,7 @@ for lane; do
   printf '\nInstalled native suite: %s\n' "$lane"
   if "$python" "$runner" --suite "$suite" --headless --installed --package "$package" "${context[@]}" "${output[@]}"; then
     passed=$((passed + 1))
+    summary_rows+=("| \`${lane}\` | Passed |")
     printf 'Installed native suite passed: %s\n' "$lane"
   else
     code=$?
@@ -69,12 +80,16 @@ for lane; do
     # An interrupted or killed harness may not have finished cleanup.
     # Don't start any more suites after that.
     if (( code >= 128 )); then
+      summary_rows+=("| \`${lane}\` | Interrupted (exit $code) |")
+      write_ci_summary 'interrupted; remaining suites not started'
       exit "$code"
     fi
+    summary_rows+=("| \`${lane}\` | Failed (exit $code) |")
     failed+=("$lane:$code")
     failed_lanes+=("$lane")
   fi
 done
+write_ci_summary "$passed/$# passed"
 printf 'Installed native suite summary: %s/%s passed.\n' "$passed" "$#"
 if (( ${#failed[@]} )); then
   printf 'Failed installed native suites (suite:exit): %s\n' "${failed[*]}" >&2
