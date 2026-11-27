@@ -222,8 +222,12 @@ def setup_keyboard_isolation(driver, fixtures, report):
     assert not marker.exists()
     report['scenarios'].append('native-palette-branch-rename-isolates-shortcuts-and-preserves-dirty-state')
 
+    # The renamed row can render from the refreshed snapshot before the
+    # operation releases its busy guard. Inputs during that window are ignored.
+    driver.wait("return !document.querySelector('.progress-line')")
     driver.context_click('[aria-label="Local branch owned-palette-renamed"]')
-    driver.wait("return !!document.querySelector('#context-rename-name')")
+    driver.wait("""const field = document.querySelector('#context-rename-name');
+      return field?.value === 'owned-palette-renamed' && !document.querySelector('.progress-line');""")
     driver.script('''const field = document.querySelector('#context-rename-name');
       field.value = 'owned-palette-rename'; field.dispatchEvent(new Event('input', { bubbles: true }));''')
     driver.click_scrolled_text('.context-branch-form button[type=submit]', 'Rename', wait_for_ready=True)
