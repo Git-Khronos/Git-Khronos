@@ -31,6 +31,14 @@ That is **3 min 49 s earlier** for Jammy acceptance on this pair of runs.
 It is not a whole-workflow timing or a guaranteed saving; the two lanes
 each provision their own runner.
 
+In run 46058006158 the primary native report contained 335 distinct
+scenarios. All named scenarios from the focused file-tools, merge-preview,
+and working-tree-recaps reports also appeared in that primary report.
+Those three focused runs took 60.5 s, 17.7 s, and 18.5 s respectively.
+The overlap is a candidate for further CI savings, not proof that execution
+contexts are interchangeable. Keep the full release suite and verify both
+scenario coverage and fixture setup before moving a check between CI lanes.
+
 The installed-matrix job summary lists which suites passed, failed, or were
 interrupted. For an ordinary failure, the job log also prints the command
 to rerun just the failed suites in the same environment.
