@@ -1364,6 +1364,20 @@ Updates dialog without contacting an update feed. Run
 `pnpm nx run desktop:native-application-updates -- --package "$package"`
 to exercise the updater directly, without running the unrelated native smoke
 scenarios first. Keep `desktop:native-smoke` as a separate general package check.
+Always pass `--package` when reviewing a copied archive: several development
+builds can have the same version, and the default selects the workspace bundle,
+not the reviewed copy. The report records the archive SHA-256; compare it with
+the retained checksum before using the result as evidence.
+
+The local Debian build from `0455ecb` passed the focused suite with and without
+an independently derived expected **Running build ID** (`d78ec63e86a0`).
+An older archive of the same version passed with the row absent. The new
+archive's SHA-256 is
+`9792e29c69ef7cc480e1924b6173c0159750133047b3d5dfa040101bbd704535`.
+The archive, source commit, packaging receipt and matching reports are retained
+under `target/local-review/build-id-0455ecb/`. This was extracted-package
+validation on Ubuntu 26.04 under WSL2, not a host install or signed release.
+
 The rebuilt local package
 `9ec4da38b0c1103ce691e9da7c0abe8f45f51a81a3a4fd19a0149ccac9733aee`
 passed all 22 installed scenarios in offline Ubuntu 26.04. WebKitGTK reported
