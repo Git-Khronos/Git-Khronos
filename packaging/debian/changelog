@@ -1,3 +1,20 @@
+git-khronos (0.1.7) unstable; urgency=medium
+
+  * Show a running build ID in Updates to distinguish Debian builds that
+    report the same application version.
+  * Keep signer diagnostics tied to the repository that requested them,
+    and explain that finding the signer does not verify the key.
+  * Keep keyboard navigation working during menu focus handoffs, including
+    reverse Tab in the packaged Linux webview.
+  * Filter the eligible files in a blocked bulk discard review and select
+    only the currently shown matches without losing hidden selections.
+  * Explain why bulk submodule updates are blocked and which remote reads
+    may have completed when Fetch All reports a partial failure.
+  * Preserve rename drafts while Git is busy and report browser or file
+    manager launch failures without removing the retry action.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Sat, 28 Nov 2026 00:41:01 +0100
+
 git-khronos (0.1.6) unstable; urgency=medium
 
   * Reload the window when its page renderer crashes on Linux instead of
