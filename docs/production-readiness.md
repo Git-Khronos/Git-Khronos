@@ -133,13 +133,9 @@ test cannot establish their trust in the production publisher.
 
 ### Release operator checklist
 
-Read-only hosted preflight on 2026-11-26: public latest is still `v0.1.5`;
-the requested `v0.1.6` tag is missing or unreadable, the production public
-key is missing/malformed/unreadable, and the `signed-release` environment
-is missing or unreadable to the checking account. The publication switch
-is not confirmed. Treat the publisher key and environment protections as
-unverified until a repository administrator confirms them. Before
-enabling publication, confirm that `signed-release` has required
+Use the live preflight below rather than inferring readiness from an old
+qualification report. Before enabling publication, confirm that
+`signed-release` has required
 reviewers and only allows deployment from the protected `main` branch.
 In the environment settings, choose **Selected branches and tags**, add
 one **Branch** rule named exactly `main`, and leave the tag rules empty.
@@ -169,10 +165,7 @@ The workflow variable alone does not enforce reviewer approval. GitHub can
 [create missing environments without protection](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
 When publication is enabled, the workflow now checks for required
 reviewers before candidate verification and rechecks before writing the
-release. Dry-run verification does not need the environment. The remote
-`main` tip is an ancestor of the local `dev` tip, but neither that
-relationship nor the locally qualified archive publishes the working-tree
-changes. No remote state was changed during this check.
+release. Dry-run verification does not need the environment.
 
 1. Review and commit the candidate, land it on `main`, and tag that exact
    commit `v0.1.6`. Set the repository Actions variable
@@ -191,8 +184,8 @@ changes. No remote state was changed during this check.
    This only checks the format; compare the key with the production
    publisher's trusted copy before qualifying a candidate.
 2. Dispatch **Qualify Debian release candidate** on `main` for that tag.
-   Record its successful run ID and download the candidate artifact from
-   the successful attempt. Sign the qualified Debian package without
+   Record its successful run ID and use `task release:download` to download
+   and verify that attempt. Sign the qualified Debian package without
    rebuilding it. See [the offline signing procedure](specifications/application-updates.md).
 3. Use the **Publish signed Debian release** workflow on `main` with the
    tag, candidate run ID, and public signature. With

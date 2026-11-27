@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { matchCandidateIdentity, selectCandidateRun } from './check-debian-candidate-run.mjs';
 
 const repo = 'Git-Khronos/Git-Khronos';
@@ -40,3 +45,55 @@ test('rejects stale attempt, moved tag, wrong version, or substituted candidate 
   const tag = 'v0.01.6';
   assert.throws(() => matchCandidateIdentity(run, { ...candidate, tag }, '123456', tag, commit), /does not match/);
 });
+
+test('download handoff refuses pending runs and mismatched candidate attempts before fetching evidence',
+  { skip: process.platform !== 'linux' }, async t => {
+    const root = await mkdtemp(join(tmpdir(), 'gk-release-download-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const bin = join(root, 'bin');
+    const output = join(root, 'release evidence');
+    const publicKey = join(root, 'public.key');
+    const runJson = join(root, 'run.json');
+    const candidateJson = join(root, 'candidate.json');
+    await mkdir(bin);
+    await mkdir(output);
+    await writeFile(publicKey, 'not read before candidate verification');
+    await writeFile(join(bin, 'gh'), `#!/bin/bash
+set -eu
+if [[ "$*" == 'api --hostname github.com repos/Git-Khronos/Git-Khronos/actions/runs/123456' ]]; then
+  cat "$RUN_JSON"
+elif [[ "$#" = 9 && "$1 $2 $3 $4 $5 $6 $7 $8" == 'run download 123456 --repo github.com/Git-Khronos/Git-Khronos --name debian-candidate-2 --dir' ]]; then
+  mkdir -- "$9"
+  cp -- "$CANDIDATE_JSON" "$9/candidate.json"
+else
+  echo "unexpected request: $*" >&2
+  exit 99
+fi
+`, { mode: 0o700 });
+    await writeFile(join(bin, 'git'), `#!/bin/sh
+test "$*" = 'ls-remote --exit-code https://github.com/Git-Khronos/Git-Khronos.git refs/tags/v0.1.6 refs/tags/v0.1.6^{}' || exit 99
+printf '%s\\trefs/tags/v0.1.6\\n%s\\trefs/tags/v0.1.6^{}\\n' '${head}' '${commit}'
+`, { mode: 0o700 });
+    const script = fileURLToPath(new URL('./download-qualified-debian.sh', import.meta.url));
+    const invoke = () => spawnSync('bash', [script, 'v0.1.6', '123456', publicKey, output], {
+      env: { ...process.env, PATH: bin + delimiter + process.env.PATH,
+        RUN_JSON: runJson, CANDIDATE_JSON: candidateJson },
+      encoding: 'utf8',
+    });
+    await writeFile(runJson, JSON.stringify({ ...run, status: 'in_progress', conclusion: null }));
+    const pending = invoke();
+    assert.equal(pending.status, 1, pending.stderr);
+    assert.match(pending.stderr, /Expected a successful release candidate/);
+    assert.deepEqual(await readdir(output), []);
+    await writeFile(runJson, JSON.stringify(run));
+    await writeFile(candidateJson, JSON.stringify({ ...candidate, attempt: '1' }));
+    const stale = invoke();
+    assert.equal(stale.status, 1, stale.stderr);
+    assert.match(stale.stderr, /does not match this workflow attempt and release tag commit/);
+    assert.match(stale.stderr, /Do not sign it\./);
+    assert.doesNotMatch(stale.stderr, /unexpected request/);
+    assert.equal(stale.stdout, '');
+    const [work] = await readdir(output);
+    assert.match(work, /^v0\.1\.6-run-123456-attempt-2\./);
+    assert.deepEqual((await readdir(join(output, work))).sort(), ['candidate', 'candidate-run.json']);
+  });

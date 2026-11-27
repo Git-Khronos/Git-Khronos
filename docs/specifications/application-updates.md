@@ -364,7 +364,18 @@ changes and deletion.
    The Jammy publisher suite runs separately from Jammy smoke and GitLab.
    If a rerun does not produce the complete artifact set under its own
    attempt, start a fresh candidate run rather than mixing attempts.
-3. Use the downloaded `.deb`, `build-receipt.json`, and evidence
+3. On a prepared Linux checkout, download and check the complete successful
+   attempt in one step:
+
+   ```sh
+   task release:download -- "$RELEASE_TAG" "$RUN_ID" "$PUBLIC_KEY_FILE" "$OUTPUT_PARENT"
+   ```
+
+   Use the trusted publisher **public** key and an existing output directory.
+   The task prints the package path and qualified digest only after checking
+   the tag, workflow attempt, package evidence and installed matrix. It
+   does not sign, install, or publish. If downloading manually, use the
+   downloaded `.deb`, `build-receipt.json`, and evidence
    `report.json` for the strict preflight and offline signature command above.
    Preserve the runtime artifacts in separate directories under
    `candidate-matrix/`. Before signing, verify the installed matrix with

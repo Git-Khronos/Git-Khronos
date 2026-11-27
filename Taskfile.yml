@@ -85,6 +85,12 @@ tasks:
     cmds:
       - bash tools/check-hosted-debian-release.sh {{.CLI_ARGS}}
 
+  release:download:
+    desc: Download and verify a successful Debian candidate without signing or publishing
+    platforms: [linux]
+    cmds:
+      - bash tools/download-qualified-debian.sh {{.CLI_ARGS}}
+
   package:deb:
     aliases: [deb]
     desc: Build the Debian/Ubuntu system package
