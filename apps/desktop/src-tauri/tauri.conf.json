@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm nx run desktop:serve -- --host 127.0.0.1",
     "devUrl": "http://127.0.0.1:4200",
-    "beforeBuildCommand": "pnpm nx run desktop:build",
+    "beforeBuildCommand": "pnpm nx run desktop:build --output-style=stream",
     "beforeBundleCommand": "node tools/prepare-linux-package.mjs",
     "frontendDist": "../../../dist/apps/desktop/browser"
   },
