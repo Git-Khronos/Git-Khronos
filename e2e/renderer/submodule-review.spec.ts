@@ -191,8 +191,8 @@ test('submodule review explains each state with exact commits and invokes only t
   const bulk = dialog.getByRole('group', { name: 'All submodule actions' });
   await expect(bulk.getByRole('button', { name: 'Update all from remotes' })).toBeDisabled();
   await expect(bulk.getByRole('button', { name: 'Update all from remotes' }))
-    .toHaveAccessibleDescription('Initialize missing submodules before updating all.');
-  await expect(bulk.getByText('Initialize missing submodules before updating all.')).toBeVisible();
+    .toHaveAccessibleDescription('Initialize missing submodules. Resolve submodule conflicts. Save or remove local changes inside submodules. Repair incomplete submodule declarations or checkouts.');
+  await expect(bulk.getByText(/Initialize missing submodules\. Resolve submodule conflicts\./)).toBeVisible();
   const lane = dialog.getByRole('listitem', { name: 'Submodule vendor/lane-engine', exact: true });
   await expect(lane).toContainText('Different commit checked out');
   await expect(lane).toContainText(`Checked out ${'b'.repeat(10)}; recorded ${'a'.repeat(10)}`);
@@ -316,6 +316,9 @@ test('initializes every missing submodule only after a scoped bulk confirmation'
   await confirmation.getByRole('button', { name: 'Initialize missing', exact: true }).click();
   await expect(dialog.locator('[data-submodule-sync]')).toContainText('Initialized all missing submodules');
   await expect(dialog.getByRole('button', { name: /^Initialize missing/ })).toBeDisabled();
+  const update = dialog.getByRole('button', { name: 'Update all from remotes' });
+  await expect(update).toBeDisabled();
+  await expect(update).toHaveAccessibleDescription('Resolve submodule conflicts. Save or remove local changes inside submodules. Repair incomplete submodule declarations or checkouts.');
   const call = await page.evaluate(() => (window as any).__submoduleReview.calls.find(
     (entry: any) => entry.command === 'initialize_all_submodules'));
   expect(call.args).toEqual({ repoId: expect.any(String), operationId: expect.any(String) });
@@ -329,6 +332,7 @@ test('updates all clean initialized submodules from remotes only after confirmat
   const update = dialog.getByRole('group', { name: 'All submodule actions' })
     .getByRole('button', { name: 'Update all from remotes', exact: true });
   await expect(update).toBeEnabled();
+  await expect(update).not.toHaveAttribute('aria-describedby');
   await update.click();
   const confirmation = dialog.getByRole('group', { name: 'Update all submodules from remotes' });
   await expect(confirmation).toContainText('Parent-repository gitlinks can become modified');

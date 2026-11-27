@@ -580,11 +580,17 @@ export class SubmoduleStateReviewComponent {
   }
 
   updateAllReason(result: SubmoduleStateReview): string {
-    if (this.initializableCount(result)) return 'Initialize missing submodules before updating all.';
-    if (result.entries.some(entry => entry.conflict || entry.trackedChanges || entry.untrackedChanges)) {
-      return 'Resolve conflicts and review local file changes before updating all.';
+    const reasons: string[] = [];
+    if (this.initializableCount(result)) reasons.push('Initialize missing submodules.');
+    if (result.entries.some(entry => !!entry.conflict)) reasons.push('Resolve submodule conflicts.');
+    if (result.entries.some(entry => entry.trackedChanges || entry.untrackedChanges)) {
+      reasons.push('Save or remove local changes inside submodules.');
     }
-    return 'Each submodule needs a declaration, a recorded commit, and an initialized checkout before updating all.';
+    if (result.entries.some(entry => !entry.conflict && !this.canInitialize(entry)
+      && (!entry.name || !entry.indexOid || !entry.checkedOut))) {
+      reasons.push('Repair incomplete submodule declarations or checkouts.');
+    }
+    return reasons.join(' ');
   }
 
   private canRunBulk(action: 'initialize-all' | 'update-all'): boolean {
