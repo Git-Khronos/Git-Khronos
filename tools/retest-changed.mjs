@@ -30,6 +30,10 @@ const rendererSourceChecks = [
   [/^submodule-findings\.ts$/, 'submodules', 'submodule-findings.spec.ts'],
 ];
 const rendererFixtureSpecs = new Map([
+  ['e2e/renderer/preview-repository-ready.ts', [
+    'confirmation-keyboard', 'history-review-loading', 'mainline-replay', 'operation-recovery',
+    'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-review-scope',
+  ]],
   ['e2e/renderer/graph-layout-test-helpers.ts', ['graph-columns', 'graph-layout-readiness']],
   ['e2e/renderer/lazy-chunk-routing.ts', [
     'deferred-compact-toolbar', 'deferred-graph-settings', 'deferred-main-menu',

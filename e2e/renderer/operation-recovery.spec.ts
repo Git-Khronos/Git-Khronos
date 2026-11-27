@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 import type { CommitDetails } from '../../libs/contracts/src/index';
 
 async function mockRecovery(page: Page, stale = false, loadFailure = false): Promise<void> {
-  await page.goto('/');
-  await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible({ timeout: 15_000 });
+  await openPreviewRepository(page, page.locator('.commit-row[data-commit-oid]').first());
   await page.evaluate(({ stale, loadFailure }) => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;

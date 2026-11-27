@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 for (const mode of ['load', 'cancel', 'failure', 'switch'] as const) {
   test(`deferred history review ${mode} preserves a focused escape, captured state and history`, async ({ page }) => {
@@ -20,8 +21,7 @@ for (const mode of ['load', 'cancel', 'failure', 'switch'] as const) {
       }
       finished();
     });
-    await page.goto('/');
-    await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible({ timeout: 15_000 });
+    await openPreviewRepository(page, page.locator('.commit-row[data-commit-oid]').first());
     const before = await page.evaluate(() => {
       const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repository = app.git.repository();

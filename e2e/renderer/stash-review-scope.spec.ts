@@ -1,11 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 const actions = ['save', 'apply', 'apply-file', 'branch', 'switch'];
 const commands = ['stash_selected', 'apply_stash_options', 'apply_stashed_file', 'branch_from_stash', 'stash_checkout'];
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
+  await openPreviewRepository(page, page.locator('#unstaged-files-list'));
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;

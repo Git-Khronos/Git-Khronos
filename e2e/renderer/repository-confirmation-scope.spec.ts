@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 type Review = 'branch' | 'sparse-set' | 'sparse-disable' | 'worktree';
 const reviews: Review[] = ['branch', 'sparse-set', 'sparse-disable', 'worktree'];
@@ -18,8 +19,7 @@ async function calls(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
+  await openPreviewRepository(page, page.locator('#unstaged-files-list'));
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 const reviews = ['force-push', 'worktree-removal', 'sparse', 'publish', 'workspace-delete',
   'lfs-prune', 'file', 'branch', 'stored-reference', 'bisect', 'history'] as const;
@@ -67,8 +68,7 @@ async function intents(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
+  await openPreviewRepository(page, page.locator('#unstaged-files-list'));
 });
 
 for (const review of reviews) {
