@@ -24,6 +24,13 @@ lanes finished in **3 min 23 s** after upload, down from **14 min 59 s**.
 These numbers measure time to installed-matrix feedback, not the whole
 workflow: the Jammy native run and renderer shards can still finish later.
 
+The first green split Jammy run ([46058006158](https://github.com/Git-Khronos/Git-Khronos/actions/runs/46058006158))
+reached the aggregate check **9 min 13 s** after archive upload, versus
+**13 min 2 s** in the previous green run ([46055239553](https://github.com/Git-Khronos/Git-Khronos/actions/runs/46055239553)).
+That is **3 min 49 s earlier** for Jammy acceptance on this pair of runs.
+It is not a whole-workflow timing or a guaranteed saving; the two lanes
+each provision their own runner.
+
 The installed-matrix job summary lists which suites passed, failed, or were
 interrupted. For an ordinary failure, the job log also prints the command
 to rerun just the failed suites in the same environment.
