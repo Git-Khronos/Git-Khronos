@@ -339,6 +339,51 @@ test('signer configuration failure clears a previous availability result and ret
   expect(calls.filter(command => !allowedReads.includes(command))).toEqual([]);
 });
 
+test('late signer checks cannot overwrite the active repository visit', async ({ page }) => {
+  await setup(page, 1);
+  const outcomes = await page.evaluate(async () => {
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
+    const original = git.repository();
+    const other = { ...original, id: 'another-signing-repository', path: '/fixture/other-signing-repo' };
+    git.repositories.update((items: any[]) => [...items, other]);
+    const tauri = (window as any).__TAURI_INTERNALS__;
+    const invoke = tauri.invoke;
+    const pending: { repoId: string; resolve: (value: unknown) => void; reject: (value: unknown) => void }[] = [];
+    tauri.invoke = (command: string, args: any) => command === 'diagnose_signing'
+      ? new Promise((resolve, reject) => pending.push({ repoId: args.repoId, resolve, reject }))
+      : invoke(command, args);
+    const diagnostic = (program: string) => ({ available: true, program, format: 'ssh', keyConfigured: true, message: program });
+
+    const first = git.diagnoseSigning();
+    const duplicate = git.diagnoseSigning();
+    git.activateRepository(other.id);
+    const otherStartsIdle = !git.signingDiagnosticBusy();
+    const second = git.diagnoseSigning();
+    if (pending.length !== 2) return { otherStartsIdle, calls: pending.map(item => item.repoId) };
+    pending[0].reject({ message: 'Late error from the original repository' });
+    await first;
+    await duplicate;
+    const otherStillChecking = git.signingDiagnosticBusy();
+    const errorWhileChecking = git.error();
+    git.activateRepository(original.id);
+    const third = git.diagnoseSigning();
+    pending[2].resolve(diagnostic('current-signer'));
+    await third;
+    pending[1].resolve(diagnostic('retired-signer'));
+    await second;
+    const currentSigner = git.signingDiagnostic()?.program;
+    git.activateRepository(other.id);
+    return {
+      otherStartsIdle, otherStillChecking, errorWhileChecking, currentSigner,
+      retiredSigner: git.signingDiagnostic()?.program ?? null, activeCheckFinished: !git.signingDiagnosticBusy(),
+    };
+  });
+  expect(outcomes).toEqual({
+    otherStartsIdle: true, otherStillChecking: true, errorWhileChecking: null,
+    currentSigner: 'current-signer', retiredSigner: null, activeCheckFinished: true,
+  });
+});
+
 test('closing commit details during signature loading never reopens them or steals focus', async ({ page }) => {
   await page.setViewportSize({ width: 820, height: 720 });
   let release: (() => void) | undefined;

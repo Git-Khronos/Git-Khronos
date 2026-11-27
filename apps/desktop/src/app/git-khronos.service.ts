@@ -371,7 +371,9 @@ export class GitKhronosService implements OnDestroy {
   readonly trackedFileSearchError = signal<string | null>(null);
   readonly reflog = signal<ReflogPage | null>(null);
   readonly reflogBusy = signal(false);
-  readonly signingDiagnosticBusy = signal(false);
+  private readonly signingDiagnosticRequests = signal<ReadonlySet<string>>(new Set());
+  readonly signingDiagnosticBusy = computed(() =>
+    this.signingDiagnosticRequests().has(this.activeRepositoryReadScope()));
   private readonly signingDiagnostics = signal<Record<string, SigningDiagnostic>>({});
   readonly signingDiagnostic = computed(() => {
     const repositoryId = this.activeRepositoryId();
@@ -2443,7 +2445,9 @@ export class GitKhronosService implements OnDestroy {
   async diagnoseSigning(): Promise<void> {
     const repository = this.repository();
     if (!repository || this.signingDiagnosticBusy()) return;
-    this.signingDiagnosticBusy.set(true);
+    const scope = this.activeRepositoryReadScope();
+    const ownsScope = () => this.activeRepositoryReadScope() === scope;
+    this.signingDiagnosticRequests.update(requests => new Set([...requests, scope]));
     this.signingDiagnostics.update(diagnostics => {
       const remaining = { ...diagnostics };
       delete remaining[repository.id];
@@ -2462,12 +2466,18 @@ export class GitKhronosService implements OnDestroy {
               : `${repository.signing.format === 'ssh' ? 'ssh-keygen' : 'gpg'} is available and Git has an explicit signing key configured.`,
           }
         : await ipc.diagnose_signing({ repoId: repository.id });
-      this.signingDiagnostics.update((diagnostics) => ({ ...diagnostics, [repository.id]: diagnostic }));
-      this.activity.set(diagnostic.available ? 'Commit signer is available' : 'Commit signer needs attention');
+      if (ownsScope()) {
+        this.signingDiagnostics.update((diagnostics) => ({ ...diagnostics, [repository.id]: diagnostic }));
+        this.activity.set(diagnostic.available ? 'Commit signer is available' : 'Commit signer needs attention');
+      }
     } catch (error: unknown) {
-      this.error.set(this.formatError(error));
+      if (ownsScope()) this.error.set(this.formatError(error));
     } finally {
-      this.signingDiagnosticBusy.set(false);
+      this.signingDiagnosticRequests.update(requests => {
+        const remaining = new Set(requests);
+        remaining.delete(scope);
+        return remaining;
+      });
     }
   }
 
