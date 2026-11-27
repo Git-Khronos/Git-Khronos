@@ -4437,3 +4437,7 @@ does not qualify an installed upgrade or a hosted release.
 The same archive also passed the focused updater target: 25 scenarios,
 including six updater-specific checks for keyboard access, consent wording,
 and refusing update actions in a build without configured publisher trust.
+The same archive also passed `discard-large` (four scenarios) and
+`discard-stale-review` (three scenarios). Those suites use disposable
+repositories to exercise nested-file recovery and refusal after a review
+becomes stale. They do not modify the user's CTI checkout.
