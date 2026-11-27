@@ -88,8 +88,14 @@ jobs:
           prefix-key: checks-line-tables-v1
       - name: Install Linux build prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl libssl-dev pkg-config
+          set -euo pipefail
+          # None of these dependencies come from runner-vendor repositories.
+          # Keep Ubuntu's configured mirrors and signed security updates.
+          sources=/etc/apt/sources.list.d/ubuntu.sources
+          test -s "$sources"
+          apt_sources=(-o "Dir::Etc::sourcelist=$sources" -o Dir::Etc::sourceparts=-)
+          sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update
+          sudo apt-get "${apt_sources[@]}" install --yes libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl libssl-dev pkg-config
       - run: pnpm install --frozen-lockfile
       - name: Check production renderer budgets
         run: pnpm nx run desktop:build:production --output-style=static
