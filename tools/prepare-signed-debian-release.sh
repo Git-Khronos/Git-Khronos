@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Assemble five verified release files. No key custody, networking API, or upload.
+# Assemble verified release files. No key custody, networking API, or upload.
 set -euo pipefail
 
 if (( $# != 6 )); then
@@ -62,7 +62,8 @@ cp -- "$candidate/$package_inventory" "$candidate/$source_inventory" "$directory
     echo "Candidate files changed after the qualification checksum check; refusing to stage them." >&2
     exit 1
   fi
-  sha256sum -- "$installer" "$package_inventory" "$source_inventory" latest.json > SHA256SUMS
+  jq -er '.platforms["linux-x86_64-deb"].signature | strings | select(length > 0)' latest.json > "$installer.sig"
+  sha256sum -- "$installer" "$installer.sig" "$package_inventory" "$source_inventory" latest.json > SHA256SUMS
 )
 "${stager[@]}" --verify-release "$directory" "$key" "$tag" "$digest" >&2
 rm -- "$directory/update-assets.sha256"

@@ -230,6 +230,7 @@ mod linux {
         let asset = format!("Git-Khronos_{version}_amd64.deb");
         let package_inventory = format!("Git-Khronos_{version}_amd64.cdx.json");
         let source_inventory = format!("Git-Khronos_{version}_source.cdx.json");
+        let sidecar = format!("{asset}.sig");
         let manifest_bytes = read_bounded(&directory.join("latest.json"), MAX_MANIFEST)?;
         let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes)?;
         let signature = manifest["platforms"]["linux-x86_64-deb"]["signature"]
@@ -257,6 +258,22 @@ mod linux {
                 format!("{:x}", Sha256::digest(manifest_bytes)),
             ),
         ]);
+        // Older published releases embed the signature only. If a public
+        // sidecar is present, it must be the exact canonical manifest string.
+        let sidecar_path = directory.join(&sidecar);
+        match std::fs::symlink_metadata(&sidecar_path) {
+            Ok(_) => {
+                let bytes = read_bounded(&sidecar_path, 4096)?;
+                if bytes != format!("{signature}\n").as_bytes() {
+                    return Err(
+                        "Debian signature sidecar differs from the manifest signature".into(),
+                    );
+                }
+                expected.insert(sidecar.as_str(), format!("{:x}", Sha256::digest(bytes)));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
         for (name, is_source) in [
             (package_inventory.as_str(), false),
             (source_inventory.as_str(), true),
@@ -536,6 +553,31 @@ mod tests {
 
         let manifest_path = staged.join("latest.json");
         let original = fs::read_to_string(&manifest_path).unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(&original).unwrap();
+        let signature = manifest["platforms"]["linux-x86_64-deb"]["signature"]
+            .as_str()
+            .unwrap();
+        let sidecar_name = format!("{package_name}.sig");
+        let sidecar = staged.join(&sidecar_name);
+        let write_sidecar = |bytes: &[u8]| {
+            fs::write(&sidecar, bytes).unwrap();
+            fs::write(
+                staged.join("SHA256SUMS"),
+                format!(
+                    "{original_sums}{:x}  {sidecar_name}\n",
+                    Sha256::digest(bytes)
+                ),
+            )
+            .unwrap();
+        };
+        write_sidecar(format!("{signature}\n").as_bytes());
+        verify_release(&staged, &key, "v0.2.0", &digest).unwrap();
+        write_sidecar(b"unrelated signature\n");
+        let error = verify_release(&staged, &key, "v0.2.0", &digest).unwrap_err();
+        assert!(error.to_string().contains("sidecar differs"));
+        fs::remove_file(&sidecar).unwrap();
+        assert!(verify_release(&staged, &key, "v0.2.0", &digest).is_err());
+
         fs::write(
             &manifest_path,
             original.replace("/releases/download/", "/releases/latest/download/"),

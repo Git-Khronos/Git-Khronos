@@ -588,6 +588,9 @@ test('publication fails closed without reviewer protection and a main-only branc
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const [verify, publish] = workflow.split('\n  publish:\n');
   assert.match(publish, /gh release create "\$RELEASE_TAG"[\s\S]*?--title "\$version"/);
+  assert.match(publish, /assets=\("\$deb" "\$deb\.sig"/);
+  assert.match(publish, /sha256sum -- "\$\{assets\[@\]\}" \| cmp -- SHA256SUMS/);
+  assert.match(publish, /latest\.json \| cmp -- "\$deb\.sig"/);
   const preflight = verify.match(/- name: Require a reviewer-protected main-only release environment before publication\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(preflight);
   assert.match(preflight, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs\.verification_only/);

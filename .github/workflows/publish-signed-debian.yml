@@ -421,12 +421,13 @@ jobs:
           [[ "$TAG_COMMIT" =~ ^[a-f0-9]{40}$ && "$CHECKSUMS_SHA256" =~ ^[a-f0-9]{64}$ ]]
           version="${RELEASE_TAG#v}"
           deb="Git-Khronos_${version}_amd64.deb"
-          assets=("$deb" "${deb%.deb}.cdx.json" "Git-Khronos_${version}_source.cdx.json" latest.json)
+          assets=("$deb" "$deb.sig" "${deb%.deb}.cdx.json" "Git-Khronos_${version}_source.cdx.json" latest.json)
           for file in "${assets[@]}" SHA256SUMS; do
             test -f "$file" && test ! -L "$file" || exit 1
           done
           printf '%s  SHA256SUMS\n' "$CHECKSUMS_SHA256" | sha256sum --check --strict
           sha256sum -- "${assets[@]}" | cmp -- SHA256SUMS
+          jq -er '.platforms["linux-x86_64-deb"].signature | strings | select(length > 0)' latest.json | cmp -- "$deb.sig"
 
           tag_ref="refs/tags/$RELEASE_TAG"
           refs="$(git ls-remote "https://github.com/$GITHUB_REPOSITORY.git" "$tag_ref" "$tag_ref^{}")"

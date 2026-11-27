@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
@@ -222,7 +222,8 @@ fi
 dir="$4/staged"
 mkdir "$dir"
 cp "$1" "$dir/Git-Khronos_0.1.6_amd64.deb"
-touch "$dir/latest.json" "$dir/update-assets.sha256"
+printf '%s\n' '{"platforms":{"linux-x86_64-deb":{"signature":"owned-public-signature"}}}' > "$dir/latest.json"
+touch "$dir/update-assets.sha256"
 if [ "$REPLACE_INVENTORY" = "1" ]; then
   printf '{"changed":true}\\n' > "$(dirname "$1")/Git-Khronos_0.1.6_source.cdx.json"
 fi
@@ -263,8 +264,11 @@ printf '%s\\n' "$dir"
   assert.ok(directory.startsWith(join(output, 'git-khronos-release.')));
   assert.deepEqual((await readdir(directory)).sort(), [
     'Git-Khronos_0.1.6_amd64.cdx.json', 'Git-Khronos_0.1.6_amd64.deb',
-    'Git-Khronos_0.1.6_source.cdx.json', 'SHA256SUMS', 'latest.json',
+    'Git-Khronos_0.1.6_amd64.deb.sig', 'Git-Khronos_0.1.6_source.cdx.json', 'SHA256SUMS', 'latest.json',
   ]);
+  assert.equal(await readFile(join(directory, installer + '.sig'), 'utf8'), 'owned-public-signature\n');
+  const verifiedSums = spawnSync('sha256sum', ['--check', 'SHA256SUMS'], { cwd: directory, encoding: 'utf8' });
+  assert.equal(verifiedSums.status, 0, verifiedSums.stderr);
 });
 
 test('returns only the matching qualified digest with the same public-key normalization used at build time', () => {

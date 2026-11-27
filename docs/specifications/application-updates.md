@@ -437,12 +437,14 @@ changes and deletion.
    digest, installed matrix, and publisher signature before creating
    `latest.json`. Reviewers can download the verified matrix separately
    from the signed assets. With
-   publication disabled, the workflow stops after retaining the five verified
+   publication disabled, the workflow stops after retaining the verified
    assets for review. To approve an enabled release, review the workflow inputs
    and verification outcome in the protected deployment.
 5. The write job rechecks the transferred files and tag and refuses to replace
    the current stable release with an equal or older version. It publishes only
-   the installer, signed manifest, two inventories, and checksums. Confirm the
+   the installer, its public `.deb.sig`, signed manifest, two inventories, and
+   checksums. The sidecar repeats the exact signature in `latest.json` for
+   offline verification of a manually downloaded package. Confirm the
    public manifest matches the staged manifest. In a disposable supported
    installation with an **older version and the same pinned production key**,
    check for the offer, verify the signed download, install it, restart, and
