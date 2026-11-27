@@ -3527,6 +3527,7 @@ For a feature that spans multiple specs, use
 | `graph` | Representative graph layout, connectivity, delayed rendering, scrolling and virtualization |
 | `history` | History search, paging, blame, comparison and replay |
 | `workspace` | Repository workspace, tab and sidebar interactions |
+| `menus` | Main and workspace menu keyboard order, deferred loading, dismissal and focus recovery |
 | `keyboard` | Command palette, shortcut reference and review-dialog keyboard handling |
 | `updates` | Application updater UI |
 

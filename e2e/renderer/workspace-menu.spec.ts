@@ -22,6 +22,33 @@ test('main menu Tab resumes normal focus order on the repository screen', async 
   await expect(toggle).toBeFocused();
 });
 
+for (const [opener, label, itemRole, itemName] of [
+  ['Main menu', 'Git Khronos menu', 'menuitem', /^Manage Repositories/],
+  ['Workspace: Default', 'Workspaces', 'menuitemradio', /^Default/],
+] as const) {
+  for (const lostFocus of [false, true]) {
+    test(`${label} recognizes WebKitGTK reverse Tab ${lostFocus ? 'after focus loss' : 'inside the menu'}`, async ({ page }) => {
+      await page.goto('/');
+      const toggle = page.getByRole('button', { name: opener, exact: true });
+      const menu = page.getByRole('menu', { name: label, exact: true });
+      const menuItem = menu.getByRole(itemRole, { name: itemName });
+      await toggle.click();
+      await expect(menuItem).toBeFocused();
+      if (lostFocus) {
+        await menuItem.evaluate(item => (item as HTMLElement).blur());
+        await expect(page.locator('body')).toBeFocused();
+      }
+      // The synthetic event has no native navigation default. The app must
+      // dismiss the menu and return focus to the opener before that default.
+      await (lostFocus ? page.locator('body') : menuItem).dispatchEvent('keydown', {
+        key: 'Unidentified', code: 'Tab', shiftKey: true, bubbles: true, cancelable: true,
+      });
+      await expect(menu).toHaveCount(0);
+      await expect(toggle).toBeFocused();
+    });
+  }
+}
+
 for (const welcome of [false, true]) {
   for (const key of ['Tab', 'Shift+Tab']) {
     test(`workspace menu ${key} resumes normal focus order on the ${welcome ? 'welcome' : 'repository'} screen`, async ({ page }) => {

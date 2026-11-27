@@ -4801,7 +4801,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     // Disabling a focused item can move focus out of the menu. Its local
     // keydown handler may then never receive Tab, but dismissal must still work.
-    if (event.key === 'Tab' && this.workspaceMenuOpen()) {
+    if (isTabKey(event) && !event.defaultPrevented && this.workspaceMenuOpen()) {
       this.dismissWorkspaceMenuForTab();
       return;
     }
@@ -11400,7 +11400,7 @@ export class AppComponent implements OnInit, OnDestroy {
       event.stopPropagation();
       this.closeAppMenu(true);
       return;
-    } else if (event.key === 'Tab') {
+    } else if (isTabKey(event)) {
       this.exitAppMenuByTab(menu);
       return;
     }
@@ -11451,7 +11451,7 @@ export class AppComponent implements OnInit, OnDestroy {
       event.stopPropagation();
       this.closeWorkspaceMenu(true);
       return;
-    } else if (event.key === 'Tab') {
+    } else if (isTabKey(event)) {
       this.dismissWorkspaceMenuForTab();
       return;
     }

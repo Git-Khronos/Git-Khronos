@@ -295,6 +295,7 @@
         "history-search": { "command": "playwright test 'e2e/renderer/history-search(-lifecycle)?[.]spec[.]ts$'" },
         "git-documentation": { "command": "playwright test 'e2e/renderer/git-documentation[.]spec[.]ts$'" },
         "workspace": { "command": "playwright test 'e2e/renderer/workspace([.-])'" },
+        "menus": { "command": "playwright test 'e2e/renderer/(deferred-main-menu|workspace-menu)[.]spec[.]ts$'" },
         "keyboard": { "command": "playwright test 'e2e/renderer/(command-palette|keyboard-shortcuts|confirmation-keyboard|setup-dialog-keyboard)'" },
         "updates": { "command": "playwright test 'e2e/renderer/application-updates[.]spec[.]ts$'" }
       }
