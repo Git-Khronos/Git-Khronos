@@ -48,6 +48,31 @@ function staticImports(entry) {
     .map(dependency => localOutputPath(dependency.path));
 }
 
+// Input estimates rank candidates; emitted asset sizes remain authoritative.
+function rankInputs(metadata, paths) {
+  const contributions = new Map();
+  const outputsOverAttributed = [];
+  for (const output of paths) {
+    const entry = buildOutput(metadata, output);
+    let metadataInputBytes = 0;
+    for (const [input, contribution] of Object.entries(entry.inputs ?? {})) {
+      const bytes = contribution?.bytesInOutput;
+      if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error(`Invalid source size for ${input}`);
+      metadataInputBytes += bytes;
+      contributions.set(input, (contributions.get(input) ?? 0) + bytes);
+    }
+    if (metadataInputBytes > entry.bytes) {
+      outputsOverAttributed.push({ path: output, emittedBytes: entry.bytes, metadataInputBytes });
+    }
+  }
+  return {
+    kind: 'unverified-bundler-metadata',
+    outputsOverAttributed: outputsOverAttributed.sort((a, b) => a.path.localeCompare(b.path)),
+    largestInputs: [...contributions].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 15).map(([path, metadataInputBytes]) => ({ path, metadataInputBytes })),
+  };
+}
+
 function workspaceStartupReport(metadata, initial) {
   // StartupComponent loads AppComponent immediately via a dynamic import.
   // Follow that one known boundary and then static edges only. Do not count
@@ -75,7 +100,7 @@ function workspaceStartupReport(metadata, initial) {
   const additionalAssets = [...additional].sort(([a], [b]) => a.localeCompare(b))
     .map(([path, bytes]) => ({ path, bytes }));
   const additionalBytes = additionalAssets.reduce((sum, asset) => sum + asset.bytes, 0);
-  return { entry, additionalBytes, additionalAssets };
+  return { entry, additionalBytes, additionalAssets, inputAttribution: rankInputs(metadata, additional.keys()) };
 }
 
 // Include exactly the emitted entry files and their static import graph.
@@ -84,24 +109,12 @@ function workspaceStartupReport(metadata, initial) {
 export function initialRendererReport(html, metadata, budget) {
   const pending = [...rootsInIndex(html)];
   const seen = new Map();
-  const contributions = new Map();
-  const outputsOverAttributed = [];
   while (pending.length) {
     const output = pending.pop();
     if (seen.has(output)) continue;
     const entry = buildOutput(metadata, output);
     seen.set(output, entry.bytes);
     pending.push(...staticImports(entry));
-    let metadataInputBytes = 0;
-    for (const [input, contribution] of Object.entries(entry.inputs ?? {})) {
-      const bytes = contribution?.bytesInOutput;
-      if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error(`Invalid source size for ${input}`);
-      metadataInputBytes += bytes;
-      contributions.set(input, (contributions.get(input) ?? 0) + bytes);
-    }
-    if (metadataInputBytes > entry.bytes) {
-      outputsOverAttributed.push({ path: output, emittedBytes: entry.bytes, metadataInputBytes });
-    }
   }
 
   const initialBytes = [...seen.values()].reduce((sum, bytes) => sum + bytes, 0);
@@ -114,14 +127,7 @@ export function initialRendererReport(html, metadata, budget) {
     warningOverageBytes: Math.max(0, initialBytes - warningBytes),
     errorHeadroomBytes: errorBytes - initialBytes,
     assets: [...seen].sort(([a], [b]) => a.localeCompare(b)).map(([path, bytes]) => ({ path, bytes })),
-    // Angular's stats can assign more bytes to inputs than exist in the
-    // emitted file. Use those numbers for ranking, never for budget accounting.
-    inputAttribution: {
-      kind: 'unverified-bundler-metadata',
-      outputsOverAttributed: outputsOverAttributed.sort((a, b) => a.path.localeCompare(b.path)),
-      largestInputs: [...contributions].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-        .slice(0, 15).map(([path, metadataInputBytes]) => ({ path, metadataInputBytes })),
-    },
+    inputAttribution: rankInputs(metadata, seen.keys()),
   };
 }
 

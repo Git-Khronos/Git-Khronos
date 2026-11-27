@@ -166,6 +166,7 @@ test('counts the immediate workspace import separately without counting optional
   metadata.outputs['workspace.js'] = {
     entryPoint: 'apps/desktop/src/app/app.component.ts',
     bytes: 50,
+    inputs: { 'workspace.ts': { bytesInOutput: 70 } },
     imports: [
       { kind: 'import-statement', path: 'main.js' },
       { kind: 'import-statement', path: './workspace-helper.js' },
@@ -183,6 +184,11 @@ test('counts the immediate workspace import separately without counting optional
     additionalBytes: 61,
     totalBytes: 205,
     additionalAssets: [{ path: 'workspace-helper.js', bytes: 11 }, { path: 'workspace.js', bytes: 50 }],
+    inputAttribution: {
+      kind: 'unverified-bundler-metadata',
+      outputsOverAttributed: [{ path: 'workspace.js', emittedBytes: 50, metadataInputBytes: 70 }],
+      largestInputs: [{ path: 'workspace.ts', metadataInputBytes: 70 }],
+    },
   });
   delete metadata.outputs['workspace-helper.js'];
   assert.throws(() => initialRendererReport(index, metadata, budget), /workspace-helper.js/);
