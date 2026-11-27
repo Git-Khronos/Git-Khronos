@@ -437,6 +437,11 @@
       "executor": "nx:run-commands",
       "options": { "command": "cargo test --locked -p git-khronos-git-core --lib --" }
     },
+    "update-unit-test": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": { "command": "cargo test --locked -p git-khronos-desktop --lib application_update" }
+    },
     "renderer-unit-test": {
       "cache": true,
       "inputs": ["default", "^production", "{workspaceRoot}/vitest.config.mts", "{workspaceRoot}/tsconfig*.json", "{workspaceRoot}/pnpm-lock.yaml", "{workspaceRoot}/tools/check-production-renderer.mjs"],

@@ -559,6 +559,19 @@ test('dedicated Debian workflows select local packaging tests, while shared CI k
   assert.match(f.run(), /"desktop:check"[\s\S]*"desktop:e2e"/);
 });
 
+test('updater Rust test modules select their focused test target only', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src-tauri/src/application_updates/tests.rs');
+  f.write('apps/desktop/src-tauri/src/application_update_model/tests.rs');
+  const focused = f.run();
+  assert.equal(focused.match(/"desktop:update-unit-test"/g)?.length, 1);
+  assert.doesNotMatch(focused, /"desktop:check"|"desktop:test"|desktop:e2e/);
+  f.write('apps/desktop/src-tauri/src/application_updates/installer.rs');
+  const broad = f.run();
+  assert.match(broad, /"desktop:check"|"desktop:test"/);
+  assert.doesNotMatch(broad, /"desktop:update-unit-test"/);
+});
+
 test('updater fixture edits select offline package checks, not an installed update', t => {
   const f = fixture(t);
   f.write('.gitignore', 'artifacts/\n');

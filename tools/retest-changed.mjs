@@ -193,6 +193,7 @@ const nativeSuites = new Set();
 let retestTools = false;
 const packageSpecs = new Set();
 let authenticationTests = false;
+let updateUnitTests = false;
 let nativeHarnessTests = false;
 let archiveCacheTests = false;
 let unmappedNativeSource = false;
@@ -210,6 +211,11 @@ for (const path of changed) {
     && existsSync(join(cwd, path))) {
     authenticationTests = true;
     plan = 'focused native authentication transport tests';
+  } else if (/^apps\/desktop\/src-tauri\/src\/application_update(?:s|_model)\/tests\.rs$/.test(path)
+    && existsSync(join(cwd, path))
+    && targets()['update-unit-test']?.options?.command === 'cargo test --locked -p git-khronos-desktop --lib application_update') {
+    updateUnitTests = true;
+    plan = 'focused native updater unit tests';
   } else if (gitCoreTestModules.has(gitCoreModule) && existsSync(join(cwd, path))) {
     gitCoreModules.add(gitCoreModule + '::');
     plan = 'focused Git core Rust test module';
@@ -326,6 +332,7 @@ const commands = broad
      ...(graphTypecheck ? [['desktop:graph-test-typecheck']] : []),
      ...extraChecks,
      ...(authenticationTests ? [['desktop:test-authentication']] : []),
+     ...(updateUnitTests ? [['desktop:update-unit-test']] : []),
      ...(gitCoreModules.size ? [['desktop:git-core-unit-test', '--', ...gitCoreModules]] : []),
      ...(unitSpecs.size ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
      ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
