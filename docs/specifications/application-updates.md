@@ -251,6 +251,27 @@ separate **Publish signed Debian release** workflow can publish only when
 publication is explicitly enabled and the protected environment approves it.
 The release tag and asset name must match the staged URL.
 
+### Optional release signing in CI (not implemented)
+
+Release signing may be automated without giving ordinary PR, dev, or
+qualification jobs access to the key. Keep offline signing available as
+the fallback. In hosted mode, use a protected release environment on
+`main` and require approval once per stable release, not once per build.
+Moving the key into an environment secret changes its custody: the approved
+runner can read it. A separate signing service is needed if the key must
+remain outside GitHub Actions.
+
+Before the signing job opens the signing secrets, a read-only job must
+verify the successful candidate attempt, the tag commit, the complete
+qualification evidence, and the archive digest. The signer must recheck that
+digest before signing. It must have no repository write permission, must
+not rebuild the package or run the candidate executable, and may hand off
+only the exact archive and its public signature or their immutable artifact
+references. The publishing job must not receive the private key. It must
+reverify the public signature, tag, version and asset digests before
+publishing. Do not enable this path until test-key acceptance proves that a
+wrong digest, wrong key, moved tag, or failed qualification cannot publish.
+
 Installations built without the public key need a one-time manual upgrade to a
 trusted build. They cannot use a release manifest to establish trust in its own
 signer. Automatic updates remain off until the user opts in.
