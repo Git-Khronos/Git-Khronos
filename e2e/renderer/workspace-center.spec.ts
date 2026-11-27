@@ -251,11 +251,12 @@ test('shares selected fetch remotes and imports the preview without auto-startin
   await beta.uncheck();
   await expect(recipe.getByRole('button', { name: 'Copy clone recipe (1)' })).toBeEnabled();
   await beta.check();
-  const body = await recipe.getByLabel('Recipe preview').inputValue();
-  expect(JSON.parse(body)).toEqual({ format: 'git-khronos.clone-recipe', version: 1, repositories: [
+  const preview = recipe.getByLabel('Recipe preview');
+  await expect.poll(async () => JSON.parse(await preview.inputValue())).toEqual({ format: 'git-khronos.clone-recipe', version: 1, repositories: [
     { source: 'ssh://git@mirror.example.test:2222/team/app.git', folder: 'app' },
     { source: 'git@git.example.test:tools/app.git', folder: 'app-2' },
   ] });
+  const body = await preview.inputValue();
   await recipe.getByRole('button', { name: 'Copy clone recipe (2)' }).click();
   await expect(recipe.getByRole('status')).toHaveText('Clone recipe copied.');
   expect(await page.evaluate(() => (window as any).__center.clipboard)).toEqual([body]);
