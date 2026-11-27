@@ -2849,10 +2849,17 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
     def button(text):
         _workflow_button(driver, text)
 
-    def apply():
+    def apply(*, by_keyboard=False):
         driver.wait("return !!document.querySelector('gk-branch-workflow-dialog .review')")
         started = time.monotonic()
-        button('Apply reviewed workflow')
+        if by_keyboard:
+            driver.wait("return document.activeElement?.matches('gk-branch-workflow-dialog .review')")
+            driver.key('\ue004')  # Tab from the programmatically focused review.
+            focused = driver.script("return document.activeElement?.textContent.trim()")
+            assert focused == 'Apply reviewed workflow', f'Tab from the workflow review focused {focused!r}'
+            driver.key('\ue007')  # Enter on the reviewed action, exactly once.
+        else:
+            button('Apply reviewed workflow')
         # A finish can merge multiple protected targets, write the reviewed
         # tag, reconcile native state, and then refresh the renderer. Allow a
         # bounded mutation window without replaying the one-use review click.
@@ -2878,7 +2885,7 @@ def branch_workflow_desktop(driver, fixtures, original_repository, report):
         button('Review topic creation')
         ready()
         assert fixtures.git(repository, 'show-ref') == before
-        apply()
+        apply(by_keyboard=kind == 'feature')
         assert fixtures.git(repository, 'symbolic-ref', '--short', 'HEAD') == f'{kind}/{suffix}'
 
     def commit_file(path, content, message):
