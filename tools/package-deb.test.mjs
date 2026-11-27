@@ -2227,3 +2227,46 @@ test('package cache binds the compiled updater public key including removing tru
   f.ok(undefined, { GIT_KHRONOS_UPDATER_PUBLIC_KEY: '' });
   assert.equal(await f.builds(), ++previous, 'removing trust must not reuse a previously trusted binary');
 });
+
+test('renderer CI scopes Chromium dependency installation to the signed Ubuntu archive', async t => {
+  const ci = await readFile(join(repositoryRoot, '.github/workflows/ci.yml'), 'utf8');
+  const recipe = ci.match(/- name: Install Chromium and system dependencies\n\s+run: \|\n([\s\S]*?)(?=      - name:)/)?.[1]
+    .replace(/^          /gm, '').replace('sources=/etc/apt/sources.list.d/ubuntu.sources', 'sources="$FIXTURE_SOURCES"');
+  assert.ok(recipe);
+  const root = await mkdtemp(join(tmpdir(), 'gk-chromium-apt-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bin = join(root, 'bin');
+  await mkdir(bin);
+  const sources = join(root, 'ubuntu.sources');
+  await writeFile(sources, 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n');
+  const commands = {
+    node: '#!/bin/sh\nprintf "/fixture/playwright/cli.js\\n"\n',
+    sudo: `#!/bin/sh
+set -eu
+[ "$1" = env ]
+case "$2" in APT_CONFIG=*) config="$(printf '%s' "$2" | cut -d= -f2-)";; *) exit 9;; esac
+cat "$config" > "$RUNNER_TEMP/apt-scope"
+[ "$3" = "$RUNNER_TEMP/bin/node" ]
+shift 3
+printf '%s\\n' "$*" >> "$RUNNER_TEMP/calls"
+exit "$INSTALL_STATUS"
+`,
+    pnpm: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$RUNNER_TEMP/calls"\n',
+  };
+  for (const [name, script] of Object.entries(commands)) await writeFile(join(bin, name), script, { mode: 0o755 });
+  const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, RUNNER_TEMP: root, FIXTURE_SOURCES: sources };
+  const run = (extra = {}) => spawnSync('bash', ['-c', recipe], { env: { ...env, ...extra }, encoding: 'utf8' });
+  assert.equal(run({ INSTALL_STATUS: '0' }).status, 0);
+  assert.equal(await readFile(join(root, 'apt-scope'), 'utf8'),
+    `Dir::Etc::sourcelist "${sources}";\nDir::Etc::sourceparts "-";\nAPT::Update::Error-Mode "any";\n`);
+  const calls = join(root, 'calls');
+  const dependencyCall = '/fixture/playwright/cli.js install-deps chromium\n';
+  assert.equal(await readFile(calls, 'utf8'), dependencyCall + 'exec playwright install chromium\n');
+  await writeFile(calls, '');
+  assert.equal(run({ INSTALL_STATUS: '100' }).status, 100);
+  assert.equal(await readFile(calls, 'utf8'), dependencyCall, 'Do not download Chromium after dependency failure.');
+  assert.ok(!(await readdir(root)).some(name => name.startsWith('chromium-apt.')));
+  await writeFile(calls, '');
+  assert.equal(run({ FIXTURE_SOURCES: join(root, 'missing') }).status, 1);
+  assert.equal(await readFile(calls, 'utf8'), '');
+});

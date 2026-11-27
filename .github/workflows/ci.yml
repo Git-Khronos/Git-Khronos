@@ -149,7 +149,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install Chromium and system dependencies
-        run: pnpm exec playwright install --with-deps chromium
+        run: |
+          set -euo pipefail
+          sources=/etc/apt/sources.list.d/ubuntu.sources
+          if [[ ! -s "$sources" ]]; then
+            echo "Missing Ubuntu archive configuration: $sources" >&2
+            exit 1
+          fi
+          # Playwright owns the dependency list. Scope its apt calls without
+          # editing runner sources or running the Chromium download as root.
+          config="$(mktemp "$RUNNER_TEMP/chromium-apt.XXXXXX")"
+          trap 'rm -f -- "$config"' EXIT
+          printf 'Dir::Etc::sourcelist "%s";\nDir::Etc::sourceparts "-";\nAPT::Update::Error-Mode "any";\n' "$sources" > "$config"
+          playwright="$(node -p "require.resolve('@playwright/test/cli')")"
+          sudo env "APT_CONFIG=$config" "$(command -v node)" "$playwright" install-deps chromium
+          pnpm exec playwright install chromium
       - name: Verify Chromium can launch before loading renderer tests
         run: node tools/check-renderer-browser.mjs chromium
       - name: Run the renderer acceptance shard
