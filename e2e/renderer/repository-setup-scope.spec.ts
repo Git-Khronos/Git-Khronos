@@ -117,6 +117,24 @@ for (const editor of ['worktree', 'existing-worktree', 'submodule', 'remote-add'
   }
 }
 
+test('remote removal from a previous checkout visit cannot dispatch', async ({ page }) => {
+  await openEditor(page, 'remote-remove');
+  const review = dialog(page, 'remote-remove');
+  const confirm = review.getByRole('button', { name: 'Remove Remote', exact: true });
+  await expect(confirm).toBeEnabled();
+  await confirm.evaluate(button => {
+    const git = (window as any).ng.getComponent(document.querySelector('gk-app')).git;
+    const original = git.repository();
+    const other = { ...original, id: 'remote-removal-other', path: '/owned/remote-removal-other' };
+    git.repositories.update((items: any[]) => [...items, other]);
+    git.activateRepository(other.id);
+    git.activateRepository(original.id);
+    (button as HTMLButtonElement).click();
+  });
+  await expect(review).toBeHidden();
+  expect(await page.evaluate(() => (window as any).__setupCalls.filter((call: any) => call.command === 'remove_remote'))).toEqual([]);
+});
+
 const methodFor = (editor: Editor) => editor.includes('worktree') ? 'submitWorktree'
   : editor === 'submodule' ? 'submitSubmodule' : editor === 'remote-remove' ? 'confirmRemoteRemoval' : 'submitRemote';
 const commandFor = (editor: Editor) => editor === 'worktree' ? 'create_worktree' : editor === 'existing-worktree' ? 'create_worktree_for_branch'

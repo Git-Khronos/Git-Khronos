@@ -341,9 +341,10 @@ interface SparseCheckoutReview extends CheckoutVisitReview {
 
 type PendingWorktreeRemoval = WorktreeRemovalReview & CheckoutVisitReview;
 type PendingForcePushReview = ForcePushReview & CheckoutVisitReview;
+type PendingRemoteRemoval = CheckoutVisitReview & { readonly remote: Remote };
 
 interface RepositoryConfirmationLease {
-  remote: RepositoryEditorOwner | null;
+  remote: PendingRemoteRemoval | null;
   sparse: SparseCheckoutReview | null;
   worktree: PendingWorktreeRemoval | null;
   force: PendingForcePushReview | null;
@@ -503,7 +504,7 @@ interface PendingBranchUpstream {
   current: string | null;
 }
 
-interface PendingPublishBranch extends RepositoryReviewScope {
+interface PendingPublishBranch extends CheckoutVisitReview {
   branch: string;
 }
 
@@ -1323,8 +1324,8 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly remotePushUrl = signal('');
   private initialRemotePushUrl = '';
   protected readonly remoteDialogIcon = signal<RemoteLocationIcon>('remote');
-  protected readonly pendingRemoteRemoval = signal<Remote | null>(null);
-  protected readonly remoteRemovalOwner = signal<RepositoryEditorOwner | null>(null);
+  protected readonly remoteRemovalOwner = signal<PendingRemoteRemoval | null>(null);
+  protected readonly pendingRemoteRemoval = computed(() => this.remoteRemovalOwner()?.remote ?? null);
   protected readonly lfsPruneReview = signal<CheckoutVisitReview | null>(null);
   protected readonly pendingLfsPrune = computed(() => this.lfsPruneReview() !== null);
   protected readonly lfsPrunePreview = signal<LfsPrunePreview | null>(null);
@@ -1455,7 +1456,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (worktree && !this.ownsRepositoryScope(worktree)) untracked(() => this.closeWorktreeDialog(false));
     if (submodule && !this.ownsRepositoryScope(submodule)) untracked(() => this.closeSubmoduleDialog(false));
     if (remote && !this.ownsRepositoryScope(remote)) untracked(() => this.closeRemoteDialog(false));
-    if (removal && !this.ownsRepositoryScope(removal)) untracked(() => this.closeRemoteRemoval(false));
+    if (removal && !this.ownsCheckoutVisitReview(removal)) untracked(() => this.closeRemoteRemoval(false, removal));
     if (sparseReview && !this.ownsCheckoutVisitReview(sparseReview)) untracked(() => this.closeSparseCheckoutConfirmation(false, sparseReview));
     if (worktreeRemoval && !this.ownsCheckoutVisitReview(worktreeRemoval)) untracked(() => this.closeWorktreeRemoval(false, worktreeRemoval));
     if (fetch && !this.ownsFetchOptions(fetch)) untracked(() => this.closeFetchOptions(fetch, false));
@@ -1466,7 +1467,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (contextCreation && !this.ownsRepositoryScope(contextCreation)) untracked(() => this.dismissGraphActionMenu(false));
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
     if (branchReview && !this.ownsCheckoutVisitReview(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
-    if (publish && !this.ownsRepositoryScope(publish)) untracked(() => this.closePublishBranch(false, publish));
+    if (publish && !this.ownsCheckoutVisitReview(publish)) untracked(() => this.closePublishBranch(false, publish));
     if (force && !this.ownsCheckoutVisitReview(force)) untracked(() => this.closeForcePush(false, force));
     if (lfs && !this.ownsCheckoutVisitReview(lfs)) untracked(() => this.closeLfsPrune(false, lfs));
   });
@@ -2389,7 +2390,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private worktreeDialogOpener: HTMLElement | null = null;
   private submoduleDialogOpener: HTMLElement | null = null;
   private remoteDialogOpener: HTMLElement | null = null;
-  private remoteRemovalOpener: HTMLElement | null = null;
   private secondaryConfirmationOpener: HTMLElement | null = null;
   protected readonly preferencesDialogView = computed(() => ({
     preferencesSection: this.preferencesSection,
@@ -7323,26 +7323,22 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!remote) return;
     const opener = this.remoteDialogOpener;
     this.closeRemoteDialog(false);
-    this.remoteRemovalOpener = opener;
-    this.remoteRemovalOwner.set({ ...owner });
-    this.pendingRemoteRemoval.set(remote);
+    this.remoteRemovalOwner.set({ ...owner, remote, returnFocus: opener, checkoutVisit: this.git.activeRepositoryReadScope() });
   }
 
   protected closeRemoteRemoval(restoreFocus = true, expectedOwner = this.remoteRemovalOwner()): void {
     if (this.remoteRemovalOwner() !== expectedOwner) return;
     this.remoteRemovalOwner.set(null);
-    const opener = this.remoteRemovalOpener;
-    this.pendingRemoteRemoval.set(null);
-    this.remoteRemovalOpener = null;
-    if (restoreFocus) this.restoreDialogFocus(opener);
+    if (restoreFocus && expectedOwner && this.ownsCheckoutVisitReview(expectedOwner)) {
+      this.restoreRepositoryReviewFocus(expectedOwner);
+    }
   }
 
   protected async confirmRemoteRemoval(expectedOwner = this.remoteRemovalOwner()): Promise<void> {
-    const remote = this.pendingRemoteRemoval();
     const owner = this.remoteRemovalOwner();
-    if (owner !== expectedOwner || !remote || !owner || !this.ownsRepositoryScope(owner) || this.git.busy()) return;
-    this.closeRemoteRemoval();
-    await this.git.removeRemote(remote.name);
+    if (!owner || owner !== expectedOwner || !this.ownsCheckoutVisitReview(owner) || this.git.busy()) return;
+    this.closeRemoteRemoval(true, owner);
+    await this.git.removeRemote(owner.remote.name);
   }
 
   protected async submitSubmodule(expectedOwner = this.submoduleEditorOwner()): Promise<void> {
@@ -12726,7 +12722,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const owner = this.captureRepositoryEditorOwner();
     if (!owner) return;
     this.publishRemote.set(remote);
-    this.pendingPublishBranch.set({ ...owner, returnFocus, branch });
+    this.pendingPublishBranch.set({ ...owner, returnFocus, branch, checkoutVisit: this.git.activeRepositoryReadScope() });
   }
 
   protected requestForcePush(): void {
@@ -12798,12 +12794,12 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected setPublishRemote(value: string, expected = this.pendingPublishBranch()): void {
-    if (!expected || this.pendingPublishBranch() !== expected || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    if (!expected || this.pendingPublishBranch() !== expected || !this.ownsCheckoutVisitReview(expected) || this.git.busy()) return;
     this.publishRemote.set(value);
   }
 
   protected openPublishRemoteEditor(expected = this.pendingPublishBranch()): void {
-    if (!expected || this.pendingPublishBranch() !== expected || !this.ownsRepositoryScope(expected) || this.git.busy()) return;
+    if (!expected || this.pendingPublishBranch() !== expected || !this.ownsCheckoutVisitReview(expected) || this.git.busy()) return;
     this.closePublishBranch(false, expected);
     this.openAddRemoteDialog(expected.returnFocus);
   }
@@ -12811,7 +12807,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async confirmPublishBranch(expected = this.pendingPublishBranch()): Promise<void> {
     const pending = this.pendingPublishBranch();
     const remote = this.publishRemote();
-    if (!pending || pending !== expected || !this.ownsRepositoryScope(pending) || this.git.busy()
+    if (!pending || pending !== expected || !this.ownsCheckoutVisitReview(pending) || this.git.busy()
       || !this.git.repository()?.remotes.some((candidate) => candidate.name === remote)) return;
     this.closePublishBranch(true, pending);
     await this.git.publishBranch(remote, pending.branch);
@@ -12820,7 +12816,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected closePublishBranch(restoreFocus = true, expected = this.pendingPublishBranch()): void {
     if (this.pendingPublishBranch() !== expected) return;
     this.pendingPublishBranch.set(null);
-    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
+    if (restoreFocus && expected && this.ownsCheckoutVisitReview(expected)) this.restoreRepositoryReviewFocus(expected);
   }
 
   protected async checkoutFromToolbar(branch: Branch): Promise<void> {
@@ -15212,7 +15208,8 @@ export class AppComponent implements OnInit, OnDestroy {
     queueMicrotask(() => {
       if (this.git.activeRepositoryReadScope() !== checkoutVisit || !this.ownsRepositoryScope(review)
         || this.pendingBranchAction() || this.pendingSparseCheckoutReview()
-        || this.pendingWorktreeAction() || this.pendingForcePush() || this.pendingPublishBranch() || this.lfsPruneReview()) return;
+        || this.pendingWorktreeAction() || this.pendingForcePush() || this.pendingPublishBranch()
+        || this.remoteRemovalOwner() || this.lfsPruneReview()) return;
       if (review.returnFocus?.isConnected) review.returnFocus.focus({ preventScroll: true });
     });
   }

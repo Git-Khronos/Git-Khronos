@@ -133,6 +133,18 @@ for (const review of reviews) {
   }
 }
 
+test('publish from a previous checkout visit cannot dispatch', async ({ page }) => {
+  const modal = await open(page, 'publish');
+  const confirm = modal.getByRole('button', { name: 'Publish Branch', exact: true });
+  await expect(confirm).toBeEnabled();
+  await confirm.evaluate(button => {
+    (window as any).__changeRemoteScope('revisit');
+    (button as HTMLButtonElement).click();
+  });
+  await expect(modal).toBeHidden();
+  expect(await calls(page)).toEqual([]);
+});
+
 test('an obsolete publish selector cannot change a replacement draft', async ({ page }) => {
   await open(page, 'publish');
   await page.evaluate(() => {

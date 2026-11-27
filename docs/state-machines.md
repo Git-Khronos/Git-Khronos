@@ -380,6 +380,9 @@ leases still authorize the actual Git operation.
 
 LFS cleanup uses the same visit boundary for both the reviewed object list
 and retention-based prune. A retired preview cannot update a new visit.
+Branch publishing and remote removal also require the original checkout
+visit. The remote removal review owns its target and focus opener together,
+so replacing the review cannot leave either value from the old one.
 
 ### Remote branch rename and deletion
 
