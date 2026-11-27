@@ -82,6 +82,18 @@ def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_head
         diagnostic = driver.invoke("diagnose_signing", repoId=repo_id)
         assert diagnostic["format"] == "ssh" and diagnostic["program"] == "ssh-keygen", diagnostic
         assert diagnostic["available"] and diagnostic["keyConfigured"], diagnostic
+        driver.click_visible('[aria-label="Preferences"]')
+        driver.click_visible('#preferences-tab-git')
+        check = '#preference-signing button.signing-check'
+        driver.click_scrolled_text(check, 'Check Signer', wait_for_ready=True)
+        driver.wait("""return [...document.querySelectorAll('#preference-signing .signing-diagnostic')]
+          .some(result => result.textContent.includes('Signer available') && result.textContent.includes('ssh-keygen'))""")
+        description = driver.script("""const check = document.querySelector(arguments[0]);
+          return document.getElementById(check?.getAttribute('aria-describedby'))?.textContent.trim();""", check)
+        assert description and 'does not run the signer or verify that the key can sign' in description, description
+        driver.click_visible('[aria-label="Close preferences"]')
+        driver.wait("return !document.querySelector('.preferences-popover')")
+        assert driver.script("return document.querySelector('.commit-form #commit-summary').value") == message
         driver.click_visible('.commit-form button[type="submit"]')
         driver.wait("""const toast = document.querySelector('gk-error-toast');
           return /sign|private key/i.test(toast?.textContent ?? '') &&
