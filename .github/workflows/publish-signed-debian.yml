@@ -20,6 +20,11 @@ on:
         required: true
         type: boolean
         default: false
+      verification_only:
+        description: Stop after verifying signed assets, even if publication is enabled
+        required: true
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -64,7 +69,7 @@ jobs:
             }
           fi
       - name: Require a reviewer-protected main-only release environment before publication
-        if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'
+        if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs.verification_only
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -371,7 +376,7 @@ jobs:
           LANES: ${{ needs.qualify.outputs.lanes }}
           ASSET_ID: ${{ steps.assets.outputs.artifact-id }}
           CHECKSUMS_SHA256: ${{ steps.prepare.outputs.checksums_sha256 }}
-          PUBLICATION_ENABLED: ${{ vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' }}
+          PUBLICATION_ENABLED: ${{ vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs.verification_only }}
         run: |
           set -euo pipefail
           [[ "$LANES" =~ ^[1-9][0-9]*$ ]]
@@ -390,7 +395,7 @@ jobs:
 
   publish:
     name: Publish exact signed assets to GitHub Releases
-    if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'
+    if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs.verification_only
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 15

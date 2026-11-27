@@ -268,9 +268,10 @@ environment. Use `GIT_KHRONOS_HOSTED_SIGNING_ENABLED=true` to opt in and set
 `hosted_signing=true` when dispatching publication, leaving `signature` empty.
 Run `task release:preflight -- --hosted v0.1.6` to check the GitHub configuration.
 It checks the signer secret name only, not its contents or correctness.
-Keep `GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED` unset for a signing-and-verification
-rehearsal with no publication. As with offline mode, the separate publication
-switch and `signed-release` approval are required before anything goes live.
+Set `verification_only=true` for a signing-and-verification rehearsal. It
+prevents publication even if the repository publication switch is enabled.
+As with offline mode, the separate publication switch and `signed-release`
+approval are required before anything goes live.
 
 Before the signing job opens the signing secrets, a read-only job must
 verify the successful candidate attempt, the tag commit, the complete

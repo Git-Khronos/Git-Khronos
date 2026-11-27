@@ -527,8 +527,9 @@ test('publication fails closed without reviewer protection and a main-only branc
   const [verify, publish] = workflow.split('\n  publish:\n');
   const preflight = verify.match(/- name: Require a reviewer-protected main-only release environment before publication\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(preflight);
-  assert.match(preflight, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'/);
+  assert.match(preflight, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs\.verification_only/);
   assert.match(publish, /needs: verify[\s\S]*?environment: signed-release[\s\S]*?actions: read/);
+  assert.match(publish, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs\.verification_only\n/);
   const step = preflight.split('        run: |\n')[1]?.replace(/^          /gm, '');
   assert.ok(step);
   const lastGuard = publish.match(/          # A missing environment[\s\S]*?\n(          environment=[\s\S]*?)\n          gh release create/)?.[1];
