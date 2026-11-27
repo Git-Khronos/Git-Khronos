@@ -1171,6 +1171,21 @@ test('cache checks reject nonregular receipts and renderer outputs without hangi
   assert.equal(cached.status, 0, cached.stderr);
 });
 
+test('package build ID distinguishes source inputs, format, and public trust without exposing inputs', () => {
+  const identify = (checksum, flavor, key) => spawnSync(process.execPath,
+    ['tools/package-build-receipt.mjs', 'build-id', checksum, flavor], {
+      encoding: 'utf8', env: { ...process.env, GIT_KHRONOS_UPDATER_PUBLIC_KEY: key },
+    });
+  const base = identify('owned-input', 'local', 'owned-public-key');
+  assert.equal(base.status, 0, base.stderr);
+  assert.match(base.stdout, /^[a-f0-9]{12}\n$/);
+  assert.equal(identify('owned-input', 'local', 'owned-public-key').stdout, base.stdout);
+  assert.notEqual(identify('new-input', 'local', 'owned-public-key').stdout, base.stdout);
+  assert.notEqual(identify('owned-input', 'ubuntu-jammy', 'owned-public-key').stdout, base.stdout);
+  assert.notEqual(identify('owned-input', 'local', 'different-key').stdout, base.stdout);
+  assert.equal(identify('owned-input', 'unknown', 'owned-public-key').status, 1);
+});
+
 test('standalone renderer and native integration test edits do not rebuild the Debian package', async t => {
   const f = await fixture(t);
   const path = 'apps/desktop/src-tauri/tests/transport_probe.rs';

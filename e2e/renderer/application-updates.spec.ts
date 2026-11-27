@@ -85,6 +85,15 @@ async function open(page: Page, waitForStatus = true) {
   return dialog;
 }
 
+test('Updates distinguishes a packaged build from its version without enabling updates', async ({ page }) => {
+  const dialog = await open(page);
+  await expect(dialog.getByText('Running build ID', { exact: true })).toHaveCount(0);
+  await page.evaluate(() => (window as any).__updates.replace({ buildInputId: '2c3d4e5f6789' }));
+  await expect(dialog.getByText('Running build ID', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('2c3d4e5f6789', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('checkbox', { name: 'Enable automatic updates' })).not.toBeChecked();
+});
+
 test('command palette opens Updates without checking or changing consent', async ({ page }) => {
   const origin = page.getByRole('searchbox', { name: 'Filter changed files' });
   await origin.focus();

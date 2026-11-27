@@ -17,6 +17,7 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
           <p role="status">Application updates are available in the desktop app, not the browser preview.</p>
         } @else if (updates.state(); as state) {
           <dl><div><dt>Running version</dt><dd>{{ state.runningVersion }}</dd></div>
+            @if (state.buildInputId) { <div><dt>Running build ID</dt><dd><code>{{ state.buildInputId }}</code></dd></div> }
             @if (state.installedVersion) { <div><dt>Installed version</dt><dd>{{ state.installedVersion }}</dd></div> }
             @if (state.offeredVersion) { <div><dt>Available version</dt><dd>{{ state.offeredVersion }}</dd></div> }
             @if (state.packageFormat) { <div><dt>Package</dt><dd>{{ state.packageFormat }}</dd></div> }

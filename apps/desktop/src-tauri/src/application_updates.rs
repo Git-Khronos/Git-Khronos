@@ -28,6 +28,8 @@ pub struct ApplicationUpdateStatus {
     pub revision: u32,
     pub phase: UpdatePhase,
     pub running_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_input_id: Option<String>,
     pub installed_version: Option<String>,
     pub package_format: Option<String>,
     pub configured: bool,
@@ -233,6 +235,14 @@ fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
             revision: runtime.revision,
             phase: model.phase,
             running_version: env!("CARGO_PKG_VERSION").into(),
+            build_input_id: option_env!("GIT_KHRONOS_BUILD_INPUT_ID")
+                .filter(|id| {
+                    id.len() == 12
+                        && id
+                            .bytes()
+                            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+                })
+                .map(str::to_owned),
             installed_version: runtime.installed_version.clone(),
             package_format: format.map(str::to_owned),
             configured: model.configured,

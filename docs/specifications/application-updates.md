@@ -288,6 +288,13 @@ Installations built without the public key need a one-time manual upgrade to a
 trusted build. They cannot use a release manifest to establish trust in its own
 signer. Automatic updates remain off until the user opts in.
 
+Linux packages built with the packaging task show a **Running build ID** in
+Updates. It identifies the package build inputs, flavor, and compiled publisher
+configuration, so local builds with the same version can be told apart. It is
+not a package checksum or a trust check; use `task install:linux:status` to
+compare the installed files with an exact reviewed archive. Older builds and
+builds without this metadata omit the row.
+
 A local publisher-key-enabled Debian candidate passed 271 native environment
 scenarios and was signed and staged unchanged. Debian SHA-256:
 `157db654c7759d9a99bbf55d59ad56b33efcd21336d37a3a8eb18c841d24ce00`.

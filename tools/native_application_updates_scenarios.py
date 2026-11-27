@@ -37,6 +37,12 @@ def application_updates_workflow(driver, fixtures, report):
         report['scenarios'].append('native-updates-palette-opens-without-checking-or-changing-consent')
 
     driver.wait('return document.querySelector(' + json.dumps(modal) + ')?.textContent.includes("Running version")')
+    build_id = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_BUILD_INPUT_ID')
+    if build_id is not None:
+        assert driver.invoke('application_update_status').get('buildInputId') == build_id
+        driver.wait(f"""return [...document.querySelectorAll({json.dumps(modal + ' dd code')})]
+          .some(code => code.textContent.trim() === {json.dumps(build_id)})""")
+        report['scenarios'].append('native-updates-running-build-id-matches-package-inputs')
     shadows = driver.script("""const root = document.documentElement;
       const dialog = document.querySelector(arguments[0]);
       const previous = root.getAttribute('data-theme');

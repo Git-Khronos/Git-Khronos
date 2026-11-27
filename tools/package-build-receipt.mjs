@@ -12,7 +12,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const cargo = process.env.CARGO_TARGET_DIR ? resolve(process.cwd(), process.env.CARGO_TARGET_DIR) : join(root, 'target');
 const receiptPath = join(cargo, 'release/.git-khronos-package-build.v1.json');
 const pendingPath = `${receiptPath}.pending`;
-const [action, checksum] = process.argv.slice(2);
+const [action, checksum, flavor] = process.argv.slice(2);
 // Public trust is a compiled input, even when Task's file checksum is unchanged.
 // Fingerprint the value without recording unrelated environment or signing keys.
 const buildConfiguration = { updaterPublicKeySha256: createHash('sha256')
@@ -109,7 +109,15 @@ function validBase(value) {
   return validSource(value) && validConfiguration(value);
 }
 async function main() {
-  if (!['begin', 'complete', 'check'].includes(action) || !/^[A-Za-z0-9_:+/=.-]{1,256}$/.test(checksum ?? '')) fail('Usage: package-build-receipt.mjs {begin|complete|check} <Task source checksum>');
+  if (!['begin', 'complete', 'check', 'build-id'].includes(action) || !/^[A-Za-z0-9_:+/=.-]{1,256}$/.test(checksum ?? '')) {
+    fail('Usage: package-build-receipt.mjs {begin|complete|check|build-id} <Task source checksum> [flavor]');
+  }
+  if (action === 'build-id') {
+    if (!['local', 'ubuntu-jammy', 'ubuntu-jammy-appimage'].includes(flavor)) fail('Expected a known Linux package flavor.');
+    const identity = createHash('sha256').update(JSON.stringify([checksum, flavor, buildConfiguration])).digest('hex');
+    console.log(identity.slice(0, 12));
+    return;
+  }
   if (action === 'begin') {
     if (await exists(pendingPath)) {
       const previous = await readJson(pendingPath);
