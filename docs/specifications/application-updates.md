@@ -426,6 +426,11 @@ changes and deletion.
    `node tools/report-installed-acceptance.mjs --verify-release "$BUILD_RECEIPT" "$PUBLIC_KEY_FILE" "$PACKAGE" --reports-dir candidate-matrix`.
    Sign those exact package bytes without rebuilding. The artifact is retained
    for seven days; preserve it and the evidence separately for longer reviews.
+   On the publisher's Linux checkout, run `task sign` from a terminal to sign
+   the sole qualified download under `target/local-review/hosted-release-integration`.
+   For another location or multiple downloads, use
+   `task sign -- /path/to/qualified-release-directory`. This prompts locally
+   and writes only the public sidecar; it does not publish.
 4. Dispatch **Publish signed Debian release** on `main` with the tag, candidate
    run ID, and only the **public** `.deb.sig` content. The read-only verification
    job checks the successful run, attempt, exact tag commit, qualification

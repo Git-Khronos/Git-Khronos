@@ -85,6 +85,12 @@ tasks:
         pnpm exec tauri signer generate --write-keys "$key"
         '
 
+  sign:
+    desc: Sign the downloaded qualified Debian release offline (interactive; does not publish)
+    platforms: [linux]
+    cmds:
+      - bash tools/sign-downloaded-release.sh {{.CLI_ARGS}}
+
   release:preflight:
     desc: Check GitHub signed-release setup without making changes
     platforms: [linux, darwin]
