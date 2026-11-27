@@ -75,6 +75,15 @@ passed in the supplemental lane. One new worktree scenario passed in the
 primary. This proves named coverage on that package, not a wall-clock saving:
 measure that on GitHub runners after the change lands.
 
+Hosted run 46071498371 then passed both Jammy lanes against one archive:
+333 reported primary scenarios, 24 in the focused file-tools report, and
+every scenario name from the 335-scenario baseline present in at least one
+lane. The primary was no longer the last lane to finish. From artifact upload
+to the required Jammy gate, this run took 7 min 58 s versus 8 min 20 s in
+run 46067064552. Different runner and case timings prevent attributing all
+of that change to delegation. The supplemental lane is now the longer one
+in this pair; moving more work there is not an established speedup.
+
 The installed-matrix job summary lists which suites passed, failed, or were
 interrupted. For an ordinary failure, the job log also prints the command
 to rerun just the failed suites in the same environment.
