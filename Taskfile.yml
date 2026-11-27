@@ -97,6 +97,12 @@ tasks:
     cmds:
       - bash tools/check-hosted-debian-release.sh {{.CLI_ARGS}}
 
+  release:check-version:
+    desc: Check that local project, installer and Rust versions match a proposed release tag (no build)
+    platforms: [linux]
+    cmds:
+      - bash tools/check-debian-release-version.sh {{.CLI_ARGS}}
+
   release:download:
     desc: Download and verify a successful Debian candidate without signing or publishing
     platforms: [linux]

@@ -480,5 +480,5 @@ jobs:
           fi
           gh release create "$RELEASE_TAG" "${assets[@]}" SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" --verify-tag --latest \
-            --title "Git Khronos ${version}" \
+            --title "$version" \
             --notes-file "$notes"

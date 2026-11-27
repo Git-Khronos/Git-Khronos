@@ -449,8 +449,7 @@ test('publisher-enabled Jammy acceptance uses independent runtime and publisher 
 
 test('release qualification refuses installer and native version drift before building', async t => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/release.yml'), 'utf8')).replaceAll('\r\n', '\n');
-  const step = workflow.match(/- name: Check release tag matches installer and runtime versions\n\s+run: \|\n([\s\S]*?)(?=      - name: Install Linux build prerequisites)/)?.[1];
-  assert.ok(step, 'Missing early version gate');
+  assert.match(workflow, /- name: Check release tag matches installer and runtime versions\n\s+run: bash tools\/check-debian-release-version\.sh "\$RELEASE_TAG"\n\s+- name: Install Linux build prerequisites/);
   const root = await mkdtemp(join(tmpdir(), 'git-khronos-release-version-gate-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const folder of ['bin', 'apps/desktop/src-tauri', 'packaging/debian']) {
@@ -477,12 +476,13 @@ cat metadata.json
       { name: 'git-khronos-git-core', version: core },
     ] }));
   };
-  const run = () => spawnSync('bash', ['-c', step.replace(/^          /gm, '')], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}`, RELEASE_TAG: `v${current}` },
+  const run = (tag = `v${current}`) => spawnSync('bash', [join(repositoryRoot, 'tools/check-debian-release-version.sh'), tag], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}` },
   });
   await versionFixtures();
   const valid = run();
   assert.equal(valid.status, 0, valid.stderr || valid.stdout);
+  assert.equal(run('v2.3.4-rc.1').status, 2);
   for (const [field, source] of [
     ['project', 'package.json'], ['app', 'tauri.conf.json'], ['changelog', 'Debian-changelog'],
     ['desktop', 'git-khronos-desktop'], ['core', 'git-khronos-git-core'],
@@ -587,6 +587,7 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
 test('publication fails closed without reviewer protection and a main-only branch policy', async t => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const [verify, publish] = workflow.split('\n  publish:\n');
+  assert.match(publish, /gh release create "\$RELEASE_TAG"[\s\S]*?--title "\$version"/);
   const preflight = verify.match(/- name: Require a reviewer-protected main-only release environment before publication\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(preflight);
   assert.match(preflight, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs\.verification_only/);
