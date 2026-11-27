@@ -16,6 +16,14 @@ The archive, build receipt, and reports are retained under
 `target/local-review/dev-94e8436/`. This evidence is for the development
 package, not the separately qualified production-key release candidate.
 
+Hosted development run [46079259994](https://github.com/Git-Khronos/Git-Khronos/actions/runs/46079259994)
+passed all 20 jobs. Its 18 extracted native reports and 47 installed
+reports across five Linux baselines all recorded the expected and actual
+SHA-256 as the same Jammy-built archive:
+`dd66c5b501b1ec2ac4bd69860956fab1f7a0e401068d894157118c4db34c471d`.
+This verifies the checksum handoff through both acceptance workflows; it
+does not confer production signing or release approval.
+
 ## Dev follow-up after the 0.1.6 candidate — 2026-11-26
 
 Linked worktrees can be locked with an optional user-supplied reason. Git's
