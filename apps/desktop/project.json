@@ -187,6 +187,16 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite working-tree-recaps --headless" }
     },
+    "native-diff-line-selection": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite diff-line-selection --headless" }
+    },
+    "native-diff-rendering": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite diff-rendering --headless" }
+    },
     "native-worktree-reservation": {
       "executor": "nx:run-commands",
       "cache": false,

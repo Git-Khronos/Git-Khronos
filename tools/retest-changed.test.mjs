@@ -102,6 +102,18 @@ test('native remote review changes select the focused packaged Git workflow', t 
   assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
 });
 
+test('changes to native diff scenarios retest partial staging and wrapped rendering only', t => {
+  const f = fixture(t);
+  f.write('candidate.deb');
+  f.commit();
+  f.write('tools/native_diff_line_selection_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-harness-test"/);
+  assert.match(plan, /"desktop:native-diff-line-selection"/);
+  assert.match(plan, /"desktop:native-diff-rendering"/);
+  assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+});
+
 test('repository confirmation edits select the scoped profile and deduplicate a covered spec', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/repository-confirmations.component.html');
