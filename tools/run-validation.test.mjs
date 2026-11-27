@@ -29,6 +29,36 @@ test('renderer snapshot space uses free blocks available to the invoking user on
   assert.doesNotThrow(() => requireRendererSnapshotSpace('/owned/evidence', stats(blocksAtFloor)));
 });
 
+test('a low-space renderer snapshot records failure before exporting or installing source', t => {
+  const root = mkdtempSync(join(tmpdir(), 'gk-renderer-space-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const source = join(root, 'checkout');
+  const evidence = join(root, 'run');
+  mkdirSync(source);
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))),
+    GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+  const git = (...args) => execFileSync('git', args, { cwd: source, env, stdio: 'pipe' });
+  git('-c', 'init.templateDir=', 'init', '-q');
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false',
+    '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'Owned source', '--allow-empty');
+  // Override the builtin only in this subprocess; avoid a production bypass.
+  const preload = join(root, 'low-space.mjs');
+  writeFileSync(preload, `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+fs.statfsSync = () => ({ bsize: 4096n, bavail: 0n });
+syncBuiltinESMExports();\n`);
+  const run = spawnSync(process.execPath, ['--import', preload, launcher, 'run', evidence,
+    '--snapshot', 'HEAD', 'run', 'desktop:e2e'], { cwd: source, env, encoding: 'utf8' });
+  assert.equal(run.status, 1, run.stderr);
+  assert.equal(existsSync(join(evidence, 'source')), false);
+  assert.equal(existsSync(join(evidence, 'snapshot.tar')), false);
+  assert.equal(existsSync(join(evidence, 'started.json')), false);
+  const status = readStatus(evidence);
+  assert.equal(status.state, 'failed');
+  assert.match(status.error, /needs at least 2 GiB free/);
+  assert.doesNotMatch(readFileSync(join(evidence, 'output.log'), 'utf8'), /Exporting|Installing/);
+});
+
 test('guarded validation rejects changed bytes even when the Git status names stay the same', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'khronos-run-guard-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
