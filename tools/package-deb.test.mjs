@@ -380,10 +380,10 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   assert.match(ci, /--test-list "\$plan\/selected" --workers="\$WORKERS" --retries=0/);
   const bufferedNativeCommands = native.split('\n').filter(line => line.includes('pnpm nx run') && line.includes('--output-style=static'));
   assert.deepEqual(bufferedNativeCommands, []);
-  assert.match(native, /- name: Run required packaged file tools acceptance\n\s+if: matrix\.lane == 'supplemental'\n\s+run: pnpm nx run desktop:native-file-tools --output-style=stream -- --package "\$PACKAGE"\n/);
+  assert.match(native, /- name: Run required packaged file tools acceptance\n\s+if: matrix\.lane == 'supplemental'\n\s+run: pnpm nx run desktop:native-file-tools --output-style=stream -- --package "\$PACKAGE" --expect-package-sha256 "\$PACKAGE_SHA256"\n/);
   assert.equal(native.match(/pnpm nx run desktop:native-file-tools /g)?.length, 1);
   for (const line of native.split('\n').filter(line => /pnpm nx run .*desktop:native-|--suite gitlab/.test(line))) {
-    assert.ok(line.endsWith('--package "$PACKAGE"'), line);
+    assert.ok(line.endsWith('--package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"'), line);
   }
 
   const root = await mkdtemp(join(tmpdir(), 'gk-ci-archive-handoff-'));
@@ -395,13 +395,14 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   const githubEnv = join(root, 'github-env');
   const bytes = 'verified fixture bytes';
   await writeFile(archive, bytes);
-  await writeFile(join(artifact, 'SHA256SUMS'), `${createHash('sha256').update(bytes).digest('hex')}  ${archiveName}\n`);
+  const checksum = createHash('sha256').update(bytes).digest('hex');
+  await writeFile(join(artifact, 'SHA256SUMS'), `${checksum}  ${archiveName}\n`);
   const run = () => spawnSync('bash', ['-c', check], {
     cwd: root, env: { ...process.env, GITHUB_ENV: githubEnv }, encoding: 'utf8',
   });
   const valid = run();
   assert.equal(valid.status, 0, valid.stderr);
-  assert.equal(await readFile(githubEnv, 'utf8'), `PACKAGE=${archive}\n`);
+  assert.equal(await readFile(githubEnv, 'utf8'), `PACKAGE=${archive}\nPACKAGE_SHA256=${checksum}\n`);
   await unlink(githubEnv);
   await writeFile(archive, 'modified bytes');
   assert.equal(run().status, 1);

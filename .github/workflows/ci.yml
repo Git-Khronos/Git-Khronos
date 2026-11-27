@@ -368,47 +368,47 @@ jobs:
           test "${#packages[@]}" -eq 1
           expected=$(sha256sum -- "${packages[0]}")
           test "$(cat SHA256SUMS)" = "$expected"
-          echo "PACKAGE=$PWD/${packages[0]}" >> "$GITHUB_ENV"
+          printf 'PACKAGE=%s\nPACKAGE_SHA256=%s\n' "$PWD/${packages[0]}" "${expected%% *}" >> "$GITHUB_ENV"
       - name: Run packaged WebKitGTK acceptance
         if: matrix.lane == 'primary'
         run: |
           # The required supplemental lane runs file-tools against this same package.
           args=()
           if [[ "$NATIVE_SUITE" == full ]]; then args+=(--delegate-file-tools); fi
-          pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=stream -- "${args[@]}" --package "$PACKAGE"
+          pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=stream -- "${args[@]}" --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
       - name: Verify packaged browser and file manager handoffs
         if: matrix.lane == 'supplemental'
         run: |
-          pnpm nx run desktop:native-git-documentation --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-application-update-release-link --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-file-manager-launch --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-git-documentation --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-application-update-release-link --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-file-manager-launch --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
       - name: Run required packaged file tools acceptance
         if: matrix.lane == 'supplemental'
-        run: pnpm nx run desktop:native-file-tools --output-style=stream -- --package "$PACKAGE"
+        run: pnpm nx run desktop:native-file-tools --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
       - name: Run focused packaged signing and tag-navigation acceptance
         if: matrix.lane == 'supplemental'
         run: |
-          pnpm nx run desktop:native-signed-commit --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-empty-commit --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-merge-preview --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-signed-tag --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-lfs-lock-actions --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-tag-preview --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-file-history --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-conflict-navigation --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-working-tree-recaps --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-discard-busy --output-style=stream -- --package "$PACKAGE"
-          pnpm nx run desktop:native-integrity-ui --output-style=stream -- --package "$PACKAGE"
+          pnpm nx run desktop:native-signed-commit --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-empty-commit --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-merge-preview --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-signed-tag --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-lfs-lock-actions --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-tag-preview --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-file-history --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-conflict-navigation --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-working-tree-recaps --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-discard-busy --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-integrity-ui --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
       - name: Run focused packaged GitLab fork navigation acceptance
         if: matrix.lane == 'supplemental'
         run: |
           pnpm nx exec -p desktop --excludeTaskDependencies -- \
-            python3 "$PWD/tools/native_acceptance.py" --suite gitlab-fork-ui --headless --package "$PACKAGE"
+            python3 "$PWD/tools/native_acceptance.py" --suite gitlab-fork-ui --headless --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
       - name: Run packaged GitLab catalogue acceptance
         if: matrix.lane == 'supplemental'
         run: |
           pnpm nx exec -p desktop --excludeTaskDependencies -- \
-            python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$PACKAGE"
+            python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
       - name: Upload packaged acceptance diagnostics
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.verify-native-package.outcome == 'success' }}
