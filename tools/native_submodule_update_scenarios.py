@@ -78,6 +78,11 @@ def update_one_submodule(driver, fixtures, report):
         assert child_state(sibling_checkout) == sibling_before
 
     open_review()
+    # The dirty sibling blocks bulk updates but not this reviewed path.
+    driver.wait(f"""const button = document.querySelector({json.dumps(dialog + ' [data-update-all-open]')});
+      const reason = document.getElementById(button?.getAttribute('aria-describedby'));
+      return button?.disabled && !!reason?.getClientRects().length
+        && reason.textContent.includes('Save or remove local changes inside submodules.');""")
     unchanged(chosen_before)
     close_review()
     unchanged(chosen_before)
