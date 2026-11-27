@@ -406,8 +406,7 @@ test('surfaces the primary repository shortcut on the welcome screen', async ({ 
 test('jumps between shortcut categories in compact windows', async ({ page }) => {
   await page.setViewportSize({ width: 420, height: 720 });
   const opener = page.getByTitle('Command palette (Ctrl+P)');
-  await opener.focus();
-  await page.keyboard.press('Control+/');
+  await opener.press('Control+/');
   const dialog = page.getByRole('dialog', { name: 'Keyboard Shortcuts' });
   const groups = dialog.locator('.shortcut-groups');
   const tabsAndView = dialog.locator('#shortcut-section-tabs-view');
@@ -453,9 +452,15 @@ test('jumps between shortcut categories in compact windows', async ({ page }) =>
   await expect(dialog.getByRole('button', { name: 'Repository', exact: true })).toHaveAttribute('aria-current', 'location');
   await expect.poll(() => groups.evaluate((element) => element.scrollTop)).toBe(0);
 
+  await opener.evaluate(element => {
+    element.addEventListener('focus', () => {
+      element.setAttribute('data-test-focus-after-dialog-removed', String(!document.querySelector('gk-keyboard-shortcuts-dialog')));
+    }, { once: true });
+  });
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(opener).toBeFocused();
+  await expect(opener).toHaveAttribute('data-test-focus-after-dialog-removed', 'true');
 });
 
 test('edits the repository-local Git author from the header identity popover', async ({ page }) => {

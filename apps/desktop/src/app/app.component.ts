@@ -12116,11 +12116,14 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected closeKeyboardShortcuts(): void {
     const opener = this.keyboardShortcutsOpener;
+    const outgoing = document.activeElement?.closest('gk-keyboard-shortcuts-dialog') ?? null;
     this.keyboardShortcutsOpen.set(false);
     this.keyboardShortcutsOpener = null;
-    queueMicrotask(() => {
-      if (opener?.isConnected) opener.focus();
-    });
+    afterNextRender(() => {
+      if (this.keyboardShortcutsOpen() || !this.canRestoreFocusFrom(outgoing) || !opener?.isConnected
+        || opener.matches(':disabled, [aria-disabled="true"]') || opener.closest('[inert]')) return;
+      opener.focus({ preventScroll: true });
+    }, { injector: this.injector });
   }
 
   protected handleModalFocusKey(event: KeyboardEvent): void {
