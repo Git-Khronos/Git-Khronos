@@ -94,6 +94,8 @@ jobs:
           sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm openssl libssl-dev pkg-config fakeroot dbus
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/debian-package-regressions
+      - name: Prefetch locked Cargo metadata for offline package notices
+        run: cargo metadata --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu > /dev/null
       - name: Build Debian package with pinned publisher trust
         env:
           GIT_KHRONOS_UPDATER_PUBLIC_KEY: ${{ vars.GIT_KHRONOS_UPDATER_PUBLIC_KEY }}

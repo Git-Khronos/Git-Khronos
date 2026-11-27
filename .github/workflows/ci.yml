@@ -240,6 +240,8 @@ jobs:
       - name: Install pinned Tauri WebDriver bridge
         run: cargo install tauri-driver --locked --version 2.0.6
       - uses: ./.github/actions/debian-package-regressions
+      - name: Prefetch locked Cargo metadata for offline package notices
+        run: cargo metadata --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu > /dev/null
       - name: Build and verify Debian package
         id: package
         run: |
