@@ -5,6 +5,20 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## 0.1.7 preparation — 2026-11-28
+
+The local Debian build from `7d7eaa3` was configured with the production
+publisher **public** key. It passed 338 full native scenarios, including the
+expected running build ID `f03f27d68ed5`, plus focused updater and commit
+signing suites. The local archive, build receipt and reports are under
+`target/local-review/dev-7d7eaa3/`. The exact SHA-256 is
+`48e7ced29b3b4d153ad934789270c50b067461f2c3f7e215140258c8f989a2a3`.
+
+APT simulated the upgrade from the official signed 0.1.6 installation
+without additional package changes. 0.1.6 remained installed. This local
+0.1.7 archive is unsigned and does not replace Jammy release qualification,
+protected publication, or the live two-release updater check.
+
 ## Dev package validation — 2026-11-28
 
 The local Debian archive built from `94e8436` passed 339 full native
