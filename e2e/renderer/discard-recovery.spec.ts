@@ -1161,8 +1161,11 @@ test('offers a fresh root-file preview after blocking a mixed discard request', 
   await filter.clear();
   await expect(rootA).toBeChecked();
   await clear.click();
+  await expect(eligible.getByRole('status')).toContainText('0 of 2 eligible files selected.');
+  await expect(rootB).not.toBeChecked();
   expect(await page.evaluate(() => (window as any).__discardChoiceTest.previews)).toBe(2);
   await rootB.check();
+  await expect(eligible.getByRole('status')).toContainText('1 of 2 eligible files selected.');
   await filter.fill('root-a');
   await expect(rootB).toHaveCount(0);
   await expect(eligible.getByRole('status')).toContainText('1 selected outside the filter.');
