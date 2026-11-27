@@ -9,7 +9,8 @@ const cwd = fileURLToPath(new URL('../', import.meta.url));
 const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 const split = value => value.split('\0').filter(Boolean);
 const profiles = [
-  [/^(?:worktree-(?:lock|move|registration)-dialog|checkout-worktree-dialog)\.component\.(?:ts|html|scss)$/, 'worktrees'],
+  [/^worktree-(?:lock|move|registration)-dialog\.component\.(?:ts|html|scss)$/, 'worktrees'],
+  [/^checkout-worktree-dialog\.component\.(?:ts|html|scss)$/, 'branch-checkout'],
   [/^submodule-state-review\.component\.(?:ts|html|scss)$/, 'submodules'],
   [/^lfs-(?:tracking|prune)-dialog\.component\.(?:ts|html|scss)$/, 'lfs'],
   [/^repository-confirmations\.component\.(?:ts|html|scss)$/, 'repository-confirmations'],
@@ -277,13 +278,13 @@ function filtersFor(selectedProfiles) {
   });
 }
 
-// The worktree profile already covers the standalone submodule spec. Verify
-// the actual profile regex before dropping the narrower invocation.
-if (!broad && selected.has('worktrees') && selected.has('submodules')) {
-  const onlySubmoduleSpec = "playwright test 'e2e/renderer/submodule-review[.]spec[.]ts$'";
-  if (targets().e2e.configurations.submodules?.command === onlySubmoduleSpec
-    && filtersFor(new Set(['worktrees'])).some(filter => filter.test('e2e/renderer/submodule-review.spec.ts'))) {
-    selected.delete('submodules');
+// Verify actual profile commands before dropping a covered narrower invocation.
+if (!broad && selected.has('worktrees')) {
+  for (const [profile, spec] of [['submodules', 'submodule-review'], ['branch-checkout', 'branch-checkout-worktree']]) {
+    if (targets().e2e.configurations[profile]?.command === `playwright test 'e2e/renderer/${spec}[.]spec[.]ts$'`
+      && filtersFor(new Set(['worktrees'])).some(filter => filter.test(`e2e/renderer/${spec}.spec.ts`))) {
+      selected.delete(profile);
+    }
   }
 }
 const filters = broad ? [] : filtersFor(selected);

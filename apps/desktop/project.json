@@ -274,6 +274,7 @@
       "configurations": {
         "smoke": { "command": "playwright test --grep @daily-driver-smoke" },
         "worktrees": { "command": "playwright test 'e2e/renderer/(worktree-|branch-checkout-worktree|submodule-review)'" },
+        "branch-checkout": { "command": "playwright test 'e2e/renderer/branch-checkout-worktree[.]spec[.]ts$'" },
         "sparse-checkout": { "command": "playwright test 'e2e/renderer/sparse-(checkout|left-paths)[.]spec[.]ts$'" },
         "repository-confirmations": { "command": "playwright test 'e2e/renderer/(accessibility-audit|commit-policy|confirmation-keyboard|force-destination-layout|push-sync|remote-cleanup-review-scope|repository-(confirmation|setup)-scope|sparse-(checkout|left-paths)|workspace|worktree-move)[.]spec[.]ts$'" },
         "history-confirmations": { "command": "playwright test 'e2e/renderer/(branch-panel-interactions|commit-action-menu|confirmation-keyboard|history-review-loading|mainline-replay|no-commit-replay|operation-recovery|ordered-revert|rebase-split|repository-confirmation-scope|workspace)[.]spec[.]ts$'" },

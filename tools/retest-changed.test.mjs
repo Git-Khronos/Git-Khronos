@@ -369,13 +369,18 @@ test('working-tree recap edits select the staged and unstaged summary cases once
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
 });
 
-test('occupied-checkout dialog selects the worktree profile', t => {
+test('occupied-checkout dialog selects branch checkout alone unless broader worktree changes also need it', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/checkout-worktree-dialog.component.ts');
   f.write('e2e/renderer/branch-checkout-worktree.spec.ts');
   const plan = f.run();
-  assert.match(plan, /desktop:e2e:worktrees/);
+  assert.match(plan, /desktop:e2e:branch-checkout/);
+  assert.doesNotMatch(plan, /desktop:e2e:worktrees/);
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
+  f.write('apps/desktop/src/app/worktree-lock-dialog.component.ts');
+  const combined = f.run();
+  assert.match(combined, /desktop:e2e:worktrees/);
+  assert.equal(combined.match(/pnpm nx run/g)?.length, 1);
 });
 
 test('submodule review changes select only the submodule profile', t => {
@@ -385,7 +390,7 @@ test('submodule review changes select only the submodule profile', t => {
   const plan = f.run();
   assert.match(plan, /desktop:e2e:submodules/);
   assert.equal(plan.match(/pnpm nx run/g)?.length, 1);
-  f.write('apps/desktop/src/app/checkout-worktree-dialog.component.ts');
+  f.write('apps/desktop/src/app/worktree-lock-dialog.component.ts');
   const combined = f.run();
   assert.match(combined, /desktop:e2e:worktrees/);
   assert.equal(combined.match(/pnpm nx run/g)?.length, 1);
