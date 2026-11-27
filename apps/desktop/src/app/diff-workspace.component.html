@@ -32,7 +32,9 @@
             <b>+{{ stats.additions }}</b><i>−{{ stats.deletions }}</i>
           </span>
         }
-        <button class="diff-copy-path" type="button" [attr.aria-label]="'Copy path for ' + diff.path" title="Copy full file path" (click)="view.copyContextValue(diff.path)"><gk-icon name="copy" [size]="11" /></button>
+        <button class="diff-copy-path" type="button" [attr.aria-label]="'Copy path for ' + diff.path" title="Copy repository-relative path"
+          (click)="view.copyDiffPath(diff.path)"><gk-icon [name]="view.diffPathCopied() ? 'check' : 'copy'" [size]="11" /></button>
+        <span class="sr-only" role="status" aria-atomic="true">{{ view.diffPathCopied() ? 'Repository-relative path copied.' : '' }}</span>
       </div>
       <div class="diff-file-picker" (click)="$event.stopPropagation()">
         <nav class="diff-file-navigation" aria-label="Navigate changed files">

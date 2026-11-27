@@ -9500,7 +9500,17 @@ test('keeps focused file changes inside the center workspace', async ({ page }) 
   expect(fullPath).toBeTruthy();
   await expect(fileIdentity.locator('strong')).toHaveText(fullPath!.split('/').at(-1)!);
   const copyPath = diff.getByRole('button', { name: `Copy path for ${fullPath}` });
-  await expect(copyPath).toHaveAttribute('title', 'Copy full file path');
+  await expect(copyPath).toHaveAttribute('title', 'Copy repository-relative path');
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (text: string) => { (window as any).__copiedDiffPath = text; },
+    } });
+  });
+  await copyPath.focus();
+  await page.keyboard.press('Enter');
+  await expect(diff.getByRole('status').filter({ hasText: 'Repository-relative path copied.' })).toBeAttached();
+  await expect(copyPath).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__copiedDiffPath)).toBe(fullPath);
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
       writeText: async () => { throw new Error('Clipboard denied'); },
@@ -9508,6 +9518,7 @@ test('keeps focused file changes inside the center workspace', async ({ page }) 
   });
   await copyPath.click();
   await expect(page.locator('gk-error-toast')).toContainText('Could not copy the diff path. Clipboard access is unavailable.');
+  await expect(diff.getByRole('status').filter({ hasText: 'Repository-relative path copied.' })).toHaveCount(0);
   await expect(diff).toBeVisible();
   expect(await fileIdentity.locator('strong').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await diff.locator('.diff-workspace-toolbar').evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(75);

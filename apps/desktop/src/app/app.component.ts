@@ -2798,6 +2798,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.fileActionCheckout(), this.git.commitDetails(), this.git.commitComparison(),
     this.activeDiff(), this.diffViewerOpen(), this.changesOpen(),
   ]);
+  private readonly diffPathCopyFeedback = signal<readonly unknown[] | null>(null);
+  private readonly diffPathCopied = computed(() => this.diffPathCopyFeedback() === this.fileActionView());
 
   private workingMediaSelection(path: string, staged: boolean, previousPath = this.git.renameSourceForPath(path, staged)): FileMediaSelection | null {
     const repoId = this.git.activeRepositoryId();
@@ -10659,7 +10661,8 @@ export class AppComponent implements OnInit, OnDestroy {
     applySelectedDiffLines: this.applySelectedDiffLines.bind(this),
     canInspectActiveFile: this.canInspectActiveFile.bind(this),
     closeDiffViewer: this.closeDiffViewer.bind(this),
-    copyContextValue: this.copyDiffPath.bind(this),
+    copyDiffPath: this.copyDiffPath.bind(this),
+    diffPathCopied: this.diffPathCopied,
     diffFileStatusLabel: this.diffFileStatusLabel.bind(this),
     diffFileTargetContext: this.diffFileTargetContext.bind(this),
     diffFileTargetKey: this.diffFileTargetKey.bind(this),
@@ -14486,14 +14489,14 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private async copyDiffPath(path: string): Promise<void> {
+    if (!this.diffViewerOpen() || this.activeDiff()?.path !== path) return;
     const generation = ++this.diffPathCopyGeneration;
-    const scope = this.git.activeRepositoryReadScope();
-    const diff = this.activeDiff();
+    const view = this.fileActionView();
+    this.diffPathCopyFeedback.set(null);
     const copied = await this.copyText(path);
-    if (!copied && this.diffViewerOpen() && this.activeDiff() === diff
-      && generation === this.diffPathCopyGeneration && scope === this.git.activeRepositoryReadScope()) {
-      this.git.error.set('Could not copy the diff path. Clipboard access is unavailable.');
-    }
+    if (generation !== this.diffPathCopyGeneration || this.fileActionView() !== view) return;
+    if (copied) this.diffPathCopyFeedback.set(view);
+    else this.git.error.set('Could not copy the diff path. Clipboard access is unavailable.');
   }
 
   protected async copyContextValue(value: string): Promise<void> {
