@@ -1481,6 +1481,9 @@ a filesystem transaction.
 For a feature change, start with a [focused E2E profile](docs/linux-acceptance.md#nx-targets),
 for example `pnpm nx run desktop:e2e:worktrees` or `pnpm nx run desktop:e2e:graph`.
 
+For a fast check across features, use `pnpm nx run desktop:e2e:smoke`. It runs
+the tagged daily-driver cases, not the full renderer or native acceptance suite.
+
 `task test:e2e` runs the full browser-renderer suite against sample data.
 The full suite includes thousands of cases and can take an hour locally.
 For a focused run, pass a spec or Playwright filter:

@@ -222,6 +222,7 @@
       "cache": false,
       "options": { "command": "playwright test" },
       "configurations": {
+        "smoke": { "command": "playwright test --grep @daily-driver-smoke" },
         "worktrees": { "command": "playwright test 'e2e/renderer/(worktree-|branch-checkout-worktree|submodule-review)'" },
         "sparse-checkout": { "command": "playwright test 'e2e/renderer/sparse-(checkout|left-paths)[.]spec[.]ts$'" },
         "repository-confirmations": { "command": "playwright test 'e2e/renderer/(accessibility-audit|commit-policy|confirmation-keyboard|force-destination-layout|push-sync|remote-cleanup-review-scope|repository-(confirmation|setup)-scope|sparse-(checkout|left-paths)|workspace|worktree-move)[.]spec[.]ts$'" },
