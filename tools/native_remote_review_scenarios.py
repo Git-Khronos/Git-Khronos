@@ -208,13 +208,20 @@ def fetch_all_without_pruning(driver, fixtures, report):
     snapshot = lambda: checkout_footprint(fixtures, repository, ('fixture.txt', 'note.txt'))
     before = snapshot()
     open_ui(driver, repository)
-    driver.click_visible('[aria-label="Command palette"]')
-    search = 'gk-command-palette input[aria-label="Search commands"]'
-    driver.wait(f"return !!document.querySelector({json.dumps(search)})")
-    driver.script("""const field = document.querySelector(arguments[0]);
-      field.value = 'Fetch All'; field.dispatchEvent(new Event('input', {bubbles: true}));""", search)
+
+    def open_fetch():
+        driver.click_visible('[aria-label="Command palette"]')
+        search = 'gk-command-palette input[aria-label="Search commands"]'
+        driver.wait(f"return !!document.querySelector({json.dumps(search)})")
+        driver.script("""const field = document.querySelector(arguments[0]);
+          field.value = 'Fetch All'; field.dispatchEvent(new Event('input', {bubbles: true}));""", search)
+
+    def run_fetch():
+        driver.click_scrolled_text('gk-command-palette [role=option] strong', 'Fetch All', wait_for_ready=True)
+
+    open_fetch()
     assert {ref: fixtures.git(repository, 'rev-parse', ref) for ref in expected} == previous
-    driver.click_scrolled_text('gk-command-palette [role=option] strong', 'Fetch All', wait_for_ready=True)
+    run_fetch()
     driver.wait("""return !document.querySelector('.progress-line')
       && document.querySelector('.activity-status')?.textContent.includes('Fetch complete');""")
 
@@ -226,3 +233,25 @@ def fetch_all_without_pruning(driver, fixtures, report):
                                       if not line.split()[-1].startswith('refs/remotes/'))
     assert local_refs(before) == local_refs(after)
     report['scenarios'].append('native-fetch-all-updates-both-owned-remotes-without-pruning-or-changing-checkout')
+
+    origin = remotes['origin']
+    (origin / 'fixture.txt').write_text('Second owned origin update\n')
+    fixtures.git(origin, 'add', 'fixture.txt')
+    fixtures.git(origin, 'commit', '-m', 'Advance origin while mirror is unavailable')
+    new_origin = fixtures.git(origin, 'rev-parse', 'HEAD')
+    mirror = remotes['mirror']
+    mirror.rename(mirror.with_name(mirror.name + '-offline'))
+    open_fetch()
+    assert fixtures.git(repository, 'rev-parse', 'refs/remotes/origin/main') != new_origin
+    run_fetch()
+    failure = driver.wait("""const text = document.querySelector('.error-toast')?.textContent.trim();
+      return !document.querySelector('.progress-line') && text?.includes('Git transport failed.') && text;""")
+    assert 'Some remotes may have updated' in failure, failure
+    assert 'Check the remote URL' in failure, failure
+    assert fixtures.git(repository, 'rev-parse', 'refs/remotes/origin/main') == new_origin
+    assert fixtures.git(repository, 'rev-parse', 'refs/remotes/mirror/main') == expected['refs/remotes/mirror/main']
+    assert fixtures.git(repository, 'rev-parse', stale_ref) == stale_oid
+    partial = snapshot()
+    _preserved(before, partial)
+    assert local_refs(before) == local_refs(partial)
+    report['scenarios'].append('native-fetch-all-partial-transport-failure-explains-updated-refs-and-preserves-checkout')
