@@ -4338,6 +4338,11 @@ For changes to the shared repository confirmation component, use
 confirmation ownership, keyboard focus, worktree removal, remote removal,
 force-push review, and branch publishing. The focused retest planner selects
 this profile for edits to that component.
+For changes to the commit history review dialog, use
+`pnpm nx run desktop:e2e:history-confirmations`. It covers reset previews
+and recovery, cherry-pick, revert, detached checkout, rebase split,
+keyboard focus, and stale reviews. Shared application-shell changes still
+fall back to broader checks in the retest planner.
 
 The owned fixture starts in cone mode with a sparse index, an excluded tracked
 file, and an unstaged edit. Preview and Cancel must leave that state intact and

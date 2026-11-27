@@ -12,6 +12,7 @@ const profiles = [
   [/^(?:worktree-(?:lock|move|registration)-dialog|checkout-worktree-dialog)\.component\.(?:ts|html|scss)$/, 'worktrees'],
   [/^submodule-state-review\.component\.(?:ts|html|scss)$/, 'submodules'],
   [/^repository-confirmations\.component\.(?:ts|html|scss)$/, 'repository-confirmations'],
+  [/^history-review-dialog\.component\.(?:ts|html|scss)$/, 'history-confirmations'],
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
   [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'editor'],
   [/^working-tree-summary\.component\.(?:ts|html|scss)$/, 'recaps'],

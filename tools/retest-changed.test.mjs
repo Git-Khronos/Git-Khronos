@@ -54,6 +54,20 @@ test('repository confirmation edits select the scoped profile and deduplicate a 
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('history review edits keep reset, replay and checkout coverage without running full E2E', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/history-review-dialog.component.ts');
+  f.write('e2e/renderer/operation-recovery.spec.ts');
+  f.write('e2e/renderer/no-commit-replay.spec.ts');
+  f.write('e2e/renderer/application-updates.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:history-confirmations/);
+  assert.ok(plan.includes('e2e/renderer/application-updates[.]spec[.]ts$'));
+  assert.ok(!plan.includes('e2e/renderer/operation-recovery[.]spec[.]ts$'));
+  assert.ok(!plan.includes('e2e/renderer/no-commit-replay[.]spec[.]ts$'));
+  assert.doesNotMatch(plan, /desktop:check/);
+});
+
 test('removing a spec falls back rather than silently dropping coverage', t => {
   const f = fixture(t);
   const spec = 'e2e/renderer/application-updates.spec.ts';
