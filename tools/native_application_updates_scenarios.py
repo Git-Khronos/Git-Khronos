@@ -18,6 +18,9 @@ def application_updates_workflow(driver, fixtures, report):
     driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Updates')
     modal = 'gk-application-updates-dialog [role=dialog]'
     expect_trust = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST') == '1'
+    check_public_baseline = os.environ.get('GIT_KHRONOS_NATIVE_CHECK_PUBLIC_BASELINE') == '1'
+    if check_public_baseline and not expect_trust:
+        raise RuntimeError('The live baseline check requires GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1.')
 
     def verify_palette_entry():
         origin = 'input[aria-label="Filter changed files"]'
@@ -132,6 +135,18 @@ def application_updates_workflow(driver, fixtures, report):
         assert state['installButtons'] == 0
         report['applicationUpdates'] = {'source': str(repository), 'configuredUi': state,
                                         'nativeStatus': status}
+        if check_public_baseline:
+            # Explicit opt-in only: exercise the official feed without
+            # enabling the scheduler, downloading or installing a package.
+            driver.click_visible(modal + ' button', 'Check for updates')
+            driver.wait(f"""return document.querySelector({json.dumps(modal + ' .feedback')})
+              ?.textContent.includes('No newer release is available.')""", timeout=45)
+            checked = driver.invoke('application_update_status')
+            assert checked['runningVersion'] == status['runningVersion'] and not checked['automatic'], checked
+            assert checked['offerId'] is None and not checked['canDownload'] and not checked['canInstall'], checked
+            assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
+            report['applicationUpdates']['publicBaselineStatus'] = checked
+            report['scenarios'].append('native-current-stable-release-checks-public-feed-without-offer-or-install')
         driver.click_visible(modal + ' button', 'Close')
         driver.wait('return !document.querySelector(' + json.dumps(modal) + ')')
         driver.wait('return document.activeElement?.getAttribute("aria-label") === "Main menu"')

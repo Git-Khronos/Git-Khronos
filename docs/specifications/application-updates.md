@@ -455,6 +455,14 @@ changes and deletion.
 
 ### Verify automatic updates after the first signed release
 
+Before a newer release exists, opt in to the read-only live baseline check
+with `GIT_KHRONOS_NATIVE_CHECK_PUBLIC_BASELINE=1` and
+`GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1` when running
+`desktop:native-application-updates` against the exact current signed release.
+It checks the public feed with a temporary profile, without changing automatic
+consent, downloading an installer, or installing anything. It expects no
+newer release and is not a replacement for the two-release test.
+
 Use a disposable supported Debian or Ubuntu desktop with working polkit.
 Install the first official signed Debian release once from its GitHub release
 assets. Leave automatic updates off until a **strictly newer** signed Debian
