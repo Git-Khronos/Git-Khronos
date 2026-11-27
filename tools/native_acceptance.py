@@ -1347,6 +1347,8 @@ def smoke(driver, fixtures, report, *, hold_packed_status=False):
     driver.click('[aria-label="Show Left Panel"]')
     report["scenarios"].append("native-workspace-outside-pointer-dismissal")
     menu_tab_focus(driver, report)
+    from native_main_menu_scenarios import main_menu_focus_gap
+    main_menu_focus_gap(driver, report)
     toolbar_menu_focus_gap(driver, report)
     # Exercise asynchronous filesystem discovery through the real UI, without
     # manually refreshing it or replacing renderer state with IPC results.

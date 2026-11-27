@@ -68,6 +68,17 @@ test('native keyboard and context-branch changes share one packaged retest', t =
   assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
 });
 
+test('packaged main menu changes select native smoke without full acceptance', t => {
+  const f = fixture(t);
+  f.write('candidate.deb');
+  f.commit();
+  f.write('tools/native_main_menu_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-harness-test"/);
+  assert.match(plan, /"desktop:native-smoke"/);
+  assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+});
+
 test('native remote review changes select the focused packaged Git workflow', t => {
   const f = fixture(t);
   f.write('candidate.deb');
