@@ -543,6 +543,42 @@ if [ "$FIXTURE_MUTATE" = true ]; then printf '%s' 'changed' > "$7"; fi
   assert.equal(await readFile(archive, 'utf8'), fixture);
 });
 
+test('task sign wrapper selects one qualified download and rejects ambiguity or mismatched evidence', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'gk-sign-download-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const tools = join(root, 'tools');
+  await mkdir(tools);
+  const wrapper = join(repositoryRoot, 'tools/sign-downloaded-release.sh');
+  await writeFile(join(tools, 'check-debian-update-evidence.mjs'), 'console.log(process.env.OWNED_QUALIFIED_DIGEST);');
+  await writeFile(join(tools, 'sign-qualified-debian.sh'), '#!/bin/bash\nprintf "signer: %s\\n" "$@"\n');
+  const digest = 'a'.repeat(64);
+  const candidate = 'Git-Khronos_0.1.6_amd64.deb';
+  const create = async id => {
+    const directory = join(root, 'target/local-review/hosted-release-integration', id, 'qualified download');
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, 'qualified-package.sha256'), `${digest}  ${candidate}\n`);
+    return directory;
+  };
+  const run = (args = [], evidenceDigest = digest) => spawnSync('bash', [wrapper, ...args], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, HOME: root, OWNED_QUALIFIED_DIGEST: evidenceDigest },
+  });
+  assert.match(run().stderr, /Expected exactly one/);
+  const selected = await create('run-1');
+  const one = run();
+  assert.equal(one.status, 0, one.stderr);
+  assert.match(one.stdout, /signer: v0\.1\.6/);
+  assert.ok(one.stdout.includes('qualified download/candidate/' + candidate));
+  await create('run-2');
+  assert.match(run().stderr, /Expected exactly one/);
+  assert.equal(run([selected]).status, 0);
+  const mismatch = run([selected], 'b'.repeat(64));
+  assert.equal(mismatch.status, 1);
+  assert.match(mismatch.stderr, /evidence and saved checksum disagree/);
+  assert.equal(mismatch.stdout, '');
+  await writeFile(join(selected, 'qualified-package.sha256'), `${digest}  ../${candidate}\n`);
+  assert.match(run([selected]).stderr, /Invalid qualified package checksum record/);
+});
+
 test('publication fails closed without reviewer protection and a main-only branch policy', async t => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const [verify, publish] = workflow.split('\n  publish:\n');
