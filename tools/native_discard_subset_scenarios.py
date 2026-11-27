@@ -87,11 +87,21 @@ def discard_root_subset(driver, fixtures, report):
     report['scenarios'].append('native-ui-blocked-discard-returns-to-read-only-review-and-clears-selection')
 
     choose()
+    search = chooser + ' input[type="search"]'
+    driver.wait(f"return !!document.querySelector({search!r})")
+    driver.script("""const field = document.querySelector(arguments[0]);
+      field.value = 'KEPT ROOT'; field.dispatchEvent(new Event('input', {bubbles: true}));""", search)
+    driver.wait(f"""const chooser = document.querySelector({chooser!r});
+      return !document.querySelector({select_root!r})
+        && chooser?.querySelector('[role="status"]')?.textContent.includes('1 selected outside the filter.')
+        && !!chooser.querySelector('input[aria-label="Select kept root.txt for fresh discard review"]:not(:checked)');""")
+    assert_unmodified('filteredSelection')
     driver.click_scrolled_text(dialog + ' button', 'Preview selected files', wait_for_ready=True)
     driver.wait(f"""const dialog = document.querySelector({dialog!r});
       return !!dialog && dialog.querySelector('.confirm-action:not(:disabled)')?.textContent.trim() === 'Discard captured changes'
         && [...dialog.querySelectorAll('.discard-preview-paths li')].map(row => row.textContent).join(',') === 'fixture.txt'""")
     assert_unmodified('selectedReview')
+    report['scenarios'].append('native-discard-path-filter-keeps-explicit-selection-without-changing-files')
     driver.wait(f"""return document.querySelector({dialog!r})?.contains(document.activeElement)
       && document.activeElement.textContent.trim() === 'Cancel'""")
     driver.key('\ue004', modifiers=('\ue008',))  # Shift+Tab
