@@ -79,6 +79,12 @@ tasks:
         pnpm exec tauri signer generate --write-keys "$key"
         '
 
+  release:preflight:
+    desc: Check GitHub signed-release setup without making changes
+    platforms: [linux, darwin]
+    cmds:
+      - bash tools/check-hosted-debian-release.sh {{.CLI_ARGS}}
+
   package:deb:
     aliases: [deb]
     desc: Build the Debian/Ubuntu system package
