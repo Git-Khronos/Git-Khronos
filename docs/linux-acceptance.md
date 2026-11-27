@@ -35,9 +35,20 @@ In run 46058006158 the primary native report contained 335 distinct
 scenarios. All named scenarios from the focused file-tools, merge-preview,
 and working-tree-recaps reports also appeared in that primary report.
 Those three focused runs took 60.5 s, 17.7 s, and 18.5 s respectively.
-The overlap is a candidate for further CI savings, not proof that execution
-contexts are interchangeable. Keep the full release suite and verify both
-scenario coverage and fixture setup before moving a check between CI lanes.
+For a full Jammy CI run, the primary lane can delegate the duplicate
+file-tools workflow to the required supplemental lane, which tests the same
+verified package. Its report is labeled `full-with-file-tools-delegated`
+and lists `file-tools` in `delegatedSuites`; it is not a standalone full
+acceptance receipt. The default local and release full suites retain
+file-tools. The merge-preview and working-tree-recaps coverage is unchanged.
+
+In a local extracted-package rehearsal, both lanes passed against identical
+Debian archive bytes. The primary reported 332 scenarios; the focused
+file-tools lane reported 23. Comparing unique names against the 335-scenario
+hosted baseline showed four scenarios removed from the primary; all four
+passed in the supplemental lane. One new worktree scenario passed in the
+primary. This proves named coverage on that package, not a wall-clock saving:
+measure that on GitHub runners after the change lands.
 
 The installed-matrix job summary lists which suites passed, failed, or were
 interrupted. For an ordinary failure, the job log also prints the command

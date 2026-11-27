@@ -1440,12 +1440,18 @@ def main():
     parser.add_argument("--describe-runner", action="store_true",
                         help="Print the local distribution and suite capabilities as JSON without running a test")
     parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--delegate-file-tools", action="store_true",
+                        help="Omit file tools from the primary extracted CI suite; run file-tools separately")
     parser.add_argument("--installed", action="store_true",
                         help="Verify the installed executable and desktop entry before running the app (CI only)")
     parser.add_argument("--inherited-git-environment", action="store_true",
                         help="Point inherited Git context variables at an owned outside repository for any suite")
     parser.add_argument("--output", type=Path, default=ROOT / "test-results/native")
     args = parser.parse_args()
+    delegate_file_tools = getattr(args, "delegate_file_tools", False)
+    if delegate_file_tools and (args.suite != "full" or not args.headless or args.installed
+                                or args.inherited_git_environment or args.describe_runner):
+        parser.error("--delegate-file-tools requires --suite full --headless on an extracted package")
     version, expected_package_name = expected_debian_package()
     if args.describe_runner:
         print(json.dumps({"distribution": linux_distribution(), "suites": suites,
@@ -1482,21 +1488,24 @@ def main():
         args.headless and args.installed and {name for _, name in socket.if_nameindex()} == {"lo"}
     ):
         parser.error("application-update-consent requires --headless --installed in a disposable loopback-only network namespace")
+    suite_label = "full-with-file-tools-delegated" if delegate_file_tools else args.suite
     try:
-        output = args.output.resolve() / f"{args.suite}-{time.time_ns()}"
+        output = args.output.resolve() / f"{suite_label}-{time.time_ns()}"
         output.mkdir(parents=True)
     except (OSError, RuntimeError) as exc:
         print(f"Cannot create native acceptance evidence under {args.output}: {exc}. "
               "Use --output with a directory writable and traversable by the runner user.",
               file=sys.stderr, flush=True)
         return 1
-    progress = ScenarioProgress(output, args.suite)
+    progress = ScenarioProgress(output, suite_label)
     inherited_git_environment = args.suite in forced_inherited or args.inherited_git_environment
-    report = {"suite": args.suite, "scenarios": progress, "passed": False,
+    report = {"suite": suite_label, "scenarios": progress, "passed": False,
               "inheritedGitEnvironment": inherited_git_environment,
               "platform": platform.platform(), "linuxDistribution": linux_distribution(),
               "artifactsDirectory": str(output)}
-    print(f"Native acceptance: starting {args.suite}. Evidence: {output}", file=sys.stderr, flush=True)
+    if delegate_file_tools:
+        report["delegatedSuites"] = ["file-tools"]
+    print(f"Native acceptance: starting {suite_label}. Evidence: {output}", file=sys.stderr, flush=True)
     children = []
     driver = None
     temporary_directory = None
@@ -2074,7 +2083,8 @@ def main():
                 from native_scenarios import full_toolkit
                 progress.enter_phase("full-toolkit")
                 print("Native acceptance: smoke passed; exercising the full toolkit.", file=sys.stderr, flush=True)
-                full_toolkit(driver, fixtures, repository, repo_id, report, progress.enter_phase)
+                full_toolkit(driver, fixtures, repository, repo_id, report, progress.enter_phase,
+                             delegate_file_tools=delegate_file_tools)
                 print("Native acceptance: toolkit passed; exercising review and setup workflows.", file=sys.stderr, flush=True)
             if args.suite == "incoming-links":
                 progress.enter_phase("incoming-links")

@@ -332,7 +332,11 @@ jobs:
           echo "PACKAGE=$PWD/${packages[0]}" >> "$GITHUB_ENV"
       - name: Run packaged WebKitGTK acceptance
         if: matrix.lane == 'primary'
-        run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=stream -- --package "$PACKAGE"
+        run: |
+          # The required supplemental lane runs file-tools against this same package.
+          args=()
+          if [[ "$NATIVE_SUITE" == full ]]; then args+=(--delegate-file-tools); fi
+          pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=stream -- "${args[@]}" --package "$PACKAGE"
       - name: Verify packaged browser and file manager handoffs
         if: matrix.lane == 'supplemental'
         run: |

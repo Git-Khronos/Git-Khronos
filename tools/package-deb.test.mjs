@@ -337,6 +337,7 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   assert.match(native, /needs: packaged-build\n\s+if: \$\{\{ !cancelled\(\) \}\}/);
   assert.match(native, /fail-fast: false\n\s+matrix:\n\s+lane: \[primary, supplemental\]/);
   assert.match(native, /Run packaged WebKitGTK acceptance\n\s+if: matrix\.lane == 'primary'/);
+  assert.match(native, /if \[\[ "\$NATIVE_SUITE" == full \]\]; then args\+=\(--delegate-file-tools\); fi/);
   for (const title of [
     'Verify packaged browser and file manager handoffs',
     'Run focused packaged signing and tag-navigation acceptance',
@@ -366,6 +367,7 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   assert.match(ci, /pnpm nx run desktop:e2e --output-style=stream --skipNxCache/);
   const bufferedNativeCommands = native.split('\n').filter(line => line.includes('pnpm nx run') && line.includes('--output-style=static'));
   assert.deepEqual(bufferedNativeCommands, []);
+  assert.match(native, /Run focused packaged signing and tag-navigation acceptance\n\s+if: matrix\.lane == 'supplemental'[\s\S]*?pnpm nx run desktop:native-file-tools /);
   for (const line of native.split('\n').filter(line => /pnpm nx run .*desktop:native-|--suite gitlab/.test(line))) {
     assert.ok(line.endsWith('--package "$PACKAGE"'), line);
   }

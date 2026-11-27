@@ -1,10 +1,11 @@
+from contextlib import ExitStack
 import io
 import json
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from native_progress import ScenarioProgress, write_native_receipt
 
@@ -23,6 +24,35 @@ class ScenarioProgressTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'owned failure'):
             full_toolkit(Driver(), None, None, 'repo', {}, observed.append)
         self.assertEqual(observed, ['toolkit-integrity-and-file-tools', 'inspect_repository_integrity'])
+
+    def test_file_tools_delegation_skips_only_the_review_workflow(self):
+        import native_scenarios
+
+        class ReachedNextPhase(Exception):
+            pass
+
+        def enter_phase(phase):
+            if phase == 'toolkit-editor-recovery':
+                raise ReachedNextPhase
+
+        for options, delegated in (({}, False), ({'delegate_file_tools': True}, True)):
+            with self.subTest(delegated=delegated), ExitStack() as stack:
+                driver = Mock()
+                driver.invoke.return_value = {'passed': True}
+                names = ('incoming_repository_links', 'working_file_editor', 'configured_tools', 'file_tools')
+                workflows = [stack.enter_context(patch.object(native_scenarios, name)) for name in names]
+                report = {}
+                with self.assertRaises(ReachedNextPhase):
+                    native_scenarios.full_toolkit(driver, 'fixtures', 'checkout', 'repo', report,
+                                                  enter_phase, **options)
+                self.assertEqual(report['initialRepositoryIntegrity'], {'passed': True})
+                for workflow in workflows[:-1]:
+                    workflow.assert_called_once_with(driver, 'fixtures', 'checkout', report)
+                if delegated:
+                    workflows[-1].assert_not_called()
+                else:
+                    workflows[-1].assert_called_once_with(driver, 'fixtures', 'checkout', report,
+                                                          enter_phase=enter_phase)
 
     def test_report_discovery_cannot_see_partial_final_json(self):
         with TemporaryDirectory() as directory:

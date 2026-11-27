@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import os
 import select
@@ -8,7 +9,7 @@ import signal
 import stat
 import subprocess
 import sys
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stderr
 from http.client import RemoteDisconnected
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -446,6 +447,23 @@ class PackageIdentityTests(unittest.TestCase):
         self.assertIn("branch-workflow-recovery", description["suites"])
         self.assertEqual(description["forcedInheritedGitEnvironment"], ["environment"])
         self.assertEqual(description["expectedPackageName"], "Git-Khronos_2.3.4_amd64.deb")
+
+    def test_file_tools_delegation_cannot_weaken_other_runner_modes(self):
+        for arguments in (
+            ["--suite", "smoke", "--headless"],
+            ["--suite", "full"],
+            ["--suite", "full", "--headless", "--installed"],
+            ["--suite", "full", "--headless", "--inherited-git-environment"],
+            ["--suite", "full", "--headless", "--describe-runner"],
+        ):
+            with self.subTest(arguments=arguments), \
+                    patch("sys.argv", ["native_acceptance.py", "--delegate-file-tools", *arguments]), \
+                    patch("native_acceptance.expected_debian_package") as package, \
+                    redirect_stderr(io.StringIO()) as stderr, self.assertRaises(SystemExit) as failure:
+                main()
+            self.assertEqual(failure.exception.code, 2)
+            self.assertIn("requires --suite full --headless on an extracted package", stderr.getvalue())
+            package.assert_not_called()
 
     def test_optimized_python_cannot_announce_or_run_native_acceptance(self):
         script = Path(__file__).with_name("native_acceptance.py")

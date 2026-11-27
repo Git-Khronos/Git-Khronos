@@ -3489,7 +3489,7 @@ def hosted_fork_requests(driver, fixtures, original_repository, report):
         open_ui(driver, original_repository)
 
 
-def full_toolkit(driver, fixtures, repository, repo_id, report, enter_phase):
+def full_toolkit(driver, fixtures, repository, repo_id, report, enter_phase, *, delegate_file_tools=False):
     enter_phase("toolkit-integrity-and-file-tools")
     initial_integrity = driver.invoke("inspect_repository_integrity", repoId=repo_id,
                                       operationId=str(uuid.uuid4()))
@@ -3498,7 +3498,8 @@ def full_toolkit(driver, fixtures, repository, repo_id, report, enter_phase):
     incoming_repository_links(driver, fixtures, repository, report)
     working_file_editor(driver, fixtures, repository, report)
     configured_tools(driver, fixtures, repository, report)
-    file_tools(driver, fixtures, repository, report, enter_phase=enter_phase)
+    if not delegate_file_tools:
+        file_tools(driver, fixtures, repository, report, enter_phase=enter_phase)
     enter_phase("toolkit-editor-recovery")
     editor_window_close(driver, fixtures, repository, report)
     editor_draft_recovery(driver, fixtures, repository, report)
