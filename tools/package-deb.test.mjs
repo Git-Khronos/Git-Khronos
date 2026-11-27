@@ -333,6 +333,11 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   const [producer, tail] = build.split('\n  packaged-native-lanes:\n');
   const [native, remaining] = tail.split('\n  packaged-native:\n');
   const [aggregate, installed] = remaining.split('\n  linux-runtime:\n');
+  const regressionJob = ci.split('\n  packaged-regressions:\n')[1]?.split('\n  packaged-build:\n')[0];
+  assert.ok(regressionJob);
+  assert.match(regressionJob, /runs-on: ubuntu-22\.04/);
+  assert.match(regressionJob, /uses: \.\/\.github\/actions\/debian-package-regressions/);
+  assert.doesNotMatch(producer, /debian-package-regressions|needs: packaged-regressions/);
   assert.match(producer, /node tools\/check-linux-abi\.mjs[\s\S]*?sha256sum --check SHA256SUMS\)[\s\S]*?name: ubuntu-package\n\s+path: ubuntu-package\/\*/);
   assert.match(native, /needs: packaged-build\n\s+if: \$\{\{ !cancelled\(\) \}\}/);
   assert.match(native, /fail-fast: false\n\s+matrix:\n\s+lane: \[primary, supplemental\]/);
@@ -347,15 +352,17 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
     assert.ok(native.includes(`- name: ${title}\n        if: matrix.lane == 'supplemental'`), title);
   }
   assert.match(native, /name: packaged-native-[^\n]+-attempt-\$\{\{ github\.run_attempt \}\}-\$\{\{ matrix\.lane \}\}/);
-  assert.match(aggregate, /name: Jammy package and native acceptance\n\s+needs: \[packaged-build, packaged-native-lanes\]\n\s+if: always\(\)/);
+  assert.match(aggregate, /name: Jammy package and native acceptance\n\s+needs: \[packaged-build, packaged-native-lanes, packaged-regressions\]\n\s+if: always\(\)/);
   const gate = aggregate.match(/run: \|\n([\s\S]*)/)?.[1].replace(/^          /gm, '');
   assert.ok(gate);
   for (const build of ['success', 'failure', 'cancelled', 'skipped']) {
     for (const matrix of ['success', 'failure', 'cancelled', 'skipped']) {
-      const result = spawnSync('bash', ['-c', gate], {
-        env: { ...process.env, BUILD_RESULT: build, NATIVE_RESULT: matrix },
-      });
-      assert.equal(result.status, build === 'success' && matrix === 'success' ? 0 : 1);
+      for (const regressions of ['success', 'failure', 'cancelled', 'skipped']) {
+        const result = spawnSync('bash', ['-c', gate], {
+          env: { ...process.env, BUILD_RESULT: build, NATIVE_RESULT: matrix, REGRESSION_RESULT: regressions },
+        });
+        assert.equal(result.status, build === 'success' && matrix === 'success' && regressions === 'success' ? 0 : 1);
+      }
     }
   }
   assert.match(native, /if \[\[ "\$BUILD_RESULT" != success \]\]; then[\s\S]*?exit 1/);

@@ -31,6 +31,14 @@ That is **3 min 49 s earlier** for Jammy acceptance on this pair of runs.
 It is not a whole-workflow timing or a guaranteed saving; the two lanes
 each provision their own runner.
 
+The Jammy package regression fixtures can run on a separate Jammy runner
+while the Debian archive builds. The existing aggregate gate still requires
+the build, both runtime lanes, and the fixtures to succeed. In run
+46067064552 the fixture action took 52 seconds on the build's critical path;
+that time is now overlapped, not removed from validation. Measure the
+end-to-end effect in hosted CI; the slowest renderer shard may still finish
+after all Jammy jobs.
+
 In run 46058006158 the primary native report contained 335 distinct
 scenarios. All named scenarios from the focused file-tools, merge-preview,
 and working-tree-recaps reports also appeared in that primary report.

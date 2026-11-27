@@ -219,6 +219,32 @@ jobs:
           printf 'Linux checks: %s\nRenderer matrix: %s\n' "$CHECKS_RESULT" "$RENDERER_RESULT"
           test "$CHECKS_RESULT" = success && test "$RENDERER_RESULT" = success
 
+  packaged-regressions:
+    name: Jammy package regression fixtures
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/jammy-git
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - uses: go-task/setup-task@v1
+      - name: Install package fixture prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes fakeroot desktop-file-utils libglib2.0-bin openssl binutils
+      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/debian-package-regressions
+
   packaged-build:
     name: Build and verify Jammy package
     runs-on: ubuntu-22.04
@@ -249,7 +275,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm fakeroot desktop-file-utils libglib2.0-bin openssl libssl-dev pkg-config dbus
       - run: pnpm install --frozen-lockfile
-      - uses: ./.github/actions/debian-package-regressions
       - name: Prefetch locked Cargo metadata for offline package notices
         run: cargo metadata --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu > /dev/null
       - name: Build and verify Debian package
@@ -382,19 +407,20 @@ jobs:
   packaged-native:
     # Preserve the existing aggregate status for branch protection.
     name: Jammy package and native acceptance
-    needs: [packaged-build, packaged-native-lanes]
+    needs: [packaged-build, packaged-native-lanes, packaged-regressions]
     if: always()
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     permissions: {}
     steps:
-      - name: Require a successful build and both Jammy native lanes
+      - name: Require a successful build, both native lanes, and package regressions
         env:
           BUILD_RESULT: ${{ needs.packaged-build.result }}
           NATIVE_RESULT: ${{ needs.packaged-native-lanes.result }}
+          REGRESSION_RESULT: ${{ needs.packaged-regressions.result }}
         run: |
-          printf 'Package build: %s\nJammy native matrix: %s\n' "$BUILD_RESULT" "$NATIVE_RESULT"
-          test "$BUILD_RESULT" = success && test "$NATIVE_RESULT" = success
+          printf 'Package build: %s\nJammy native matrix: %s\nPackage regression fixtures: %s\n' "$BUILD_RESULT" "$NATIVE_RESULT" "$REGRESSION_RESULT"
+          test "$BUILD_RESULT" = success && test "$NATIVE_RESULT" = success && test "$REGRESSION_RESULT" = success
 
   linux-runtime:
     name: Ubuntu and Debian exact-artifact acceptance
