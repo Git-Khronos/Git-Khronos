@@ -2039,6 +2039,15 @@ test step alone ranged from 13:19 to 18:22, whereas Chromium provisioning
 took 19–35 seconds. The estimate does not explain the test-step gap;
 measure per-case duration and runner variance before changing the assignment.
 
+Comparing green runs 46058006158 and 46067064552 by exact case identity,
+all 2,914 baseline cases were still present (two cases were added). In the
+repeat's slowest shard, the same 729 cases took 1,047 s versus 772 s in the
+baseline. The median case took 36% longer, and the 90th-percentile ratio was
+1.50. Meanwhile the repeat's third shard took 2% less aggregate case time
+than those same cases in the baseline. This points to a broad slowdown in
+that shard, not just a few disproportionately expensive tests; it does not
+identify the cause. Rebalancing by test titles alone would not address it.
+
 For two clean runs of the same Chromium test set, download and unpack the
 successful `renderer-progress-<run>-attempt-<attempt>-shard-<shard>`
 artifacts into separate directories. Compare **only** their timing sidecars,
