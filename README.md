@@ -1495,6 +1495,14 @@ while the runner is alive. The test command's exit status is the final
 verdict. Renderer tests do not replace native Tauri acceptance for Git,
 filesystem, terminal, or operating-system dialogs.
 
+Named renderer snapshots refuse to start if the run directory's filesystem
+has less than 2 GiB available to your user. This is a startup floor, not a
+disk quota or a guarantee that a full run will fit. If space is tight, use a
+run directory on a filesystem with more headroom or run `task clean:archives`
+to preview reclaimable caches from older qualification runs. Keep the
+package, checksum, source commit, and test receipts for any build you plan
+to release.
+
 CI distributes the browser tests in round-robin order across four shards,
 so the exhaustive graph-column cases do not all land in one job.
 Each job checks that Playwright resolved its exact assigned cases before
