@@ -5072,8 +5072,18 @@ fn fetch_all_remotes(
     fetch_refspec_scope::require_fetch_without_local_branch_updates(path, &names, cancellation)?;
     let mut args = fetch_command_args();
     args.push("--all");
-    let output = run_git_with_cancellation(path, &args, cancellation)?;
-    ensure_success("fetch from the remotes", &output)
+    run_git_with_cancellation(path, &args, cancellation)
+        .and_then(|output| ensure_success("fetch from the remotes", &output))
+        .map_err(|mut error| {
+            if candidates.len() > 1 && matches!(error.kind.as_str(),
+                "gitFailure" | "gitTransportFailure" | "authenticationRequired" | "tlsVerificationFailed") {
+                let recovery = error.hint.take().unwrap_or_default();
+                error.hint = Some(format!(
+                    "Some remotes may have updated even though Fetch All did not complete. Review the remote branches before retrying. {recovery}"
+                ).trim_end().to_owned());
+            }
+            error
+        })
 }
 
 fn run_fetch_preview(path: &Path, remote: &str) -> Result<Output, AppError> {
@@ -14969,6 +14979,31 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
             assert!(output.status.success(), "missing fetched ref {reference}");
             assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
         }
+
+        source.write("seed.txt", "second remote update\n");
+        stage_all(&source.path).unwrap();
+        commit(&source.path, "Second remote update").unwrap();
+        source.git(&["push", "origin-fixture", "main"]);
+        let advanced = run_git(&source.path, &["rev-parse", "HEAD"])
+            .unwrap()
+            .stdout;
+        let local_before = run_git(&working, &["rev-parse", "HEAD"]).unwrap().stdout;
+        fs::rename(&upstream, parent.join("upstream-offline.git")).unwrap();
+        let failure = fetch(&working).unwrap_err();
+        assert_eq!(failure.kind, "gitTransportFailure");
+        let hint = failure.hint.unwrap();
+        assert!(hint.contains("Some remotes may have updated"));
+        assert!(hint.contains("Check the remote URL"));
+        assert_eq!(
+            run_git(&working, &["rev-parse", "refs/remotes/origin/main"])
+                .unwrap()
+                .stdout,
+            advanced
+        );
+        assert_eq!(
+            run_git(&working, &["rev-parse", "HEAD"]).unwrap().stdout,
+            local_before
+        );
 
         drop(working_repository);
         fs::remove_dir_all(parent).expect("remove fetch fixture directory");
