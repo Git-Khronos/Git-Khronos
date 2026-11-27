@@ -698,7 +698,23 @@ test('presents the sample repository as a complete Git workspace', async ({ page
   await expect(page.locator('.ref-pill.local').filter({ hasText: 'feature/partial-staging' })).toBeVisible();
   await expect(page.locator('.ref-pill.local').filter({ hasText: 'feature/partial-staging' })).toHaveClass(/lane-color-1/);
   await expect(page.locator('.ref-pill.local').filter({ hasText: 'feature/partial-staging' })).toHaveCSS('background-color', 'rgb(92, 79, 208)');
-  await expect(page.locator('.branch-column').first()).toHaveCSS('justify-content', 'flex-end');
+  // Verify alignment rather than the browser's serialization of flex-end.
+  const alignment = await page.locator('.branch-column').first().evaluate(column => {
+    const probe = document.createElement('span');
+    probe.style.flex = '0 0 16px';
+    column.append(probe);
+    try {
+      const style = getComputedStyle(column);
+      const bounds = column.getBoundingClientRect();
+      const item = probe.getBoundingClientRect();
+      const contentRight = bounds.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+      return { gap: Math.abs(contentRight - item.right), spareWidth: item.left - bounds.left };
+    } finally {
+      probe.remove();
+    }
+  });
+  expect(alignment.spareWidth).toBeGreaterThan(16);
+  expect(alignment.gap).toBeLessThanOrEqual(1);
   await expect(page.locator('.ref-pill.local').filter({ hasText: 'feature/partial-staging' })).toHaveCSS(
     'clip-path',
     'polygon(0px 0px, calc(100% - 5px) 0px, 100% 50%, calc(100% - 5px) 100%, 0px 100%)',
@@ -3447,7 +3463,17 @@ test('shows effective signing configuration and applies its commit default', asy
   await expect(checkSigner).toHaveCSS('font-size', '13px');
   await expect(signingHelp).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(signingHelp).toHaveCSS('color', 'rgb(84, 214, 173)');
-  await expect(signingHelp).toHaveCSS('justify-content', 'flex-start');
+  const helpAlignment = await signingHelp.evaluate(button => {
+    const style = getComputedStyle(button);
+    const bounds = button.getBoundingClientRect();
+    const text = document.createRange();
+    text.selectNodeContents(button);
+    const label = text.getBoundingClientRect();
+    const contentLeft = bounds.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    return { gap: Math.abs(label.left - contentLeft), spareWidth: bounds.right - label.right };
+  });
+  expect(helpAlignment.spareWidth).toBeGreaterThan(16);
+  expect(helpAlignment.gap).toBeLessThanOrEqual(1);
   expect(await checkSigner.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
   await expect(signing).toContainText('Automatic signing enabled');
   await expect(signing).toContainText('SSH');
@@ -3884,6 +3910,8 @@ test('favorites repositories and opens them with the familiar numeric shortcut',
   await expect(page.locator('.repo-tab.active')).toContainText('git-khronos-partial-staging');
 
   await page.reload();
+  // The browser's load event can precede the asynchronously restored tab strip.
+  await expect(page.locator('.repo-tab')).toHaveCount(2, { timeout: 15_000 });
   await page.keyboard.press('Control+t');
   await expect(page.getByRole('dialog', { name: 'Repository management' }).getByText('Favorites')).toBeVisible();
 });
