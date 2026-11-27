@@ -58,14 +58,14 @@ import { submoduleFindings } from './submodule-findings';
                   <p>Initialize {{ initializableCount(result) }} missing {{ initializableCount(result) === 1 ? 'submodule' : 'submodules' }} at the commits recorded by this repository, including nested submodules. Existing initialized checkouts are retained. Git may contact configured remotes.</p>
                   @if (syncing()) { <p role="status">Initializing missing submodules…</p> }
                   <div class="row"><button type="button" data-initialize-all-confirm [disabled]="unavailable() || syncing()" (click)="runBulk('initialize-all')">Initialize missing</button>
-                    <button type="button" [disabled]="syncing()" (click)="cancelBulk('initialize-all')">Cancel</button></div>
+                    <button type="button" data-submodule-bulk-cancel [disabled]="syncing()" (click)="cancelBulk('initialize-all')">Cancel</button></div>
                 </div>
               } @else if (confirming() === 'update-all') {
                 <div class="confirm bulk-confirm" role="group" aria-label="Update all submodules from remotes">
                   <p>Fetch each initialized submodule's configured remote-tracking branch recursively and check out its latest commit. Parent-repository gitlinks can become modified and still need an explicit commit. This action is available only when every reviewed submodule is initialized and has no conflict or local file changes.</p>
                   @if (syncing()) { <p role="status">Updating all submodules…</p> }
                   <div class="row"><button type="button" data-update-all-confirm [disabled]="unavailable() || syncing()" (click)="runBulk('update-all')">Update all from remotes</button>
-                    <button type="button" [disabled]="syncing()" (click)="cancelBulk('update-all')">Cancel</button></div>
+                    <button type="button" data-submodule-bulk-cancel [disabled]="syncing()" (click)="cancelBulk('update-all')">Cancel</button></div>
                 </div>
               }
             }
@@ -169,11 +169,11 @@ import { submoduleFindings } from './submodule-findings';
                         @if (!recursive() && entry.indexOid !== entry.checkoutOid) { <p>Nested submodules are left as they are.</p> }
                         @if (syncing()) { <p role="status">Checking out recorded commit…</p> }
                         <div class="row"><button type="button" data-checkout-confirm [disabled]="unavailable() || syncing()" (click)="checkout(entry)">Check out recorded commit</button>
-                          <button type="button" [disabled]="syncing()" (click)="cancelCheckout(entry.path)">Cancel</button></div>
+                          <button type="button" data-submodule-destructive-cancel [disabled]="syncing()" (click)="cancel('checkout', entry.path)">Cancel</button></div>
                       </div>
                     } @else {
                       <button type="button" [attr.data-checkout-open]="entry.path" [disabled]="unavailable() || syncing() || !!confirming()"
-                        (click)="confirmCheckout(entry.path)">{{ entry.indexOid === entry.checkoutOid ? 'Check out nested recorded commits…' : 'Check out recorded commit…' }}</button>
+                        (click)="open('checkout', entry.path)">{{ entry.indexOid === entry.checkoutOid ? 'Check out nested recorded commits…' : 'Check out recorded commit…' }}</button>
                     }
                   }
                   @if (canDeinit(entry)) {
@@ -401,16 +401,17 @@ export class SubmoduleStateReviewComponent {
     });
   }
 
-  open(kind: 'deinit' | 'remove', path: string): void {
+  open(kind: 'checkout' | 'deinit' | 'remove', path: string): void {
     const target = this.request();
     if (!this.ownsRequest(target) || this.unavailable() || this.syncing() || this.confirming()) return;
     const review = `${kind}:${path}`;
     const origin = document.activeElement;
+    if (kind === 'checkout') this.recursive.set(false);
     this.confirming.set(review);
     this.focusReviewControl(target, review, origin, '[data-submodule-destructive-cancel]');
   }
 
-  cancel(kind: 'branch' | 'deinit' | 'remove' | 'initialize' | 'update', path: string): void {
+  cancel(kind: 'branch' | 'checkout' | 'deinit' | 'remove' | 'initialize' | 'update', path: string): void {
     const target = this.request();
     if (!this.ownsRequest(target) || this.syncing() || this.confirming() !== `${kind}:${path}`) return;
     const origin = document.activeElement;
@@ -437,17 +438,6 @@ export class SubmoduleStateReviewComponent {
       const absorbed = result.absorbed ? ' Its embedded repository was first moved there by Git.' : '';
       return `Deinitialized ${result.path}. Repository data remains at ${result.gitDirectory}.${absorbed} Removed local settings: ${settings || 'none'}.`;
     });
-  }
-
-  confirmCheckout(path: string): void {
-    this.recursive.set(false);
-    this.confirming.set(`checkout:${path}`);
-    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-checkout-confirm]')?.focus());
-  }
-
-  cancelCheckout(path: string): void {
-    this.confirming.set(null);
-    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(`[data-checkout-open="${CSS.escape(path)}"]`)?.focus());
   }
 
   checkout(entry: SubmoduleState): Promise<void> {
@@ -590,19 +580,30 @@ export class SubmoduleStateReviewComponent {
     return 'Resolve conflicts and local file changes before updating every submodule';
   }
 
+  private canRunBulk(action: 'initialize-all' | 'update-all'): boolean {
+    const result = this.review();
+    return !!result && (action === 'initialize-all' ? this.initializableCount(result) > 0 : this.canUpdateAll(result));
+  }
+
   openBulk(action: 'initialize-all' | 'update-all'): void {
+    const target = this.request();
+    if (!this.ownsRequest(target) || this.unavailable() || this.syncing() || this.confirming() || !this.canRunBulk(action)) return;
+    const origin = document.activeElement;
     this.confirming.set(action);
-    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(`[data-${action}-confirm]`)?.focus());
+    this.focusReviewControl(target, action, origin, '[data-submodule-bulk-cancel]');
   }
 
   cancelBulk(action: 'initialize-all' | 'update-all'): void {
+    const target = this.request();
+    if (!this.ownsRequest(target) || this.syncing() || this.confirming() !== action) return;
+    const origin = document.activeElement;
     this.confirming.set(null);
-    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(`[data-${action}-open]`)?.focus());
+    this.focusReviewControl(target, null, origin, `[data-${action}-open]`);
   }
 
   async runBulk(action: 'initialize-all' | 'update-all'): Promise<void> {
     const target = this.request();
-    if (!target || this.unavailable() || this.syncing()) return;
+    if (!target || this.unavailable() || this.syncing() || this.confirming() !== action || !this.canRunBulk(action)) return;
     this.syncing.set(true);
     this.syncNotice.set('');
     this.error.set('');

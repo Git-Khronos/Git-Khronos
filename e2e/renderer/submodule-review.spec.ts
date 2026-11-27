@@ -303,6 +303,11 @@ test('initializes every missing submodule only after a scoped bulk confirmation'
   await initialize.click();
   const confirmation = dialog.getByRole('group', { name: 'Initialize all missing submodules' });
   await expect(confirmation).toContainText('at the commits recorded by this repository');
+  await expect(confirmation.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(initialize).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__submoduleReview.calls.some((entry: any) => entry.command === 'initialize_all_submodules'))).toBe(false);
+  await initialize.click();
   await confirmation.getByRole('button', { name: 'Initialize missing', exact: true }).click();
   await expect(dialog.locator('[data-submodule-sync]')).toContainText('Initialized all missing submodules');
   await expect(dialog.getByRole('button', { name: /^Initialize missing/ })).toBeDisabled();
@@ -321,6 +326,11 @@ test('updates all clean initialized submodules from remotes only after confirmat
   await update.click();
   const confirmation = dialog.getByRole('group', { name: 'Update all submodules from remotes' });
   await expect(confirmation).toContainText('Parent-repository gitlinks can become modified');
+  await expect(confirmation.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(update).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__submoduleReview.calls.some((entry: any) => entry.command === 'update_all_submodules'))).toBe(false);
+  await update.click();
   await confirmation.getByRole('button', { name: 'Update all from remotes' }).click();
   await expect(dialog.locator('[data-submodule-sync]')).toContainText('Review parent-repository gitlink changes');
   const call = await page.evaluate(() => (window as any).__submoduleReview.calls.find(
@@ -510,9 +520,13 @@ test('recorded-commit checkout is offered only for clean moved checkouts and dis
   await expect(confirm.getByRole('checkbox', { name: /nested submodules/ })).not.toBeChecked();
   await expect(confirm).toContainText('Current: bbbbbbbbbb Recorded: aaaaaaaaaa');
   await expect(dialog.getByRole('button', { name: 'Sync local URL from .gitmodules…' })).toBeDisabled();
-  await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(confirm.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(moved.getByRole('button', { name: 'Check out recorded commit…' })).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__submoduleReview.calls.some((entry: any) => entry.command === 'checkout_recorded_submodule_commit'))).toBe(false);
   await moved.getByRole('button', { name: 'Check out recorded commit…' }).click();
+  await expect(confirm.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
   await expect(confirm.getByRole('button', { name: 'Check out recorded commit', exact: true })).toBeFocused();
   await page.keyboard.press('Enter');
   const notice = dialog.locator('[data-submodule-sync]');
