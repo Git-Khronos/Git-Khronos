@@ -4445,3 +4445,20 @@ The same archive also passed `discard-large` (four scenarios) and
 `discard-stale-review` (three scenarios). Those suites use disposable
 repositories to exercise nested-file recovery and refusal after a review
 becomes stale. They do not modify the user's CTI checkout.
+
+### Stash and nested discard candidate
+
+The guarded Debian package built from `27c31d7` passed package verification
+with unchanged source. The archive under `target/local-review/current-27c31d7/`
+has SHA-256
+`20ace8fb8736a80b24f7738feb6330385981b542c0f7577dd1ab32dd094650ea`.
+It passed stash clearing (1), GitLab fork catalogue (11), and stale discard
+review (3). The large nested discard suite initially timed out twice without
+opening a preview. An instrumented repeat showed WebDriver reporting success
+without a trusted click reaching the trash button. With the harness change
+from `8ca092c`, which checks the painted hit target before a single click,
+all four scenarios passed in three consecutive runs on the same archive
+(39.7, 47.0, and 44.9 seconds). These scenarios verify recovery of the original
+bytes and preservation of staged data and HEAD. Both the failures and the
+passes are retained with the package; no application rebuild, installation,
+or release was needed for this retest.
