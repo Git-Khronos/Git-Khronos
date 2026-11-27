@@ -5,7 +5,7 @@ const commands = ['stash_selected', 'apply_stash_options', 'apply_stashed_file',
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -29,11 +29,20 @@ test.beforeEach(async ({ page }) => {
         ? { ...item, status: { ...item.status, entryCount: 0, entries: [] } } : item));
       const source = git.repository();
       const request = { action, repositoryId: source.id, repositoryPath: source.path, stash: source.stashes[0],
+        checkoutVisit: git.activeRepositoryReadScope(),
         file: { path: 'owned-stashed-file.txt', previousPath: null, status: 'M', additions: 1, deletions: 0 },
         branch: { name: 'feature/partial-staging', oid: source.headOid }, headOid: source.headOid, returnFocus: null };
       app.stashDialog.set(request); return request;
     };
     state.change = (kind: string) => {
+      if (kind === 'revisit') {
+        const current = git.repository();
+        const other = { ...current, id: 'stash-revisit', path: '/owned/stash-revisit' };
+        git.repositories.update((items: any[]) => [...items, other]);
+        git.activateRepository(other.id);
+        git.activateRepository(current.id);
+        return;
+      }
       if (kind === 'repository') {
         const other = { ...git.repository(), id: 'stash-scope-B', path: '/owned/stash-scope-B' };
         git.repositories.update((items: any[]) => [...items, other]); git.activeRepositoryId.set(other.id);
@@ -52,7 +61,7 @@ async function open(page: Page, action: string) {
 }
 
 for (const action of actions) {
-  for (const change of ['repository', 'path']) {
+  for (const change of ['repository', 'path', 'revisit']) {
     test(`${action} stash review rejects a pre-effect ${change} change`, async ({ page }) => {
       await open(page, action);
       await page.evaluate(change => {

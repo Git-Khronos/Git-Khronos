@@ -389,6 +389,10 @@ identity. An obsolete control cannot execute, change the options of, or
 dismiss a replacement review. Reset previews and mutation completions can
 update only the review that started them.
 
+Stash options also belong to one checkout visit. Leaving the checkout retires
+the form, including its draft and focus intent, whether saving, applying a
+stash or one file, branching from it, or stashing before switching branches.
+
 ### Remote branch rename and deletion
 
 Before sending a rename or deletion, native checks that Git's configured

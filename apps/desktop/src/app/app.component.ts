@@ -994,7 +994,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private stashMessageRevision = 0;
   protected readonly stashDialog = signal<StashDialogRequest | null>(null);
   protected readonly ownsStashDialog = (request: StashDialogRequest): boolean =>
-    this.stashDialog() === request && this.ownsRepositoryScope(request);
+    this.stashDialog() === request && this.ownsCheckoutVisitReview(request);
 
   protected closeStashDialog(request: StashDialogRequest, restoreFocus = true): void {
     if (this.stashDialog() !== request) return;
@@ -1002,7 +1002,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const focusLease = this.deferredGitActionLease();
     if (restoreFocus) queueMicrotask(() => {
       const opener = request.returnFocus;
-      if (this.canRestoreDeferredFocus(focusLease, request) && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
+      if (this.ownsCheckoutVisitReview(request) && this.canRestoreDeferredFocus(focusLease, request)
+        && opener?.isConnected && !opener.closest('[inert]')) opener.focus();
     });
   }
   protected readonly coAuthors = signal<CoAuthor[]>([]);
@@ -1461,7 +1462,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (fetch && !this.ownsFetchOptions(fetch)) untracked(() => this.closeFetchOptions(fetch, false));
     if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
     if (lock && !this.ownsWorktreeLock(lock)) untracked(() => this.closeWorktreeLock(lock, false));
-    if (stash && !this.ownsRepositoryScope(stash)) untracked(() => this.closeStashDialog(stash, false));
+    if (stash && !this.ownsCheckoutVisitReview(stash)) untracked(() => this.closeStashDialog(stash, false));
     if (reference && !this.ownsRepositoryScope(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (contextCreation && !this.ownsRepositoryScope(contextCreation)) untracked(() => this.dismissGraphActionMenu(false));
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
@@ -2561,7 +2562,6 @@ export class AppComponent implements OnInit, OnDestroy {
         this.savedDiscardsRepositoryId.set(null);
         this.savedDiscardsReturnFocus = null;
         this.referenceAction.set(null);
-        this.stashDialog.set(null);
         this.mergePreviewRequest.set(null);
       });
     });
@@ -13435,7 +13435,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.workingTreeOptionsOpen.set(false);
     this.git.error.set(null);
     this.stashDialog.set({ action, repositoryId: repository.id, repositoryPath: repository.path, stash, branch,
-      headOid: repository.headOid ?? undefined, message: this.stashMessage(), returnFocus });
+      headOid: repository.headOid ?? undefined, message: this.stashMessage(), returnFocus,
+      checkoutVisit: this.git.activeRepositoryReadScope() });
   }
 
   protected openStashOptionsFromToolbar(): void {
@@ -13863,7 +13864,8 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     this.git.error.set(null);
-    this.stashDialog.set({ action: 'apply-file', repositoryId, repositoryPath: repository.path, stash, file, returnFocus });
+    this.stashDialog.set({ action: 'apply-file', repositoryId, repositoryPath: repository.path, stash, file, returnFocus,
+      checkoutVisit: this.git.activeRepositoryReadScope() });
   }
 
   private async inspectContextCommitFile(): Promise<boolean> {

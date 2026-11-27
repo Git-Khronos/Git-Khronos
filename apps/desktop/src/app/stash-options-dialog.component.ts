@@ -9,6 +9,7 @@ export interface StashDialogRequest {
   action: 'save' | 'apply' | 'apply-file' | 'branch' | 'switch';
   repositoryId: string;
   repositoryPath: string;
+  readonly checkoutVisit: string;
   message?: string;
   stash?: StashEntry;
   file?: CommitFile;
