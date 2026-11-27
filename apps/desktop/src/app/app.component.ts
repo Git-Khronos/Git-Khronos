@@ -7125,7 +7125,9 @@ export class AppComponent implements OnInit, OnDestroy {
   protected openLfsTracking(): void {
     const repositoryId = this.git.activeRepositoryId();
     if (!repositoryId || this.git.busy()) return;
-    this.lfsTrackingRequest.set({ repositoryId, returnFocus: this.captureDialogOpener() });
+    this.lfsTrackingRequest.set({
+      repositoryId, scope: this.git.activeRepositoryReadScope(), returnFocus: this.captureDialogOpener(),
+    });
   }
 
   protected closeLfsTrackingLoader(): void {

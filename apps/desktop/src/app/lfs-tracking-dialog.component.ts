@@ -8,6 +8,7 @@ import { GitHelpComponent } from './git-help.component';
 
 export interface LfsTrackingRequest {
   repositoryId: string;
+  scope: string;
   returnFocus: HTMLElement | null;
 }
 
@@ -24,10 +25,10 @@ export interface LfsTrackingRequest {
           <p id="lfs-tracking-scope">Review configured LFS rules, not effective attributes for each file.
             Only root .gitattributes rules can be removed here; edit nested or external rules at their source.
             Git LFS may initialize repository-local metadata; configured hooks are not changed.</p>
-          @if (target.repositoryId !== git.activeRepositoryId()) {
+          @if (!ownsRequest(target)) {
             <p role="alert" tabindex="-1">The active repository changed. Close this dialog and review the intended repository.</p>
           }
-          @if (git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
+          @if (ownsRequest(target) && git.error()) { <p role="alert" tabindex="-1">{{ git.error() }}</p> }
           @if (loading()) { <p role="status">Reading repository diagnostics…</p> }
           <details class="form-disclosure">
             <summary [attr.aria-disabled]="unavailable()" (click)="guardDisclosure($event)">Local LFS object diagnostics</summary>
@@ -274,7 +275,11 @@ export class LfsTrackingDialogComponent {
   }
 
   unavailable(): boolean {
-    return this.git.busy() || this.loading() || this.request()?.repositoryId !== this.git.activeRepositoryId();
+    return this.git.busy() || this.loading() || !this.ownsRequest(this.request());
+  }
+
+  ownsRequest(target: LfsTrackingRequest | null): boolean {
+    return !!target && this.request() === target && target.scope === this.git.activeRepositoryReadScope();
   }
 
   guardDisclosure(event: MouseEvent): void {
@@ -296,7 +301,7 @@ export class LfsTrackingDialogComponent {
     this.forceUnlock.set(null);
     try {
       const rules = await this.git.loadLfsTrackingRules(target.repositoryId);
-      if (this.request() === target) this.rules.set(rules);
+      if (this.ownsRequest(target)) this.rules.set(rules);
     } finally {
       this.loading.set(false);
     }
@@ -324,7 +329,7 @@ export class LfsTrackingDialogComponent {
     this.loading.set(true);
     try {
       const attributes = await this.git.inspectLfsAttributes(file, target.repositoryId);
-      if (this.request() === target && this.attributePath() === file) this.fileAttributes.set(attributes);
+      if (this.ownsRequest(target) && this.attributePath() === file) this.fileAttributes.set(attributes);
     } finally { this.loading.set(false); }
     this.focus(this.git.error() ? '[role=alert]' : '.attribute-result');
   }
@@ -339,7 +344,7 @@ export class LfsTrackingDialogComponent {
     this.loading.set(true);
     try {
       const objects = await this.git.inspectLfsObjects(target.repositoryId);
-      if (this.request() === target) this.objects.set(objects);
+      if (this.ownsRequest(target)) this.objects.set(objects);
     } finally { this.loading.set(false); }
     this.focus(this.git.error() ? '[role=alert]' : '.object-result');
   }
@@ -358,7 +363,7 @@ export class LfsTrackingDialogComponent {
     this.loading.set(true);
     try {
       const preview = await this.git.previewLfsFetch(file, this.fetchRemote(), target.repositoryId);
-      if (this.request() === target) this.fetchPreview.set(preview);
+      if (this.ownsRequest(target)) this.fetchPreview.set(preview);
     } finally { this.loading.set(false); }
     this.focus(this.git.error() ? '[role=alert]' : '[data-lfs-fetch]');
   }
@@ -374,13 +379,13 @@ export class LfsTrackingDialogComponent {
     finally { this.fetching.set(false); }
     if (this.request() !== target) return;
     this.fetchPreview.set(null);
-    if (target.repositoryId !== this.git.activeRepositoryId()) {
+    if (!this.ownsRequest(target)) {
       this.focus('[role=alert]');
       return;
     }
     if (result === 'success') {
       await this.inspectObjects();
-      if (this.git.error()) return;
+      if (!this.ownsRequest(target) || this.git.error()) return;
       this.notice.set('Reviewed object fetched into local storage. Working files were not hydrated; cache availability is not hash verification.');
       this.focus('.object-result');
     } else if (result === 'cancelled') {
@@ -398,7 +403,7 @@ export class LfsTrackingDialogComponent {
     this.loading.set(true);
     try {
       const preview = await this.git.previewLfsCheckout(file, target.repositoryId);
-      if (this.request() === target) this.checkoutPreview.set(preview);
+      if (this.ownsRequest(target)) this.checkoutPreview.set(preview);
     } finally { this.loading.set(false); }
     this.focus(this.git.error() ? '[role=alert]' : '[data-lfs-checkout]');
   }
@@ -414,10 +419,10 @@ export class LfsTrackingDialogComponent {
     finally { this.hydrating.set(false); }
     if (this.request() !== target) return;
     this.checkoutPreview.set(null);
-    if (target.repositoryId !== this.git.activeRepositoryId()) { this.focus('[role=alert]'); return; }
+    if (!this.ownsRequest(target)) { this.focus('[role=alert]'); return; }
     if (result === 'success') {
       await this.inspectObjects();
-      if (this.git.error()) return;
+      if (!this.ownsRequest(target) || this.git.error()) return;
       this.notice.set('Reviewed working pointer hydrated from SHA-256-verified local contents. Index, references and permissions were not changed.');
       this.focus('.object-result');
     } else if (result === 'cancelled') {
@@ -440,7 +445,7 @@ export class LfsTrackingDialogComponent {
         report('LFS file locks loaded');
       }, target.repositoryId);
     } finally { this.loading.set(false); }
-    if (this.request() !== target) return;
+    if (!this.ownsRequest(target)) return;
     this.locks.set(locks);
     this.notice.set(locks ? notice : '');
     this.focus(locks ? (notice ? '[role=status][tabindex="-1"]:not(.object-result):not(.attribute-result):not(.lock-result)' : '.lock-result') : '[role=alert]');
@@ -479,7 +484,7 @@ export class LfsTrackingDialogComponent {
         report(label.replace('…', ' finished'));
       }, target.repositoryId);
     } finally { this.loading.set(false); }
-    if (this.request() !== target) return false;
+    if (!this.ownsRequest(target)) return false;
     if (outcome === 'success') return true;
     this.forceUnlock.set(null);
     this.focus('[role=alert]');
@@ -505,10 +510,10 @@ export class LfsTrackingDialogComponent {
     const rules = this.rules();
     if (!target || !rule || !rules || this.unavailable()) return;
     const success = await this.git.untrackLfsPattern(rule.pattern, rules.state, target.repositoryId);
-    if (this.request() !== target) return;
+    if (!this.ownsRequest(target)) return;
     if (success) {
       await this.reload();
-      if (this.request() !== target) return;
+      if (!this.ownsRequest(target)) return;
       this.notice.set('Root tracking rule removed. Review and commit .gitattributes; existing file contents and history were not converted.');
       this.focus('[role=status]');
     } else this.focus('[role=alert]');
@@ -535,6 +540,10 @@ export class LfsTrackingDialogComponent {
   }
 
   private focus(selector: string): void {
-    setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(selector)?.focus());
+    const target = this.request();
+    setTimeout(() => {
+      if (this.request() !== target) return;
+      this.dialog()?.nativeElement.querySelector<HTMLElement>(this.ownsRequest(target) ? selector : '[role=alert]')?.focus();
+    });
   }
 }

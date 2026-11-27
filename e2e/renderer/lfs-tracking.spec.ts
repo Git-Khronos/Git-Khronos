@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 async function setup(page: Page): Promise<void> {
-  await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await openPreviewRepository(page, page.locator('#unstaged-files-list'));
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -233,6 +233,28 @@ test('repository switch prevents untracking rules in the previously reviewed rep
   await expect(dialog.getByRole('button', { name: 'Remove root rule', exact: true })).toBeDisabled();
   expect(await page.evaluate(() => (window as any).__lfsTracking.calls.some((entry: any) => entry.command === 'lfs_untrack_pattern'))).toBe(false);
 });
+
+for (const change of ['workspace', 'path']) {
+  test(`LFS rule removal refuses a changed ${change} even with the same repository ID`, async ({ page }) => {
+    await setup(page);
+    await open(page);
+    const dialog = page.getByRole('dialog', { name: 'LFS tracking patterns' });
+    await dialog.getByRole('button', { name: 'Review removal of *.psd' }).click();
+    const remove = dialog.getByRole('button', { name: 'Remove root rule', exact: true });
+    await expect(remove).toBeEnabled();
+    await remove.evaluate((button, change) => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      if (change === 'workspace') git.activeWorkspaceId.set('another-lfs-workspace');
+      else git.repositories.update((items: any[]) => items.map(item =>
+        item.id === git.activeRepositoryId() ? { ...item, path: '/owned/replaced-lfs-checkout' } : item));
+      (button as HTMLButtonElement).click();
+    }, change);
+    await expect(dialog.getByRole('alert')).toContainText('active repository changed');
+    await expect(remove).toBeDisabled();
+    expect(await page.evaluate(() => (window as any).__lfsTracking.calls.some((entry: any) =>
+      entry.command === 'lfs_untrack_pattern'))).toBe(false);
+  });
+}
 
 test('empty pattern list is explicit; missing LFS remains an actionable error with retry', async ({ page }) => {
   await setup(page);
