@@ -38,6 +38,10 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
             [disabled]="updates.settingPending() || ((!state.configured || !!state.storageError || !!updates.statusError()) && !state.automatic)"
             (change)="automatic($event, target)" />Enable automatic updates</label>
           <p id="application-automatic-update-help" class="help">
+            @if (!state.configured) {
+              This build cannot check for or install updates in the app. Use Browse official releases to find a package
+              and install it manually.
+            }
             Off by default. When enabled, the app checks for updates and downloads and verifies packages from the trusted publisher.
             @if (state.packageFormat === 'msi' || state.packageFormat === 'nsis') {
               On Windows, you must install the update yourself.
