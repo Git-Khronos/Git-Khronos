@@ -202,12 +202,10 @@ jobs:
           printf 'Linux checks: %s\nRenderer matrix: %s\n' "$CHECKS_RESULT" "$RENDERER_RESULT"
           test "$CHECKS_RESULT" = success && test "$RENDERER_RESULT" = success
 
-  packaged-native:
-    name: Jammy package and native acceptance
+  packaged-build:
+    name: Build and verify Jammy package
     runs-on: ubuntu-22.04
     timeout-minutes: 60
-    env:
-      NATIVE_SUITE: ${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs['native-suite'] || 'full') }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/jammy-git
@@ -228,17 +226,12 @@ jobs:
         with:
           prefix-key: packaged-jammy-v1
       - uses: go-task/setup-task@v1
-      - name: Install Linux package and WebDriver prerequisites
+      - name: Install Linux package prerequisites
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb libxtst6 git-lfs openssh-client openssh-server gnupg gpgsm fakeroot desktop-file-utils libglib2.0-bin openssl libssl-dev pkg-config dbus
-          for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
-            command -v "$tool"
-          done
+          sudo apt-get install --yes libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf git-lfs openssh-client gnupg gpgsm fakeroot desktop-file-utils libglib2.0-bin openssl libssl-dev pkg-config dbus
       - run: pnpm install --frozen-lockfile
-      - name: Install pinned Tauri WebDriver bridge
-        run: cargo install tauri-driver --locked --version 2.0.6
       - uses: ./.github/actions/debian-package-regressions
       - name: Prefetch locked Cargo metadata for offline package notices
         run: cargo metadata --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu > /dev/null
@@ -252,41 +245,97 @@ jobs:
           cp -- "$package" ubuntu-package/
           (cd ubuntu-package && sha256sum -- *.deb > SHA256SUMS && sha256sum --check SHA256SUMS)
       - uses: actions/upload-artifact@v4
-        id: native-package-artifact
         with:
           name: ubuntu-package
           path: ubuntu-package/*
           if-no-files-found: error
           retention-days: 14
+
+  packaged-native:
+    name: Jammy package and native acceptance
+    needs: packaged-build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      NATIVE_SUITE: ${{ github.event_name == 'pull_request' && 'smoke' || (github.event_name == 'workflow_dispatch' && inputs['native-suite'] || 'full') }}
+    steps:
+      - name: Require a successful package build
+        env:
+          BUILD_RESULT: ${{ needs.packaged-build.result }}
+        run: |
+          if [[ "$BUILD_RESULT" != success ]]; then
+            echo "::error::The Jammy package build did not succeed ($BUILD_RESULT)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/jammy-git
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.23.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.99.0
+      - name: Install WebDriver and native acceptance prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes webkit2gtk-driver xvfb xauth libxtst6 git-lfs openssh-client openssh-server gnupg gpgsm fakeroot desktop-file-utils libglib2.0-bin libayatana-appindicator3-1 librsvg2-2 openssl libssl-dev pkg-config dbus
+          for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
+            command -v "$tool"
+          done
+      - run: pnpm install --frozen-lockfile
+      - name: Install pinned Tauri WebDriver bridge
+        run: cargo install tauri-driver --locked --version 2.0.6
+      - uses: actions/download-artifact@v4
+        with:
+          name: ubuntu-package
+          path: ubuntu-package
+      - name: Verify the exact package before native acceptance
+        id: verify-native-package
+        run: |
+          set -euo pipefail
+          cd ubuntu-package
+          shopt -s nullglob
+          packages=(Git-Khronos_*_amd64.deb)
+          test "${#packages[@]}" -eq 1
+          expected=$(sha256sum -- "${packages[0]}")
+          test "$(cat SHA256SUMS)" = "$expected"
+          echo "PACKAGE=$PWD/${packages[0]}" >> "$GITHUB_ENV"
       - name: Run packaged WebKitGTK acceptance
-        run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static
+        run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static -- --package "$PACKAGE"
       - name: Run focused packaged signing and tag-navigation acceptance
         run: |
-          pnpm nx run desktop:native-signed-commit --output-style=static
-          pnpm nx run desktop:native-empty-commit --output-style=static
-          pnpm nx run desktop:native-merge-preview --output-style=static
-          pnpm nx run desktop:native-signed-tag --output-style=static
-          pnpm nx run desktop:native-lfs-lock-actions --output-style=static
-          pnpm nx run desktop:native-tag-preview --output-style=static
-          pnpm nx run desktop:native-file-history --output-style=static
-          pnpm nx run desktop:native-conflict-navigation --output-style=static
-          pnpm nx run desktop:native-file-tools --output-style=static
-          pnpm nx run desktop:native-working-tree-recaps --output-style=static
-          pnpm nx run desktop:native-discard-busy --output-style=static
-          pnpm nx run desktop:native-integrity-ui --output-style=static
+          pnpm nx run desktop:native-signed-commit --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-empty-commit --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-merge-preview --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-signed-tag --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-lfs-lock-actions --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-tag-preview --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-file-history --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-conflict-navigation --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-file-tools --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-working-tree-recaps --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-discard-busy --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-integrity-ui --output-style=static -- --package "$PACKAGE"
       - name: Run focused packaged GitLab fork navigation acceptance
         run: |
-          package=$(task --silent package:deb:path)
           pnpm nx exec -p desktop --excludeTaskDependencies -- \
-            python3 "$PWD/tools/native_acceptance.py" --suite gitlab-fork-ui --headless --package "$package"
+            python3 "$PWD/tools/native_acceptance.py" --suite gitlab-fork-ui --headless --package "$PACKAGE"
       - name: Run packaged GitLab catalogue acceptance
         run: |
-          package=$(task --silent package:deb:path)
           pnpm nx exec -p desktop --excludeTaskDependencies -- \
-            python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$package"
+            python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$PACKAGE"
       - name: Upload packaged acceptance diagnostics
         uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() && steps.native-package-artifact.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.verify-native-package.outcome == 'success' }}
         with:
           name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}
           path: test-results/native/
@@ -295,7 +344,7 @@ jobs:
 
   linux-runtime:
     name: Ubuntu and Debian exact-artifact acceptance
-    needs: packaged-native
+    needs: packaged-build
     uses: ./.github/workflows/linux-package-acceptance.yml
     with:
       artifact-name: ubuntu-package

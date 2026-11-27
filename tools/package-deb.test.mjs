@@ -316,13 +316,47 @@ test('checks the installed launcher and executable bytes even when the package v
   assert.throws(check, /is not installed/);
 });
 
-test('packaged CI uploads one verified archive and preserves separate acceptance diagnostics', async () => {
+test('packaged CI gates both runtime lanes on one verified archive, not on each other', async t => {
   const ci = (await readFile(join(repositoryRoot, '.github/workflows/ci.yml'), 'utf8')).replaceAll('\r\n', '\n');
-  const archive = ci.indexOf('name: ubuntu-package');
-  const acceptance = ci.indexOf('name: Run packaged WebKitGTK acceptance');
-  assert.ok(archive > 0 && acceptance > archive, 'Upload the package before acceptance can fail');
-  assert.match(ci, /node tools\/check-linux-abi\.mjs[\s\S]*?sha256sum --check SHA256SUMS\)[\s\S]*?id: native-package-artifact\n\s+with:\n\s+name: ubuntu-package\n\s+path: ubuntu-package\/\*/);
-  assert.match(ci, /name: Upload packaged acceptance diagnostics\n\s+uses: actions\/upload-artifact@v4\n\s+if: \$\{\{ !cancelled\(\) && steps\.native-package-artifact\.outcome == 'success' \}\}[\s\S]*?name: packaged-native-[^\n]+\n\s+path: test-results\/native\/\n/);
+  const [, build] = ci.split('\n  packaged-build:\n');
+  const [producer, tail] = build.split('\n  packaged-native:\n');
+  const [native, installed] = tail.split('\n  linux-runtime:\n');
+  assert.match(producer, /node tools\/check-linux-abi\.mjs[\s\S]*?sha256sum --check SHA256SUMS\)[\s\S]*?name: ubuntu-package\n\s+path: ubuntu-package\/\*/);
+  assert.match(native, /needs: packaged-build\n\s+if: \$\{\{ !cancelled\(\) \}\}/);
+  assert.match(native, /if \[\[ "\$BUILD_RESULT" != success \]\]; then[\s\S]*?exit 1/);
+  assert.match(installed, /needs: packaged-build\n[\s\S]*?artifact-name: ubuntu-package/);
+  assert.match(native, /uses: actions\/download-artifact@v4\n\s+with:\n\s+name: ubuntu-package\n\s+path: ubuntu-package/);
+  const check = native.match(/id: verify-native-package\n\s+run: \|\n([\s\S]*?)(?=      - name:)/)?.[1].replace(/^          /gm, '');
+  assert.ok(check);
+  assert.match(native, /if: \$\{\{ !cancelled\(\) && steps\.verify-native-package\.outcome == 'success' \}\}[\s\S]*?name: packaged-native-[^\n]+\n\s+path: test-results\/native\/\n/);
+  for (const line of native.split('\n').filter(line => /pnpm nx run .*desktop:native-|--suite gitlab/.test(line))) {
+    assert.ok(line.endsWith('--package "$PACKAGE"'), line);
+  }
+
+  const root = await mkdtemp(join(tmpdir(), 'gk-ci-archive-handoff-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const artifact = join(root, 'ubuntu-package');
+  await mkdir(artifact);
+  const archiveName = 'Git-Khronos_0.1.6_amd64.deb';
+  const archive = join(artifact, archiveName);
+  const githubEnv = join(root, 'github-env');
+  const bytes = 'verified fixture bytes';
+  await writeFile(archive, bytes);
+  await writeFile(join(artifact, 'SHA256SUMS'), `${createHash('sha256').update(bytes).digest('hex')}  ${archiveName}\n`);
+  const run = () => spawnSync('bash', ['-c', check], {
+    cwd: root, env: { ...process.env, GITHUB_ENV: githubEnv }, encoding: 'utf8',
+  });
+  const valid = run();
+  assert.equal(valid.status, 0, valid.stderr);
+  assert.equal(await readFile(githubEnv, 'utf8'), `PACKAGE=${archive}\n`);
+  await unlink(githubEnv);
+  await writeFile(archive, 'modified bytes');
+  assert.equal(run().status, 1);
+  await assert.rejects(readFile(githubEnv), { code: 'ENOENT' });
+  await writeFile(archive, bytes);
+  await writeFile(join(artifact, 'Git-Khronos_0.1.7_amd64.deb'), bytes);
+  assert.equal(run().status, 1);
+  await assert.rejects(readFile(githubEnv), { code: 'ENOENT' });
 });
 
 test('installed review diagnostics continue after a sibling failure without publishing qualification evidence', async () => {
@@ -539,7 +573,7 @@ esac
   assert.match(unknown.stderr, /Unsupported Ubuntu release/);
   await assert.rejects(readFile(unknownLog), { code: 'ENOENT' });
   const ci = (await readFile(join(repositoryRoot, '.github/workflows/ci.yml'), 'utf8')).replaceAll('\r\n', '\n');
-  const buildScript = ci.match(/      - name: Install Linux package and WebDriver prerequisites\n        run: \|\n([\s\S]*?)(?=      - )/)?.[1]?.replace(/^          /gm, '');
+  const buildScript = ci.match(/      - name: Install WebDriver and native acceptance prerequisites\n        run: \|\n([\s\S]*?)(?=      - )/)?.[1]?.replace(/^          /gm, '');
   assert.ok(buildScript, 'Missing Jammy build prerequisite commands');
   const buildLog = join(root, 'build');
   const build = spawnSync('bash', ['-c', buildScript], { encoding: 'utf8',

@@ -9,6 +9,11 @@ For Desktop CI, download `ubuntu-package` for the tested Debian archive,
 reports and failure diagnostics, not a second copy of the archive. Download
 both artifacts from the same run when investigating a failure.
 
+The Jammy extracted-package tests and the installed Ubuntu/Debian matrix
+start independently after the package build uploads the verified archive.
+Both use that same archive; neither rebuilds it or waits for the other
+test job to finish.
+
 The installed-matrix job summary lists which suites passed, failed, or were
 interrupted. For an ordinary failure, the job log also prints the command
 to rerun just the failed suites in the same environment.
