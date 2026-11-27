@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, afterNextRender, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injector, OnDestroy, afterNextRender, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { ipc, type BranchWorkflowControl, type BranchWorkflowFinishStatus, type BranchWorkflowKind, type BranchWorkflowMergePolicy, type BranchWorkflowRequest, type BranchWorkflowSettings, type BranchWorkflowView, type PreparedBranchWorkflow } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 
@@ -100,6 +100,7 @@ const DEFAULTS: BranchWorkflowSettings = { version: 1, production: 'main', devel
 })
 export class BranchWorkflowDialogComponent implements OnDestroy {
   readonly git = inject(GitKhronosService);
+  private readonly injector = inject(Injector);
   readonly request = input.required<BranchWorkflowDialogRequest>();
   readonly closed = output<void>();
   readonly featureRebaseRequested = output<FeatureRebaseSelection>();
@@ -234,13 +235,22 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
   private async prepare(request: BranchWorkflowRequest): Promise<void> {
     if (this.unavailable()) return; this.invalidate(); this.notice.set('');
     const binding = this.binding();
+    const initiatingFocus = document.activeElement;
     await this.run('Preparing branch workflow…', async id => {
       const preview = await ipc.prepare_branch_workflow({ repoId: this.request().repositoryId, request, operationId: id });
       if (!this.validReply() || this.operation?.cancelRequested || binding !== this.binding()) {
         await ipc.discard_branch_workflow_plan({ repoId: this.request().repositoryId, token: preview.token });
         throw { kind: 'operationCancelled', message: 'The workflow preview was canceled or its repository changed.' };
       }
-      this.previewBinding = binding; this.preview.set(preview); setTimeout(() => this.review()?.nativeElement.focus());
+      this.previewBinding = binding;
+      this.preview.set(preview);
+      afterNextRender(() => {
+        if (!this.validReply() || this.closing || this.preview() !== preview || binding !== this.binding()) return;
+        const active = document.activeElement;
+        if (active === initiatingFocus || active === document.body) {
+          this.review()?.nativeElement.focus();
+        }
+      }, { injector: this.injector });
       return 'Branch workflow preview ready';
     });
   }

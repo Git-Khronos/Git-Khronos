@@ -168,12 +168,15 @@ test('configuration is reviewed before application and retains the commit draft'
 });
 
 for (const kind of ['feature', 'release', 'hotfix'] as const) test(`${kind} creation reviews its base and uses a one-use preview`, async ({ page }) => {
+  if (kind === 'feature') await page.setViewportSize({ width: 450, height: 560 });
   const dialog = await open(page);
   await dialog.getByRole('combobox', { name: 'Topic type', exact: true }).selectOption(kind);
   await dialog.getByLabel('Topic name', { exact: true }).fill('new-owned');
   await dialog.getByRole('button', { name: 'Review topic creation', exact: true }).click();
   const review = dialog.getByLabel('Review branch workflow');
   await expect(review).toContainText(`Create and check out ${kind}/new-owned from ${kind === 'hotfix' ? 'main' : 'develop'}`);
+  await expect(review).toBeFocused();
+  await expect(review).toBeInViewport();
   await dialog.getByRole('button', { name: 'Apply reviewed workflow', exact: true }).click();
   await expect(dialog.getByRole('button', { name: `Finish ${kind}/new-owned`, exact: true })).toBeVisible();
   expect(await page.evaluate(() => (window as any).__workflow.calls.filter((c: any) => c.command === 'execute_branch_workflow'))).toHaveLength(1);
@@ -294,6 +297,18 @@ test('unconfirmed signing exposes explicit retry and completed outcomes need ack
   const controls = await page.evaluate(() => (window as any).__workflow.calls.filter((c: any) => c.command === 'control_branch_workflow_finish').map((c: any) => c.args));
   expect(controls[0]).toMatchObject({ revision: 0, control: { action: 'continue', retry: true } });
   expect(controls[1]).toMatchObject({ revision: 1, control: { action: 'acknowledge' } });
+});
+
+test('a delayed workflow preview does not steal focus from the close button', async ({ page }) => {
+  const dialog = await open(page);
+  await page.evaluate(() => { (window as any).__workflow.hold = 'prepare_branch_workflow'; });
+  await dialog.getByLabel('Topic name', { exact: true }).fill('focus-owned');
+  await dialog.getByRole('button', { name: 'Review topic creation', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Cancel and close', exact: true }).focus();
+  await page.evaluate(() => { const f = (window as any).__workflow; f.hold = ''; f.finish(); });
+  await expect(dialog.getByRole('button', { name: 'Apply reviewed workflow' })).toBeEnabled();
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeFocused();
 });
 
 test('canceled preparation discards a late successful preview without applying it', async ({ page }) => {
