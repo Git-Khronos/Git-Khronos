@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
 import { completedSnapshotRetired, currentBootId, processStart, validationStatus } from './validation-status.mjs';
 import { validationSourceFingerprint } from './validation-source.mjs';
-import { requireRendererRunSpace, requireRendererSnapshotSpace } from './validation-space.mjs';
+import { requireRendererRunSpace, requireValidationSnapshotSpace } from './validation-space.mjs';
 
 function reclaimSnapshotCaches(source, output) {
   let failures = 0;
@@ -288,7 +288,7 @@ async function runValidation() {
     if (guardSource) {
       source.inputFingerprint = validationSourceFingerprint(commandCwd, gitEnv);
     }
-    if (commit && rendererRun) requireRendererSnapshotSpace(directory);
+    if (commit) requireValidationSnapshotSpace(directory);
     if (rendererRun) {
       const checkSpace = () => requireRendererRunSpace(directory);
       checkSpace();

@@ -9,7 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import { currentBootId, processStart } from './validation-status.mjs';
 import { validationSourceFingerprint } from './validation-source.mjs';
-import { requireRendererSnapshotSpace } from './validation-space.mjs';
+import { requireValidationSnapshotSpace } from './validation-space.mjs';
 import RendererProgress from './renderer-progress-reporter.cjs';
 
 const launcher = fileURLToPath(new URL('./run-validation.mjs', import.meta.url));
@@ -24,16 +24,15 @@ test('renderer snapshot space uses free blocks available to the invoking user on
     assert.equal(options.bigint, true);
     return { bsize: 4096n, bavail, bfree: blocksAtFloor * 100n };
   };
-  assert.throws(() => requireRendererSnapshotSpace('/owned/evidence', stats(blocksAtFloor - 1n)),
+  assert.throws(() => requireValidationSnapshotSpace('/owned/evidence', stats(blocksAtFloor - 1n)),
     /at least 2 GiB free.*2047 MiB available/);
-  assert.doesNotThrow(() => requireRendererSnapshotSpace('/owned/evidence', stats(blocksAtFloor)));
+  assert.doesNotThrow(() => requireValidationSnapshotSpace('/owned/evidence', stats(blocksAtFloor)));
 });
 
-test('a low-space renderer snapshot records failure before exporting or installing source', t => {
+test('low-space renderer and build snapshots fail before exporting or installing source', t => {
   const root = mkdtempSync(join(tmpdir(), 'gk-renderer-space-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const source = join(root, 'checkout');
-  const evidence = join(root, 'run');
   mkdirSync(source);
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))),
     GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
@@ -47,16 +46,19 @@ test('a low-space renderer snapshot records failure before exporting or installi
 import { syncBuiltinESMExports } from 'node:module';
 fs.statfsSync = () => ({ bsize: 4096n, bavail: 0n });
 syncBuiltinESMExports();\n`);
-  const run = spawnSync(process.execPath, ['--import', preload, launcher, 'run', evidence,
-    '--snapshot', 'HEAD', 'run', 'desktop:e2e'], { cwd: source, env, encoding: 'utf8' });
-  assert.equal(run.status, 1, run.stderr);
-  assert.equal(existsSync(join(evidence, 'source')), false);
-  assert.equal(existsSync(join(evidence, 'snapshot.tar')), false);
-  assert.equal(existsSync(join(evidence, 'started.json')), false);
-  const status = readStatus(evidence);
-  assert.equal(status.state, 'failed');
-  assert.match(status.error, /needs at least 2 GiB free/);
-  assert.doesNotMatch(readFileSync(join(evidence, 'output.log'), 'utf8'), /Exporting|Installing/);
+  for (const target of ['e2e', 'build']) {
+    const evidence = join(root, target);
+    const run = spawnSync(process.execPath, ['--import', preload, launcher, 'run', evidence,
+      '--snapshot', 'HEAD', 'run', 'desktop:' + target], { cwd: source, env, encoding: 'utf8' });
+    assert.equal(run.status, 1, run.stderr);
+    assert.equal(existsSync(join(evidence, 'source')), false);
+    assert.equal(existsSync(join(evidence, 'snapshot.tar')), false);
+    assert.equal(existsSync(join(evidence, 'started.json')), false);
+    const status = readStatus(evidence);
+    assert.equal(status.state, 'failed');
+    assert.match(status.error, /needs at least 2 GiB free/);
+    assert.doesNotMatch(readFileSync(join(evidence, 'output.log'), 'utf8'), /Exporting|Installing/);
+  }
 });
 
 test('a running renderer stops its owned child when evidence storage gets low', t => {

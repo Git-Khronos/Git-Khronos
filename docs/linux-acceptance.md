@@ -3486,7 +3486,7 @@ a renderer snapshot receipt from a different boot and refuses a live run.
 It also works if the reboot interrupted dependency setup, before a browser
 or renderer server started.
 
-A new renderer snapshot needs at least 2 GiB free on the filesystem
+A new validation snapshot needs at least 2 GiB free on the filesystem
 holding its run directory before it exports source and installs dependencies.
 This is a start check, not a quota for retained test evidence.
 To reclaim the main checkout's regenerable Rust debug output, stop active
