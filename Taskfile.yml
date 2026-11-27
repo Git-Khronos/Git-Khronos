@@ -125,6 +125,8 @@ tasks:
       - apps/desktop/**/*
       - exclude: apps/desktop/src-tauri/gen/**/*
       - exclude: apps/desktop/src-tauri/target/**/*
+      # Cargo packages binaries, not the separate integration test targets.
+      - exclude: apps/desktop/src-tauri/tests/**/*
       - crates/**/*
       - libs/**/*
       - packaging/**/*

@@ -1168,6 +1168,25 @@ test('cache checks reject nonregular receipts and renderer outputs without hangi
   assert.equal(cached.status, 0, cached.stderr);
 });
 
+test('standalone native integration test edits do not rebuild the Debian package', async t => {
+  const f = await fixture(t);
+  const path = 'apps/desktop/src-tauri/tests/transport_probe.rs';
+  const sidecar = 'apps/desktop/src-tauri/tests/fixtures/probe.txt';
+  f.ok();
+  const builds = await f.builds();
+  await f.put(path, 'original test');
+  await f.put(sidecar, 'original fixture');
+  f.ok();
+  assert.equal(await f.builds(), builds, 'test additions should not invalidate the package');
+  await f.put(path, 'changed test');
+  await rm(join(f.root, sidecar));
+  f.ok();
+  assert.equal(await f.builds(), builds, 'test edits and fixture removals should not invalidate the package');
+  await f.put('apps/desktop/src-tauri/src/transport_probe.rs', 'production source');
+  f.ok();
+  assert.equal(await f.builds(), builds + 1, 'production source must still invalidate the package');
+});
+
 test('input edits, additions, renames and deletions invalidate the build', async (t) => {
   const f = await fixture(t);
   f.ok();
