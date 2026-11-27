@@ -127,6 +127,8 @@ tasks:
       - exclude: apps/desktop/src-tauri/target/**/*
       # Cargo packages binaries, not the separate integration test targets.
       - exclude: apps/desktop/src-tauri/tests/**/*
+      # The production renderer report rejects imports of these test modules.
+      - exclude: apps/desktop/src/**/*.spec.ts
       - crates/**/*
       - libs/**/*
       - packaging/**/*

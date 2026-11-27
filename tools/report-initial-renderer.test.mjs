@@ -41,6 +41,15 @@ test('reports unique emitted entry files and static imports, not lazily loaded d
   });
 });
 
+test('rejects renderer specs in the lazy output graph or tree-shaken build inputs', () => {
+  const path = 'apps/desktop/src/app/fixture.spec.ts';
+  const lazy = structuredClone(metagraph);
+  lazy.outputs['dialog.js'].inputs = { [path]: { bytesInOutput: 12 } };
+  assert.throws(() => initialRendererReport(index, lazy, budget), /depends on a test module/);
+  const unused = { ...metagraph, inputs: { [path.replaceAll('/', '\\')]: { bytes: 12 } } };
+  assert.throws(() => initialRendererReport(index, unused, budget), /depends on a test module/);
+});
+
 test('flags input attribution larger than emitted chunks without inflating the budget', () => {
   const metadata = structuredClone(metagraph);
   metadata.outputs['main.js'].inputs['root.ts'].bytesInOutput = 99;

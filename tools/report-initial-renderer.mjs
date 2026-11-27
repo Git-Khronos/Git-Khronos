@@ -107,6 +107,17 @@ function workspaceStartupReport(metadata, initial) {
 // Assets behind a dynamic import don't contribute unless the index eagerly
 // preloads them or another initial file also statically imports them.
 export function initialRendererReport(html, metadata, budget) {
+  // Package receipts exclude standalone renderer specs. A production import
+  // of a spec must fail here, even when it is lazy or tree-shaken.
+  const inputs = new Set(Object.keys(metadata.inputs ?? {}));
+  for (const entry of Object.values(metadata.outputs ?? {})) {
+    for (const input of Object.keys(entry?.inputs ?? {})) inputs.add(input);
+  }
+  for (const input of inputs) {
+    if (/(?:^|\/)apps\/desktop\/src\/.+\.spec\.ts$/.test(input.replaceAll('\\', '/'))) {
+      throw new Error(`Production renderer depends on a test module: ${input}`);
+    }
+  }
   const pending = [...rootsInIndex(html)];
   const seen = new Map();
   while (pending.length) {
