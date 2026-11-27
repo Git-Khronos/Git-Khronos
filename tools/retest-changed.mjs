@@ -44,6 +44,7 @@ const rendererFixtureSpecs = new Map([
 ]);
 // Representative focused suites; this is not a transitive Python dependency graph.
 const packagedScenarios = new Map([
+  ['tools/native_application_updates_scenarios.py', ['native-application-updates']],
   ['tools/native_gitlab_fork_scenarios.py', ['native-gitlab-fork-ui']],
   ['tools/native_gitlab_scenarios.py', ['native-gitlab', 'native-gitlab-fork-ui']],
   ['tools/native_gitlab_ssh_fixture.py', ['native-gitlab']],

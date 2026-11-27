@@ -52,6 +52,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite smoke --headless" }
     },
+    "native-application-updates": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite application-updates --headless" }
+    },
     "native-full": {
       "executor": "nx:run-commands",
       "cache": false,

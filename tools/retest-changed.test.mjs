@@ -369,6 +369,17 @@ test('mapped native scenario edits require an explicit archive and do not start 
   assert.doesNotMatch(packaged, /desktop:e2e|desktop:check|project=webkit/);
 });
 
+test('updater fixture edits select offline package checks, not an installed update', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'artifacts/\n');
+  f.commit();
+  f.write('artifacts/candidate.deb');
+  f.write('tools/native_application_updates_scenarios.py');
+  const plan = f.run('--native-package', 'artifacts/candidate.deb');
+  assert.match(plan, /"desktop:native-application-updates" "--output-style=static" "--" "--package"/);
+  assert.doesNotMatch(plan, /application-update-consent|--installed|desktop:native-full|desktop:e2e/);
+});
+
 test('an invalid native archive fails before scheduling checks', t => {
   const f = fixture(t);
   f.write('tools/native_sparse_checkout_scenarios.py');

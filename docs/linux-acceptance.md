@@ -3331,11 +3331,16 @@ Keep the normal Nx gate on the workspace compiler: Angular 22
 ```text
 pnpm nx run desktop:package-deb
 pnpm nx run desktop:native-smoke
+pnpm nx run desktop:native-application-updates -- --package "$archive"
 pnpm nx run desktop:native-full
 pnpm nx run desktop:native-performance
 pnpm nx run desktop:test-lfs
 TMPDIR=/tmp pnpm nx run desktop:test-signing
 ```
+
+The focused updater target tests the extracted package's update UI and
+trust boundary without installing it. Actual automatic installation and
+restart have a separate disposable installed-package qualification.
 
 For local renderer changes, start with just the affected spec:
 `pnpm nx run desktop:e2e -- e2e/renderer/worktree-move.spec.ts`.
@@ -4429,3 +4434,6 @@ All 95 extracted-package scenarios passed: recovery (22), remote reviews
 The directory retains the checksum, source identity, renderer size report,
 packaging receipt, and logs pointing to the separate native reports. This
 does not qualify an installed upgrade or a hosted release.
+The same archive also passed the focused updater target: 25 scenarios,
+including six updater-specific checks for keyboard access, consent wording,
+and refusing update actions in a build without configured publisher trust.
