@@ -4,6 +4,7 @@ import { GitKhronosService } from './git-khronos.service';
 
 export interface StashDeleteRequest {
   repositoryId: string;
+  readonly checkoutVisit: string;
   stash: StashEntry;
   returnFocus: HTMLElement | null;
 }
@@ -42,6 +43,7 @@ export interface StashDeleteRequest {
 export class StashDeleteDialogComponent {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<StashDeleteRequest>();
+  readonly ownsRequest = input.required<(request: StashDeleteRequest) => boolean>();
   readonly closed = output<{ request: StashDeleteRequest; deleted: boolean }>();
   readonly deleting = signal(false);
   readonly error = signal<string | null>(null);
@@ -54,13 +56,14 @@ export class StashDeleteDialogComponent {
   readonly available = computed(() => {
     const target = this.request();
     const repository = this.git.repository();
-    return repository?.id === target.repositoryId && repository.stashes.some(stash =>
+    return this.ownsRequest()(target) && repository?.id === target.repositoryId && repository.stashes.some(stash =>
       stash.reference === target.stash.reference && stash.oid === target.stash.oid);
   });
 
   constructor() {
     afterRenderEffect(() => {
       const request = this.request();
+      if (!this.ownsRequest()(request)) return;
       const cancel = this.cancel()?.nativeElement;
       if (cancel && request !== this.focusedRequest) {
         this.focusedRequest = request;
@@ -83,13 +86,13 @@ export class StashDeleteDialogComponent {
     this.error.set(null);
     try {
       const deleted = await this.git.dropStash(request.stash.reference, request.stash.oid, request.repositoryId);
-      if (this.request() !== request) return;
+      if (!this.ownsRequest()(request)) return;
       if (deleted) this.closed.emit({ request, deleted: true });
       else this.showFailure(this.git.error() ?? 'Deletion did not complete. Check Recovery History before retrying.');
     } catch {
-      if (this.request() === request) this.showFailure('Deletion could not be confirmed. Check Recovery History before retrying.');
+      if (this.ownsRequest()(request)) this.showFailure('Deletion could not be confirmed. Check Recovery History before retrying.');
     } finally {
-      if (this.request() === request) this.deleting.set(false);
+      if (this.ownsRequest()(request)) this.deleting.set(false);
     }
   }
 
@@ -99,7 +102,8 @@ export class StashDeleteDialogComponent {
   }
 
   close(deleted: boolean): void {
-    if (!this.deleting()) this.closed.emit({ request: this.request(), deleted });
+    const request = this.request();
+    if (!this.deleting() && this.ownsRequest()(request)) this.closed.emit({ request, deleted });
   }
 
   handleKey(event: KeyboardEvent): void {

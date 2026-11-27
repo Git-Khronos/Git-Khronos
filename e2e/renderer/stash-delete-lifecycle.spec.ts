@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 async function prepare(page: Page, open = true) {
-  await page.goto('/');
-  await expect(page.locator('.commit-row').first()).toBeVisible();
+  await openPreviewRepository(page, page.locator('.commit-row').first());
   await page.evaluate(() => {
     const root = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = root.git;
@@ -21,6 +21,7 @@ async function prepare(page: Page, open = true) {
           ? Promise.reject({ kind: 'gitFailure', message: 'Owned delete refused', hint: 'Repair the owned lock and retry.' })
           : Promise.resolve({ ...repository, stashes: [] });
       }
+      if (command === 'clear_stashes') return Promise.resolve({ ...repository, stashes: [] });
       return Promise.resolve(repository);
     } };
     const opener = document.createElement('button');
@@ -130,8 +131,47 @@ test('confirmation cannot retarget another repository or a shifted stash ordinal
     git.repositories.set([repository, { ...repository, id: 'other-repository', path: '/owned/other' }]);
     git.activeRepositoryId.set('other-repository');
   });
-  await expect(dialog.getByRole('button', { name: 'Delete Stash', exact: true })).toBeDisabled();
+  await expect(dialog).toBeHidden();
   expect(await page.evaluate(() => (window as any).__stashDelete.attempts)).toBe(0);
+});
+
+async function openClear(page: Page) {
+  await page.evaluate(() => {
+    const { root, stash } = (window as any).__stashDelete;
+    root.openStashMenu(new MouseEvent('contextmenu', { clientX: 100, clientY: 100 }), stash, false);
+  });
+  await page.getByRole('menuitem', { name: 'Clear All Stashes…', exact: true }).click();
+  return page.getByRole('alertdialog', { name: 'Clear all stashes', exact: true });
+}
+
+for (const kind of ['Delete Stash', 'Clear All Stashes'] as const) {
+  test(`${kind} cannot run from a previous visit to the same checkout`, async ({ page }) => {
+    const deleteReview = await prepare(page, kind === 'Delete Stash');
+    const dialog = kind === 'Delete Stash' ? deleteReview : await openClear(page);
+    const confirm = dialog.getByRole('button', { name: kind, exact: true });
+    await expect(confirm).toBeEnabled();
+    await confirm.evaluate(button => {
+      const { git, repository } = (window as any).__stashDelete;
+      git.repositories.update((items: any[]) => [...items, { ...repository, id: 'stash-cleanup-other', path: '/owned/stash-cleanup-other' }]);
+      git.activateRepository('stash-cleanup-other');
+      git.activateRepository(repository.id);
+      (button as HTMLButtonElement).click();
+    });
+    await expect(dialog).toBeHidden();
+    expect(await page.evaluate(() => (window as any).__stashDelete.calls.filter(
+      (call: { command: string }) => ['drop_stash', 'clear_stashes'].includes(call.command)))).toEqual([]);
+  });
+}
+
+test('Clear All Stashes keeps the reviewed object list and clears once', async ({ page }) => {
+  await prepare(page, false);
+  const dialog = await openClear(page);
+  await dialog.getByRole('button', { name: 'Clear All Stashes', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const calls = await page.evaluate(() => (window as any).__stashDelete.calls.filter(
+    (call: { command: string }) => call.command === 'clear_stashes'));
+  expect(calls).toHaveLength(1);
+  expect(calls[0].args.expectedOids).toEqual(['a'.repeat(40)]);
 });
 
 test('pending deletion cannot be repeated or dismissed and late success does not change another repository', async ({ page }) => {

@@ -33,7 +33,7 @@ const rendererSourceChecks = [
 const rendererFixtureSpecs = new Map([
   ['e2e/renderer/preview-repository-ready.ts', [
     'branch-rename-scope', 'confirmation-keyboard', 'history-review-loading', 'mainline-replay', 'operation-recovery',
-    'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-action-lifecycle', 'stash-review-scope',
+    'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-action-lifecycle', 'stash-delete-lifecycle', 'stash-review-scope',
     'deferred-action-scope', 'reference-action-scope', 'reference-actions',
   ]],
   ['e2e/renderer/graph-layout-test-helpers.ts', ['graph-columns', 'graph-layout-readiness']],

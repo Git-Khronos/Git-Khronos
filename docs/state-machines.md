@@ -401,6 +401,9 @@ the form, including its draft and focus intent, whether saving, applying a
 stash or one file, branching from it, or stashing before switching branches.
 The stash menu uses the same boundary for immediate Apply and Pop. A late
 result must not replace the inspected commit after switching away and back.
+Delete Stash and Clear All Stashes require both the active checkout visit
+and the rendered request. Native still verifies the reviewed stash object
+or stack and saves recovery captures before removing entries.
 
 ### Remote branch rename and deletion
 

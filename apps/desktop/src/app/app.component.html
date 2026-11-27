@@ -2176,22 +2176,26 @@
       <ng-container [ngTemplateOutlet]="referenceEditorFallback" [ngTemplateOutletContext]="{ kind: 'tag', failed: true }" />
     }
   }
-  @if (pendingStashDelete(); as request) {
-    @defer (on immediate) {
-      <gk-stash-delete-dialog #stashDeleteDialog [request]="request" (closed)="closeStashDelete($event)" />
-    } @loading {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading stash confirmation"><p role="status">Loading stash confirmation…</p><button #stashDeleteLoaderClose type="button" (click)="closeStashDelete({ request, deleted: false })">Cancel</button></section></div>
-    } @error {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Stash confirmation unavailable"><p role="alert">Stash confirmation could not load. No deletion was started.</p><button #stashDeleteLoaderClose type="button" (click)="closeStashDelete({ request, deleted: false })">Close</button></section></div>
+  @if (pendingStashDelete(); as review) {
+    @for (request of [review]; track request) {
+      @defer (on immediate) {
+        <gk-stash-delete-dialog #stashDeleteDialog [request]="request" [ownsRequest]="ownsStashDeleteReview" (closed)="closeStashDelete($event)" />
+      } @loading {
+        <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading stash confirmation"><p role="status">Loading stash confirmation…</p><button #stashDeleteLoaderClose type="button" (click)="closeStashDelete({ request, deleted: false })">Cancel</button></section></div>
+      } @error {
+        <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Stash confirmation unavailable"><p role="alert">Stash confirmation could not load. No deletion was started.</p><button #stashDeleteLoaderClose type="button" (click)="closeStashDelete({ request, deleted: false })">Close</button></section></div>
+      }
     }
   }
-  @if (pendingStashClear(); as request) {
-    @defer (on immediate) {
-      <gk-stash-clear-dialog [request]="request" (closed)="closeStashClear($event)" />
-    } @loading {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading stash confirmation"><p role="status">Loading stash confirmation…</p><button type="button" (click)="closeStashClear({ request, cleared: false })">Cancel</button></section></div>
-    } @error {
-      <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Stash confirmation unavailable"><p role="alert">Stash confirmation could not load. No clear was started.</p><button type="button" (click)="closeStashClear({ request, cleared: false })">Close</button></section></div>
+  @if (pendingStashClear(); as review) {
+    @for (request of [review]; track request) {
+      @defer (on immediate) {
+        <gk-stash-clear-dialog [request]="request" [ownsRequest]="ownsStashClearReview" (closed)="closeStashClear($event)" />
+      } @loading {
+        <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading stash confirmation"><p role="status">Loading stash confirmation…</p><button type="button" (click)="closeStashClear({ request, cleared: false })">Cancel</button></section></div>
+      } @error {
+        <div class="confirmation-backdrop"><section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Stash confirmation unavailable"><p role="alert">Stash confirmation could not load. No clear was started.</p><button type="button" (click)="closeStashClear({ request, cleared: false })">Close</button></section></div>
+      }
     }
   }
   @if (stashRenameTarget(); as stash) {

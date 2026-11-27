@@ -1457,6 +1457,8 @@ export class AppComponent implements OnInit, OnDestroy {
     const contextCreation = this.contextBranchCreator();
     const reference = this.referenceAction();
     const stash = this.stashDialog();
+    const stashDelete = this.pendingStashDelete();
+    const stashClear = this.pendingStashClear();
     const fetch = this.fetchRequest();
     const move = this.worktreeMoveRequest();
     const lock = this.worktreeLockRequest();
@@ -1473,6 +1475,8 @@ export class AppComponent implements OnInit, OnDestroy {
     if (move && !this.ownsRepositoryScope(move)) untracked(() => this.closeWorktreeMove(move, undefined, false));
     if (lock && !this.ownsWorktreeLock(lock)) untracked(() => this.closeWorktreeLock(lock, false));
     if (stash && !this.ownsCheckoutVisitReview(stash)) untracked(() => this.closeStashDialog(stash, false));
+    if (stashDelete && !this.ownsStashDeleteReview(stashDelete)) untracked(() => this.pendingStashDelete.set(null));
+    if (stashClear && !this.ownsStashClearReview(stashClear)) untracked(() => this.pendingStashClear.set(null));
     if (reference && !this.ownsCheckoutVisitReview(reference)) untracked(() => this.closeReferenceAction(reference, false));
     if (contextCreation && !this.ownsRepositoryScope(contextCreation)) untracked(() => this.dismissGraphActionMenu(false));
     if (rename && !this.ownsCheckoutVisitReview(rename)) untracked(() => this.closeBranchRename(false, rename));
@@ -1570,6 +1574,10 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly signNewTag = signal(false);
   protected readonly pendingStashDelete = signal<StashDeleteRequest | null>(null);
   protected readonly pendingStashClear = signal<StashClearRequest | null>(null);
+  protected readonly ownsStashDeleteReview = (request: StashDeleteRequest): boolean =>
+    this.pendingStashDelete() === request && request.checkoutVisit === this.git.activeRepositoryReadScope();
+  protected readonly ownsStashClearReview = (request: StashClearRequest): boolean =>
+    this.pendingStashClear() === request && request.checkoutVisit === this.git.activeRepositoryReadScope();
   protected readonly stashRenameTarget = signal<StashEntry | null>(null);
   private stashRenameRepositoryId: string | null = null;
   protected readonly stashRenameMessage = signal('');
@@ -13511,7 +13519,7 @@ export class AppComponent implements OnInit, OnDestroy {
       ? this.contextMenuReturnFocus
       : document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.actionOverlays.close('stash');
-    this.pendingStashDelete.set({ repositoryId, stash: target, returnFocus });
+    this.pendingStashDelete.set({ repositoryId, checkoutVisit: this.git.activeRepositoryReadScope(), stash: target, returnFocus });
   }
 
   protected requestStashClear(): void {
@@ -13520,18 +13528,19 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!request || !repository || request.repositoryId !== repository.id || !repository.stashes.length
       || this.pendingStashClear() || !this.git.requireRecoveryRepository(repository.id)) return;
     this.actionOverlays.close('stash');
-    this.pendingStashClear.set({ repositoryId: repository.id, entries: repository.stashes.map(stash => ({
+    this.pendingStashClear.set({ repositoryId: repository.id, checkoutVisit: request.checkoutVisit, entries: repository.stashes.map(stash => ({
       reference: stash.reference, oid: stash.oid, message: stash.message,
     })), returnFocus: this.contextMenuReturnFocus });
   }
 
   protected closeStashClear(result: { request: StashClearRequest; cleared: boolean }): void {
-    if (this.pendingStashClear() !== result.request) return;
+    if (!this.ownsStashClearReview(result.request)) return;
     this.pendingStashClear.set(null);
     if (this.git.activeRepositoryId() !== result.request.repositoryId) return;
     if (result.cleared) this.selectWip();
     afterNextRender(() => {
-      if (this.pendingStashClear() || this.git.activeRepositoryId() !== result.request.repositoryId) return;
+      if (this.pendingStashClear() || this.pendingStashDelete()
+        || this.git.activeRepositoryReadScope() !== result.request.checkoutVisit) return;
       if (result.request.returnFocus?.isConnected) result.request.returnFocus.focus();
       else document.querySelector<HTMLButtonElement>('.stash-item:not([disabled]), .wip-nav:not([disabled])')?.focus();
     }, { injector: this.injector });
@@ -13543,12 +13552,13 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected closeStashDelete(result: { request: StashDeleteRequest; deleted: boolean }): void {
-    if (this.pendingStashDelete() !== result.request) return;
+    if (!this.ownsStashDeleteReview(result.request)) return;
     this.pendingStashDelete.set(null);
     if (this.git.activeRepositoryId() !== result.request.repositoryId) return;
     if (result.deleted) this.selectWip();
     afterNextRender(() => {
-      if (this.pendingStashDelete() || this.git.activeRepositoryId() !== result.request.repositoryId) return;
+      if (this.pendingStashDelete() || this.pendingStashClear()
+        || this.git.activeRepositoryReadScope() !== result.request.checkoutVisit) return;
       const opener = result.request.returnFocus;
       if (opener?.isConnected) opener.focus();
       else document.querySelector<HTMLButtonElement>('.stash-item:not([disabled]), .wip-nav:not([disabled])')?.focus();

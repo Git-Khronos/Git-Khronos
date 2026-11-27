@@ -3,6 +3,7 @@ import { GitKhronosService } from './git-khronos.service';
 
 export interface StashClearRequest {
   repositoryId: string;
+  readonly checkoutVisit: string;
   entries: { reference: string; oid: string; message: string }[];
   returnFocus: HTMLElement | null;
 }
@@ -33,6 +34,7 @@ export interface StashClearRequest {
 export class StashClearDialogComponent {
   readonly git = inject(GitKhronosService);
   readonly request = input.required<StashClearRequest>();
+  readonly ownsRequest = input.required<(request: StashClearRequest) => boolean>();
   readonly closed = output<{ request: StashClearRequest; cleared: boolean }>();
   readonly clearing = signal(false);
   readonly error = signal<string | null>(null);
@@ -42,12 +44,13 @@ export class StashClearDialogComponent {
   readonly available = computed(() => {
     const target = this.request();
     const entries = this.git.repository()?.stashes;
-    return this.git.repository()?.id === target.repositoryId && entries?.length === target.entries.length
+    return this.ownsRequest()(target) && this.git.repository()?.id === target.repositoryId && entries?.length === target.entries.length
       && entries.every((entry, index) => entry.oid === target.entries[index]?.oid);
   });
 
   constructor() {
     afterRenderEffect(() => {
+      if (!this.ownsRequest()(this.request())) return;
       const cancel = this.cancel()?.nativeElement;
       if (cancel && this.focusedRequest !== this.request()) { this.focusedRequest = this.request(); cancel.focus(); }
       if (this.clearing()) this.dialog()?.nativeElement.focus();
@@ -60,14 +63,17 @@ export class StashClearDialogComponent {
     this.clearing.set(true); this.error.set(null);
     try {
       const cleared = await this.git.clearStashes(request.entries.map(entry => entry.oid), request.repositoryId);
-      if (this.request() !== request) return;
+      if (!this.ownsRequest()(request)) return;
       if (cleared) this.closed.emit({ request, cleared: true });
       else this.error.set(this.git.error() ?? 'Clear did not complete. Check Recovery History before retrying.');
-    } catch { if (this.request() === request) this.error.set('Clear could not be confirmed. Check Recovery History before retrying.'); }
-    finally { if (this.request() === request) this.clearing.set(false); }
+    } catch { if (this.ownsRequest()(request)) this.error.set('Clear could not be confirmed. Check Recovery History before retrying.'); }
+    finally { if (this.ownsRequest()(request)) this.clearing.set(false); }
   }
 
-  close(cleared: boolean): void { if (!this.clearing()) this.closed.emit({ request: this.request(), cleared }); }
+  close(cleared: boolean): void {
+    const request = this.request();
+    if (!this.clearing() && this.ownsRequest()(request)) this.closed.emit({ request, cleared });
+  }
   handleKey(event: KeyboardEvent): void {
     event.stopPropagation();
     if (event.key === 'Escape') { event.preventDefault(); this.close(false); }
