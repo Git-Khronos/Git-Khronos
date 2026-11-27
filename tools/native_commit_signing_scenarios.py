@@ -7,7 +7,6 @@ from native_acceptance import open_ui, run, seed_commit_draft
 
 def signed_commit_creation(driver, fixtures, report):
     repository = fixtures.repository("signed-commit-ui", commits=3)
-    parent = fixtures.git(repository, "rev-parse", "HEAD")
     gnupg_home = fixtures.env["GNUPGHOME"]
     run(
         "gpg", "--batch", "--homedir", gnupg_home, "--pinentry-mode", "loopback",
@@ -33,6 +32,29 @@ def signed_commit_creation(driver, fixtures, report):
     ):
         fixtures.git(repository, "config", "--local", name, value)
 
+    _sign_commit_in_ui(driver, fixtures, repository, "OpenPGP", "PGP", report)
+
+    ssh_repository = fixtures.repository("signed-commit-ui-ssh", commits=3)
+    key = fixtures.root / "commit-ssh-signing-key"
+    principal = "native-ui-commit@example.test"
+    run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", principal,
+        "-f", str(key), env=fixtures.env)
+    public_key = key.with_suffix(".pub").read_text(encoding="utf-8").strip()
+    allowed_signers = fixtures.root / "commit-ssh-allowed-signers"
+    allowed_signers.write_text(f"{principal} {public_key}\n", encoding="utf-8")
+    for name, value in (
+        ("user.signingkey", str(key)),
+        ("gpg.format", "ssh"),
+        ("gpg.ssh.allowedSignersFile", str(allowed_signers)),
+        ("commit.gpgsign", "false"),
+    ):
+        fixtures.git(ssh_repository, "config", "--local", name, value)
+    ssh_repo_id = _sign_commit_in_ui(driver, fixtures, ssh_repository, "SSH", "SSH", report)
+    return ssh_repository, ssh_repo_id
+
+
+def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_header, report):
+    parent = fixtures.git(repository, "rev-parse", "HEAD")
     payload = repository / "signed-ui-payload.txt"
     payload.write_text("Explicitly signed through the commit form.\n", encoding="utf-8")
     fixtures.git(repository, "add", "--", payload.name)
@@ -40,7 +62,7 @@ def signed_commit_creation(driver, fixtures, report):
     config = (repository / ".git/config").read_bytes()
     existing_refs = fixtures.git(repository, "for-each-ref", "--format=%(refname) %(objectname)")
     repo_id = open_ui(driver, repository)
-    message = "Create an explicitly signed commit through the UI"
+    message = f"Create an explicitly {format_name}-signed commit through the UI"
     seed_commit_draft(driver, repository, message)
     driver.wait("return !!document.querySelector('.commit-form input[name=signCommit]')")
     driver.click_visible('.commit-form input[name="signCommit"]')
@@ -54,7 +76,7 @@ def signed_commit_creation(driver, fixtures, report):
     assert oid != parent, "The UI did not create a new commit"
     assert fixtures.git(repository, "rev-parse", "HEAD^") == parent
     commit_object = fixtures.git(repository, "cat-file", "commit", oid)
-    assert "gpgsig -----BEGIN PGP SIGNATURE-----" in commit_object, commit_object
+    assert f"gpgsig -----BEGIN {signature_header} SIGNATURE-----" in commit_object, commit_object
     verify = subprocess.run(
         ["git", "-C", str(repository), "verify-commit", oid],
         env=fixtures.env, capture_output=True, text=True, timeout=120,
@@ -71,6 +93,6 @@ def signed_commit_creation(driver, fixtures, report):
     assert existing_refs.splitlines() == [f"refs/heads/main {parent}"], existing_refs
     assert refs_after.splitlines() == [f"refs/heads/main {oid}"], refs_after
     report["scenarios"].append(
-        "native-ui-creates-and-verifies-explicitly-openpgp-signed-commit"
+        f"native-ui-creates-and-verifies-explicitly-{format_name.lower()}-signed-commit"
     )
-    return repository, repo_id
+    return repo_id

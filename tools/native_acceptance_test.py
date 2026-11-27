@@ -384,15 +384,17 @@ class SignedTagToolchainPreflightTests(unittest.TestCase):
 
 
 class SignedCommitToolchainPreflightTests(unittest.TestCase):
-    def test_preflight_requires_only_the_openpgp_tool_used_by_the_ui_scenario(self):
+    def test_preflight_requires_the_openpgp_and_ssh_tools_used_by_the_ui_scenario(self):
         with tempfile.TemporaryDirectory() as directory:
             fixtures = Fixtures(directory)
             report = {}
             with patch("native_acceptance.shutil.which", side_effect=lambda name, **_: {
-                "gpg": "/fixture/bin/gpg",
+                "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
             }[name]):
                 probe_signed_commit_toolchain(fixtures, report)
-            self.assertEqual(report["signedCommitTools"], {"gpg": "/fixture/bin/gpg"})
+            self.assertEqual(report["signedCommitTools"], {
+                "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
+            })
 
     def test_preflight_reports_missing_openpgp_tool_before_launch(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -401,7 +403,7 @@ class SignedCommitToolchainPreflightTests(unittest.TestCase):
             with patch("native_acceptance.shutil.which", return_value=None):
                 with self.assertRaisesRegex(RuntimeError, "gpg"):
                     probe_signed_commit_toolchain(fixtures, report)
-            self.assertEqual(report["signedCommitTools"], {"gpg": None})
+            self.assertEqual(report["signedCommitTools"], {"gpg": None, "ssh-keygen": None})
 
 
 class PackageIdentityTests(unittest.TestCase):

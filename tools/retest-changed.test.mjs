@@ -595,6 +595,16 @@ test('changes to the shared launcher fixture retest browser and file manager han
   assert.doesNotMatch(plan, /"desktop:native-application-updates"|desktop:e2e|desktop:check/);
 });
 
+test('commit signing fixture edits select the focused packaged UI suite', t => {
+  const f = fixture(t);
+  f.write('candidate.deb');
+  f.commit();
+  f.write('tools/native_commit_signing_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-signed-commit"/);
+  assert.doesNotMatch(plan, /desktop:native-signed-tag|desktop:native-full|desktop:e2e/);
+});
+
 test('rebase fixture edits select both packaged rebase reviews without a browser run', t => {
   const f = fixture(t);
   f.write('.gitignore', 'artifacts/\n');
