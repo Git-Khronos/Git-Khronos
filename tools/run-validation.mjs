@@ -1,11 +1,11 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, openSync, closeSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, closeSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { delimiter, resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
-import { currentBootId, processStart, validationStatus } from './validation-status.mjs';
+import { completedSnapshotRetired, currentBootId, processStart, validationStatus } from './validation-status.mjs';
 import { validationSourceFingerprint } from './validation-source.mjs';
 import { requireRendererRunSpace, requireRendererSnapshotSpace } from './validation-space.mjs';
 
@@ -70,13 +70,14 @@ const usage = `Usage:
   node tools/run-validation.mjs run   DIRECTORY [--snapshot REF | --guard-source] NX_COMMAND [NX_ARGS...]
   node tools/run-validation.mjs status DIRECTORY
   node tools/run-validation.mjs wait   DIRECTORY
-  node tools/run-validation.mjs reclaim DIRECTORY [--discard-worker-scratch]
+  node tools/run-validation.mjs reclaim DIRECTORY [--completed | --discard-worker-scratch]
 
 Use start for a detached run, or run to wait in the foreground.
 Without --snapshot the run uses the current checkout; with it, it uses the named local commit.
 --guard-source refuses a passing result if Git-visible checkout files differ at the end.
 Use wait to observe an existing run and return its exit code, without taking ownership.
 Use reclaim to remove disposable caches from an interrupted renderer snapshot after a reboot.
+Use --completed for an older finished renderer snapshot whose paired receipts match and whose runner is no longer live.
 --discard-worker-scratch also removes raw Playwright worker recordings, including unfinished-test diagnostics.
 It keeps exported failure screenshots and trace archives, progress, and logs.
 
@@ -96,8 +97,9 @@ if (!runDirectory || !['start', 'run', 'status', 'wait', 'reclaim'].includes(mod
 }
 if (mode === 'reclaim') {
   const discardScratch = args.length === 1 && args[0] === '--discard-worker-scratch';
-  if (useSnapshot || guardSource || (args.length && !discardScratch)) {
-    throw new Error('reclaim accepts a run directory and optional --discard-worker-scratch');
+  const completed = args.length === 1 && args[0] === '--completed';
+  if (useSnapshot || guardSource || (args.length && !discardScratch && !completed)) {
+    throw new Error('reclaim accepts a run directory and optional --completed or --discard-worker-scratch');
   }
   const directory = resolve(runDirectory);
   const source = join(directory, 'source');
@@ -108,11 +110,16 @@ if (mode === 'reclaim') {
   const rendererSnapshot = Array.isArray(command) && command.every(arg => typeof arg === 'string')
     && command[0] === 'pnpm' && command[1] === 'nx'
     && rendererSelection(command.slice(2)).rendererRun;
-  if (status.state !== 'stopped-without-result' || status.stopReason !== 'different-boot'
-    || status.source?.mode !== 'commit-snapshot' || status.source.commandCwd !== source
+  if (status.source?.mode !== 'commit-snapshot' || status.source.commandCwd !== source
     || !rendererSnapshot
-    || realpathSync(directory) !== directory || realpathSync(source) !== source) {
-    throw new Error('Refusing to reclaim: expected an owned renderer snapshot interrupted on a previous boot.');
+    || realpathSync(directory) !== directory || realpathSync(source) !== source
+    || (completed ? !completedSnapshotRetired(directory, status)
+      || statSync(directory).uid !== process.getuid() || statSync(source).uid !== process.getuid()
+      || existsSync(join(source, '.git'))
+      : status.state !== 'stopped-without-result' || status.stopReason !== 'different-boot')) {
+    throw new Error(completed
+      ? 'Refusing to reclaim: expected matching receipts for a finished renderer snapshot with no live runner.'
+      : 'Refusing to reclaim: expected an owned renderer snapshot interrupted on a previous boot.');
   }
   const failures = reclaimSnapshotCaches(source, process.stderr.fd);
   if (failures) process.exit(1);

@@ -58,6 +58,24 @@ function receipt(directory, name) {
   }
 }
 
+export function completedSnapshotRetired(directory, result) {
+  if (process.platform !== 'linux' || !['passed', 'failed', 'interrupted'].includes(result.state)) return false;
+  const owner = receipt(directory, 'started.json') ?? receipt(directory, 'preparing.json');
+  const started = Date.parse(result.started);
+  const finished = Date.parse(result.finished);
+  if (!owner || !Number.isSafeInteger(owner.runnerPid) || owner.runnerPid <= 0
+    || !Number.isFinite(started) || !Number.isFinite(finished) || finished < started
+    || owner.started !== result.started || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(result.source?.commit ?? '')
+    || owner.source?.mode !== 'commit-snapshot'
+    || owner.source.commandCwd !== result.source.commandCwd
+    || owner.source.commit !== result.source.commit || owner.source.cwd !== result.source.cwd
+    || JSON.stringify(owner.command) !== JSON.stringify(result.command)
+    || (result.runnerPid !== undefined && result.runnerPid !== null && result.runnerPid !== owner.runnerPid)) return false;
+  // Older receipts omit start counters. Conservative even for a reused PID:
+  // don't reclaim while anything is live at the recorded runner PID.
+  return processStart(owner.runnerPid) === null;
+}
+
 function rendererProgress(directory) {
   try {
     const record = readRunJson(join(directory, 'renderer-progress.json'), 8192);

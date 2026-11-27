@@ -780,6 +780,44 @@ test('reclaim removes only disposable caches from a renderer snapshot on a previ
   assert.equal(readStatus(directory).state, 'stopped-without-result');
 });
 
+test('reclaim can opt into a finished legacy renderer snapshot but refuses live or mismatched receipts',
+  { skip: process.platform !== 'linux' }, t => {
+    const directory = mkdtempSync(join(tmpdir(), 'gk-reclaim-finished-'));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const source = join(directory, 'source');
+    mkdirSync(join(source, 'node_modules'), { recursive: true });
+    writeFileSync(join(source, 'source.ts'), 'snapshot');
+    writeFileSync(join(directory, 'output.log'), 'retained log');
+    const started = '2025-01-01T00:00:00.000Z';
+    const command = ['pnpm', 'nx', 'run', 'desktop:e2e'];
+    const snapshot = { mode: 'commit-snapshot', commandCwd: source, cwd: directory, commit: 'a'.repeat(40) };
+    const oldRunner = spawnSync(process.execPath, ['-e', '']).pid;
+    assert.ok(oldRunner && processStart(oldRunner) === null);
+    const owner = { runnerPid: oldRunner, started, command, source: snapshot };
+    const result = { started, finished: '2025-01-01T00:01:00.000Z', command, source: snapshot, exitCode: 1 };
+    const parked = join(directory, 'started.json');
+    const done = join(directory, 'result.json');
+    const reclaim = (...args) => spawnSync(process.execPath, [launcher, 'reclaim', directory, ...args], { encoding: 'utf8' });
+    writeFileSync(done, JSON.stringify(result));
+    writeFileSync(parked, JSON.stringify({ ...owner, runnerPid: process.pid }));
+    assert.notEqual(reclaim('--completed').status, 0);
+    writeFileSync(parked, JSON.stringify({ ...owner, source: { ...snapshot, commit: 'b'.repeat(40) } }));
+    assert.notEqual(reclaim('--completed').status, 0);
+    assert.ok(existsSync(join(source, 'node_modules')));
+    writeFileSync(parked, JSON.stringify(owner));
+    assert.notEqual(reclaim().status, 0);
+    const gitPointer = join(source, '.git');
+    writeFileSync(gitPointer, 'gitdir: /not-a-snapshot');
+    assert.notEqual(reclaim('--completed').status, 0);
+    rmSync(gitPointer);
+    const removed = reclaim('--completed');
+    assert.equal(removed.status, 0, removed.stderr);
+    assert.ok(!existsSync(join(source, 'node_modules')));
+    assert.equal(readFileSync(join(source, 'source.ts'), 'utf8'), 'snapshot');
+    assert.equal(readFileSync(join(directory, 'output.log'), 'utf8'), 'retained log');
+    assert.deepEqual(JSON.parse(readFileSync(done, 'utf8')), result);
+  });
+
 test('reclaim accepts renderer dependency setup after a reboot, not another snapshot type',
   { skip: !currentBootId() }, t => {
     const directory = mkdtempSync(join(tmpdir(), 'gk-reclaim-preparing-'));

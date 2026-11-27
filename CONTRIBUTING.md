@@ -71,6 +71,20 @@ It covers startup, occupied branches, working-tree scroll and discard,
 stash review, GitLab catalogue navigation, and update consent. It does
 not replace the full renderer suite or native/package qualification.
 
+New renderer snapshots discard their private dependency and build caches
+when the run ends. A finished historical snapshot may still hold its own
+`node_modules` or renderer caches. Reclaim those from one identified run
+without deleting its source, results, logs or traces:
+
+```bash
+node tools/run-validation.mjs status "$run_directory"
+node tools/run-validation.mjs reclaim "$run_directory" --completed
+```
+
+The second command refuses mismatched or missing receipts, a live recorded
+runner, or a source directory that is a Git checkout. Keep it separate
+from the opt-in cleanup for interrupted runs.
+
 Use a focused browser spec for renderer-only iteration before rebuilding a
 package. The Ubuntu 22.04 theme-cleanup build spent about six minutes
 compiling optimized Rust and under 20 seconds building the renderer.
