@@ -4412,3 +4412,15 @@ All 79 extracted-package scenarios passed: remote reviews (32), worktrees
 (29), sparse checkout (7), and GitLab fork catalogue (11). Each suite log
 identifies its separate native evidence directory. The package was not
 installed, and these results do not qualify Windows shortcut launch.
+
+### History and reference confirmation candidate
+
+The guarded Debian build from `44e3bb0` passed package verification with
+the source unchanged. The archive under
+`target/local-review/history-reference-44e3bb0/` has SHA-256
+`9d42637ceed2ec37d461eacf8ee96905097b4e8246afb73309a7d4419598b94b`.
+All 95 extracted-package scenarios passed: recovery (22), remote reviews
+(32), stash review (8), detached checkout (28), and merge/rebase review (5).
+The directory retains the checksum, source identity, renderer size report,
+packaging receipt, and logs pointing to the separate native reports. This
+does not qualify an installed upgrade or a hosted release.
