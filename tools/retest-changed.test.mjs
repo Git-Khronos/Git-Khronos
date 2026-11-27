@@ -56,6 +56,18 @@ test('selects an untracked renderer spec and a staged feature edit', t => {
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('native keyboard and context-branch changes share one packaged retest', t => {
+  const f = fixture(t);
+  f.write('candidate.deb');
+  f.commit();
+  f.write('tools/native_setup_keyboard_scenarios.py');
+  f.write('tools/native_context_branch_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-harness-test"/);
+  assert.equal(plan.match(/"desktop:native-setup-keyboard"/g)?.length, 1);
+  assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+});
+
 test('repository confirmation edits select the scoped profile and deduplicate a covered spec', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/repository-confirmations.component.html');

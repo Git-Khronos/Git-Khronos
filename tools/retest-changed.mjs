@@ -51,6 +51,8 @@ const packagedScenarios = new Map([
   ['tools/native_application_updates_scenarios.py', ['native-application-updates', 'native-application-update-release-link']],
   ['tools/native_desktop_launcher_fixture.py', ['native-git-documentation', 'native-application-update-release-link', 'native-file-manager-launch']],
   ['tools/native_file_manager_scenarios.py', ['native-file-manager-launch']],
+  ['tools/native_setup_keyboard_scenarios.py', ['native-setup-keyboard']],
+  ['tools/native_context_branch_scenarios.py', ['native-setup-keyboard']],
   ['tools/native_lfs_lock_ui_scenarios.py', ['native-lfs-lock-actions']],
   ['tools/native_feature_rebase_scenarios.py', ['native-feature-rebase', 'native-merge-rebase-review']],
   ['tools/native_gitlab_fork_scenarios.py', ['native-gitlab-fork-ui']],
