@@ -33,6 +33,9 @@ and partial (hunk or line) discard remain unsupported. If a bulk request
 is blocked, the chooser lists eligible paths returned by native preview,
 including eligible nested tracked files. It requires a fresh preview of
 the user's selection before any changes are made.
+The path filter only changes which eligible files are shown. The chooser
+reports any selected files outside the filter; those selections remain
+included in the fresh preview unless explicitly cleared.
 If every path in a whole-worktree request is blocked, the review lists the
 blockers and offers a fresh eligibility check. It cannot be confirmed and
 does not generate a recovery capture. A direct single-file refusal remains
