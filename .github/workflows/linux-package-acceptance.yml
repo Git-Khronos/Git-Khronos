@@ -71,8 +71,19 @@ jobs:
           if [[ "$UBUNTU_RELEASE" == 24.04 && "$ACCEPTANCE_LANE" == runtime && "${EXPECT_UPDATE_TRUST:-false}" == true ]]; then
             consent_prerequisites=(iproute2 util-linux)
           fi
-          sudo apt-get update
-          sudo apt-get install --yes "$webdriver_package" libwebkit2gtk-4.1-0 xvfb xauth libxtst6 git-lfs openssh-client openssh-server desktop-file-utils libglib2.0-bin openssl dbus libssl-dev pkg-config "${consent_prerequisites[@]}"
+          apt_sources=()
+          if [[ "$UBUNTU_RELEASE" != 22.04 ]]; then
+            # These prerequisites come from Ubuntu, not runner-vendor feeds.
+            # Jammy provisions its newer Git separately through jammy-git.
+            sources=/etc/apt/sources.list.d/ubuntu.sources
+            if [[ ! -s "$sources" ]]; then
+              echo "Missing Ubuntu archive configuration: $sources" >&2
+              exit 1
+            fi
+            apt_sources=(-o "Dir::Etc::sourcelist=$sources" -o Dir::Etc::sourceparts=-)
+          fi
+          sudo apt-get "${apt_sources[@]}" -o APT::Update::Error-Mode=any update
+          sudo apt-get "${apt_sources[@]}" install --yes "$webdriver_package" libwebkit2gtk-4.1-0 xvfb xauth libxtst6 git-lfs openssh-client openssh-server desktop-file-utils libglib2.0-bin openssl dbus libssl-dev pkg-config "${consent_prerequisites[@]}"
           sudo install -d -m 1777 /tmp/.X11-unix
           for tool in WebKitWebDriver dbus-daemon dbus-send dbus-run-session; do
             command -v "$tool"

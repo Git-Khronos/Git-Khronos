@@ -509,14 +509,22 @@ test('Linux runtime CI provisions authenticated X11, D-Bus and matching WebDrive
   const step = workflow.match(/      - name: Install runtime acceptance prerequisites\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(step, 'Missing runtime prerequisite step');
   assert.match(step, /UBUNTU_RELEASE: \$\{\{ matrix\.ubuntu \}\}/);
-  const script = step.split('        run: |\n')[1]?.replace(/^          /gm, '');
+  const script = step.split('        run: |\n')[1]?.replace(/^          /gm, '')
+    .replace('sources=/etc/apt/sources.list.d/ubuntu.sources', 'sources="$OFFICIAL_APT_SOURCES"');
   assert.ok(script, 'Missing runtime prerequisite commands');
   const root = await mkdtemp(join(tmpdir(), 'git-khronos-webdriver-ci-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const bin = join(root, 'bin');
   await mkdir(bin);
+  const sources = join(root, 'ubuntu.sources');
+  await writeFile(sources, 'Types: deb\n');
   const commands = {
-    sudo: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n',
+    sudo: `#!/bin/sh
+printf '%s\\n' "$*" >> "$COMMAND_LOG"
+case "$*" in
+  "apt-get "*' update') [ -z "$FAIL_APT_REFRESH" ] || exit 100 ;;
+esac
+`,
     'apt-get': '#!/bin/sh\nprintf "%s\\n" "$*" >> "$COMMAND_LOG"\n',
     install: '#!/bin/sh\nprintf "install %s\\n" "$*" >> "$COMMAND_LOG"\n',
     dpkg: '#!/bin/sh\n[ "$1" = --print-architecture ] && printf "amd64\\n"\n',
@@ -541,6 +549,7 @@ esac
   ]) {
     const log = join(root, release);
     const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, COMMAND_LOG: log,
+      OFFICIAL_APT_SOURCES: sources, FAIL_APT_REFRESH: '',
       UBUNTU_RELEASE: release, ACCEPTANCE_LANE: 'runtime', EXPECT_UPDATE_TRUST: 'false', RUNTIME_VERSION: '2.52.0-1' };
     const result = spawnSync('bash', ['-c', script], { encoding: 'utf8', env });
     assert.equal(result.status, 0, result.stderr);
@@ -548,6 +557,10 @@ esac
       assert.ok(result.stdout.includes(join(bin, tool)), `Missing discovery check for ${tool}`);
     }
     const calls = await readFile(log, 'utf8');
+    const scope = release === '22.04' ? '' : ` -o Dir::Etc::sourcelist=${sources} -o Dir::Etc::sourceparts=-`;
+    const [update, install] = calls.split('\n');
+    assert.equal(update, `apt-get${scope} -o APT::Update::Error-Mode=any update`);
+    assert.ok(install.startsWith(`apt-get${scope} install --yes `), install);
     assert.match(calls, new RegExp(`install --yes ${expected} libwebkit2gtk-4\\.1-0 `));
     assert.match(calls, / xvfb xauth /);
     assert.match(calls, / dbus\s/);
@@ -567,6 +580,18 @@ esac
       });
       assert.equal(review.status, 0, review.stderr);
       assert.doesNotMatch(await readFile(log, 'utf8'), / iproute2 util-linux/);
+      await writeFile(log, '');
+      const missing = spawnSync('bash', ['-c', script], {
+        encoding: 'utf8', env: { ...env, OFFICIAL_APT_SOURCES: join(root, 'missing.sources') },
+      });
+      assert.equal(missing.status, 1);
+      assert.match(missing.stderr, /Missing Ubuntu archive configuration/);
+      assert.equal(await readFile(log, 'utf8'), '');
+      const failedRefresh = spawnSync('bash', ['-c', script], {
+        encoding: 'utf8', env: { ...env, FAIL_APT_REFRESH: '1' },
+      });
+      assert.equal(failedRefresh.status, 100);
+      assert.equal(await readFile(log, 'utf8'), update + '\n');
     }
     await writeFile(log, '');
     const mismatch = spawnSync('bash', ['-c', script], {
