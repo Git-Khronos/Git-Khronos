@@ -591,9 +591,9 @@ test('signed publication requires installed reports and the exact archive from t
   assert.match(beforeStaging, /--reports-dir candidate-matrix[\s\S]*?id: qualified-bytes[\s\S]*?check-debian-update-evidence\.mjs --release-package[\s\S]*?candidate-evidence\/report\.json/);
   assert.ok(publish.includes('package-sha256: ${{ steps.qualified-bytes.outputs.sha256 }}'));
   assert.ok(publish.includes('GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256: ${{ needs.qualify.outputs.package-sha256 }}'));
-  assert.match(publish, /  verify:\n\s+name: [^\n]+\n\s+needs: qualify/);
-  const qualification = publish.split('  verify:\n')[0];
-  assert.doesNotMatch(qualification, /inputs\.signature|secrets\.|contents: write|environment: signed-release/);
+  assert.match(publish, /  verify:\n\s+name: [^\n]+\n\s+needs: \[qualify, sign\]/);
+  const qualification = publish.split('  sign:\n')[0];
+  assert.doesNotMatch(qualification, /secrets\.|contents: write|environment: signed-release/);
   assert.match(beforeStaging, /name: Recheck the transferred archive[\s\S]*?needs\.qualify\.outputs\.package-sha256[\s\S]*?sha256sum --check --strict/);
   const script = beforeStaging.match(/name: Recheck the transferred archive[^\n]*\n[\s\S]*?run: \|\n([\s\S]*?)(?=      - uses:)/)?.[1]
     .replace(/^          /gm, '');
@@ -610,6 +610,30 @@ test('signed publication requires installed reports and the exact archive from t
   assert.equal(check(), 0);
   await writeFile(file, 'replaced workspace fixture');
   assert.equal(check(), 1);
+});
+
+test('hosted release signing is opt-in, isolated, and cannot fall back after failure', async () => {
+  const workflow = (await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8')).replaceAll('\r\n', '\n');
+  const [qualify, afterQualification] = workflow.split('\n  sign:\n');
+  const [sign, verify] = afterQualification.split('\n  verify:\n');
+  assert.doesNotMatch(qualify + verify, /secrets\.TAURI_SIGNING_PRIVATE_KEY/);
+  assert.doesNotMatch(sign, /contents: write|gh release create/);
+  assert.match(sign, /needs: qualify[\s\S]*?environment: signed-release-signer/);
+  assert.match(sign, /Verify signer protection and that the release tag has not moved[\s\S]*?test "\$remote_commit" = "\$TAG_COMMIT"[\s\S]*?secrets\.TAURI_SIGNING_PRIVATE_KEY/);
+  assert.match(sign, /path: \$\{\{ runner\.temp \}\}\/package\.sig/);
+  assert.match(verify, /inputs\.hosted_signing && needs\.sign\.result == 'success'/);
+  assert.match(verify, /!inputs\.hosted_signing && needs\.sign\.result == 'skipped'/);
+  assert.match(verify, /artifact-ids: \$\{\{ needs\.sign\.outputs\.artifact-id \}\}/);
+  const gate = qualify.match(/name: Require exactly one signing mode[^\n]*\n[\s\S]*?run: \|\n([\s\S]*?)(?=      - name:)/)?.[1]
+    .replace(/^          /gm, '');
+  assert.ok(gate);
+  for (const [HOSTED, HOSTED_ENABLED, OFFLINE_SIGNATURE, expected] of [
+    ['true', 'true', '', 0], ['true', 'false', '', 1], ['true', 'true', 'fixture', 1],
+    ['false', 'false', 'fixture', 0], ['false', 'true', '', 1], ['false', 'true', ' ', 1],
+  ]) {
+    const result = spawnSync('bash', ['-c', gate], { env: { ...process.env, HOSTED, HOSTED_ENABLED, OFFLINE_SIGNATURE } });
+    assert.equal(result.status, expected);
+  }
 });
 
 test('Linux runtime CI provisions authenticated X11, D-Bus and matching WebDriver packages', async (t) => {

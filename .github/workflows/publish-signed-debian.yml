@@ -12,9 +12,14 @@ on:
         required: true
         type: string
       signature:
-        description: Public .deb.sig content, NEVER the private key or passphrase
-        required: true
+        description: Public .deb.sig for offline signing. Leave empty for hosted signing.
+        required: false
         type: string
+      hosted_signing:
+        description: Sign the qualified archive in the protected signer environment
+        required: true
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -40,6 +45,24 @@ jobs:
       package-sha256: ${{ steps.qualified-bytes.outputs.sha256 }}
       lanes: ${{ steps.qualified-bytes.outputs.lanes }}
     steps:
+      - name: Require exactly one signing mode and explicit hosted opt-in
+        env:
+          HOSTED: ${{ inputs.hosted_signing }}
+          OFFLINE_SIGNATURE: ${{ inputs.signature }}
+          HOSTED_ENABLED: ${{ vars.GIT_KHRONOS_HOSTED_SIGNING_ENABLED == 'true' }}
+        run: |
+          set -euo pipefail
+          if [[ "$HOSTED" == true ]]; then
+            [[ -z "$OFFLINE_SIGNATURE" && "$HOSTED_ENABLED" == true ]] || {
+              echo '::error::Hosted signing requires explicit repository opt-in and no supplied signature.'
+              exit 1
+            }
+          else
+            [[ "$OFFLINE_SIGNATURE" =~ [^[:space:]] ]] || {
+              echo '::error::Supply the public .deb.sig for offline signing.'
+              exit 1
+            }
+          fi
       - name: Require a reviewer-protected main-only release environment before publication
         if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'
         env:
@@ -153,9 +176,84 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  sign:
+    name: Sign the exact qualified installer without publication access
+    needs: qualify
+    if: inputs.hosted_signing && vars.GIT_KHRONOS_HOSTED_SIGNING_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: signed-release-signer
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.signature.outputs.artifact-id }}
+    steps:
+      - name: Verify signer protection and that the release tag has not moved
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_COMMIT: ${{ needs.qualify.outputs.tag-commit }}
+        run: |
+          set -euo pipefail
+          environment="repos/$GITHUB_REPOSITORY/environments/signed-release-signer"
+          gh api "$environment" | jq -se 'length == 1 and (.[0] |
+            .name == "signed-release-signer" and
+            .deployment_branch_policy.custom_branch_policies == true and
+            .deployment_branch_policy.protected_branches == false and
+            any(.protection_rules[]?; .type == "required_reviewers" and
+              (.reviewers | type == "array" and length > 0)))' >/dev/null
+          gh api "$environment/deployment-branch-policies?per_page=2" |
+            jq -se 'length == 1 and (.[0] | .total_count == 1 and
+              (.branch_policies | length == 1) and .branch_policies[0].name == "main" and
+              .branch_policies[0].type == "branch")' >/dev/null
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && "$TAG_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          tag_ref="refs/tags/$RELEASE_TAG"
+          refs="$(git ls-remote "https://github.com/$GITHUB_REPOSITORY.git" "$tag_ref" "$tag_ref^{}")"
+          remote_commit="$(awk -v tag="$tag_ref" '$2==tag { object=$1 } $2==tag "^{}" { peeled=$1 }
+            END { print (peeled ? peeled : object) }' <<< "$refs")"
+          test "$remote_commit" = "$TAG_COMMIT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 12.23.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+          name: debian-candidate-${{ needs.qualify.outputs.attempt }}
+          path: candidate
+      - name: Sign qualified bytes
+        env:
+          QUALIFIED_SHA256: ${{ needs.qualify.outputs.package-sha256 }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          package="candidate/Git-Khronos_${RELEASE_TAG#v}_amd64.deb"
+          bash tools/sign-qualified-debian.sh "$package" "$QUALIFIED_SHA256" "$RELEASE_TAG"
+          mv -- "$package.sig" "$RUNNER_TEMP/package.sig"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        id: signature
+        with:
+          name: release-signature-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/package.sig
+          if-no-files-found: error
+          retention-days: 7
+
   verify:
     name: Validate signed assets and rehearse the updater
-    needs: qualify
+    needs: [qualify, sign]
+    if: >-
+      !cancelled() && needs.qualify.result == 'success' &&
+      ((inputs.hosted_signing && needs.sign.result == 'success') ||
+       (!inputs.hosted_signing && needs.sign.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -170,19 +268,25 @@ jobs:
         env:
           PUBLIC_KEY: ${{ vars.GIT_KHRONOS_UPDATER_PUBLIC_KEY }}
           PACKAGE_SIGNATURE: ${{ inputs.signature }}
+          HOSTED: ${{ inputs.hosted_signing }}
         run: |
           set -euo pipefail
           if [[ ! "$PUBLIC_KEY" =~ [^[:space:]] ]]; then
             echo "::error::Set the GIT_KHRONOS_UPDATER_PUBLIC_KEY Actions variable to the production public key."
             exit 1
           fi
-          if [[ ! "$PACKAGE_SIGNATURE" =~ [^[:space:]] ]]; then
-            echo "::error::Supply the public .deb.sig content for the qualified package."
-            exit 1
-          fi
           umask 077
           printf '%s' "$PUBLIC_KEY" > "$RUNNER_TEMP/publisher.pub"
-          printf '%s' "$PACKAGE_SIGNATURE" > "$RUNNER_TEMP/package.sig"
+          if [[ "$HOSTED" != true ]]; then
+            [[ "$PACKAGE_SIGNATURE" =~ [^[:space:]] ]]
+            printf '%s' "$PACKAGE_SIGNATURE" > "$RUNNER_TEMP/package.sig"
+          fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4, supports artifact-ids
+        if: inputs.hosted_signing
+        with:
+          merge-multiple: true
+          artifact-ids: ${{ needs.sign.outputs.artifact-id }}
+          path: ${{ runner.temp }}
       - uses: actions/checkout@v4
         with:
           persist-credentials: false

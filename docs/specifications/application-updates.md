@@ -251,15 +251,24 @@ separate **Publish signed Debian release** workflow can publish only when
 publication is explicitly enabled and the protected environment approves it.
 The release tag and asset name must match the staged URL.
 
-### Optional release signing in CI (not implemented)
+### Optional release signing in CI
 
 Release signing may be automated without giving ordinary PR, dev, or
-qualification jobs access to the key. Keep offline signing available as
-the fallback. In hosted mode, use a protected release environment on
-`main` and require approval once per stable release, not once per build.
+qualification jobs access to the key. Offline signing remains the default.
+Hosted mode has two separate review checkpoints per stable release: one for
+signing and the existing one for publication. Neither applies to ordinary
+builds.
 Moving the key into an environment secret changes its custody: the approved
 runner can read it. A separate signing service is needed if the key must
-remain outside GitHub Actions.
+remain outside GitHub Actions. After the updated workflow lands on `main`,
+configure a `signed-release-signer` environment with required reviewers and
+exactly one allowed branch (`main`). Add `TAURI_SIGNING_PRIVATE_KEY` and, if
+needed, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as secrets **only** in that
+environment. Use `GIT_KHRONOS_HOSTED_SIGNING_ENABLED=true` to opt in and set
+`hosted_signing=true` when dispatching publication, leaving `signature` empty.
+Keep `GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED` unset for a signing-and-verification
+rehearsal with no publication. As with offline mode, the separate publication
+switch and `signed-release` approval are required before anything goes live.
 
 Before the signing job opens the signing secrets, a read-only job must
 verify the successful candidate attempt, the tag commit, the complete
