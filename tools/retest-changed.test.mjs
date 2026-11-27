@@ -112,6 +112,14 @@ test('editing the artifact isolation test runs the tooling checks without launch
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
 });
 
+test('editing the WSLg diagnostic selects the harness tests without launching the native app', t => {
+  const f = fixture(t);
+  f.write('tools/check-wslg-transport.py');
+  const plan = f.run();
+  assert.match(plan, /desktop:native-harness-test/);
+  assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+});
+
 test('staged selection does not include unstaged edits or untracked files', t => {
   const f = fixture(t);
   f.write('shared.ts');

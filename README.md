@@ -387,7 +387,10 @@ WSL and Windows graphics driver updates rather than changing the system-wide
 rendering configuration. See [Microsoft's WSLg graphics guidance](https://github.com/microsoft/wslg/blob/main/README.md#opengl-accelerated-rendering-in-wslg).
 
 If a launch creates a taskbar entry but no visible window, do not diagnose it
-from `libEGL`/DRI3 warnings alone. Check `/mnt/wslg/weston.log` for a shared-memory
+from `libEGL`/DRI3 warnings alone. From the checkout, run
+`python3 tools/check-wslg-transport.py` for a read-only check of the WSLg log.
+It does not restart WSL or test whether Windows displayed the window.
+To check manually, look in `/mnt/wslg/weston.log` for a shared-memory
 `Input/output error` followed by `use_gfxredir = 0`, and the Windows window title
 for `[WARN:COPY MODE]`. This combination matches an upstream
 [WSLg invisible-window report](https://github.com/microsoft/wslg/issues/1456)
