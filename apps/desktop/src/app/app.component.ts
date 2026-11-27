@@ -7134,13 +7134,11 @@ export class AppComponent implements OnInit, OnDestroy {
     setTimeout(() => { if (opener?.isConnected) opener.focus(); });
   }
 
-  protected closeWorktreeRegistrationLoader(): void {
-    const opener = this.worktreeRegistrationRequest()?.returnFocus;
+  protected closeWorktreeRegistrationLoader(request = this.worktreeRegistrationRequest()): void {
+    if (!request || this.worktreeRegistrationRequest() !== request) return;
+    const outgoing = document.activeElement?.closest('gk-worktree-registration-dialog, .confirmation-dialog') ?? null;
     this.worktreeRegistrationRequest.set(null);
-    setTimeout(() => {
-      if (opener?.isConnected && opener.getClientRects().length) opener.focus();
-      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
-    });
+    this.restoreScopedReviewFocus(request, outgoing, () => !!this.worktreeRegistrationRequest());
   }
 
   protected closeDeferredGitAction(lease = this.deferredGitActionLease()): void {
@@ -11470,8 +11468,16 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.ownsBranchWorkflow(request)) return;
     const outgoing = document.activeElement?.closest('gk-branch-workflow-dialog') ?? null;
     this.branchWorkflowRequest.set(null);
+    this.restoreScopedReviewFocus(request, outgoing, () => !!this.branchWorkflowRequest());
+  }
+
+  private restoreScopedReviewFocus(
+    request: { scope: string; returnFocus: HTMLElement | null },
+    outgoing: Element | null,
+    replacementOpen: () => boolean,
+  ): void {
     afterNextRender(() => {
-      if (this.branchWorkflowRequest() || this.git.activeRepositoryReadScope() !== request.scope
+      if (replacementOpen() || this.git.activeRepositoryReadScope() !== request.scope
         || !this.canRestoreFocusFrom(outgoing)) return;
       const usable = (element: HTMLElement | null) => element?.isConnected && element.getClientRects().length
         && !element.matches(':disabled, [aria-disabled="true"]') && !element.closest('[inert]');

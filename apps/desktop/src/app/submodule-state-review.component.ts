@@ -640,12 +640,7 @@ export class SubmoduleStateReviewComponent {
 
   close(): void {
     if (this.loading() || this.syncing()) return;
-    const opener = this.request()?.returnFocus;
     this.closed.emit();
-    setTimeout(() => {
-      if (opener?.isConnected && opener.getClientRects().length) opener.focus();
-      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
-    });
   }
 
   handleKey(event: KeyboardEvent): void {

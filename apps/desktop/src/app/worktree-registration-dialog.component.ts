@@ -209,12 +209,7 @@ export class WorktreeRegistrationDialogComponent {
 
   close(): void {
     if (this.loading() || this.pending() || this.git.busy()) return;
-    const opener = this.request()?.returnFocus;
     this.closed.emit();
-    setTimeout(() => {
-      if (opener?.isConnected && opener.getClientRects().length) opener.focus();
-      else document.querySelector<HTMLButtonElement>('button[aria-label="Open left panel"]')?.focus();
-    });
   }
 
   handleKey(event: KeyboardEvent): void {

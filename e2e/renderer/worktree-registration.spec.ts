@@ -127,6 +127,8 @@ test('pending registration scan blocks dismissal and repository switches prevent
   expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.filter((call: any) => call.command === 'worktree_registration_review'))).toHaveLength(1);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(page.getByRole('button', { name: 'Worktree actions for feature/partial-staging', exact: true })).not.toBeFocused();
 });
 
 test('registration review remains keyboard-contained in a compact window and contextual Git help returns to its opener', async ({ page }) => {

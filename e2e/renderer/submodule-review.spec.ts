@@ -394,6 +394,8 @@ test('pending submodule review blocks dismissal and a repository switch discards
   expect(await page.evaluate(() => (window as any).__submoduleReview.calls.filter((call: any) => call.command === 'submodule_state_review'))).toHaveLength(1);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(opener(page)).not.toBeFocused();
 });
 
 for (const change of ['workspace', 'path']) {

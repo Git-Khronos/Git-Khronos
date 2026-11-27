@@ -102,21 +102,21 @@
       </div>
     }
   }
-  @if (worktreeRegistrationRequest()) {
+  @if (worktreeRegistrationRequest(); as request) {
     @defer (on immediate) {
-      <gk-worktree-registration-dialog [request]="worktreeRegistrationRequest()" (closed)="worktreeRegistrationRequest.set(null)" />
+      <gk-worktree-registration-dialog [request]="request" (closed)="closeWorktreeRegistrationLoader(request)" />
     } @loading {
       <div class="confirmation-backdrop">
         <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading review" (keydown)="handleReferenceLoaderKey($event, 'worktree')">
           <p role="status">Loading review…</p>
-          <button #worktreeReviewLoaderClose type="button" (click)="closeWorktreeRegistrationLoader()">Cancel</button>
+          <button #worktreeReviewLoaderClose type="button" (click)="closeWorktreeRegistrationLoader(request)">Cancel</button>
         </section>
       </div>
     } @error {
       <div class="confirmation-backdrop">
         <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Review unavailable" (keydown)="handleReferenceLoaderKey($event, 'worktree')">
           <p role="alert">Review could not load. Restart to retry. No command was run by this panel.</p>
-          <button #worktreeReviewLoaderClose type="button" (click)="closeWorktreeRegistrationLoader()">Close</button>
+          <button #worktreeReviewLoaderClose type="button" (click)="closeWorktreeRegistrationLoader(request)">Close</button>
         </section>
       </div>
     }
