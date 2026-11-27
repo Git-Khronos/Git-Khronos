@@ -2,6 +2,9 @@ packages:
   - apps/*
   - libs/*
 
+# Retain a supply-chain cooling-off period without delaying releases by a full day.
+minimumReleaseAge: 720
+
 # Same-major security fixes for exact upstream pins in Nx/Angular tooling.
 # Remove each override when its parent adopts a patched dependency version.
 overrides:
