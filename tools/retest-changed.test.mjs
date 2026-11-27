@@ -102,6 +102,18 @@ test('native remote review changes select the focused packaged Git workflow', t 
   assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
 });
 
+test('repository navigation changes retest every packaged entry path without full acceptance', t => {
+  const f = fixture(t);
+  f.write('candidate.deb');
+  f.commit();
+  f.write('tools/native_repository_navigation.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  for (const suite of ['repository-open-scope', 'repository-creation-scope', 'gitlab', 'gitlab-fork-ui']) {
+    assert.ok(plan.includes(`"desktop:native-${suite}"`), suite);
+  }
+  assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+});
+
 test('changes to native diff scenarios retest partial staging and wrapped rendering only', t => {
   const f = fixture(t);
   f.write('candidate.deb');

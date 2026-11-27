@@ -77,6 +77,16 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite gitlab-fork-ui --headless" }
     },
+    "native-repository-open-scope": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite repository-open-scope --headless" }
+    },
+    "native-repository-creation-scope": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite repository-creation-scope --headless" }
+    },
     "native-git-documentation": {
       "executor": "nx:run-commands",
       "cache": false,

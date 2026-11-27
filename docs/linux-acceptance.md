@@ -3602,6 +3602,9 @@ submodule, and discard scenario files, use
 These are representative focused suites, not a transitive dependency analysis.
 The GitLab catalogue suite needs OpenSSH server or `GIT_KHRONOS_SSHD`;
 fork-only edits use the fork UI suite without SSH.
+Changes to the shared restored-repository navigation helper select both
+repository open/create scope checks and both GitLab suites; its callers
+enter through the same toolbar on startup and restart.
 Unmapped native scenario or shared harness edits still need manual suite selection.
 Shared or unmapped files fall back to broader validation; use
 `--run --allow-full` after reviewing that plan. This is a local aid, not a
