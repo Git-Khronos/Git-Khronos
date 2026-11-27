@@ -78,6 +78,16 @@ test('reference dialog edits select both action and deferred ownership scenarios
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('workflow dialog edits select the Gitflow review suite without duplicate cases', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/branch-workflow-dialog.component.ts');
+  f.write('e2e/renderer/branch-workflows.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:branch-workflows/);
+  assert.ok(!plan.includes('e2e/renderer/branch-workflows[.]spec[.]ts$'));
+  assert.doesNotMatch(plan, /desktop:check/);
+});
+
 test('changing preview startup selects every direct consumer of that fixture', t => {
   const f = fixture(t);
   f.write('e2e/renderer/preview-repository-ready.ts');

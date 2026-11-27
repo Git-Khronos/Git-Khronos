@@ -4358,6 +4358,11 @@ For changes to the commit history review dialog, use
 and recovery, cherry-pick, revert, detached checkout, rebase split,
 keyboard focus, and stale reviews. Shared application-shell changes still
 fall back to broader checks in the retest planner.
+For edits to the branch workflow dialog, use
+`pnpm nx run desktop:e2e:branch-workflows`. This profile covers Gitflow setup,
+feature/release/hotfix start and finish reviews, the separate feature rebase,
+and recovery after conflicts or signing refusals. It does not run Git or
+replace packaged acceptance.
 
 The owned fixture starts in cone mode with a sparse index, an excluded tracked
 file, and an unstaged edit. Preview and Cancel must leave that state intact and

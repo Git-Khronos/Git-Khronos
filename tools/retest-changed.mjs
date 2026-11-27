@@ -14,6 +14,7 @@ const profiles = [
   [/^repository-confirmations\.component\.(?:ts|html|scss)$/, 'repository-confirmations'],
   [/^history-review-dialog\.component\.(?:ts|html|scss)$/, 'history-confirmations'],
   [/^reference-action-dialog\.component\.(?:ts|html|scss)$/, 'reference-actions'],
+  [/^branch-workflow-dialog\.component\.(?:ts|html|scss)$/, 'branch-workflows'],
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
   [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'editor'],
   [/^working-tree-summary\.component\.(?:ts|html|scss)$/, 'recaps'],
