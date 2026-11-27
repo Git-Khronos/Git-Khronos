@@ -87,10 +87,17 @@ class PruneTest(unittest.TestCase):
                 self.assertEqual(prune(root, 7, False), 0)
             self.assertIn("Would remove", stdout.getvalue())
             self.assertTrue(cache.exists())
-            with lock.open("rb") as handle, contextlib.redirect_stdout(io.StringIO()):
+            with lock.open("rb") as handle, contextlib.redirect_stdout(io.StringIO()) as log:
                 fcntl.flock(handle, fcntl.LOCK_EX)
-                self.assertEqual(prune(root, 7, True), 0)
+                self.assertEqual(prune(root, 7, True, explain=True), 0)
                 self.assertTrue(cache.exists())
+            self.assertIn("package build lock is held", log.getvalue())
+            os.utime(run, None)
+            with contextlib.redirect_stdout(io.StringIO()) as log:
+                self.assertEqual(prune(root, 7, True, explain=True), 0)
+            self.assertIn("was updated within 7 day(s)", log.getvalue())
+            self.assertTrue(cache.exists())
+            os.utime(run, (old, old))
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(prune(root, 7, True), 0)
             self.assertFalse(cache.exists())
@@ -119,9 +126,11 @@ class PruneTest(unittest.TestCase):
             for checksum, retain in (("0" * 64, True), (hashlib.sha256(archive_bytes).hexdigest(), False)):
                 manifest.write_text(f"{checksum}  {artifact.name}\n")
                 os.utime(manifest, (old, old))
-                with contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(prune(root, 7, True), 0)
+                with contextlib.redirect_stdout(io.StringIO()) as log:
+                    self.assertEqual(prune(root, 7, True, explain=True), 0)
                 self.assertEqual(cache.exists(), retain)
+                if retain:
+                    self.assertIn("no cache tag or retained Debian archive with matching checksum", log.getvalue())
                 self.assertEqual(artifact.read_bytes(), archive_bytes)
 
     def test_old_jammy_build_receipt_can_verify_a_retained_archive_without_sha256sums(self):

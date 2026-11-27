@@ -3508,6 +3508,7 @@ from the known archived Jammy layout, stop qualification jobs and run:
 task clean:archives                        # Preview eligible caches (seven days old)
 task clean:archives -- --apply             # Remove only the listed regenerable caches
 task clean:archives -- --older-days 1      # Preview a shorter retention window
+task clean:archives -- --explain          # Show why known runs are retained
 ```
 
 The cleanup skips a held package build lock, symlinked paths, and paths with

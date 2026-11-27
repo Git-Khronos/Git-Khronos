@@ -98,7 +98,7 @@ def verified_debian_archive(work, cutoff):
         return False
 
 
-def prune(root, days, apply):
+def prune(root, days, apply, explain=False):
     cutoff = time.time() - days * 86400
     mounts = [Path(re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), line.split()[4]))
               for line in Path("/proc/self/mountinfo").read_text().splitlines()]
@@ -111,6 +111,11 @@ def prune(root, days, apply):
         runs.extend(builders.iterdir())
     failed = False
     count = 0
+
+    def retained(path, reason):
+        if explain:
+            print(f"Retained {path.relative_to(root)}: {reason}")
+
     for run in sorted(runs):
         work = run / "work"
         source = work / "source"
@@ -124,23 +129,30 @@ def prune(root, days, apply):
             continue
         try:
             if not stat.S_ISREG(lock.lstat().st_mode):
+                retained(run, "package build lock is not a regular file")
                 continue
             fd = os.open(lock, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         except FileNotFoundError:
+            retained(run, "no package build lock; no verified cleanup layout")
             continue
         try:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
+                retained(run, "package build lock is held")
                 continue
             if max(run.stat().st_mtime, lock.stat().st_mtime) > cutoff:
+                retained(run, f"run directory or build lock was updated within {days} day(s)")
                 continue
             archive_verified = None
             marked_cache = (target / "CACHEDIR.TAG").is_file()
             source_old = source.stat().st_mtime <= cutoff
+            if marked_cache and not source_old:
+                retained(run, f"source was updated within {days} day(s); standard caches are excluded")
             if not marked_cache:
                 archive_verified = verified_debian_archive(work, cutoff)
                 if not archive_verified:
+                    retained(run, "no cache tag or retained Debian archive with matching checksum and age")
                     continue
             for name in (*CACHE_PATHS, *LEGACY_CACHE_PATHS):
                 path = work / name
@@ -174,7 +186,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="remove caches instead of listing them")
     parser.add_argument("--older-days", type=int, default=7)
+    parser.add_argument("--explain", action="store_true", help="explain why known archive runs are retained")
     args = parser.parse_args()
     if args.older_days < 1:
         parser.error("--older-days must be at least 1")
-    raise SystemExit(prune(Path(__file__).resolve().parent.parent, args.older_days, args.apply))
+    raise SystemExit(prune(Path(__file__).resolve().parent.parent, args.older_days, args.apply, args.explain))
