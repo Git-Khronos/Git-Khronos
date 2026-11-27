@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, openSync, closeSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, openSync, closeSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { delimiter, resolve, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -24,6 +24,25 @@ function reclaimSnapshotCaches(source, output) {
     }
   }
   return failures;
+}
+
+function discardRendererWorkerScratch(directory) {
+  const artifacts = join(directory, 'renderer-artifacts');
+  try {
+    if (realpathSync(artifacts) !== artifacts) throw new Error('renderer-artifacts is not a local directory');
+  } catch (error) {
+    if (error.code === 'ENOENT') return 0;
+    throw error;
+  }
+  let count = 0;
+  for (const entry of readdirSync(artifacts, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^\.playwright-artifacts-\d+$/.test(entry.name)) continue;
+    const scratch = join(artifacts, entry.name);
+    if (realpathSync(scratch) !== scratch) continue;
+    rmSync(scratch, { recursive: true, force: true });
+    count++;
+  }
+  return count;
 }
 
 const rendererTargets = new Set(['e2e', 'e2e-quick', 'e2e-webkit']);
@@ -51,13 +70,15 @@ const usage = `Usage:
   node tools/run-validation.mjs run   DIRECTORY [--snapshot REF | --guard-source] NX_COMMAND [NX_ARGS...]
   node tools/run-validation.mjs status DIRECTORY
   node tools/run-validation.mjs wait   DIRECTORY
-  node tools/run-validation.mjs reclaim DIRECTORY
+  node tools/run-validation.mjs reclaim DIRECTORY [--discard-worker-scratch]
 
 Use start for a detached run, or run to wait in the foreground.
 Without --snapshot the run uses the current checkout; with it, it uses the named local commit.
 --guard-source refuses a passing result if Git-visible checkout files differ at the end.
 Use wait to observe an existing run and return its exit code, without taking ownership.
 Use reclaim to remove disposable caches from an interrupted renderer snapshot after a reboot.
+--discard-worker-scratch also removes raw Playwright worker recordings, including unfinished-test diagnostics.
+It keeps exported failure screenshots and trace archives, progress, and logs.
 
 Example:
   node tools/run-validation.mjs start target/validation-runs/local-check run desktop:e2e -- --workers=2
@@ -74,7 +95,10 @@ if (!runDirectory || !['start', 'run', 'status', 'wait', 'reclaim'].includes(mod
   throw new Error('Expected start|run DIRECTORY [--snapshot REF] [Nx arguments], or status|wait|reclaim DIRECTORY');
 }
 if (mode === 'reclaim') {
-  if (useSnapshot || guardSource || args.length) throw new Error('reclaim accepts only a run directory');
+  const discardScratch = args.length === 1 && args[0] === '--discard-worker-scratch';
+  if (useSnapshot || guardSource || (args.length && !discardScratch)) {
+    throw new Error('reclaim accepts a run directory and optional --discard-worker-scratch');
+  }
   const directory = resolve(runDirectory);
   const source = join(directory, 'source');
   const status = validationStatus(directory);
@@ -91,8 +115,14 @@ if (mode === 'reclaim') {
     throw new Error('Refusing to reclaim: expected an owned renderer snapshot interrupted on a previous boot.');
   }
   const failures = reclaimSnapshotCaches(source, process.stderr.fd);
-  if (!failures) console.log('Reclaimed disposable renderer snapshot caches. Sources, logs, and evidence are untouched.');
-  process.exit(failures ? 1 : 0);
+  if (failures) process.exit(1);
+  if (discardScratch) {
+    const count = discardRendererWorkerScratch(directory);
+    console.log(`Reclaimed disposable renderer snapshot caches and ${count} raw Playwright worker directories. Exported reports and traces, sources, progress and logs are untouched.`);
+  } else {
+    console.log('Reclaimed disposable renderer snapshot caches. Sources, logs, and evidence are untouched.');
+  }
+  process.exit(0);
 }
 if (mode === 'status' || mode === 'wait') {
   if (useSnapshot || guardSource || args.length) throw new Error(`${mode} accepts only a run directory`);

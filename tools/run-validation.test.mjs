@@ -701,6 +701,14 @@ test('reclaim removes only disposable caches from a renderer snapshot on a previ
   mkdirSync(join(outside, 'cache'), { recursive: true });
   mkdirSync(join(source, 'node_modules'), { recursive: true });
   symlinkSync(outside, join(source, '.nx'), 'dir');
+  const artifacts = join(directory, 'renderer-artifacts');
+  const workerScratch = join(artifacts, '.playwright-artifacts-0');
+  const exported = join(artifacts, 'failed-test');
+  mkdirSync(workerScratch, { recursive: true });
+  mkdirSync(exported);
+  writeFileSync(join(workerScratch, 'incomplete.trace'), 'raw worker data');
+  writeFileSync(join(exported, 'trace.zip'), 'exported evidence');
+  symlinkSync(outside, join(artifacts, '.playwright-artifacts-1'), 'dir');
   const committed = join(source, 'package.json');
   const log = join(directory, 'output.log');
   writeFileSync(committed, 'committed input');
@@ -711,10 +719,12 @@ test('reclaim removes only disposable caches from a renderer snapshot on a previ
     rendererPort: '4202', source: { mode: 'commit-snapshot', commandCwd: source },
   };
   const receipt = join(directory, 'started.json');
-  const reclaim = () => spawnSync(process.execPath, [launcher, 'reclaim', directory], { encoding: 'utf8' });
+  const reclaim = (...args) => spawnSync(process.execPath, [launcher, 'reclaim', directory, ...args], { encoding: 'utf8' });
   writeFileSync(receipt, JSON.stringify(owner));
   assert.notEqual(reclaim().status, 0);
+  assert.notEqual(reclaim('--discard-worker-scratch').status, 0);
   assert.ok(existsSync(join(source, 'node_modules')));
+  assert.ok(existsSync(workerScratch));
   const old = owner.runnerBootId.replace(/^./, c => c === '0' ? '1' : '0');
   writeFileSync(receipt, JSON.stringify({ ...owner, runnerBootId: old }));
   const result = reclaim();
@@ -722,6 +732,15 @@ test('reclaim removes only disposable caches from a renderer snapshot on a previ
   assert.equal(existsSync(join(source, 'node_modules')), false);
   assert.ok(existsSync(join(outside, 'cache')));
   assert.equal(readFileSync(committed, 'utf8'), 'committed input');
+  assert.equal(readFileSync(log, 'utf8'), 'interrupted evidence');
+  assert.ok(existsSync(workerScratch), 'scratch is preserved by default');
+  const pruned = reclaim('--discard-worker-scratch');
+  assert.equal(pruned.status, 0, pruned.stderr);
+  assert.match(pruned.stdout, /1 raw Playwright worker directories/);
+  assert.ok(!existsSync(workerScratch));
+  assert.ok(existsSync(join(artifacts, '.playwright-artifacts-1')));
+  assert.ok(existsSync(join(outside, 'cache')));
+  assert.equal(readFileSync(join(exported, 'trace.zip'), 'utf8'), 'exported evidence');
   assert.equal(readFileSync(log, 'utf8'), 'interrupted evidence');
   assert.equal(readStatus(directory).state, 'stopped-without-result');
 });

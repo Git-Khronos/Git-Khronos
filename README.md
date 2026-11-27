@@ -1512,7 +1512,11 @@ disk quota or a guarantee that a full run will fit. If space is tight, use a
 run directory on a filesystem with more headroom or run `task clean:archives`
 to preview reclaimable caches from older qualification runs. Keep the
 package, checksum, source commit, and test receipts for any build you plan
-to release.
+to release. After a reboot interrupts a named renderer snapshot, `node
+tools/run-validation.mjs reclaim DIRECTORY` reclaims its build caches. Add
+`--discard-worker-scratch` only if you no longer need the raw recordings of
+unfinished tests. Exported failure screenshots and trace archives, reports,
+and logs are kept.
 
 CI distributes the browser tests in round-robin order across four shards,
 so the exhaustive graph-column cases do not all land in one job.
