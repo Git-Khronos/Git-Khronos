@@ -307,6 +307,22 @@ package. The inventory checks are local integrity and format checks, not
 signed provenance. The verifier does not create a tag or upload anything. The manual workflow
 below runs the same verifier on the assets it will hand off for publication.
 
+### Key custody and contributors
+
+Contributors can build, test, and submit changes without any production key.
+A local build without a publisher key can open the official releases page but
+cannot install an unsigned update. Use a separate fixture key to test signing
+and verification locally. A fork that distributes its own updates needs its
+own publisher key and release configuration; official installations do not
+trust that key.
+
+Keep the production private key and passphrase in offline publisher custody.
+Contributors can prepare a candidate and its evidence without signing it. The
+publisher signs the exact qualified package and hands off its public
+`.deb.sig`; the publication workflow verifies the signature and does not
+receive the private key. Official builds embed only the public key from the
+repository Actions variable.
+
 ### Publishing the signed GitHub release
 
 The release and publication workflows are separate, manual runs on the
