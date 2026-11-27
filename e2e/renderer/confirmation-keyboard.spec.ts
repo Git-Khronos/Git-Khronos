@@ -71,6 +71,26 @@ test.beforeEach(async ({ page }) => {
   await openPreviewRepository(page, page.locator('#unstaged-files-list'));
 });
 
+test('publish review does not reset focus after the submit button receives it', async ({ page }) => {
+  await page.evaluate(() => {
+    (window as any).__publishFocusAfterOpen = new Promise<string>(resolve => {
+      const observer = new MutationObserver(() => {
+        const submit = document.querySelector<HTMLButtonElement>('gk-repository-confirmations form[aria-modal=true] .confirm-action');
+        if (!submit || submit.disabled) return;
+        observer.disconnect();
+        submit.focus();
+        // Old focus initialization queued another timer before this callback.
+        // Let that task run without sending a key or moving focus again.
+        setTimeout(() => resolve(document.activeElement?.textContent?.trim() ?? ''), 0);
+      });
+      observer.observe(document.body, { subtree: true, childList: true, attributes: true });
+    });
+  });
+  const modal = await openReview(page, 'publish');
+  expect(await page.evaluate(() => (window as any).__publishFocusAfterOpen)).toBe('Publish Branch');
+  await expect(modal.getByRole('button', { name: 'Publish Branch', exact: true })).toBeFocused();
+});
+
 for (const review of reviews) {
   test(`${review} keeps background commands out of its confirmation`, async ({ page }) => {
     const modal = await openReview(page, review);
