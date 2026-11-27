@@ -107,6 +107,40 @@ def worktree_lock_menu(driver, fixtures, report):
     report['scenarios'].append('native-worktree-lock-menu-reviews-reason-and-blocks-removal')
 
 
+def worktree_prune_defaults_to_cancel(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('worktree-registration-cancel', commits=2)
+    linked = fixtures.root / 'owned-prunable-checkout'
+    moved = fixtures.root / 'owned-moved-checkout'
+    active = fixtures.root / 'owned-active-checkout'
+    fixtures.git(repository, 'worktree', 'add', '-b', 'owned-prunable-branch', str(linked))
+    fixtures.git(repository, 'worktree', 'add', '-b', 'owned-active-branch', str(active))
+    linked.rename(moved)
+    open_ui(driver, repository)
+    toggle = '#reference-section-worktrees .heading-toggle'
+    if driver.script("return document.querySelector(arguments[0])?.getAttribute('aria-expanded') === 'false'", toggle):
+        driver.click_visible(toggle)
+    opener = '[aria-label="Worktree actions for owned-active-branch"]'
+    driver.click_visible(opener)
+    driver.click_navigation('button[role="menuitem"]', 'Review registrations and prune report…', wait_for_ready=True)
+    modal = 'gk-worktree-registration-dialog [role="dialog"]'
+    button = f'{modal} [data-prune-open]'
+    driver.wait(f"return !!document.querySelector({json.dumps(button)})")
+    before = checkout_footprint(fixtures, repository)
+    registration = fixtures.git(repository, 'worktree', 'list', '--porcelain')
+    driver.click_visible(button, 'Remove with recovery…')
+    driver.wait("""return document.activeElement?.matches('gk-worktree-registration-dialog [data-prune-confirm] button')
+      && document.activeElement.textContent.trim() === 'Cancel';""", timeout=5)
+    driver.key('\ue007')  # Enter cancels the review, not the actual registration.
+    driver.wait("""return !document.querySelector('gk-worktree-registration-dialog [data-prune-confirm]')
+      && document.activeElement?.matches('gk-worktree-registration-dialog [data-prune-open]');""", timeout=5)
+    assert fixtures.git(repository, 'worktree', 'list', '--porcelain') == registration
+    assert checkout_footprint(fixtures, repository) == before
+    assert (moved / 'fixture.txt').is_file()
+    report['scenarios'].append('native-worktree-registration-removal-defaults-to-cancel-and-preserves-registration')
+
+
 def occupied_branch_navigation(driver, fixtures, report):
     from native_acceptance import open_ui
 

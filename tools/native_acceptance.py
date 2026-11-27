@@ -2073,6 +2073,10 @@ def main():
                 occupied_branch_navigation(driver, fixtures, report)
                 from native_worktree_scenarios import worktree_lock_menu
                 worktree_lock_menu(driver, fixtures, report)
+                if args.suite == "worktrees":
+                    progress.enter_phase("worktree-registration-cancel")
+                    from native_worktree_scenarios import worktree_prune_defaults_to_cancel
+                    worktree_prune_defaults_to_cancel(driver, fixtures, report)
             if args.suite in ("full", "environment", "setup-keyboard"):
                 progress.enter_phase("setup-keyboard")
                 from native_setup_keyboard_scenarios import setup_keyboard_isolation
