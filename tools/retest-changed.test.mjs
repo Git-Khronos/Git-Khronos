@@ -68,12 +68,23 @@ test('history review edits keep reset, replay and checkout coverage without runn
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('reference dialog edits select both action and deferred ownership scenarios', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/reference-action-dialog.component.ts');
+  f.write('e2e/renderer/reference-action-scope.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:reference-actions/);
+  assert.ok(!plan.includes('e2e/renderer/reference-action-scope[.]spec[.]ts$'));
+  assert.doesNotMatch(plan, /desktop:check/);
+});
+
 test('changing preview startup selects every direct consumer of that fixture', t => {
   const f = fixture(t);
   f.write('e2e/renderer/preview-repository-ready.ts');
   const plan = f.run();
   for (const name of ['confirmation-keyboard', 'history-review-loading', 'mainline-replay', 'operation-recovery',
-    'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-review-scope']) {
+    'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-review-scope',
+    'deferred-action-scope', 'reference-action-scope', 'reference-actions']) {
     assert.ok(plan.includes(`e2e/renderer/${name}[.]spec[.]ts$`), name);
   }
   assert.doesNotMatch(plan, /desktop:check/);

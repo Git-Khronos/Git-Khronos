@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 const actions = ['push-tag', 'delete-tag', 'delete-remote-tag', 'delete-remote-branch', 'rename-tag', 'rename-remote-branch'];
 const writes = ['transport_reference', 'manage_reference', 'rename_reference'];
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible({ timeout: 15_000 });
+  await openPreviewRepository(page, page.locator('#unstaged-files-list'));
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;

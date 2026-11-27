@@ -227,6 +227,7 @@
         "editor": { "command": "playwright test 'e2e/renderer/(working-file-editor|editor-draft-recovery|file-tools)[.]spec[.]ts$'" },
         "discard": { "command": "playwright test 'e2e/renderer/(discard-recovery|working-tree-lifecycle)[.]spec[.]ts$'" },
         "branches": { "command": "playwright test 'e2e/renderer/(branch-|context-branch-|previous-branch|reference-actions)'" },
+        "reference-actions": { "command": "playwright test 'e2e/renderer/(reference-actions|reference-action-scope|deferred-action-scope)[.]spec[.]ts$'" },
         "stash": { "command": "playwright test 'e2e/renderer/(stash-|inline-stash-)'"},
         "transport": { "command": "playwright test 'e2e/renderer/(authentication[.-]|fetch-|pull-strategies|push-sync|remote-cleanup-review-scope)'" },
         "gitlab": { "command": "playwright test 'e2e/renderer/gitlab-'"},

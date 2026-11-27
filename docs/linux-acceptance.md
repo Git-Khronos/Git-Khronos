@@ -3346,6 +3346,7 @@ For a feature that spans multiple specs, use
 | `editor` | File editing, draft recovery and external file tools without the other working-tree cases |
 | `discard` | Discard review, recovery, and whole-file, hunk, and line action lifecycle |
 | `branches` | Branch navigation, scoped reference actions, branch workflows |
+| `reference-actions` | Tag and remote-branch actions, stale reviews, and deferred focus |
 | `sparse-checkout` | Sparse toolbar, exact directory and index review, disable review, and paths left outside the selection |
 | `stash` | Stash creation, review, restoration and deletion |
 | `transport` | Fetch, pull, push, remote cleanup and authentication UI |

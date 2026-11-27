@@ -1,11 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
+import { openPreviewRepository } from './preview-repository-ready';
 
 const kinds = ['fetch', 'move', 'repair'];
 const writes = ['fetch_branches', 'move_worktree', 'repair_worktree'];
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-  await expect(page.locator('#unstaged-files-list')).toBeVisible();
+  await openPreviewRepository(page, page.locator('#unstaged-files-list'));
   await page.evaluate(() => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;

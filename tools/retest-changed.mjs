@@ -13,6 +13,7 @@ const profiles = [
   [/^submodule-state-review\.component\.(?:ts|html|scss)$/, 'submodules'],
   [/^repository-confirmations\.component\.(?:ts|html|scss)$/, 'repository-confirmations'],
   [/^history-review-dialog\.component\.(?:ts|html|scss)$/, 'history-confirmations'],
+  [/^reference-action-dialog\.component\.(?:ts|html|scss)$/, 'reference-actions'],
   [/^gitlab-(projects|fork-create|fork-records)\.component\./, 'gitlab'],
   [/^working-file-editor\.component\.(?:ts|html|scss)$/, 'editor'],
   [/^working-tree-summary\.component\.(?:ts|html|scss)$/, 'recaps'],
@@ -33,6 +34,7 @@ const rendererFixtureSpecs = new Map([
   ['e2e/renderer/preview-repository-ready.ts', [
     'confirmation-keyboard', 'history-review-loading', 'mainline-replay', 'operation-recovery',
     'ordered-revert', 'rebase-split', 'repository-confirmation-scope', 'stash-review-scope',
+    'deferred-action-scope', 'reference-action-scope', 'reference-actions',
   ]],
   ['e2e/renderer/graph-layout-test-helpers.ts', ['graph-columns', 'graph-layout-readiness']],
   ['e2e/renderer/lazy-chunk-routing.ts', [
