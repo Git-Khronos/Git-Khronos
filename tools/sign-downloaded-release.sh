@@ -29,5 +29,7 @@ key="${HOME:?Set HOME to the publisher home directory}/.config/git-khronos-signi
 actual=$(node tools/check-debian-update-evidence.mjs --release-package "$package" \
   "$directory/candidate/build-receipt.json" "$directory/candidate-evidence/report.json" "$key.pub")
 [[ "$actual" == "$digest" ]] || { echo 'Qualification evidence and saved checksum disagree.' >&2; exit 1; }
+node tools/report-installed-acceptance.mjs --verify-release "$directory/candidate/build-receipt.json" \
+  "$key.pub" "$package" --reports-dir "$directory/candidate-matrix" >/dev/null
 bash tools/sign-qualified-debian.sh --prompt "$key" "$package" "$digest" "$tag"
 printf 'Public signature: %s\n' "$package.sig"

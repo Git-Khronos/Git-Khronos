@@ -550,6 +550,8 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
   await mkdir(tools);
   const wrapper = join(repositoryRoot, 'tools/sign-downloaded-release.sh');
   await writeFile(join(tools, 'check-debian-update-evidence.mjs'), 'console.log(process.env.OWNED_QUALIFIED_DIGEST);');
+  await writeFile(join(tools, 'report-installed-acceptance.mjs'),
+    'if (process.argv.at(-2) !== "--reports-dir" || process.env.OWNED_MATRIX === "missing") process.exit(8);');
   await writeFile(join(tools, 'sign-qualified-debian.sh'), '#!/bin/bash\nprintf "signer: %s\\n" "$@"\n');
   const digest = 'a'.repeat(64);
   const candidate = 'Git-Khronos_0.1.6_amd64.deb';
@@ -559,8 +561,8 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
     await writeFile(join(directory, 'qualified-package.sha256'), `${digest}  ${candidate}\n`);
     return directory;
   };
-  const run = (args = [], evidenceDigest = digest) => spawnSync('bash', [wrapper, ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, HOME: root, OWNED_QUALIFIED_DIGEST: evidenceDigest },
+  const run = (args = [], evidenceDigest = digest, matrix = 'complete') => spawnSync('bash', [wrapper, ...args], {
+    cwd: root, encoding: 'utf8', env: { ...process.env, HOME: root, OWNED_QUALIFIED_DIGEST: evidenceDigest, OWNED_MATRIX: matrix },
   });
   assert.match(run().stderr, /Expected exactly one/);
   const selected = await create('run-1');
@@ -575,6 +577,9 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
   assert.equal(mismatch.status, 1);
   assert.match(mismatch.stderr, /evidence and saved checksum disagree/);
   assert.equal(mismatch.stdout, '');
+  const missingMatrix = run([selected], digest, 'missing');
+  assert.equal(missingMatrix.status, 8);
+  assert.equal(missingMatrix.stdout, '');
   await writeFile(join(selected, 'qualified-package.sha256'), `${digest}  ../${candidate}\n`);
   assert.match(run([selected]).stderr, /Invalid qualified package checksum record/);
 });
