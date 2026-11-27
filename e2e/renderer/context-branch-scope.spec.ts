@@ -52,14 +52,13 @@ async function openIntegrationMenu(page: Page) {
   return action;
 }
 
-for (const side of ['source', 'head', 'checkout', 'path']) {
+for (const side of ['source', 'head', 'checkout']) {
   test(`context menu integration refuses a changed ${side} before dispatch`, async ({ page }) => {
     const action = await openIntegrationMenu(page);
     await action.evaluate((button, side) => {
       const s = (window as any).__contextBranchScope;
       s.git.repositories.update((items: any[]) => items.map(item => {
         if (item.id !== s.repository.id) return item;
-        if (side === 'path') return { ...item, path: '/owned/changed-path' };
         if (side === 'head') return { ...item, headOid: 'c'.repeat(40) };
         if (side === 'checkout') return { ...item, status: { ...item.status, branch: 'release' } };
         return { ...item, branches: item.branches.map((branch: any) =>
@@ -71,6 +70,25 @@ for (const side of ['source', 'head', 'checkout', 'path']) {
     await expect.poll(() => page.evaluate(() => (window as any).__contextBranchScope.git.error())).toContain('Open the branch menu again');
   });
 }
+
+test('a changed checkout path retires the old branch menu without dispatching into the new visit', async ({ page }) => {
+  const action = await openIntegrationMenu(page);
+  const error = await action.evaluate(button => {
+    const s = (window as any).__contextBranchScope;
+    s.git.repositories.update((items: any[]) => items.map(item =>
+      item.id === s.repository.id ? { ...item, path: '/owned/changed-path' } : item));
+    (button as HTMLButtonElement).click();
+    return s.git.error();
+  });
+  // Unlike a moved ref in the same visit, a path change retires the
+  // whole menu. It must not report an error into the replacement visit.
+  expect(error).toBeNull();
+  await expect(action).toHaveCount(0);
+  await expect(page.locator('.status-repository-path')).toHaveText('/owned/changed-path');
+  await expect(await openIntegrationMenu(page)).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).__contextBranchScope.calls.filter((call: any) =>
+    call.command === 'integrate_branch'))).toEqual([]);
+});
 
 test('context menu integration sends the exact source and receiving checkout to native', async ({ page }) => {
   const action = await openIntegrationMenu(page);
