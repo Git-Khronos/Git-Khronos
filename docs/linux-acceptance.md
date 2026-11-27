@@ -32,6 +32,17 @@ request so the suite can verify that an error is focused and retry works.
 Git independently verifies that HEAD, refs, index, config, and working files
 stay unchanged.
 
+The updater has a separate focused check:
+
+```sh
+pnpm nx run desktop:native-application-update-release-link -- --package "$archive"
+```
+
+The owned launcher refuses the official release address first. The test
+uses keyboard copy and paste on a private Xvfb display to verify the exact
+fallback address, then retries the launcher. It does not install an update,
+contact a release server, or read the host clipboard.
+
 ## Renderer recovery evidence
 
 The installed X11 recovery probe requires the replacement renderer to

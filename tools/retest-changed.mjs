@@ -48,7 +48,8 @@ const rendererFixtureSpecs = new Map([
 ]);
 // Representative focused suites; this is not a transitive Python dependency graph.
 const packagedScenarios = new Map([
-  ['tools/native_application_updates_scenarios.py', ['native-application-updates']],
+  ['tools/native_application_updates_scenarios.py', ['native-application-updates', 'native-application-update-release-link']],
+  ['tools/native_browser_launcher_fixture.py', ['native-git-documentation', 'native-application-update-release-link']],
   ['tools/native_lfs_lock_ui_scenarios.py', ['native-lfs-lock-actions']],
   ['tools/native_feature_rebase_scenarios.py', ['native-feature-rebase', 'native-merge-rebase-review']],
   ['tools/native_gitlab_fork_scenarios.py', ['native-gitlab-fork-ui']],

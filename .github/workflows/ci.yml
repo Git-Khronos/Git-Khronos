@@ -311,8 +311,10 @@ jobs:
           echo "PACKAGE=$PWD/${packages[0]}" >> "$GITHUB_ENV"
       - name: Run packaged WebKitGTK acceptance
         run: pnpm nx run "desktop:native-${NATIVE_SUITE}" --output-style=static -- --package "$PACKAGE"
-      - name: Verify packaged Git help and its Linux launcher handoff
-        run: pnpm nx run desktop:native-git-documentation --output-style=static -- --package "$PACKAGE"
+      - name: Verify packaged Git help and the updater browser fallback
+        run: |
+          pnpm nx run desktop:native-git-documentation --output-style=static -- --package "$PACKAGE"
+          pnpm nx run desktop:native-application-update-release-link --output-style=static -- --package "$PACKAGE"
       - name: Run focused packaged signing and tag-navigation acceptance
         run: |
           pnpm nx run desktop:native-signed-commit --output-style=static -- --package "$PACKAGE"

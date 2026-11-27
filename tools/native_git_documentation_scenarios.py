@@ -1,26 +1,12 @@
 """Drive packaged Git help through its real Linux launcher without opening a browser."""
-import shlex
 import time
 
+from native_browser_launcher_fixture import browser_launcher_paths
 from native_worktree_scenarios import checkout_footprint
 
 
-def documentation_environment(fixtures):
-    capture = fixtures.root / 'documentation-browser-arguments'
-    binary_dir = fixtures.root / 'documentation-bin'
-    binary_dir.mkdir()
-    opener = binary_dir / 'xdg-open'
-    opener.write_text(
-        '#!/bin/sh\n'
-        f'printf \'%s\\0\' "$@" >> {shlex.quote(str(capture))}\n'
-        f'[ ! -f {shlex.quote(str(fixtures.root / "documentation-browser-refuse"))} ]\n'
-    )
-    opener.chmod(0o700)
-    return {'PATH': str(binary_dir) + ':' + fixtures.env['PATH']}
-
-
 def git_documentation(driver, fixtures, repository, report):
-    capture = fixtures.root / 'documentation-browser-arguments'
+    capture, refusal = browser_launcher_paths(fixtures)
     before = checkout_footprint(fixtures, repository)
     driver.click_visible('[aria-label="Preferences"]')
     driver.click_visible('#preferences-tab-git')
@@ -43,7 +29,6 @@ def git_documentation(driver, fixtures, repository, report):
         time.sleep(.05)
     assert capture.read_bytes() == expected
     driver.wait('return !!document.querySelector("gk-git-documentation-dialog [data-docs-close]:enabled")', 5)
-    refusal = fixtures.root / 'documentation-browser-refuse'
     refusal.touch()
     manual = dialog + ' details[open] .manuals button:first-child'
     driver.click_visible(manual)

@@ -57,6 +57,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite application-updates --headless" }
     },
+    "native-application-update-release-link": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite application-update-release-link --headless" }
+    },
     "native-full": {
       "executor": "nx:run-commands",
       "cache": false,

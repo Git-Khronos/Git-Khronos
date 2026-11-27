@@ -463,7 +463,20 @@ test('updater fixture edits select offline package checks, not an installed upda
   f.write('tools/native_application_updates_scenarios.py');
   const plan = f.run('--native-package', 'artifacts/candidate.deb');
   assert.match(plan, /"desktop:native-application-updates" "--output-style=static" "--" "--package"/);
+  assert.match(plan, /"desktop:native-application-update-release-link" "--output-style=static" "--" "--package"/);
   assert.doesNotMatch(plan, /application-update-consent|--installed|desktop:native-full|desktop:e2e/);
+});
+
+test('changes to the shared launcher fixture retest Git help and the manual release address', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'candidate.deb\n');
+  f.commit();
+  f.write('candidate.deb');
+  f.write('tools/native_browser_launcher_fixture.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-git-documentation"/);
+  assert.match(plan, /"desktop:native-application-update-release-link"/);
+  assert.doesNotMatch(plan, /"desktop:native-application-updates"|desktop:e2e|desktop:check/);
 });
 
 test('rebase fixture edits select both packaged rebase reviews without a browser run', t => {

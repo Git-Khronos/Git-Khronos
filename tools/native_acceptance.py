@@ -1422,7 +1422,7 @@ def main():
     suites = (
         "smoke", "full", "environment", "performance", "recovery", "integrity-ui", "gitlab", "gitlab-connect", "gitlab-connect-after-smoke",
         "gitlab-connect-refused", "gitlab-fork-ui", "file-tools", "configured-tools", "git-documentation",
-        "worktrees", "setup-keyboard", "remote-reviews", "transport-error-guidance", "incoming-links", "application-updates", "application-update-consent",
+        "worktrees", "setup-keyboard", "remote-reviews", "transport-error-guidance", "incoming-links", "application-updates", "application-update-consent", "application-update-release-link",
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close", "working-file-editor",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
         "workspace-pull-upstreams", "pull-submodule-scope", "merge-preview", "reference-hover", "reference-copy",
@@ -1656,9 +1656,9 @@ def main():
             if args.suite == "workspace-batch":
                 from native_workspace_batch_scenarios import workspace_fetch_environment
                 application_env.update(workspace_fetch_environment(fixtures))
-            if args.suite == "git-documentation":
-                from native_git_documentation_scenarios import documentation_environment
-                application_env.update(documentation_environment(fixtures))
+            if args.suite in ("git-documentation", "application-update-release-link"):
+                from native_browser_launcher_fixture import browser_launcher_environment
+                application_env.update(browser_launcher_environment(fixtures))
             if args.suite == "first-status":
                 from native_first_status_scenarios import first_status_environment
                 application_env.update(first_status_environment(fixtures))
@@ -1930,6 +1930,9 @@ def main():
                 progress.enter_phase("application-updates")
                 from native_application_updates_scenarios import application_updates_workflow
                 repository, repo_id = application_updates_workflow(driver, fixtures, report)
+            elif args.suite == "application-update-release-link":
+                from native_application_updates_scenarios import application_update_release_link
+                repository, repo_id = application_update_release_link(driver, fixtures, report)
             elif args.suite == "application-update-consent":
                 from native_application_updates_scenarios import application_update_consent
                 repository, repo_id = application_update_consent(driver, fixtures, report)

@@ -231,3 +231,56 @@ def application_update_consent(driver, fixtures, report):
     assert disabled['canCheck'] and disabled['phase'] == 'idle', disabled
     report['scenarios'].append('native-updater-opt-out-survives-process-restart-and-keeps-manual-checks-available')
     return repository, repo_id
+
+
+def application_update_release_link(driver, fixtures, report):
+    from native_acceptance import open_ui
+    from native_browser_launcher_fixture import browser_launcher_paths
+
+    assert driver.owned_display, 'The clipboard probe requires an owned headless display'
+    repository = fixtures.repository('application-updates-release-link', commits=2)
+    repo_id = open_ui(driver, repository)
+    before = checkout_footprint(fixtures, repository)
+    status_before = driver.invoke('application_update_status')
+    capture, refusal = browser_launcher_paths(fixtures)
+    refusal.touch()
+    modal = 'gk-application-updates-dialog [role=dialog]'
+    expected_url = 'https://github.com/Git-Khronos/Git-Khronos/releases'
+    browse = modal + ' footer button'
+    driver.click_visible('[aria-label="Main menu"]')
+    driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Updates')
+    driver.click_scrolled_text(browse, 'Browse official releases (opens browser)', wait_for_ready=True)
+    driver.wait(f'return document.querySelector({modal!r})?.querySelector(".release-error")'
+                '?.textContent.includes("Could not open the browser")', 8)
+    expected_launch = expected_url.encode() + b'\0'
+    assert capture.read_bytes() == expected_launch
+    driver.script(f"""[...document.querySelectorAll({browse!r})]
+      .find(button => button.textContent.includes('Browse official releases')).focus()""")
+    driver.key('\ue004')  # Refresh status.
+    driver.key('\ue004')  # Read-only official release page address.
+    driver.wait(f"""const dialog = document.querySelector({modal!r});
+      const input = dialog?.querySelector('.release-address input');
+      return input && input === document.activeElement && input.readOnly
+        && input.value === {expected_url!r} && input.selectionStart === 0 && input.selectionEnd === input.value.length;""", 8)
+
+    # A disposable Xvfb clipboard and a test-owned text input confirm actual
+    # keyboard copy/paste, without opening a browser or reading host clipboard.
+    driver.key('c', modifiers=('\ue009',))
+    driver.script("""const probe = document.createElement('input');
+      probe.id = 'owned-release-clipboard-probe';
+      document.querySelector(arguments[0]).append(probe);
+      probe.focus();""", modal)
+    driver.key('v', modifiers=('\ue009',))
+    driver.wait(f'return document.querySelector("#owned-release-clipboard-probe")?.value === {expected_url!r}', 8)
+    driver.script('document.getElementById("owned-release-clipboard-probe").remove()')
+    refusal.unlink()
+    driver.click_scrolled_text(browse, 'Browse official releases (opens browser)', wait_for_ready=True)
+    driver.wait(f"""const button = [...document.querySelectorAll({browse!r})]
+      .find(button => button.textContent.includes('Browse official releases'));
+      return button && !button.hasAttribute('aria-disabled') && !document.querySelector({modal!r} + ' .release-error');""")
+    assert capture.read_bytes() == expected_launch * 2
+    assert driver.invoke('application_update_status') == status_before
+    assert checkout_footprint(fixtures, repository) == before
+    report['releaseLink'] = {'url': expected_url, 'keyboardCopied': True, 'checkoutUnchanged': True}
+    report['scenarios'].append('native-updates-launcher-refusal-keeps-official-link-keyboard-copyable')
+    return repository, repo_id
