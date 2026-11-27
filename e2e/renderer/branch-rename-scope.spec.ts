@@ -190,7 +190,9 @@ test('context rename keeps draft input while another operation blocks submission
   await expect(submit).toBeEnabled();
   await submit.scrollIntoViewIfNeeded();
   await submit.click();
-  await expect.poll(renameCalls).toHaveLength(1);
+  await expect.poll(renameCalls).toMatchObject([
+    { args: { oldName: 'feature/partial-staging', newName: 'renamed-while-busy' } },
+  ]);
 });
 
 for (const change of ['repository', 'path', 'revisit']) {
