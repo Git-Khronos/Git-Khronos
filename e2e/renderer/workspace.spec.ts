@@ -2051,19 +2051,21 @@ test('keeps commit context visible while the inspector scrolls and groups author
   await expect(page.getByRole('button', { name: 'Show Commit Panel', exact: true })).toBeFocused();
 });
 
-test('moves the commit inspector into overlay mode before three columns clip', async ({ page }) => {
+test('keeps three columns visible just above the inspector overlay breakpoint', async ({ page }) => {
   await page.setViewportSize({ width: 1051, height: 720 });
   await page.goto('/');
   await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
-  let inspector = page.locator('.detail-panel:not(.panel-hidden)');
+  const inspector = page.locator('.detail-panel:not(.panel-hidden)');
   await expect(inspector).not.toHaveCSS('position', 'fixed');
   await expect(page.locator('.sidebar:not(.panel-hidden)')).toBeVisible();
+});
 
-  for (const width of [1050, 1024, 960, 900, 861]) {
+for (const width of [1050, 1024, 960, 900, 861]) {
+  test(`keeps the commit inspector and toolbar within the viewport at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 720 });
     await page.goto('/');
     await page.locator('[data-commit-oid="f19b263a8af31408d5f665caf7a5508e108c0fd1"]').click();
-    inspector = page.locator('.detail-panel:not(.panel-hidden)');
+    const inspector = page.locator('.detail-panel:not(.panel-hidden)');
     await expect(inspector).toHaveCSS('position', 'fixed');
     await expect(inspector).toHaveCSS('transform', 'none');
 
@@ -2075,27 +2077,25 @@ test('moves the commit inspector into overlay mode before three columns clip', a
     expect(inspectorBox).not.toBeNull();
     expect(inspectorBox!.x + inspectorBox!.width).toBeLessThanOrEqual(width);
     expect(historyBox!.x + historyBox!.width).toBeLessThanOrEqual(width);
-    if (width <= 1050) {
-      await expect(page.locator('.sidebar')).toBeHidden();
-      const sidebarLauncher = page.getByRole('button', { name: 'Open left panel' });
-      await expect(sidebarLauncher).toBeVisible();
-      await expect(sidebarLauncher).toHaveAttribute('title', 'Show repository references (Ctrl+J)');
-      await expect(sidebarLauncher.locator('span')).toBeVisible();
-      await expect(sidebarLauncher.locator('span')).toHaveText('Refs');
-      const [launcherBox, branchHeadingBox] = await Promise.all([
-        sidebarLauncher.boundingBox(),
-        page.locator('.graph-columns > .leading-branch-column .column-heading-label').boundingBox(),
-      ]);
-      expect(launcherBox).not.toBeNull();
-      expect(branchHeadingBox).not.toBeNull();
-      expect(launcherBox!.x).toBeGreaterThanOrEqual(4);
-      expect(launcherBox!.width).toBeGreaterThanOrEqual(48);
-      expect(launcherBox!.height).toBeGreaterThanOrEqual(24);
-      expect(launcherBox!.x + launcherBox!.width).toBeLessThanOrEqual(branchHeadingBox!.x);
-      expect(await page.locator('.graph-columns > .leading-branch-column .column-heading-label').evaluate((element) =>
-        element.scrollWidth <= element.clientWidth,
-      )).toBe(true);
-    }
+    await expect(page.locator('.sidebar')).toBeHidden();
+    const sidebarLauncher = page.getByRole('button', { name: 'Open left panel' });
+    await expect(sidebarLauncher).toBeVisible();
+    await expect(sidebarLauncher).toHaveAttribute('title', 'Show repository references (Ctrl+J)');
+    await expect(sidebarLauncher.locator('span')).toBeVisible();
+    await expect(sidebarLauncher.locator('span')).toHaveText('Refs');
+    const [launcherBox, branchHeadingBox] = await Promise.all([
+      sidebarLauncher.boundingBox(),
+      page.locator('.graph-columns > .leading-branch-column .column-heading-label').boundingBox(),
+    ]);
+    expect(launcherBox).not.toBeNull();
+    expect(branchHeadingBox).not.toBeNull();
+    expect(launcherBox!.x).toBeGreaterThanOrEqual(4);
+    expect(launcherBox!.width).toBeGreaterThanOrEqual(48);
+    expect(launcherBox!.height).toBeGreaterThanOrEqual(24);
+    expect(launcherBox!.x + launcherBox!.width).toBeLessThanOrEqual(branchHeadingBox!.x);
+    expect(await page.locator('.graph-columns > .leading-branch-column .column-heading-label').evaluate((element) =>
+      element.scrollWidth <= element.clientWidth,
+    )).toBe(true);
 
     if (width === 900) {
       const selectedSubject = page.locator(
@@ -2135,8 +2135,10 @@ test('moves the commit inspector into overlay mode before three columns clip', a
       expect(moreBox!.x + moreBox!.width).toBeLessThan(dividerBox!.x);
       expect(dividerBox!.x + dividerBox!.width).toBeLessThan(terminalBox!.x);
     }
-  }
+  });
+}
 
+test('opens the sidebar as a keyboard-accessible overlay at 1050px', async ({ page }) => {
   await page.setViewportSize({ width: 1050, height: 720 });
   await page.goto('/');
   const openSidebar = page.getByRole('button', { name: 'Open left panel' });
