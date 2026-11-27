@@ -2261,7 +2261,7 @@ exit "$INSTALL_STATUS"
     `Dir::Etc::sourcelist "${sources}";\nDir::Etc::sourceparts "-";\nAPT::Update::Error-Mode "any";\n`);
   const calls = join(root, 'calls');
   const dependencyCall = '/fixture/playwright/cli.js install-deps chromium\n';
-  assert.equal(await readFile(calls, 'utf8'), dependencyCall + 'exec playwright install chromium\n');
+  assert.equal(await readFile(calls, 'utf8'), dependencyCall + 'exec playwright install --only-shell chromium\n');
   await writeFile(calls, '');
   assert.equal(run({ INSTALL_STATUS: '100' }).status, 100);
   assert.equal(await readFile(calls, 'utf8'), dependencyCall, 'Do not download Chromium after dependency failure.');
