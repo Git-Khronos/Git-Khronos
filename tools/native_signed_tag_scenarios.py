@@ -172,7 +172,11 @@ def signed_tag_creation(driver, fixtures, report):
         "-out", str(certificate), env=fixtures.env,
     )
     run(
-        "openssl", "pkcs12", "-export", "-passout", "pass:", "-inkey", str(private_key),
+        # OpenSSL 3's default PBES2 envelope is not accepted by Jammy's
+        # gpgsm. This throwaway transport file does not set the signature's
+        # algorithm or change how production keys are handled.
+        "openssl", "pkcs12", "-export", "-keypbe", "PBE-SHA1-3DES",
+        "-certpbe", "PBE-SHA1-3DES", "-macalg", "sha1", "-passout", "pass:", "-inkey", str(private_key),
         "-in", str(certificate), "-out", str(container), env=fixtures.env,
     )
     run(
