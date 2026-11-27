@@ -19,8 +19,10 @@ permissions:
   contents: read
 
 concurrency:
+  # Keep an active dev baseline to completion, with at most the newest
+  # revision queued. PR checks still prioritize the latest proposed revision.
   group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   NX_DAEMON: "false"

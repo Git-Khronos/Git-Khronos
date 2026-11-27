@@ -2,6 +2,11 @@
 
 ## Download hosted CI evidence
 
+By default, a new `dev` push waits behind the running Desktop CI run rather
+than discarding its evidence. Only the newest pending revision is retained.
+Pull requests still cancel stale checks on an earlier revision. See
+[GitHub Actions concurrency](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
+
 For Desktop CI, download `ubuntu-package` for the tested Debian archive,
 `SHA256SUMS`, and the build ABI report. Verify the archive with
 `sha256sum --check SHA256SUMS` from the download directory. The

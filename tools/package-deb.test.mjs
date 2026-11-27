@@ -333,6 +333,7 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   const [producer, tail] = build.split('\n  packaged-native-lanes:\n');
   const [native, remaining] = tail.split('\n  packaged-native:\n');
   const [aggregate, installed] = remaining.split('\n  linux-runtime:\n');
+  assert.match(ci, /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/);
   const regressionJob = ci.split('\n  packaged-regressions:\n')[1]?.split('\n  packaged-build:\n')[0];
   assert.ok(regressionJob);
   assert.match(regressionJob, /runs-on: ubuntu-22\.04/);
