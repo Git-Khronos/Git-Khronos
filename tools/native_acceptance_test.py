@@ -58,6 +58,26 @@ class AbstractDisplayTests(unittest.TestCase):
             self.assertEqual(launch.call_args.args[0][-6:], ['-nolisten', 'tcp', '-nolisten', 'unix', '-auth', authority])
             self.assertTrue(launch.call_args.kwargs['start_new_session'])
 
+    def test_reaps_failed_child_after_readiness_eof_and_tries_next_display(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixtures = SimpleNamespace(root=root, env={})
+            collision = MagicMock(stdout=BytesIO(b''))
+            collision.poll.return_value = None
+            collision.wait.return_value = 1
+            server = MagicMock(stdout=BytesIO(b'101\n'))
+            server.poll.return_value = None
+            children = []
+            with patch('native_acceptance.shutil.which', return_value='/usr/bin/xauth'), \
+                    patch('native_acceptance.Path.exists', return_value=False), \
+                    patch('native_acceptance.select.select', return_value=([True], [], [])), \
+                    patch('native_acceptance.subprocess.run'), \
+                    patch('native_acceptance.subprocess.Popen', side_effect=[collision, server]) as launch:
+                number, owned, _ = start_abstract_xvfb(fixtures, children, None, root)
+            collision.wait.assert_called_once_with(timeout=1)
+            self.assertEqual((number, owned, children), ('101', server, [collision, server]))
+            self.assertEqual([args.args[0][1] for args in launch.call_args_list], [':100', ':101'])
+
 
 class InstalledSuiteBatchTests(unittest.TestCase):
     def run_batch(self, suites, *, have_package=True, separate_output=False, python_override=None):

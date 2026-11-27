@@ -144,7 +144,18 @@ def start_abstract_xvfb(fixtures, children, log, socket_directory):
         children.append(attempt)
         if not select.select([attempt.stdout], [], [], 15)[0]:
             raise TimeoutError("Xvfb did not allocate a private abstract display")
-        number = attempt.stdout.readline().decode().strip()
+        ready = attempt.stdout.readline()
+        if not ready:
+            # A competing X server can win after the lock/socket check.
+            # EOF can arrive just before waitpid observes the failed child.
+            try:
+                exit_code = attempt.wait(timeout=1)
+            except subprocess.TimeoutExpired as error:
+                raise RuntimeError("Xvfb closed its readiness pipe without exiting") from error
+            if exit_code != 0:
+                continue
+            raise RuntimeError("Xvfb exited successfully without reporting a private display")
+        number = ready.decode().strip()
         if number == str(candidate) and attempt.poll() is None:
             display = attempt
             break
