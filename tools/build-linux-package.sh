@@ -36,7 +36,7 @@ node tools/finish-linux-package-cache.mjs --preflight
 
 # Run under the same workspace lock, on both success and ordinary failure.
 # Retain the package and its evidence, not the isolated job's Rust objects.
-trap 'status=$?; trap - EXIT; node tools/finish-linux-package-cache.mjs || { ((status != 0)) || status=1; }; exit "$status"' EXIT
+trap 'status=$?; trap - EXIT; NODE_DISABLE_COMPILE_CACHE=1 node tools/finish-linux-package-cache.mjs || { ((status != 0)) || status=1; }; exit "$status"' EXIT
 
 node tools/check-linux-package-watcher.mjs apps/desktop/src-tauri/Cargo.toml
 if [[ "$bundle" == deb ]]; then

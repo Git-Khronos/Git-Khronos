@@ -89,7 +89,9 @@ For old local Linux qualification runs, preview `task clean:archives`.
 After confirming the builders are stopped, use `task clean:archives -- --apply`.
 It preserves installer archives, source and reports. Legacy per-run copies
 of pnpm and Node's compile cache are eligible only when the retained
-Debian archive matches its recorded checksum.
+Debian archive matches its recorded checksum. New isolated package builds
+discard their private Node compile cache at exit, while an active checkout
+keeps its reusable cache.
 
 Use a focused browser spec for renderer-only iteration before rebuilding a
 package. The Ubuntu 22.04 theme-cleanup build spent about six minutes

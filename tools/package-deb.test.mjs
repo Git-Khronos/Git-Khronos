@@ -21,18 +21,29 @@ test('isolated build cleanup keeps Debian and AppImage bundles, evidence, and sh
   t.after(() => rm(directory, { recursive: true, force: true }));
   const root = join(directory, 'target/local-review/run/work/source');
   const release = join(root, 'target/release');
+  const nodeCache = join(root, 'target/package-tmp/node-compile-cache');
+  const localNodeCache = join(directory, 'target/package-tmp/node-compile-cache');
   const outside = join(directory, 'shared');
   await mkdir(join(release, 'deps'), { recursive: true });
   await mkdir(join(release, 'bundle/deb'), { recursive: true });
   await mkdir(outside);
+  await mkdir(nodeCache, { recursive: true });
+  await mkdir(localNodeCache, { recursive: true });
   await symlink(outside, join(release, 'build'), 'dir');
   const packageFile = join(release, 'bundle/deb/candidate.deb');
   await writeFile(packageFile, 'retained');
   await writeFile(join(outside, 'keep'), 'shared');
+  const tempEvidence = join(root, 'target/package-tmp/build-diagnostic');
+  await writeFile(tempEvidence, 'keep this adjacent file');
+  assert.equal(pruneIsolatedLinuxPackageCache(directory), 0);
+  assert.ok(await stat(localNodeCache));
   assert.equal(pruneIsolatedLinuxPackageCache(root, outside), 0);
   assert.ok(await stat(join(release, 'deps')));
-  assert.equal(pruneIsolatedLinuxPackageCache(root), 1);
+  assert.ok(await stat(nodeCache));
+  assert.equal(pruneIsolatedLinuxPackageCache(root), 2);
   await assert.rejects(stat(join(release, 'deps')), { code: 'ENOENT' });
+  await assert.rejects(stat(nodeCache), { code: 'ENOENT' });
+  assert.equal(await readFile(tempEvidence, 'utf8'), 'keep this adjacent file');
   assert.equal(await readFile(packageFile, 'utf8'), 'retained');
   assert.equal(await readFile(join(outside, 'keep'), 'utf8'), 'shared');
 });
@@ -854,18 +865,24 @@ test('installed status forwards a single selected archive without a build or ins
   assert.deepEqual(await f.calls(), ['installed-status latest', 'installed-status ' + archive]);
 });
 
-test('package wrapper prunes isolated Rust internals on success and ordinary failure', async t => {
+test('package wrapper prunes isolated build caches on success and ordinary failure', async t => {
   const f = await fixture(t, { isolated: true });
   const cache = 'target/release/deps/generated.o';
+  const nodeCache = 'target/package-tmp/node-compile-cache/generated';
+  const compileEnv = { NODE_COMPILE_CACHE: dirname(join(f.root, nodeCache)) };
   const keep = 'target/release/bundle/deb/Git-Khronos_0.1.0_amd64.deb';
   await f.put(cache);
-  f.ok();
+  await f.put(nodeCache);
+  f.ok(undefined, compileEnv);
   await assert.rejects(stat(join(f.root, cache)), { code: 'ENOENT' });
+  await assert.rejects(stat(dirname(join(f.root, nodeCache))), { code: 'ENOENT' });
   assert.equal(await readFile(join(f.root, keep), 'utf8'), 'built');
   await f.put(cache);
-  const failed = f.run(['--force', 'package:deb'], { FAIL_BUILD: '1' });
+  await f.put(nodeCache);
+  const failed = f.run(['--force', 'package:deb'], { ...compileEnv, FAIL_BUILD: '1' });
   assert.notEqual(failed.status, 0);
   await assert.rejects(stat(join(f.root, cache)), { code: 'ENOENT' });
+  await assert.rejects(stat(dirname(join(f.root, nodeCache))), { code: 'ENOENT' });
   assert.equal(await readFile(join(f.root, keep), 'utf8'), 'built');
 });
 

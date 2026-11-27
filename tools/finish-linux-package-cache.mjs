@@ -1,4 +1,4 @@
-// An isolated qualification checkout retains its package, not a second Rust cache.
+// An isolated qualification checkout retains packages and evidence, not cache copies.
 import { existsSync, realpathSync, rmSync, statfsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -24,10 +24,13 @@ export function pruneIsolatedLinuxPackageCache(directory, targetDirectory) {
   const isolated = root === '/work/source' || /\/target\/local-review\/.+\/work\/source$/.test(root);
   // An explicit Cargo target may be a shared cache, even for an isolated run.
   if (!isolated || targetDirectory) return 0;
-  const release = join(root, 'target/release');
+  const disposable = [
+    ...['deps', 'build', 'incremental', '.fingerprint', 'examples'].map(name => join('target/release', name)),
+    join('target/package-tmp', 'node-compile-cache'),
+  ];
   let pruned = 0;
-  for (const name of ['deps', 'build', 'incremental', '.fingerprint', 'examples']) {
-    const path = join(release, name);
+  for (const name of disposable) {
+    const path = join(root, name);
     try {
       if (realpathSync(path) !== path) continue;
       rmSync(path, { recursive: true, force: true });
@@ -45,7 +48,7 @@ if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.m
       requireLinuxPackageSpace(process.cwd(), process.env.CARGO_TARGET_DIR);
     } else {
       const count = pruneIsolatedLinuxPackageCache(process.cwd(), process.env.CARGO_TARGET_DIR);
-      if (count) console.log(`Removed ${count} regenerable Rust cache directories from the isolated package build.`);
+      if (count) console.log(`Removed ${count} regenerable Rust or Node cache directories from the isolated package build.`);
     }
   } catch (error) {
     console.error(`Linux package storage: ${error.message}`);
