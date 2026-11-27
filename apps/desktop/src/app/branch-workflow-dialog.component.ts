@@ -325,6 +325,21 @@ export class BranchWorkflowDialogComponent implements OnDestroy {
     event.stopPropagation(); if (event.key === 'Escape') { event.preventDefault(); this.close(); return; }
     if (event.key !== 'Tab') return;
     const controls = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary') ?? [])].filter(e => e.getClientRects().length);
-    if (!controls.length) return; const index = controls.indexOf(document.activeElement as HTMLElement); event.preventDefault(); controls[event.shiftKey ? index <= 0 ? controls.length - 1 : index - 1 : (index + 1) % controls.length]?.focus();
+    if (!controls.length) return;
+    const active = document.activeElement;
+    const index = controls.indexOf(active as HTMLElement);
+    event.preventDefault();
+    if (index !== -1) {
+      controls[(index + (event.shiftKey ? controls.length - 1 : 1)) % controls.length]?.focus();
+      return;
+    }
+    // The preview is programmatically focused but is not a Tab stop. Continue
+    // from its position in the dialog instead of jumping back to the header.
+    const ordered = event.shiftKey ? controls.reverse() : controls;
+    const direction = event.shiftKey ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING;
+    const next = active && this.dialog()?.nativeElement.contains(active)
+      ? ordered.find(control => active.compareDocumentPosition(control) & direction)
+      : null;
+    (next ?? ordered[0])?.focus();
   }
 }

@@ -177,7 +177,10 @@ for (const kind of ['feature', 'release', 'hotfix'] as const) test(`${kind} crea
   await expect(review).toContainText(`Create and check out ${kind}/new-owned from ${kind === 'hotfix' ? 'main' : 'develop'}`);
   await expect(review).toBeFocused();
   await expect(review).toBeInViewport();
-  await dialog.getByRole('button', { name: 'Apply reviewed workflow', exact: true }).click();
+  const apply = dialog.getByRole('button', { name: 'Apply reviewed workflow', exact: true });
+  await page.keyboard.press('Tab');
+  await expect(apply).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(dialog.getByRole('button', { name: `Finish ${kind}/new-owned`, exact: true })).toBeVisible();
   expect(await page.evaluate(() => (window as any).__workflow.calls.filter((c: any) => c.command === 'execute_branch_workflow'))).toHaveLength(1);
 });
