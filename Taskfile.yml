@@ -61,6 +61,24 @@ tasks:
     cmds:
       - pnpm tauri:build
 
+  signer:generate:
+    desc: Generate the updater signing key pair once, outside the checkout (interactive)
+    platforms: [linux, darwin]
+    cmds:
+      - >-
+        bash -eu -c '
+        umask 077;
+        unset CI;
+        key_dir="${HOME:?Set HOME to a private directory}/.config/git-khronos-signing";
+        key="$key_dir/git-khronos.key";
+        if [[ -e "$key" || -L "$key" || -e "$key.pub" || -L "$key.pub" ]]; then
+          printf "Refusing to replace updater key files at %s[.pub]. Reuse your existing signing key.\n" "$key" >&2;
+          exit 1;
+        fi;
+        install -d -m 700 "$key_dir";
+        pnpm exec tauri signer generate --write-keys "$key"
+        '
+
   package:deb:
     aliases: [deb]
     desc: Build the Debian/Ubuntu system package

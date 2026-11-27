@@ -324,15 +324,16 @@ receive the private key. Official builds embed only the public key from the
 repository Actions variable.
 
 Generate the production key pair **once**, on the machine used for offline
-signing. From a checkout with the pinned toolchain installed:
+signing. From a Linux or macOS checkout with the pinned Node and pnpm
+dependencies installed:
 
 ```sh
-install -d -m 700 "$HOME/.config/git-khronos-signing"
-pnpm exec tauri signer generate \
-  --write-keys "$HOME/.config/git-khronos-signing/git-khronos.key"
+task signer:generate
 ```
 
-Enter a strong passphrase when prompted. Back up the encrypted
+The task writes the pair to `$HOME/.config/git-khronos-signing/` and refuses
+to replace either existing key file. Enter a strong passphrase when prompted.
+Back up the encrypted
 `git-khronos.key` privately and keep the passphrase separate. Set
 `GIT_KHRONOS_UPDATER_PUBLIC_KEY` to the **contents** of
 `git-khronos.key.pub`, not to its path. Do not regenerate the pair for each
