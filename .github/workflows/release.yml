@@ -35,7 +35,7 @@ jobs:
             echo "::error::Set the GIT_KHRONOS_UPDATER_PUBLIC_KEY Actions variable to the production public key before qualifying a release."
             exit 1
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -49,10 +49,10 @@ jobs:
           git checkout --detach "$release_commit"
           echo "commit=$release_commit" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/jammy-git
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -60,13 +60,13 @@ jobs:
         env:
           GIT_KHRONOS_UPDATER_PUBLIC_KEY: ${{ vars.GIT_KHRONOS_UPDATER_PUBLIC_KEY }}
         run: node tools/check-debian-update-evidence.mjs --check-publisher-key
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.99.0
-      - uses: go-task/setup-task@v1
+      - uses: go-task/setup-task@v2
       - name: Check release tag matches installer and runtime versions
         run: |
           set -euo pipefail
@@ -108,7 +108,7 @@ jobs:
           mkdir -p test-results
           node tools/check-linux-abi.mjs "$package" > test-results/ubuntu-abi-build.json
       - name: Retain measured build diagnostics
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: debian-build-diagnostics-${{ github.run_attempt }}
           path: |
@@ -170,7 +170,7 @@ jobs:
               "Git-Khronos_${version}_source.cdx.json" > SHA256SUMS
             sha256sum --check SHA256SUMS
           )
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: debian-candidate-${{ github.run_attempt }}
           path: release-assets/*

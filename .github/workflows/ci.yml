@@ -44,11 +44,11 @@ jobs:
       NX_ISOLATE_PLUGINS: "false"
       CARGO_BUILD_JOBS: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -79,11 +79,11 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
       CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -107,7 +107,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Check production renderer budgets
         run: pnpm nx run desktop:build:production --output-style=static
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() && hashFiles('dist/apps/desktop/initial-renderer.json') != '' }}
         with:
           name: initial-renderer-${{ github.run_id }}-attempt-${{ github.run_attempt }}
@@ -130,7 +130,7 @@ jobs:
           pnpm exec nx exec -p desktop --excludeTaskDependencies --
           cargo test -p git-khronos-git-core --lib discard_large_nested_untracked_batch_and_recover_exact_bytes
           -- --ignored --test-threads=1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: checks-failure-${{ github.run_id }}-attempt-${{ github.run_attempt }}
@@ -147,11 +147,11 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -196,7 +196,7 @@ jobs:
           diff -u "$plan/selected" <(sed -n '/^  \[chromium\] › /p' "$plan/resolved")
           pnpm nx run desktop:e2e --output-style=stream --skipNxCache -- \
             --test-list "$plan/selected" --workers="$WORKERS" --retries=0
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with:
           name: renderer-progress-${{ github.run_id }}-attempt-${{ github.run_attempt }}-shard-${{ matrix.shard }}
@@ -205,7 +205,7 @@ jobs:
             test-results/renderer-progress/shard-${{ matrix.shard }}.timings.json
           if-no-files-found: ignore
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: renderer-failure-${{ github.run_id }}-attempt-${{ github.run_attempt }}-shard-${{ matrix.shard }}
@@ -235,22 +235,22 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/jammy-git
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.99.0
-      - uses: go-task/setup-task@v1
+      - uses: go-task/setup-task@v2
       - name: Install package fixture prerequisites
         run: |
           set -euo pipefail
@@ -264,16 +264,16 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/jammy-git
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@master
@@ -282,7 +282,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: packaged-jammy-v1
-      - uses: go-task/setup-task@v1
+      - uses: go-task/setup-task@v2
       - name: Install Linux package prerequisites
         run: |
           set -euo pipefail
@@ -300,7 +300,7 @@ jobs:
           node tools/check-linux-abi.mjs "$package" > ubuntu-package/abi-build.json
           cp -- "$package" ubuntu-package/
           (cd ubuntu-package && sha256sum -- *.deb > SHA256SUMS && sha256sum --check SHA256SUMS)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ubuntu-package
           path: ubuntu-package/*
@@ -328,16 +328,16 @@ jobs:
             echo "::error::The Jammy package build did not succeed ($BUILD_RESULT)."
             exit 1
           fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/jammy-git
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@master
@@ -354,7 +354,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Install pinned Tauri WebDriver bridge
         run: cargo install tauri-driver --locked --version 2.0.6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: ubuntu-package
           path: ubuntu-package
@@ -410,7 +410,7 @@ jobs:
           pnpm nx exec -p desktop --excludeTaskDependencies -- \
             python3 "$PWD/tools/native_acceptance.py" --suite gitlab --headless --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
       - name: Upload packaged acceptance diagnostics
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: ${{ !cancelled() && steps.verify-native-package.outcome == 'success' }}
         with:
           name: packaged-native-${{ env.NATIVE_SUITE }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}-${{ matrix.lane }}

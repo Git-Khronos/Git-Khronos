@@ -100,11 +100,11 @@ jobs:
           fi
           umask 077
           printf '%s' "$PUBLIC_KEY" > "$RUNNER_TEMP/publisher.pub"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
       - name: Verify updater public key format before candidate work
@@ -128,21 +128,21 @@ jobs:
           git merge-base --is-ancestor "$attempt_head" HEAD
           git merge-base --is-ancestor "$commit" "$attempt_head"
           printf 'attempt=%s\ncommit=%s\n' "$attempt" "$commit" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.candidate_run_id }}
           name: debian-candidate-${{ steps.candidate.outputs.attempt }}
           path: candidate
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.candidate_run_id }}
           name: debian-candidate-evidence-${{ steps.candidate.outputs.attempt }}
           path: candidate-evidence
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -174,7 +174,7 @@ jobs:
           lanes="$(jq -er '.releaseMatrix | select(.complete == true) | .checks | length' "$RUNNER_TEMP/installed-release-matrix.json")"
           printf 'sha256=%s\nlanes=%s\n' "$checksum" "$lanes" >> "$GITHUB_OUTPUT"
       - name: Retain the verified matrix for release reviewers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: signed-release-matrix-${{ github.run_attempt }}
           path: ${{ runner.temp }}/installed-release-matrix.json
@@ -217,17 +217,17 @@ jobs:
           remote_commit="$(awk -v tag="$tag_ref" '$2==tag { object=$1 } $2==tag "^{}" { peeled=$1 }
             END { print (peeled ? peeled : object) }' <<< "$refs")"
           test "$remote_commit" = "$TAG_COMMIT"
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version-file: .nvmrc
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -244,7 +244,7 @@ jobs:
           package="candidate/Git-Khronos_${RELEASE_TAG#v}_amd64.deb"
           bash tools/sign-qualified-debian.sh "$package" "$QUALIFIED_SHA256" "$RELEASE_TAG"
           mv -- "$package.sig" "$RUNNER_TEMP/package.sig"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         id: signature
         with:
           name: release-signature-${{ github.run_attempt }}
@@ -286,30 +286,30 @@ jobs:
             [[ "$PACKAGE_SIGNATURE" =~ [^[:space:]] ]]
             printf '%s' "$PACKAGE_SIGNATURE" > "$RUNNER_TEMP/package.sig"
           fi
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4, supports artifact-ids
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7, supports artifact-ids
         if: inputs.hosted_signing
         with:
           merge-multiple: true
           artifact-ids: ${{ needs.sign.outputs.artifact-id }}
           path: ${{ runner.temp }}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.23.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.candidate_run_id }}
           name: debian-candidate-${{ needs.qualify.outputs.attempt }}
           path: candidate
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
@@ -362,7 +362,7 @@ jobs:
             cargo test --locked -p git-khronos-desktop --example stage-debian-update \
             qualified_release_can_be_consumed_offline -- --ignored
       - name: Retain the verified public assets for the publish job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         id: assets
         with:
           name: signed-debian-release-${{ github.run_attempt }}
@@ -404,7 +404,7 @@ jobs:
       actions: read
       contents: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4, supports artifact-ids
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7, supports artifact-ids
         with:
           merge-multiple: true
           artifact-ids: ${{ needs.verify.outputs.artifact-id }}

@@ -31,10 +31,10 @@ jobs:
     runs-on: ubuntu-${{ matrix.ubuntu }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
           path: ubuntu-package
@@ -52,10 +52,10 @@ jobs:
           printf 'PACKAGE=%s\nPACKAGE_SHA256=%s\n' "$PWD/${packages[0]}" "$digest" >> "$GITHUB_ENV"
       - uses: ./.github/actions/jammy-git
         if: matrix.ubuntu == '22.04'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@master
@@ -204,7 +204,7 @@ jobs:
           reports=(test-results/native/release-qualification/environment-*/report.json)
           test "${#reports[@]}" -eq 1
           cp -- "${reports[0]}" test-results/native/release-qualification/report.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         # Keep publisher evidence gated on the entire job's success.
         if: ${{ success() && matrix.lane == 'publisher' }}
         with:
@@ -212,14 +212,14 @@ jobs:
           path: test-results/native/release-qualification/report.json
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ success() && inputs.expect-update-trust }}
         with:
           name: debian-runtime-reports-${{ github.run_attempt }}-ubuntu-${{ matrix.ubuntu }}-${{ matrix.lane }}
           path: test-results/native/**/report.json
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: ubuntu-${{ matrix.ubuntu }}-${{ matrix.lane }}-${{ github.run_id }}
@@ -242,10 +242,10 @@ jobs:
         debian: ["12", "13"]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
           path: ubuntu-package
@@ -267,7 +267,7 @@ jobs:
           set -euo pipefail
           apt-get update
           apt-get install --yes ca-certificates curl gcc git libc6-dev tar xz-utils
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
       - uses: dtolnay/rust-toolchain@master
@@ -344,14 +344,14 @@ jobs:
         if: ${{ !cancelled() && steps.package_install.outcome == 'success' }}
         shell: bash
         run: python3 tools/native_acceptance.py --suite gitlab --headless --installed --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ success() && inputs.expect-update-trust }}
         with:
           name: debian-runtime-reports-${{ github.run_attempt }}-debian-${{ matrix.debian }}
           path: test-results/native/**/report.json
           if-no-files-found: error
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: debian-${{ matrix.debian }}-runtime-${{ github.run_id }}

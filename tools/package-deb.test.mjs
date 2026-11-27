@@ -337,7 +337,7 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   const regressionJob = ci.split('\n  packaged-regressions:\n')[1]?.split('\n  packaged-build:\n')[0];
   assert.ok(regressionJob);
   assert.match(regressionJob, /runs-on: ubuntu-22\.04/);
-  assert.match(regressionJob, /actions\/setup-python@v5\n\s+with:\n\s+python-version: "3\.12"/);
+  assert.match(regressionJob, /actions\/setup-python@v6\n\s+with:\n\s+python-version: "3\.12"/);
   assert.match(regressionJob, /sudo apt-get install --yes[^\n]*\bfile\b[^\n]*\bdbus\b[^\n]*\bdpkg-dev\b/);
   assert.match(regressionJob, /uses: \.\/\.github\/actions\/debian-package-regressions/);
   assert.doesNotMatch(producer, /debian-package-regressions|needs: packaged-regressions/);
@@ -370,7 +370,7 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   }
   assert.match(native, /if \[\[ "\$BUILD_RESULT" != success \]\]; then[\s\S]*?exit 1/);
   assert.match(installed, /needs: packaged-build\n[\s\S]*?artifact-name: ubuntu-package/);
-  assert.match(native, /uses: actions\/download-artifact@v4\n\s+with:\n\s+name: ubuntu-package\n\s+path: ubuntu-package/);
+  assert.match(native, /uses: actions\/download-artifact@v7\n\s+with:\n\s+name: ubuntu-package\n\s+path: ubuntu-package/);
   const check = native.match(/id: verify-native-package\n\s+run: \|\n([\s\S]*?)(?=      - name:)/)?.[1].replace(/^          /gm, '');
   assert.ok(check);
   assert.match(native, /if: \$\{\{ !cancelled\(\) && steps\.verify-native-package\.outcome == 'success' \}\}[\s\S]*?name: packaged-native-[^\n]+\n\s+path: test-results\/native\/\n/);
@@ -888,7 +888,7 @@ esac
   assert.ok(bootstrap, 'Missing Debian container action prerequisites');
   assert.match(bootstrap, /apt-get install --yes ca-certificates curl gcc git libc6-dev tar xz-utils/);
   const bootstrapIndex = debianWorkflow.indexOf('Bootstrap tools for Debian container actions');
-  for (const action of ['actions/setup-node@v4', 'dtolnay/rust-toolchain@master', 'Swatinem/rust-cache@v2']) {
+  for (const action of ['actions/setup-node@v6', 'dtolnay/rust-toolchain@master', 'Swatinem/rust-cache@v2']) {
     assert.ok(bootstrapIndex < debianWorkflow.indexOf(action), `Debian bootstrap must precede ${action}`);
   }
   assert.match(workflow, /name: debian-\$\{\{ matrix\.debian \}\}-runtime-\$\{\{ github\.run_id \}\}\n\s+path: \|\n\s+test-results\/native\/\*\*\n\s+ubuntu-package\/abi-runtime\.json/);
