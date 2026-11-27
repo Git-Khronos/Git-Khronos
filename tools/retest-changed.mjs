@@ -27,6 +27,7 @@ const profiles = [
   [/^fetch-options-dialog\.component\.(?:ts|html|scss)$/, 'transport'],
   [/^git-documentation(?:-dialog\.component|\.service)\.(?:ts|html|scss)$/, 'git-documentation'],
   [/^application-updates-dialog\.component\./, 'updates'],
+  [/^main-menu-content\.component\.scss$/, 'menus'],
 ];
 const prefix = 'apps/desktop/src/app/';
 const rendererSourceChecks = [

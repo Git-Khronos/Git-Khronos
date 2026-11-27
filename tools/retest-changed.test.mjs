@@ -56,6 +56,18 @@ test('selects an untracked renderer spec and a staged feature edit', t => {
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('main menu layout edits select the menu profile without narrowing shared menu logic', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/main-menu-content.component.scss');
+  f.write('e2e/renderer/workspace-menu.spec.ts');
+  let plan = f.run();
+  assert.match(plan, /desktop:e2e:menus/);
+  assert.doesNotMatch(plan, /workspace-menu\[\.\]spec|desktop:check/);
+  f.write('apps/desktop/src/app/main-menu-content.component.ts');
+  plan = f.run();
+  assert.match(plan, /desktop:check/, 'action ownership is shared and must retain broad checks');
+});
+
 test('native keyboard and context-branch changes share one packaged retest', t => {
   const f = fixture(t);
   f.write('candidate.deb');
