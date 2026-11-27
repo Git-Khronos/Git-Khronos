@@ -34,11 +34,11 @@ export interface WorktreeRegistrationRequest {
           <p>Inspection uses Git worktree list and prune --dry-run --expire=now; reviewing changes nothing.
             Expiring now can show candidates not yet eligible under Git’s normal age-based pruning.
             A missing, unlocked registration can be removed individually after its HEAD and metadata are preserved.</p>
-          @if (target.repositoryId !== git.activeRepositoryId()) {
+          @if (!ownsRequest(target)) {
             <p role="alert" tabindex="-1">The active repository changed. Close this review and inspect the intended repository.</p>
           }
-          @if (error()) { <p role="alert" tabindex="-1">{{ error() }}</p> }
-          @if (pruned(); as done) {
+          @if (ownsRequest(target) && error()) { <p role="alert" tabindex="-1">{{ error() }}</p> }
+          @if (ownsRequest(target) ? pruned() : null; as done) {
             <div role="status" tabindex="-1" data-prune-result>
               <p>Registration removed. No branch, file or other registration was changed.</p>
               @for (reference of done.recoveryReferences; track reference) { <p>Protected commit: <code>{{ reference }}</code></p> }
@@ -47,7 +47,7 @@ export interface WorktreeRegistrationRequest {
             </div>
           }
           @if (loading()) { <p role="status">Inspecting registrations…</p> }
-          @if (review(); as result) {
+          @if (ownsRequest(target) ? review() : null; as result) {
             <div role="status" tabindex="-1" data-registration-result>
               <p>{{ result.registrations.length }} registrations reported. These are sequential observations, not a deletion lease.</p>
             </div>
@@ -134,7 +134,11 @@ export class WorktreeRegistrationDialogComponent {
   }
 
   unavailable(): boolean {
-    return this.loading() || this.pending() || this.git.busy() || this.request()?.repositoryId !== this.git.activeRepositoryId();
+    return this.loading() || this.pending() || this.git.busy() || !this.ownsRequest(this.request());
+  }
+
+  ownsRequest(target: WorktreeRegistrationRequest | null): boolean {
+    return !!target && this.request() === target && target.scope === this.git.activeRepositoryReadScope();
   }
 
   async reload(): Promise<void> {
@@ -146,18 +150,19 @@ export class WorktreeRegistrationDialogComponent {
     this.error.set('');
     try {
       const review = await this.git.reviewWorktreeRegistrations(target.repositoryId);
-      if (this.request() === target) {
+      if (this.ownsRequest(target)) {
         this.error.set(this.git.error() ?? '');
-        if (target.repositoryId === this.git.activeRepositoryId()) this.review.set(review);
+        this.review.set(review);
       }
     } finally {
       this.loading.set(false);
     }
     setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>(
-      this.error() || target.repositoryId !== this.git.activeRepositoryId() ? '[role=alert]' : '[data-registration-result]')?.focus());
+      this.error() || !this.ownsRequest(target) ? '[role=alert]' : '[data-registration-result]')?.focus());
   }
 
   confirm(entry: WorktreeRegistration): void {
+    if (this.unavailable() || !this.review()?.registrations.includes(entry)) return;
     this.pruned.set(null);
     this.error.set('');
     this.confirming.set(entry);
@@ -172,7 +177,8 @@ export class WorktreeRegistrationDialogComponent {
 
   async prune(entry: WorktreeRegistration): Promise<void> {
     const target = this.request();
-    if (!target || !entry.oid || this.unavailable() || !this.git.requireRecoveryRepository(target.repositoryId)) return;
+    if (!target || !entry.oid || this.unavailable() || this.confirming() !== entry
+      || !this.review()?.registrations.includes(entry) || !this.git.requireRecoveryRepository(target.repositoryId)) return;
     const expectedOid = entry.oid;
     this.pending.set(true);
     this.error.set('');
@@ -182,7 +188,7 @@ export class WorktreeRegistrationDialogComponent {
         result = await ipc.prune_worktree_registration({ repoId: target.repositoryId,
           request: { path: entry.path, expectedOid, expectedBranch: entry.branch } });
       }, target.repositoryId);
-      if (this.request() !== target) return;
+      if (!this.ownsRequest(target)) return;
       if (outcome !== 'success' || !result) {
         this.confirming.set(null);
         this.error.set(`${this.git.error() ?? 'The registration was not removed.'} Reload the review before retrying.`);
@@ -194,8 +200,9 @@ export class WorktreeRegistrationDialogComponent {
     } finally {
       this.pending.set(false);
     }
-    if (this.request() !== target) return;
+    if (!this.ownsRequest(target)) return;
     await this.reload();
+    if (!this.ownsRequest(target)) return;
     this.pruned.set(result);
     setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLElement>('[data-prune-result]')?.focus());
   }

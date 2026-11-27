@@ -264,7 +264,7 @@ test('refused registration removal focuses native feedback, keeps the entry and 
   await expect(dialog.getByRole('button', { name: 'Remove with recovery…', exact: true })).toBeEnabled();
 });
 
-test('locked and main registrations never offer removal, and a repository switch disables pending confirmation', async ({ page }) => {
+test('locked and main registrations never offer removal, and a repository switch retires pending confirmation', async ({ page }) => {
   await setup(page);
   await open(page);
   const dialog = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
@@ -278,6 +278,28 @@ test('locked and main registrations never offer removal, and a repository switch
     git.activeRepositoryId.set('other');
   });
   await expect(dialog.getByRole('alert')).toContainText('active repository changed');
-  await expect(dialog.getByRole('button', { name: 'Remove registration', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Remove registration', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) => call.command === 'prune_worktree_registration'))).toBe(false);
 });
+
+for (const change of ['workspace', 'path']) {
+  test(`a changed worktree ${change} retires registration removal even with the same repository ID`, async ({ page }) => {
+    await setup(page);
+    await open(page);
+    const dialog = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });
+    await dialog.getByRole('button', { name: 'Remove with recovery…', exact: true }).click();
+    const confirm = dialog.getByRole('button', { name: 'Remove registration', exact: true });
+    await expect(confirm).toBeEnabled();
+    await confirm.evaluate((button, change) => {
+      const { git } = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      if (change === 'workspace') git.activeWorkspaceId.set('another-registration-workspace');
+      else git.repositories.update((items: any[]) => items.map(item =>
+        item.id === git.activeRepositoryId() ? { ...item, path: '/owned/replaced-registration-checkout' } : item));
+      (button as HTMLButtonElement).click();
+    }, change);
+    await expect(dialog.getByRole('alert')).toContainText('active repository changed');
+    await expect(confirm).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__worktreeRegistration.calls.some((call: any) =>
+      call.command === 'prune_worktree_registration'))).toBe(false);
+  });
+}
