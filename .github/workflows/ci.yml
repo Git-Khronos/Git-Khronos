@@ -233,6 +233,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.99.0
@@ -241,7 +244,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes fakeroot desktop-file-utils libglib2.0-bin openssl binutils
+          sudo apt-get install --yes fakeroot desktop-file-utils libglib2.0-bin openssl binutils curl file dbus dpkg-dev
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/debian-package-regressions
 

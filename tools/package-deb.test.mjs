@@ -336,6 +336,8 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   const regressionJob = ci.split('\n  packaged-regressions:\n')[1]?.split('\n  packaged-build:\n')[0];
   assert.ok(regressionJob);
   assert.match(regressionJob, /runs-on: ubuntu-22\.04/);
+  assert.match(regressionJob, /actions\/setup-python@v5\n\s+with:\n\s+python-version: "3\.12"/);
+  assert.match(regressionJob, /sudo apt-get install --yes[^\n]*\bfile\b[^\n]*\bdbus\b[^\n]*\bdpkg-dev\b/);
   assert.match(regressionJob, /uses: \.\/\.github\/actions\/debian-package-regressions/);
   assert.doesNotMatch(producer, /debian-package-regressions|needs: packaged-regressions/);
   assert.match(producer, /node tools\/check-linux-abi\.mjs[\s\S]*?sha256sum --check SHA256SUMS\)[\s\S]*?name: ubuntu-package\n\s+path: ubuntu-package\/\*/);
