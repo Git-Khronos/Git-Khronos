@@ -69,6 +69,13 @@ test.beforeEach(async ({ page }) => {
     };
     (window as any).__changeRemoteScope = (kind: string) => {
       const repository = git.repository();
+      if (kind === 'revisit') {
+        const other = { ...repository, id: 'owned-remote-revisit', path: '/owned/remote-revisit' };
+        git.repositories.update((items: any[]) => [...items, other]);
+        git.activateRepository(other.id);
+        git.activateRepository(repository.id);
+        return;
+      }
       if (kind === 'repository') {
         const other = { ...repository, id: 'owned-remote-review-B', path: '/owned/remote-review-B' };
         git.repositories.update((items: any[]) => [...items, other]);
@@ -218,7 +225,19 @@ test('a valid Add Remote handoff retains its publish source checkout', async ({ 
 });
 
 
-for (const retirement of ['cancel', 'repository', 'path']) {
+test('force refuses an outgoing confirmation after a synchronous checkout revisit', async ({ page }) => {
+  const modal = await open(page, 'force');
+  const confirm = modal.getByRole('button', { name: 'Force Push with Lease', exact: true });
+  await expect(confirm).toBeEnabled();
+  await confirm.evaluate(button => {
+    (window as any).__changeRemoteScope('revisit');
+    (button as HTMLButtonElement).click();
+  });
+  await expect(modal).toBeHidden();
+  expect(await calls(page)).toEqual([]);
+});
+
+for (const retirement of ['cancel', 'repository', 'path', 'revisit']) {
   test(`a late force destination review cannot reopen its ${retirement} source`, async ({ page }) => {
     await page.evaluate(() => (window as any).__holdDestinations = true);
     const modal = await open(page, 'force');

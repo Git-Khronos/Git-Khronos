@@ -371,6 +371,11 @@ ID and path are unchanged. An old confirmation control cannot dispatch
 removal or change sparse checkout; force removal and returning to the sparse
 editor also require the active review to belong to the current visit.
 
+Force-push review uses the same visit boundary. A destination lookup from a
+retired visit cannot enable confirmation, and a previously enabled button
+cannot initiate a push after leaving and returning. Native ref and destination
+leases still authorize the actual Git operation.
+
 ### Remote branch rename and deletion
 
 Before sending a rename or deletion, native checks that Git's configured

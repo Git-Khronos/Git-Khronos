@@ -340,7 +340,7 @@ interface SparseCheckoutReview extends CheckoutVisitReview {
 }
 
 type PendingWorktreeRemoval = WorktreeRemovalReview & CheckoutVisitReview;
-type PendingForcePushReview = ForcePushReview & RepositoryReviewScope;
+type PendingForcePushReview = ForcePushReview & CheckoutVisitReview;
 
 interface RepositoryConfirmationLease {
   remote: RepositoryEditorOwner | null;
@@ -1467,7 +1467,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (rename && !this.ownsRepositoryScope(rename)) untracked(() => this.closeBranchRename(false, rename));
     if (branchReview && !this.ownsRepositoryScope(branchReview)) untracked(() => this.dismissBranchConfirmation(false, branchReview));
     if (publish && !this.ownsRepositoryScope(publish)) untracked(() => this.closePublishBranch(false, publish));
-    if (force && !this.ownsRepositoryScope(force)) untracked(() => this.closeForcePush(false, force));
+    if (force && !this.ownsCheckoutVisitReview(force)) untracked(() => this.closeForcePush(false, force));
     if (lfs && !this.ownsRepositoryScope(lfs)) untracked(() => this.closeLfsPrune(false, lfs));
   });
 
@@ -12746,6 +12746,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const request: PendingForcePushReview = {
       repositoryId: repository.id,
       repositoryPath: repository.path,
+      checkoutVisit: this.git.activeRepositoryReadScope(),
       returnFocus: opener,
       branchRef: branch.fullName,
       branchName: branch.name,
@@ -12761,7 +12762,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private async reviewForcePushDestination(request: PendingForcePushReview): Promise<void> {
     const destination = await this.git.reviewPushDestination(request.remote, request.repositoryId);
-    if (this.pendingForcePush() !== request || !this.ownsRepositoryScope(request)) return;
+    if (this.pendingForcePush() !== request || !this.ownsCheckoutVisitReview(request)) return;
     if (!destination) { this.closeForcePush(true, request); return; }
     this.forcePushDestination.set(destination);
   }
@@ -12769,7 +12770,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected async confirmForcePush(expected = this.pendingForcePush()): Promise<void> {
     const review = this.pendingForcePush();
     const destination = this.forcePushDestination();
-    if (!review || review !== expected || !destination || !this.ownsRepositoryScope(review) || this.git.busy()) return;
+    if (!review || review !== expected || !destination || !this.ownsCheckoutVisitReview(review) || this.git.busy()) return;
     this.closeForcePush(true, review);
     if (this.git.activeRepositoryId() !== review.repositoryId || this.currentBranch()?.fullName !== review.branchRef) {
       this.git.error.set('The repository or branch changed after force-push review. Reopen the confirmation and review the current target.');
@@ -12792,7 +12793,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.pendingForcePush() !== expected) return;
     this.pendingForcePush.set(null);
     this.forcePushDestination.set(null);
-    if (restoreFocus && expected) this.restoreRepositoryReviewFocus(expected);
+    if (restoreFocus && expected && this.ownsCheckoutVisitReview(expected)) this.restoreRepositoryReviewFocus(expected);
   }
 
   protected setPublishRemote(value: string, expected = this.pendingPublishBranch()): void {
