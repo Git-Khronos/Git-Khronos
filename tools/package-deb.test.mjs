@@ -480,31 +480,37 @@ cat metadata.json
   }
 });
 
-test('publication fails closed when GitHub reports no required release reviewer', async t => {
+test('publication fails closed without reviewer protection and a main-only branch policy', async t => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/publish-signed-debian.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const [verify, publish] = workflow.split('\n  publish:\n');
-  const preflight = verify.match(/- name: Require a reviewer-protected release environment before publication\n([\s\S]*?)(?=      - name:)/)?.[1];
+  const preflight = verify.match(/- name: Require a reviewer-protected main-only release environment before publication\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(preflight);
   assert.match(preflight, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'/);
   assert.match(publish, /needs: verify[\s\S]*?environment: signed-release[\s\S]*?actions: read/);
   const step = preflight.split('        run: |\n')[1]?.replace(/^          /gm, '');
   assert.ok(step);
-  const lastGuard = publish.match(/          # A missing environment[\s\S]*?\n(          if ! gh api[\s\S]*?\n          fi)\n          gh release create/)?.[1];
+  const lastGuard = publish.match(/          # A missing environment[\s\S]*?\n(          environment=[\s\S]*?)\n          gh release create/)?.[1];
   assert.ok(lastGuard, 'Check protection again before publishing');
   const guards = [step, 'set -euo pipefail\n' + lastGuard.replace(/^          /gm, '')];
   const root = await mkdtemp(join(tmpdir(), 'git-khronos-release-protection-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'gh'), `#!/bin/sh
-test "$1 $2" = 'api repos/Git-Khronos/Git-Khronos/environments/signed-release' || exit 9
-test "$#" -eq 2 || exit 9
+test "$1" = api && test "$#" -eq 2 || exit 9
 test "$STATUS" = ok || exit 1
-printf '%s\n' "$REPLY"
+case "$2" in
+  repos/Git-Khronos/Git-Khronos/environments/signed-release) printf '%s\n' "$REPLY" ;;
+  'repos/Git-Khronos/Git-Khronos/environments/signed-release/deployment-branch-policies?per_page=2') printf '%s\n' "$POLICIES" ;;
+  *) exit 9 ;;
+esac
 `, { mode: 0o755 });
   for (const guard of guards) {
-    const run = (info, STATUS = 'ok') => spawnSync('bash', ['-c', guard], { encoding: 'utf8', env: {
+    const main = { type: 'branch', name: 'main' };
+    const run = (info, STATUS = 'ok', rules = [main]) => spawnSync('bash', ['-c', guard], { encoding: 'utf8', env: {
       ...process.env, PATH: `${root}:${process.env.PATH}`, GITHUB_REPOSITORY: 'Git-Khronos/Git-Khronos', STATUS, REPLY: JSON.stringify(info),
+      POLICIES: JSON.stringify({ total_count: rules.length, branch_policies: rules }),
     } });
-    const good = { name: 'signed-release', protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'Team' }] }] };
+    const good = { name: 'signed-release', protection_rules: [{ type: 'required_reviewers', reviewers: [{ type: 'Team' }] }],
+      deployment_branch_policy: { custom_branch_policies: true, protected_branches: false } };
     const accepted = run(good);
     assert.equal(accepted.status, 0, accepted.stderr || accepted.stdout);
     for (const bad of [
@@ -517,6 +523,15 @@ printf '%s\n' "$REPLY"
       assert.equal(bad.status, 1);
       assert.match(bad.stdout, /::error::.*reviewer/i);
       assert.doesNotMatch(bad.stdout, /Team/);
+    }
+    for (const bad of [
+      run({ ...good, deployment_branch_policy: null }),
+      run(good, 'ok', [{ ...main, type: 'tag' }]),
+      run(good, 'ok', [main, { ...main, name: 'dev' }]),
+      run(good, 'ok', []),
+    ]) {
+      assert.equal(bad.status, 1);
+      assert.match(bad.stdout, /::error::.*exactly one branch policy for main/);
     }
   }
 });

@@ -39,16 +39,25 @@ jobs:
       artifact-id: ${{ steps.assets.outputs.artifact-id }}
       checksums-sha256: ${{ steps.prepare.outputs.checksums_sha256 }}
     steps:
-      - name: Require a reviewer-protected release environment before publication
+      - name: Require a reviewer-protected main-only release environment before publication
         if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if ! gh api "repos/$GITHUB_REPOSITORY/environments/signed-release" |
-            jq -e '.name == "signed-release" and any(.protection_rules[]?;
-              .type == "required_reviewers" and (.reviewers | type == "array" and length > 0))' >/dev/null; then
+          environment="repos/$GITHUB_REPOSITORY/environments/signed-release"
+          policy="$(gh api "$environment")" || policy=""
+          if ! jq -se 'length == 1 and (.[0] | .name == "signed-release" and any(.protection_rules[]?;
+              .type == "required_reviewers" and (.reviewers | type == "array" and length > 0)))' >/dev/null <<< "$policy"; then
             echo '::error::Configure at least one required reviewer on the signed-release environment before enabling publication.'
+            exit 1
+          fi
+          if ! jq -se 'length == 1 and (.[0].deployment_branch_policy |
+              .custom_branch_policies == true and .protected_branches == false)' >/dev/null <<< "$policy" ||
+             ! gh api "$environment/deployment-branch-policies?per_page=2" |
+               jq -se 'length == 1 and (.[0] | .total_count == 1 and (.branch_policies | length == 1) and
+                 .branch_policies[0].name == "main" and .branch_policies[0].type == "branch")' >/dev/null; then
+            echo '::error::Restrict the signed-release environment to exactly one branch policy for main and no tag rules.'
             exit 1
           fi
       - name: Check publisher key and signature inputs
@@ -281,10 +290,19 @@ jobs:
             "If your installed version does not include this publisher key, download and install the Debian package once using your system package manager. A release manifest cannot add trust to an older installation. After installing a trusted build, use the Updates menu to check manually or opt in to automatic updates." >> "$notes"
           # A missing environment can be recreated without protection.
           # Recheck immediately before the only repository write.
-          if ! gh api "repos/$GITHUB_REPOSITORY/environments/signed-release" |
-            jq -e '.name == "signed-release" and any(.protection_rules[]?;
-              .type == "required_reviewers" and (.reviewers | type == "array" and length > 0))' >/dev/null; then
-            echo '::error::Required reviewer protection on signed-release could not be verified.'
+          environment="repos/$GITHUB_REPOSITORY/environments/signed-release"
+          policy="$(gh api "$environment")" || policy=""
+          if ! jq -se 'length == 1 and (.[0] | .name == "signed-release" and any(.protection_rules[]?;
+              .type == "required_reviewers" and (.reviewers | type == "array" and length > 0)))' >/dev/null <<< "$policy"; then
+            echo '::error::Configure at least one required reviewer on the signed-release environment before enabling publication.'
+            exit 1
+          fi
+          if ! jq -se 'length == 1 and (.[0].deployment_branch_policy |
+              .custom_branch_policies == true and .protected_branches == false)' >/dev/null <<< "$policy" ||
+             ! gh api "$environment/deployment-branch-policies?per_page=2" |
+               jq -se 'length == 1 and (.[0] | .total_count == 1 and (.branch_policies | length == 1) and
+                 .branch_policies[0].name == "main" and .branch_policies[0].type == "branch")' >/dev/null; then
+            echo '::error::Restrict the signed-release environment to exactly one branch policy for main and no tag rules.'
             exit 1
           fi
           gh release create "$RELEASE_TAG" "${assets[@]}" SHA256SUMS \
