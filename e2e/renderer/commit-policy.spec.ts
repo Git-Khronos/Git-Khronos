@@ -320,7 +320,9 @@ test('signer configuration failure clears a previous availability result and ret
   const preferences = page.getByRole('dialog', { name: 'Preferences' });
   await preferences.getByRole('tab', { name: /^Git/ }).click();
   const signing = preferences.locator('.signing-preferences');
-  await signing.getByRole('button', { name: 'Check Signer', exact: true }).click();
+  const checkSigner = signing.getByRole('button', { name: 'Check Signer', exact: true });
+  await expect(checkSigner).toHaveAccessibleDescription(/does not run the signer or verify that the key can sign/);
+  await checkSigner.click();
   await expect(signing.locator('.signing-diagnostic')).toContainText('Signer available');
   await expect(signing.locator('.signing-diagnostic')).toContainText('/fixture/openpgp-signer');
   await page.evaluate(() => { (window as any).__signerDiagnostic.fail = true; });

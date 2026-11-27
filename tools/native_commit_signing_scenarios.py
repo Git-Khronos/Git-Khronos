@@ -79,6 +79,9 @@ def _sign_commit_in_ui(driver, fixtures, repository, format_name, signature_head
         failure_config = (repository / ".git/config").read_bytes()
         staged = fixtures.git(repository, "diff", "--cached", "--binary")
         payload_bytes = payload.read_bytes()
+        diagnostic = driver.invoke("diagnose_signing", repoId=repo_id)
+        assert diagnostic["format"] == "ssh" and diagnostic["program"] == "ssh-keygen", diagnostic
+        assert diagnostic["available"] and diagnostic["keyConfigured"], diagnostic
         driver.click_visible('.commit-form button[type="submit"]')
         driver.wait("""const toast = document.querySelector('gk-error-toast');
           return /sign|private key/i.test(toast?.textContent ?? '') &&
