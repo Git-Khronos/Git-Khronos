@@ -136,7 +136,7 @@ export interface LfsTrackingRequest {
                       @if (lock.ours) {
                         <button type="button" [disabled]="unavailable()" [attr.aria-label]="'Unlock ' + lock.path" (click)="unlock(lock, false)">Unlock</button>
                       } @else {
-                        <button type="button" [disabled]="unavailable()" [attr.aria-label]="'Review force unlock of ' + lock.path" (click)="reviewForceUnlock(lock)">Force unlock…</button>
+                        <button type="button" [disabled]="unavailable()" [attr.aria-label]="'Review force unlock of ' + lock.path" (click)="reviewForceUnlock(lock, $event.currentTarget)">Force unlock…</button>
                       }
                     </li>
                   }
@@ -149,7 +149,7 @@ export interface LfsTrackingRequest {
                 <p>{{ lock.owner || 'Another user' }} holds this lock. Forcing removes it on the server without their agreement,
                   so both of you may edit a file that cannot be merged. Ask them first when possible. Files are not changed.</p>
                 <button data-lfs-force class="danger" type="button" [disabled]="unavailable()" (click)="unlock(lock, true)">Force unlock</button>
-                <button type="button" [disabled]="unavailable()" (click)="forceUnlock.set(null)">Keep lock</button>
+                <button data-lfs-keep-lock type="button" [disabled]="unavailable()" (click)="keepLock()">Keep lock</button>
               </div>
             }
             <form (submit)="$event.preventDefault(); lock()">
@@ -267,6 +267,7 @@ export class LfsTrackingDialogComponent {
   readonly forceUnlock = signal<LfsLock | null>(null);
   readonly lockPath = signal('');
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
+  private forceUnlockOpener: HTMLElement | null = null;
 
   constructor() {
     effect(() => {
@@ -451,10 +452,23 @@ export class LfsTrackingDialogComponent {
     this.focus(locks ? (notice ? '[role=status][tabindex="-1"]:not(.object-result):not(.attribute-result):not(.lock-result)' : '.lock-result') : '[role=alert]');
   }
 
-  reviewForceUnlock(lock: LfsLock): void {
+  reviewForceUnlock(lock: LfsLock, opener: EventTarget | null): void {
     if (this.unavailable()) return;
+    this.forceUnlockOpener = opener instanceof HTMLElement ? opener : null;
     this.forceUnlock.set(lock);
-    this.focus('[data-lfs-force]');
+    this.focus('[data-lfs-keep-lock]');
+  }
+
+  keepLock(): void {
+    const target = this.request();
+    if (!this.forceUnlock() || this.unavailable()) return;
+    this.forceUnlock.set(null);
+    const opener = this.forceUnlockOpener;
+    this.forceUnlockOpener = null;
+    setTimeout(() => {
+      if (!this.ownsRequest(target) || this.forceUnlock() || !opener?.isConnected) return;
+      if (this.dialog()?.nativeElement.contains(opener) && !opener.matches(':disabled')) opener.focus();
+    });
   }
 
   async lock(): Promise<void> {
@@ -526,7 +540,12 @@ export class LfsTrackingDialogComponent {
 
   handleKey(event: KeyboardEvent): void {
     event.stopPropagation();
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.close(); }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (this.forceUnlock()) this.keepLock();
+      else this.close();
+      return;
+    }
     if (event.key !== 'Tab') return;
     const controls = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),summary:not([aria-disabled=true])') ?? [])]
       .filter((element) => element.getClientRects().length);
