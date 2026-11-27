@@ -24,6 +24,7 @@ const profiles = [
   [/^stash-(?:options|delete|clear)-dialog\.component\.(?:ts|html|scss)$/, 'stash'],
   [/^(?:file-history|history-search)\.component\.(?:ts|html|scss)$/, 'history-search'],
   [/^fetch-options-dialog\.component\.(?:ts|html|scss)$/, 'transport'],
+  [/^git-documentation(?:-dialog\.component|\.service)\.(?:ts|html|scss)$/, 'git-documentation'],
   [/^application-updates-dialog\.component\./, 'updates'],
 ];
 const prefix = 'apps/desktop/src/app/';
@@ -31,6 +32,7 @@ const rendererSourceChecks = [
   [/^markdown-preview(?:\.component|\.worker)?\.ts$/, 'editor', 'markdown-preview.spec.ts'],
   [/^application-updates\.service\.ts$/, 'updates', 'application-updates.service.spec.ts'],
   [/^submodule-findings\.ts$/, 'submodules', 'submodule-findings.spec.ts'],
+  [/^git-documentation-topics\.ts$/, 'git-documentation', 'git-documentation-topics.spec.ts'],
 ];
 const rendererFixtureSpecs = new Map([
   ['e2e/renderer/preview-repository-ready.ts', [
@@ -70,6 +72,10 @@ const debianWorkflowSources = new Set([
   'tools/build-linux-package.sh', 'tools/manage-linux-package.sh',
   'tools/finish-linux-package-cache.mjs', 'tools/package-build-receipt.mjs',
   'tools/check-linux-package-watcher.mjs',
+]);
+const packageSourceTests = new Map([
+  ['tools/download-qualified-debian.sh', 'tools/check-debian-candidate-run.test.mjs'],
+  ['tools/check-debian-candidate-run.mjs', 'tools/check-debian-candidate-run.test.mjs'],
 ]);
 // These are named #[cfg(test)] modules, not shared helpers or production code.
 const gitCoreTestModules = new Set([
@@ -221,6 +227,10 @@ for (const path of changed) {
     } else {
       plan = 'Debian package workflow tests';
     }
+  } else if (packageSourceTests.has(path) && existsSync(join(cwd, path))
+    && isPackageTest(packageSourceTests.get(path))) {
+    packageSpecs.add(packageSourceTests.get(path));
+    plan = 'focused Debian qualification handoff tests';
   } else if (isPackageTest(path)) {
     packageSpecs.add(path);
     plan = 'individual package tooling spec';

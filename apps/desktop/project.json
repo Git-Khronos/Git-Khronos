@@ -272,6 +272,7 @@
         "graph": { "command": "playwright test 'e2e/renderer/(graph-|deferred-background-ui)' --grep-invert @exhaustive-layout" },
         "history": { "command": "playwright test 'e2e/renderer/(history-|blame-pages|operation-history-lifecycle)'" },
         "history-search": { "command": "playwright test 'e2e/renderer/history-search(-lifecycle)?[.]spec[.]ts$'" },
+        "git-documentation": { "command": "playwright test 'e2e/renderer/git-documentation[.]spec[.]ts$'" },
         "workspace": { "command": "playwright test 'e2e/renderer/workspace([.-])'" },
         "keyboard": { "command": "playwright test 'e2e/renderer/(command-palette|keyboard-shortcuts|confirmation-keyboard|setup-dialog-keyboard)'" },
         "updates": { "command": "playwright test 'e2e/renderer/application-updates[.]spec[.]ts$'" }

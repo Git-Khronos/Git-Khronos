@@ -110,6 +110,30 @@ test('file and repository history panels share one focused search retest', t => 
   assert.doesNotMatch(plan, /"desktop:e2e:history"|desktop:check/);
 });
 
+test('Git help changes select the reference browser and topic checks without repeating the direct spec', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/git-documentation-dialog.component.ts');
+  f.write('apps/desktop/src/app/git-documentation.service.ts');
+  f.write('apps/desktop/src/app/git-documentation-topics.ts');
+  f.write('apps/desktop/src/app/git-documentation-topics.spec.ts');
+  f.write('e2e/renderer/git-documentation.spec.ts');
+  const plan = f.run();
+  assert.equal(plan.match(/"desktop:e2e:git-documentation"/g)?.length, 1);
+  assert.match(plan, /"desktop:renderer-unit-test:focused"[^\n]*git-documentation-topics\.spec\.ts/);
+  assert.doesNotMatch(plan, /git-documentation\[\.\]spec\[\.\]ts|desktop:check/);
+});
+
+test('changes to the release download handoff select only its candidate-attempt tests', t => {
+  const f = fixture(t);
+  f.write('tools/check-debian-candidate-run.test.mjs');
+  f.commit();
+  f.write('tools/download-qualified-debian.sh');
+  f.write('tools/check-debian-candidate-run.mjs');
+  const plan = f.run();
+  assert.match(plan, /"desktop:package-test:focused"[^\n]*"tools\/check-debian-candidate-run\.test\.mjs"/);
+  assert.doesNotMatch(plan, /"desktop:package-test"|desktop:check|desktop:e2e/);
+});
+
 test('an edited LFS lock fixture selects its packaged suite with an explicit archive', t => {
   const f = fixture(t);
   f.write('.gitignore', 'artifacts/\n');
