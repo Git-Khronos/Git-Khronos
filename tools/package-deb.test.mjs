@@ -502,6 +502,8 @@ test('signer only signs qualified bytes and never replaces a sidecar', async t =
   const digest = createHash('sha256').update(fixture).digest('hex');
   await writeFile(archive, fixture);
   const marker = join(root, 'signer-called');
+  const keyFile = join(root, 'fixture.key');
+  await writeFile(keyFile, 'fixture key file');
   await writeFile(join(root, 'pnpm'), `#!/bin/sh
 set -eu
 test "$#" = 7
@@ -521,6 +523,11 @@ if [ "$FIXTURE_MUTATE" = true ]; then printf '%s' 'changed' > "$7"; fi
   const wrong = run('0'.repeat(64));
   assert.equal(wrong.status, 1);
   assert.match(wrong.stderr, /does not match the qualified SHA-256/);
+  await assert.rejects(stat(marker), { code: 'ENOENT' });
+  const prompt = sha => spawnSync('bash', ['tools/sign-qualified-debian.sh',
+    '--prompt', keyFile, archive, sha, 'v0.1.6'], { encoding: 'utf8' });
+  assert.match(prompt('0'.repeat(64)).stderr, /does not match the qualified SHA-256/);
+  assert.match(prompt(digest).stderr, /Open a terminal/);
   await assert.rejects(stat(marker), { code: 'ENOENT' });
   const changed = run(digest, 'true');
   assert.equal(changed.status, 1);

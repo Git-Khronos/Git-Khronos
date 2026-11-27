@@ -234,23 +234,16 @@ With `PACKAGE` (absolute path), `VERSION`, `PRIVATE_KEY_FILE`, `PUBLIC_KEY_FILE`
 `STAGING_PARENT` (existing directory), and `QUALIFIED_PACKAGE_SHA256` set:
 
 ```bash
-(
-  set +x
-  set -e
-  unset TAURI_SIGNING_PRIVATE_KEY
-  export TAURI_SIGNING_PRIVATE_KEY_PATH="$PRIVATE_KEY_FILE"
-  read -rsp 'Signing key passphrase: ' TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-  printf '\n'
-  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-  bash tools/sign-qualified-debian.sh "$PACKAGE" "$QUALIFIED_PACKAGE_SHA256" "v$VERSION"
-) || exit 1
+bash tools/sign-qualified-debian.sh --prompt "$PRIVATE_KEY_FILE" \
+  "$PACKAGE" "$QUALIFIED_PACKAGE_SHA256" "v$VERSION" || exit 1
 cargo run --locked -p git-khronos-desktop --example stage-debian-update -- \
   "$PACKAGE" "$PACKAGE.sig" "$PUBLIC_KEY_FILE" "$STAGING_PARENT" \
   "$QUALIFIED_PACKAGE_SHA256"
 ```
 
 The signing helper refuses a checksum mismatch or an existing sidecar. The
-passphrase stays in the signing subshell; do not paste it into GitHub or chat.
+passphrase is entered without echo and stays in the signing process and its
+signer child; do not paste it into GitHub or chat.
 Only the resulting public `.deb.sig` is needed by the publication workflow.
 
 The stager prints a new directory containing the verified package, a

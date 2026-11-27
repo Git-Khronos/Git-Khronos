@@ -3,8 +3,17 @@
 set +x
 set -euo pipefail
 
+prompt_key=
+if [[ ${1:-} == --prompt ]]; then
+  if (( $# != 5 )) || [[ ! -r $2 || ! -f $2 || -L $2 ]]; then
+    echo 'Interactive signing requires a readable regular private key file.' >&2
+    exit 2
+  fi
+  prompt_key=$2
+  shift 2
+fi
 if (( $# != 3 )); then
-  echo 'Usage: sign-qualified-debian.sh PACKAGE.deb QUALIFIED-SHA256 vMAJOR.MINOR.PATCH' >&2
+  echo 'Usage: sign-qualified-debian.sh [--prompt PRIVATE_KEY_FILE] PACKAGE.deb QUALIFIED-SHA256 vMAJOR.MINOR.PATCH' >&2
   exit 2
 fi
 package=$1
@@ -24,8 +33,10 @@ if [[ -e "$package.sig" || -L "$package.sig" ]]; then
   echo 'Refusing to replace an existing signature.' >&2
   exit 1
 fi
-if [[ -n ${TAURI_SIGNING_PRIVATE_KEY:-} && -n ${TAURI_SIGNING_PRIVATE_KEY_PATH:-} ]] ||
-   [[ -z ${TAURI_SIGNING_PRIVATE_KEY:-} && -z ${TAURI_SIGNING_PRIVATE_KEY_PATH:-} ]]; then
+if [[ -z "$prompt_key" ]] && {
+  [[ -n ${TAURI_SIGNING_PRIVATE_KEY:-} && -n ${TAURI_SIGNING_PRIVATE_KEY_PATH:-} ]] ||
+  [[ -z ${TAURI_SIGNING_PRIVATE_KEY:-} && -z ${TAURI_SIGNING_PRIVATE_KEY_PATH:-} ]];
+}; then
   echo 'Set exactly one Tauri signing key input in the signing environment.' >&2
   exit 2
 fi
@@ -46,6 +57,20 @@ matches_digest() {
 if ! matches_digest "$work/$installer"; then
   echo 'Installer does not match the qualified SHA-256; not signing.' >&2
   exit 1
+fi
+if [[ -n "$prompt_key" ]]; then
+  if [[ ! -t 0 ]]; then
+    echo 'Open a terminal to enter the signing passphrase.' >&2
+    exit 2
+  fi
+  unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  export TAURI_SIGNING_PRIVATE_KEY_PATH="$prompt_key"
+  if ! IFS= read -rsp 'Signing key passphrase: ' TAURI_SIGNING_PRIVATE_KEY_PASSWORD; then
+    printf '\nSigning cancelled.\n' >&2
+    exit 1
+  fi
+  printf '\n' >&2
+  export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 fi
 # Do not pass a credential on the command line or print the signer's output.
 if ! pnpm exec tauri signer sign --app-version "$version" "$work/$installer" </dev/null >/dev/null 2>&1; then
