@@ -4481,3 +4481,14 @@ with the source unchanged. Its archive under
 All eight extracted-package scenarios passed: setup/start/finish (4),
 recovery (3), and feature rebase (1). The archive predates the Tab-order
 fix in `3055cd2`; that fix has Chromium and WebKit evidence only.
+
+The guarded follow-up Debian package from `9918398` includes the Tab-order
+fix. Its archive under `target/local-review/workflow-keyboard-9918398/`
+has SHA-256
+`33077cb3672bb5a35a1b6018cc483cd18580d64f7c0d38e63bc2522aa639ddb2`.
+The packaged branch workflow suite passed all four scenarios, including
+Tab from the focused review to **Apply reviewed workflow**, then Enter.
+The old `979df50` archive failed that assertion by focusing **Close**.
+The newer archive also passed smoke (19) and large nested discard (4)
+in parallel after the private-display startup fix in `a033692`. APT's
+host simulation showed no removals. No installation or release was made.
