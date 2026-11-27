@@ -569,6 +569,17 @@ test('updater fixture edits select offline package checks, not an installed upda
   assert.match(plan, /"desktop:native-application-updates" "--output-style=stream" "--" "--package"/);
   assert.match(plan, /"desktop:native-application-update-release-link" "--output-style=stream" "--" "--package"/);
   assert.doesNotMatch(plan, /application-update-consent|--installed|desktop:native-full|desktop:e2e/);
+  const pinned = f.run('--native-package', 'artifacts/candidate.deb', '--native-package-sha256', 'A'.repeat(64));
+  assert.equal(pinned.split('"--expect-package-sha256" "' + 'a'.repeat(64) + '"').length, 3);
+  for (const args of [
+    ['--native-package-sha256', 'A'.repeat(64)],
+    ['--native-package', 'artifacts/candidate.deb', '--native-package-sha256', 'wrong'],
+  ]) {
+    const result = spawnSync(process.execPath, ['tools/retest-changed.mjs', ...args], { cwd: f.cwd, encoding: 'utf8' });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /requires --native-package and a 64-character hexadecimal checksum/);
+    assert.equal(result.stdout, '');
+  }
 });
 
 test('changes to the shared launcher fixture retest browser and file manager handoffs', t => {

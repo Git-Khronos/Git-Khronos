@@ -111,11 +111,12 @@ const { values } = parseArgs({ options: {
   webkit: { type: 'boolean' },
   run: { type: 'boolean' },
   'native-package': { type: 'string' },
+  'native-package-sha256': { type: 'string' },
   'allow-full': { type: 'boolean' },
 } });
 
 if (values.help) {
-  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--native-package <archive.deb>] [--run [--allow-full]]
+  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--native-package <archive.deb> [--native-package-sha256 <sha256>]] [--run [--allow-full]]
 
 Preview checks for staged, unstaged and untracked changes against HEAD by default.
 Use --base to compare against another local commit, for example origin/dev.
@@ -123,6 +124,7 @@ Use --staged to select only changes in the index relative to the base.
 Tests still run against your working files, not an isolated staged snapshot.
 Use --workers to override the browser worker count and --webkit to select WebKit.
 Use --native-package to include mapped native scenario suites with an explicit Debian archive.
+Use --native-package-sha256 to require a previously reviewed archive checksum.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
 This command does not fetch or replace the release test suite.`);
   process.exit(0);
@@ -134,6 +136,12 @@ if (values.workers !== undefined && !/^[1-9][0-9]{0,2}$/.test(values.workers)) {
 }
 
 let nativePackage;
+const nativeChecksum = values['native-package-sha256'];
+if (nativeChecksum !== undefined
+    && (!values['native-package'] || !/^[0-9a-fA-F]{64}$/.test(nativeChecksum))) {
+  console.error('--native-package-sha256 requires --native-package and a 64-character hexadecimal checksum.');
+  process.exit(2);
+}
 if (values['native-package'] !== undefined) {
   nativePackage = resolve(values['native-package']);
   if (!nativePackage.endsWith('.deb') || !statSync(nativePackage, { throwIfNoEntry: false })?.isFile()) {
@@ -304,7 +312,8 @@ const extraChecks = [
   ...(productionRendererBuild ? [['desktop:build:production']] : []),
   ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
   ...(archiveCacheTests ? [['desktop:archive-cache-test']] : []),
-  ...(nativePackage ? [...nativeSuites].map(suite => ['desktop:' + suite, '--', '--package', nativePackage]) : []),
+  ...(nativePackage ? [...nativeSuites].map(suite => ['desktop:' + suite, '--', '--package', nativePackage,
+    ...(nativeChecksum ? ['--expect-package-sha256', nativeChecksum.toLowerCase()] : [])]) : []),
 ];
 const commands = broad
   ? [['desktop:check'], ['desktop:test'], ...extraChecks, ['desktop:e2e']]
