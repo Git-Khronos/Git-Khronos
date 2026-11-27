@@ -86,7 +86,7 @@ def lfs_lock_dialog_actions(driver, fixtures, report):
         repo_id = open_ui(driver, repository)
         before = {
             "head": fixtures.git(repository, "rev-parse", "HEAD"),
-            "index": (repository / ".git/index").read_bytes(),
+            "index": fixtures.git(repository, "--no-optional-locks", "ls-files", "--stage", "-v", "-z"),
             "attributes": (repository / ".gitattributes").read_bytes(),
         }
 
@@ -94,40 +94,52 @@ def lfs_lock_dialog_actions(driver, fixtures, report):
         driver.wait("return !!document.querySelector('#preferences-tab-git')")
         driver.click("#preferences-tab-git")
         driver.click_text(".preferences-grid button", "Manage tracking patterns…")
-        driver.wait("return !!document.querySelector('gk-lfs-tracking-dialog [role=dialog]')")
-        driver.click("gk-lfs-tracking-dialog details.locks > summary")
-        driver.click("button[data-lfs-locks-load]")
+        # The lazy shell can paint before the initial rules query has settled.
+        # Do not toggle the disclosure while it is aria-disabled or replay a click.
+        disclosure = 'gk-lfs-tracking-dialog details.locks > summary:not([aria-disabled="true"])'
+        driver.click_scrolled_text(disclosure, wait_for_ready=True)
+        driver.click_scrolled_text('gk-lfs-tracking-dialog details.locks[open] button[data-lfs-locks-load]',
+                                   wait_for_ready=True)
         driver.wait("return !!document.querySelector('gk-lfs-tracking-dialog .lock-result')")
         driver.wait("return document.querySelector('gk-lfs-tracking-dialog .lock-result')?.textContent.includes('Other Editor')")
 
-        driver.click('[aria-label="Review force unlock of remote.psd"]')
+        driver.click_scrolled_text('[aria-label="Review force unlock of remote.psd"]', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gk-lfs-tracking-dialog .force-review')")
-        driver.click_text("gk-lfs-tracking-dialog .force-review button", "Keep lock")
+        driver.click_scrolled_text("gk-lfs-tracking-dialog .force-review button", "Keep lock", wait_for_ready=True)
         assert any(lock["id"] == "remote-41" for lock in locks), "Cancel removed the collaborator lock"
         assert not driver.script("return !!document.querySelector('gk-lfs-tracking-dialog .force-review')")
 
         driver.script("const e=document.querySelector('#lfs-lock-path');e.value='fixture.txt';e.dispatchEvent(new Event('input',{bubbles:true}));")
-        driver.click_text("gk-lfs-tracking-dialog form button", "Lock file")
+        driver.click_scrolled_text("gk-lfs-tracking-dialog form button", "Lock file", wait_for_ready=True)
         driver.wait("return !!document.querySelector('[aria-label=\"Unlock fixture.txt\"]')")
         assert any(lock["path"] == "fixture.txt" and lock["owner"] == "Tester" for lock in locks)
 
         (repository / "fixture.txt").write_bytes(b"uncommitted while lock held\n")
-        driver.click('[aria-label="Unlock fixture.txt"]')
+        driver.click_scrolled_text('[aria-label="Unlock fixture.txt"]', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gk-lfs-tracking-dialog [role=alert]')")
         assert any(lock["path"] == "fixture.txt" and lock["owner"] == "Tester" for lock in locks), (
             "Dirty-file refusal released the local server lock")
         (repository / "fixture.txt").write_bytes(original)
-        driver.click('[aria-label="Unlock fixture.txt"]')
-        driver.wait("return !document.querySelector('[aria-label=\"Unlock fixture.txt\"]')")
+        driver.click_scrolled_text('[aria-label="Unlock fixture.txt"]', wait_for_ready=True)
+        # The old list is removed while reloading. Absence alone is not completion.
+        driver.wait('''return !!document.querySelector('gk-lfs-tracking-dialog .lock-result')
+          && !document.querySelector('[aria-label="Unlock fixture.txt"]')
+          && [...document.querySelectorAll('gk-lfs-tracking-dialog p[role=status]')]
+            .some(element => element.textContent.trim() === 'Unlocked fixture.txt.')''')
         assert not any(lock["path"] == "fixture.txt" for lock in locks)
 
-        driver.click('[aria-label="Review force unlock of remote.psd"]')
+        driver.click_scrolled_text('[aria-label="Review force unlock of remote.psd"]', wait_for_ready=True)
         driver.wait("return !!document.querySelector('gk-lfs-tracking-dialog .force-review')")
-        driver.click_text("gk-lfs-tracking-dialog .force-review button", "Force unlock")
-        driver.wait("return !document.querySelector('[aria-label=\"Review force unlock of remote.psd\"]')")
+        driver.click_scrolled_text("gk-lfs-tracking-dialog .force-review button", "Force unlock", wait_for_ready=True)
+        driver.wait('''return !!document.querySelector('gk-lfs-tracking-dialog .lock-result')
+          && !document.querySelector('[aria-label="Review force unlock of remote.psd"]')
+          && [...document.querySelectorAll('gk-lfs-tracking-dialog p[role=status]')]
+            .some(element => element.textContent.includes('Broke the lock on remote.psd.'))''')
         assert not any(lock["id"] == "remote-41" for lock in locks), "Confirmed force unlock left the server lock"
         assert fixtures.git(repository, "rev-parse", "HEAD") == before["head"]
-        assert (repository / ".git/index").read_bytes() == before["index"]
+        # The dirty-file check and watcher may refresh index stat data.
+        # Preserve the staged modes, object IDs, stages and flags, not the cache bytes.
+        assert fixtures.git(repository, "--no-optional-locks", "ls-files", "--stage", "-v", "-z") == before["index"]
         assert (repository / ".gitattributes").read_bytes() == before["attributes"]
         assert not fixtures.git(repository, "status", "--porcelain")
         report["scenarios"].append("native-ui-lfs-lock-create-unlock-dirty-refusal-and-force-unlock-review")

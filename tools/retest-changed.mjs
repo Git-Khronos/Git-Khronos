@@ -11,6 +11,7 @@ const split = value => value.split('\0').filter(Boolean);
 const profiles = [
   [/^(?:worktree-(?:lock|move|registration)-dialog|checkout-worktree-dialog)\.component\.(?:ts|html|scss)$/, 'worktrees'],
   [/^submodule-state-review\.component\.(?:ts|html|scss)$/, 'submodules'],
+  [/^lfs-(?:tracking|prune)-dialog\.component\.(?:ts|html|scss)$/, 'lfs'],
   [/^repository-confirmations\.component\.(?:ts|html|scss)$/, 'repository-confirmations'],
   [/^history-review-dialog\.component\.(?:ts|html|scss)$/, 'history-confirmations'],
   [/^reference-action-dialog\.component\.(?:ts|html|scss)$/, 'reference-actions'],
@@ -46,6 +47,7 @@ const rendererFixtureSpecs = new Map([
 // Representative focused suites; this is not a transitive Python dependency graph.
 const packagedScenarios = new Map([
   ['tools/native_application_updates_scenarios.py', ['native-application-updates']],
+  ['tools/native_lfs_lock_ui_scenarios.py', ['native-lfs-lock-actions']],
   ['tools/native_feature_rebase_scenarios.py', ['native-feature-rebase', 'native-merge-rebase-review']],
   ['tools/native_gitlab_fork_scenarios.py', ['native-gitlab-fork-ui']],
   ['tools/native_gitlab_scenarios.py', ['native-gitlab', 'native-gitlab-fork-ui']],

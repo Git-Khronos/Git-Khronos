@@ -88,6 +88,28 @@ test('workflow dialog edits select the Gitflow review suite without duplicate ca
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('LFS dialog edits select the focused LFS profile without duplicate specs', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/lfs-tracking-dialog.component.ts');
+  f.write('apps/desktop/src/app/lfs-prune-dialog.component.html');
+  f.write('e2e/renderer/lfs-locks.spec.ts');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:lfs/);
+  assert.ok(!plan.includes('e2e/renderer/lfs-locks[.]spec[.]ts$'));
+  assert.doesNotMatch(plan, /desktop:check/);
+});
+
+test('an edited LFS lock fixture selects its packaged suite with an explicit archive', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'artifacts/\n');
+  f.commit();
+  f.write('artifacts/check.deb');
+  f.write('tools/native_lfs_lock_ui_scenarios.py');
+  const plan = f.run('--native-package', 'artifacts/check.deb');
+  assert.match(plan, /"desktop:native-lfs-lock-actions" "--output-style=static" "--" "--package"/);
+  assert.doesNotMatch(plan, /desktop:e2e|--installed/);
+});
+
 test('changing preview startup selects every direct consumer of that fixture', t => {
   const f = fixture(t);
   f.write('e2e/renderer/preview-repository-ready.ts');

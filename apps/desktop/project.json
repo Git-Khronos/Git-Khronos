@@ -247,6 +247,7 @@
         "sparse-checkout": { "command": "playwright test 'e2e/renderer/sparse-(checkout|left-paths)[.]spec[.]ts$'" },
         "repository-confirmations": { "command": "playwright test 'e2e/renderer/(accessibility-audit|commit-policy|confirmation-keyboard|force-destination-layout|push-sync|remote-cleanup-review-scope|repository-(confirmation|setup)-scope|sparse-(checkout|left-paths)|workspace|worktree-move)[.]spec[.]ts$'" },
         "history-confirmations": { "command": "playwright test 'e2e/renderer/(branch-panel-interactions|commit-action-menu|confirmation-keyboard|history-review-loading|mainline-replay|no-commit-replay|operation-recovery|ordered-revert|rebase-split|repository-confirmation-scope|workspace)[.]spec[.]ts$'" },
+        "lfs": { "command": "playwright test 'e2e/renderer/lfs-(tracking|locks|prune)[.]spec[.]ts$'" },
         "submodules": { "command": "playwright test 'e2e/renderer/submodule-review[.]spec[.]ts$'" },
         "working-files": { "command": "playwright test 'e2e/renderer/(working-(tree|file|directory)|unstaged-summary|discard-recovery|editor-draft-recovery|file-tools)'" },
         "recaps": { "command": "playwright test 'e2e/renderer/unstaged-summary[.]spec[.]ts$'" },
