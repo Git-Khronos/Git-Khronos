@@ -495,6 +495,22 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
+    fn proc_task_exited(error: &std::io::Error) -> bool {
+        // An already removed entry yields ENOENT. If the task disappears
+        // after open, procfs may return ESRCH on read.
+        error.raw_os_error() == Some(libc::ESRCH) || error.kind() == std::io::ErrorKind::NotFound
+    }
+
+    #[test]
+    fn application_update_package_inspection_distinguishes_process_exit_from_read_failure() {
+        for errno in [libc::ENOENT, libc::ESRCH] {
+            assert!(proc_task_exited(&std::io::Error::from_raw_os_error(errno)));
+        }
+        for errno in [libc::EACCES, libc::EPERM, libc::EIO] {
+            assert!(!proc_task_exited(&std::io::Error::from_raw_os_error(errno)));
+        }
+    }
+
     #[test]
     fn application_update_package_inspection_deadline_retires_owned_decompressor_group() {
         let directory = tempfile::tempdir().unwrap();
@@ -516,14 +532,11 @@ mod tests {
         assert!(pid > 1);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         loop {
-            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat"));
-            if stat
-                .as_ref()
-                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
-            {
-                break;
-            }
-            let stat = stat.unwrap();
+            let stat = match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+                Ok(stat) => stat,
+                Err(error) if proc_task_exited(&error) => break,
+                Err(error) => panic!("Could not inspect owned decompressor {pid}: {error}"),
+            };
             let state = stat
                 .rsplit_once(')')
                 .unwrap()
