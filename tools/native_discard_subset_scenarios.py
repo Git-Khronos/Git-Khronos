@@ -480,14 +480,26 @@ def discard_large_untracked_batch(driver, fixtures, report):
 
     repo_id = open_ui(driver, repository)
     driver.click_visible('.wip-nav')
-    driver.click_visible('[aria-label="Discard all unstaged changes"]')
+    discard = '[aria-label="Discard all unstaged changes"]'
+    # Observe the real activation without replaying a potentially delivered click.
+    driver.script("""
+      window.__largeDiscardClick = false;
+      document.addEventListener('click', event => {
+        if (event.isTrusted && event.target.closest(arguments[0])) window.__largeDiscardClick = true;
+      }, { capture: true, once: true });
+    """, discard)
+    driver.click_visible(discard)
+    assert driver.script("return window.__largeDiscardClick"), 'the bulk discard button did not receive the trusted click'
     dialog = '[role="alertdialog"]'
     confirm = dialog + ' .confirm-action'
     undo = '.toolbar .tool-button[title^="Undo Discard Unstaged Changes ("]:not(:disabled)'
     expected = json.dumps(sorted(sizes))
-    driver.wait(f"""return JSON.stringify([...document.querySelectorAll(
+    outcome = driver.wait(f"""const error = document.querySelector('.error-toast[role="alert"]')?.textContent.trim();
+      if (error) return {{error}};
+      return JSON.stringify([...document.querySelectorAll(
       {str(dialog + ' .discard-preview-paths li')!r})].map(row => row.textContent.trim()).sort())
-      === JSON.stringify({expected})""", 120)
+      === JSON.stringify({expected}) ? {{ready: true}} : null""", 120)
+    assert outcome == {'ready': True}, f'large discard preview refused: {outcome}'
     assert {path: digest(path) for path in sizes} == before
     driver.click_scrolled_text(confirm, 'Discard captured changes', wait_for_ready=True)
     driver.wait(f"return !!document.querySelector({undo!r})", 120)
