@@ -2101,8 +2101,9 @@ def main():
                 saved_workspace_repository_workflow(driver, fixtures, report)
             if args.suite in ("full", "environment", "remote-reviews"):
                 progress.enter_phase("remote-reviews")
-                from native_remote_review_scenarios import remote_review_workflows
+                from native_remote_review_scenarios import fetch_all_without_pruning, remote_review_workflows
                 remote_review_workflows(driver, fixtures, report)
+                fetch_all_without_pruning(driver, fixtures, report)
             if args.suite == "transport-error-guidance":
                 progress.enter_phase("transport-error-guidance")
                 from native_scenarios import authenticated_push_rejection, local_remote_quoted_targets, local_remote_tls_words

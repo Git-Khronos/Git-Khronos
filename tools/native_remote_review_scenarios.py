@@ -175,3 +175,54 @@ def remote_review_workflows(driver, fixtures, report):
 
     from native_reference_review_scenarios import reference_review_workflows
     reference_review_workflows(driver, fixtures, report)
+
+
+def fetch_all_without_pruning(driver, fixtures, report):
+    from native_acceptance import open_ui
+
+    repository = fixtures.repository('owned-fetch-all-client', commits=2)
+    remotes = {name: fixtures.repository('owned-fetch-all-' + name, commits=1)
+               for name in ('origin', 'mirror')}
+    for name, source in remotes.items():
+        fixtures.git(repository, 'remote', 'add', name, str(source))
+    fixtures.git(remotes['origin'], 'branch', 'keep-stale')
+    fixtures.git(repository, 'fetch', '--all')
+    fixtures.git(repository, 'config', 'fetch.prune', 'true')
+    stale_ref = 'refs/remotes/origin/keep-stale'
+    stale_oid = fixtures.git(repository, 'rev-parse', stale_ref)
+    fixtures.git(remotes['origin'], 'branch', '-D', 'keep-stale')
+
+    previous, expected = {}, {}
+    for name, source in remotes.items():
+        ref = f'refs/remotes/{name}/main'
+        previous[ref] = fixtures.git(repository, 'rev-parse', ref)
+        (source / 'fixture.txt').write_text(f'New owned {name} contents\n')
+        fixtures.git(source, 'add', 'fixture.txt')
+        fixtures.git(source, 'commit', '-m', f'Advance {name}')
+        expected[ref] = fixtures.git(source, 'rev-parse', 'HEAD')
+        assert previous[ref] != expected[ref]
+
+    (repository / 'fixture.txt').write_text('Owned staged content must stay intact.\n')
+    fixtures.git(repository, 'add', 'fixture.txt')
+    (repository / 'note.txt').write_text('Owned unstaged content must stay intact.\n')
+    snapshot = lambda: checkout_footprint(fixtures, repository, ('fixture.txt', 'note.txt'))
+    before = snapshot()
+    open_ui(driver, repository)
+    driver.click_visible('[aria-label="Command palette"]')
+    search = 'gk-command-palette input[aria-label="Search commands"]'
+    driver.wait(f"return !!document.querySelector({json.dumps(search)})")
+    driver.script("""const field = document.querySelector(arguments[0]);
+      field.value = 'Fetch All'; field.dispatchEvent(new Event('input', {bubbles: true}));""", search)
+    assert {ref: fixtures.git(repository, 'rev-parse', ref) for ref in expected} == previous
+    driver.click_scrolled_text('gk-command-palette [role=option] strong', 'Fetch All', wait_for_ready=True)
+    driver.wait("""return !document.querySelector('.progress-line')
+      && document.querySelector('.activity-status')?.textContent.includes('Fetch complete');""")
+
+    assert {ref: fixtures.git(repository, 'rev-parse', ref) for ref in expected} == expected
+    assert fixtures.git(repository, 'rev-parse', stale_ref) == stale_oid
+    after = snapshot()
+    _preserved(before, after)
+    local_refs = lambda state: sorted(line for line in state['references'].splitlines()
+                                      if not line.split()[-1].startswith('refs/remotes/'))
+    assert local_refs(before) == local_refs(after)
+    report['scenarios'].append('native-fetch-all-updates-both-owned-remotes-without-pruning-or-changing-checkout')
