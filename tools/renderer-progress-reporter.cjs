@@ -3,12 +3,19 @@
 const { renameSync, writeFileSync } = require('node:fs');
 const { basename } = require('node:path');
 
+function displaySpec(test) {
+  if (typeof test.location?.file !== 'string') return null;
+  const spec = basename(test.location.file);
+  return spec && Buffer.byteLength(spec) <= 160 && !/[\\/\x00-\x1f]/.test(spec) ? spec : null;
+}
+
 class RendererProgress {
   constructor({ path }) {
     this.path = path;
     this.total = null;
     this.counts = { passed: 0, failed: 0, timedOut: 0, skipped: 0, interrupted: 0 };
     this.observed = new Map();
+    this.failureLocations = new Map();
     this.attempts = 0;
     this.testPhaseStart = 0;
     this.attemptDurationMs = 0;
@@ -27,10 +34,11 @@ class RendererProgress {
   }
 
   onTestBegin(test) {
-    if (this.total === null || typeof test.location?.file !== 'string') return;
+    const spec = displaySpec(test);
+    if (this.total === null || !spec) return;
     const line = test.location.line;
     this.active.set(test.id, {
-      spec: basename(test.location.file), startedAt: new Date().toISOString(),
+      spec, startedAt: new Date().toISOString(),
       ...(Number.isSafeInteger(line) && line > 0 ? { line } : {}),
     });
     this.schedulePublish();
@@ -44,13 +52,20 @@ class RendererProgress {
     const previous = this.observed.get(test.id);
     if (previous) this.counts[previous]--;
     this.observed.set(test.id, result.status);
+    // A retry replaces the location's earlier outcome. Keep only file and
+    // line, not assertion messages or fixture data, in the progress receipt.
+    this.failureLocations.delete(test.id);
+    const spec = displaySpec(test);
+    const line = test.location?.line;
+    if (spec && ['failed', 'timedOut'].includes(result.status) && Number.isSafeInteger(line) && line > 0) {
+      this.failureLocations.set(test.id, { spec, line, outcome: result.status });
+    }
     this.counts[result.status]++;
     this.attempts++;
     if (Number.isFinite(result.duration) && result.duration >= 0) {
       const duration = Math.round(result.duration);
       this.attemptDurationMs += duration;
-      if (typeof test.location?.file === 'string') {
-        const spec = basename(test.location.file);
+      if (spec) {
         const timing = this.durationBySpec.get(spec) ?? { durationMs: 0, timedAttempts: 0, maxAttemptMs: 0 };
         timing.durationMs += duration;
         if (!timing.timedAttempts || duration > timing.maxAttemptMs) {
@@ -93,6 +108,7 @@ class RendererProgress {
         totalAttemptDurationMs: this.attemptDurationMs,
         activeAttempts: this.active.size,
         oldestActiveAttempts: [...this.active.values()].slice(0, 5),
+        recentFailureLocations: [...this.failureLocations.values()].slice(-8).reverse(),
         slowestSpecsByAttemptTime: [...this.durationBySpec]
           .sort(([a, left], [b, right]) => right.durationMs - left.durationMs || a.localeCompare(b))
           .slice(0, 5).map(([spec, timing]) => ({ spec, ...timing })),

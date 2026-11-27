@@ -302,7 +302,12 @@ test('renderer progress updates retry outcomes without deciding the validation r
   reporter.onTestBegin(second);
   reporter.publish(null);
   assert.equal(readStatus(root).rendererProgress.oldestActiveAttempts[1].line, undefined);
-  reporter.onTestEnd(first, { status: 'failed', duration: 300 });
+  reporter.onTestEnd(first, { status: 'failed', duration: 300, error: { message: 'private failure detail' } });
+  reporter.publish(null);
+  assert.deepEqual(readStatus(root).rendererProgress.recentFailureLocations, [
+    { spec: 'first.spec.ts', line: 42, outcome: 'failed' },
+  ]);
+  assert.doesNotMatch(readFileSync(join(root, 'renderer-progress.json'), 'utf8'), /private failure detail/);
   reporter.onTestBegin(first);
   reporter.onTestEnd(first, { status: 'passed', duration: 200 });
   reporter.onTestEnd(second, { status: 'skipped', duration: 0 });
@@ -319,6 +324,7 @@ test('renderer progress updates retry outcomes without deciding the validation r
   assert.equal(final.rendererProgress.totalAttemptDurationMs, 500);
   assert.equal(final.rendererProgress.activeAttempts, 0);
   assert.deepEqual(final.rendererProgress.oldestActiveAttempts, []);
+  assert.deepEqual(final.rendererProgress.recentFailureLocations, []);
   assert.deepEqual(final.rendererProgress.slowestSpecsByAttemptTime, [
     { spec: 'first.spec.ts', durationMs: 500, timedAttempts: 2, maxAttemptMs: 300, maxAttemptLine: 42 },
     { spec: 'second.spec.ts', durationMs: 0, timedAttempts: 1, maxAttemptMs: 0 },
@@ -370,6 +376,23 @@ test('renderer progress updates retry outcomes without deciding the validation r
   const invalid = readStatus(root);
   assert.equal(invalid.state, 'failed');
   assert.equal(invalid.rendererProgress, undefined);
+});
+
+test('renderer progress bounds recent failure locations and reports the newest first', t => {
+  const root = mkdtempSync(join(tmpdir(), 'gk-renderer-failure-locations-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  writeFileSync(join(root, 'started.json'), JSON.stringify({ runnerPid: process.pid, runnerStart: processStart(process.pid) }));
+  const reporter = new RendererProgress({ path: join(root, 'renderer-progress.json') });
+  const tests = Array.from({ length: 12 }, (_, i) => ({
+    id: String(i), location: { file: join(root, 'fixture.spec.ts'), line: i + 1 },
+  }));
+  reporter.onBegin(undefined, { allTests: () => tests });
+  for (const test of tests) reporter.onTestEnd(test, { status: 'timedOut' });
+  reporter.onEnd({ status: 'failed' });
+  const progress = readStatus(root).rendererProgress;
+  assert.equal(progress.latestOutcomes.timedOut, 12);
+  assert.deepEqual(progress.recentFailureLocations, [12, 11, 10, 9, 8, 7, 6, 5]
+    .map(line => ({ spec: 'fixture.spec.ts', line, outcome: 'timedOut' })));
 });
 
 test('named validations in one checkout cannot erase another run or caller-owned artifact files', () => {

@@ -3176,6 +3176,11 @@ there were active at the snapshot time, not necessarily still running.
 `result.json` and the retained test report remain the authority. A custom
 `--reporter` override can omit this file.
 
+`recentFailureLocations` lists up to eight latest failed or timed-out
+cases by spec basename and line. A successful retry removes its previous
+failure from this list. Use it to locate cases without opening traces
+for every test; the field does not contain error messages or test titles.
+
 To investigate slow runs, inspect `slowestSpecsByAttemptTime` in
 `renderer-progress.json`. It lists up to five spec files ranked by the
 sum of their completed test-attempt durations, including retries. These

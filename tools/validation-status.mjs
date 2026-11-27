@@ -83,6 +83,11 @@ function rendererProgress(directory) {
     const validTimingDetail = ({ timedAttempts, maxAttemptMs, durationMs }) =>
       integer(timedAttempts) && timedAttempts > 0 && timedAttempts <= record.attemptsReported
       && integer(maxAttemptMs) && maxAttemptMs <= durationMs;
+    const failures = record.recentFailureLocations;
+    const validFailures = Array.isArray(failures) && failures.length <= 8
+      && failures.length <= record.latestOutcomes.failed + record.latestOutcomes.timedOut
+      && failures.every(item => validSpec(item?.spec) && Buffer.byteLength(item.spec) <= 160
+        && Number.isSafeInteger(item.line) && item.line > 0 && ['failed', 'timedOut'].includes(item.outcome));
     return {
       totalTests: record.totalTests, testsReported: record.testsReported, attemptsReported: record.attemptsReported,
       testsRemainingToReport: record.totalTests - record.testsReported,
@@ -97,6 +102,7 @@ function rendererProgress(directory) {
         oldestActiveAttempts: active.map(({ spec, startedAt, line }) => ({
           spec, startedAt, ...(integer(line) && line > 0 ? { line } : {}),
         })) } : {}),
+      ...(validFailures ? { recentFailureLocations: failures.map(({ spec, line, outcome }) => ({ spec, line, outcome })) } : {}),
       ...(validTimings ? { slowestSpecsByAttemptTime: timings.map(item => ({
         spec: item.spec, durationMs: item.durationMs,
         ...(validTimingDetail(item) ? { timedAttempts: item.timedAttempts, maxAttemptMs: item.maxAttemptMs,
