@@ -641,6 +641,7 @@ test('reclaim removes only disposable caches from a renderer snapshot on a previ
   writeFileSync(log, 'interrupted evidence');
   const owner = {
     runnerPid: process.pid, runnerStart: processStart(process.pid), runnerBootId: currentBootId(),
+    command: ['pnpm', 'nx', 'run', 'desktop:e2e'],
     rendererPort: '4202', source: { mode: 'commit-snapshot', commandCwd: source },
   };
   const receipt = join(directory, 'started.json');
@@ -658,3 +659,32 @@ test('reclaim removes only disposable caches from a renderer snapshot on a previ
   assert.equal(readFileSync(log, 'utf8'), 'interrupted evidence');
   assert.equal(readStatus(directory).state, 'stopped-without-result');
 });
+
+test('reclaim accepts renderer dependency setup after a reboot, not another snapshot type',
+  { skip: !currentBootId() }, t => {
+    const directory = mkdtempSync(join(tmpdir(), 'gk-reclaim-preparing-'));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const source = join(directory, 'source');
+    const cache = join(source, 'node_modules');
+    mkdirSync(cache, { recursive: true });
+    const receipt = join(directory, 'preparing.json');
+    const owner = {
+      runnerPid: process.pid, runnerStart: processStart(process.pid), runnerBootId: currentBootId(),
+      source: { mode: 'commit-snapshot', commandCwd: source },
+    };
+    const record = (runnerBootId, target) => writeFileSync(receipt, JSON.stringify({
+      ...owner, runnerBootId, command: ['pnpm', 'nx', 'run', target],
+    }));
+    const reclaim = () => spawnSync(process.execPath, [launcher, 'reclaim', directory], { encoding: 'utf8' });
+    const old = owner.runnerBootId.replace(/^./, c => c === '0' ? '1' : '0');
+    record(owner.runnerBootId, 'desktop:e2e:repository-confirmations');
+    assert.notEqual(reclaim().status, 0);
+    record(old, 'desktop:package-deb');
+    assert.notEqual(reclaim().status, 0);
+    assert.ok(existsSync(cache));
+    record(old, 'desktop:e2e:repository-confirmations');
+    const removed = reclaim();
+    assert.equal(removed.status, 0, removed.stderr);
+    assert.equal(existsSync(cache), false);
+    assert.equal(readStatus(directory).state, 'stopped-without-result');
+  });

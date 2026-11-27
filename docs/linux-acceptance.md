@@ -3262,6 +3262,8 @@ When a renderer snapshot finishes, the runner removes the snapshot's
 logs, traces, and screenshots. After a reboot, reclaim any stranded caches
 with `node tools/run-validation.mjs reclaim <run-directory>`. This requires
 a renderer snapshot receipt from a different boot and refuses a live run.
+It also works if the reboot interrupted dependency setup, before a browser
+or renderer server started.
 To reclaim the main checkout's regenerable Rust debug output, stop active
 builds and run `task clean:debug`; release bundles and reports are retained.
 Avoid the broader `task clean` when keeping packages or local evidence.

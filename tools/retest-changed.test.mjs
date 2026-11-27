@@ -104,12 +104,15 @@ test('editing the retest planner selects tooling checks without launching browse
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
 });
 
-test('editing the artifact isolation test runs the tooling checks without launching browsers', t => {
+test('editing renderer artifact tooling or the validation runner selects browser-free tests', t => {
   const f = fixture(t);
-  f.write('tools/renderer-artifacts.test.mjs');
-  const plan = f.run();
-  assert.match(plan, /desktop:owned-process-test/);
-  assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
+  for (const path of ['tools/renderer-artifacts.test.mjs', 'tools/run-validation.mjs', 'tools/validation-status.mjs']) {
+    f.write(path);
+    const plan = f.run();
+    assert.match(plan, /desktop:owned-process-test/);
+    assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
+    f.commit();
+  }
 });
 
 test('editing the WSLg diagnostic selects the harness tests without launching the native app', t => {

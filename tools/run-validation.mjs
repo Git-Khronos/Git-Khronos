@@ -25,6 +25,25 @@ function reclaimSnapshotCaches(source, output) {
   return failures;
 }
 
+const rendererTargets = new Set(['e2e', 'e2e-quick', 'e2e-webkit']);
+const isDesktopRenderer = value => {
+  const [project, target] = (value ?? '').split(':');
+  return project === 'desktop' && rendererTargets.has(target);
+};
+function rendererSelection(args) {
+  const nxArgs = args.includes('--') ? args.slice(0, args.indexOf('--')) : args;
+  const selectedRendererTargets = nxArgs[0] === 'run-many' ? new Set(nxArgs.flatMap((argument, index) => {
+    const flag = /^(?:-t|--target|--targets)(?:=(.*))?$/.exec(argument);
+    return flag ? (flag[1] ?? nxArgs[index + 1] ?? '').split(/[,\s]+/).filter(target => rendererTargets.has(target)) : [];
+  })) : new Set();
+  return {
+    ambiguous: selectedRendererTargets.size > 1,
+    rendererRun: (nxArgs[0] === 'run' && isDesktopRenderer(nxArgs[1]))
+      || (rendererTargets.has(nxArgs[0]) && nxArgs[1] === 'desktop')
+      || selectedRendererTargets.size === 1,
+  };
+}
+
 const [mode, runDirectory, ...args] = process.argv.slice(2);
 const usage = `Usage:
   node tools/run-validation.mjs start DIRECTORY [--snapshot REF | --guard-source] NX_COMMAND [NX_ARGS...]
@@ -58,9 +77,15 @@ if (mode === 'reclaim') {
   const directory = resolve(runDirectory);
   const source = join(directory, 'source');
   const status = validationStatus(directory);
+  // A boot can interrupt pnpm install before the run has a renderer port.
+  // Classify the recorded Nx command, not the later Playwright metadata.
+  const command = status.command;
+  const rendererSnapshot = Array.isArray(command) && command.every(arg => typeof arg === 'string')
+    && command[0] === 'pnpm' && command[1] === 'nx'
+    && rendererSelection(command.slice(2)).rendererRun;
   if (status.state !== 'stopped-without-result' || status.stopReason !== 'different-boot'
     || status.source?.mode !== 'commit-snapshot' || status.source.commandCwd !== source
-    || !/^\d+$/.test(status.rendererPort ?? '')
+    || !rendererSnapshot
     || realpathSync(directory) !== directory || realpathSync(source) !== source) {
     throw new Error('Refusing to reclaim: expected an owned renderer snapshot interrupted on a previous boot.');
   }
@@ -107,22 +132,10 @@ if (snapshot && !commit) throw new Error('Snapshot ref does not resolve to a loc
 const directory = resolve(runDirectory);
 const commandCwd = commit ? join(directory, 'source') : process.cwd();
 if (commit && directory.includes(delimiter)) throw new Error('Snapshot run path contains Git’s path-list delimiter');
-const rendererTargets = new Set(['e2e', 'e2e-quick', 'e2e-webkit']);
-const isDesktopRenderer = value => {
-  const [project, target] = (value ?? '').split(':');
-  return project === 'desktop' && rendererTargets.has(target);
-};
-const nxArgs = args.includes('--') ? args.slice(0, args.indexOf('--')) : args;
-const selectedRendererTargets = nxArgs[0] === 'run-many' ? new Set(nxArgs.flatMap((argument, index) => {
-  const flag = /^(?:-t|--target|--targets)(?:=(.*))?$/.exec(argument);
-  return flag ? (flag[1] ?? nxArgs[index + 1] ?? '').split(/[,\s]+/).filter(target => rendererTargets.has(target)) : [];
-})) : new Set();
-if (selectedRendererTargets.size > 1) {
+const { ambiguous, rendererRun } = rendererSelection(args);
+if (ambiguous) {
   throw new Error('Run renderer targets in separate validation directories so each owns its port and renderer progress.');
 }
-const rendererRun = (nxArgs[0] === 'run' && isDesktopRenderer(nxArgs[1]))
-  || (rendererTargets.has(nxArgs[0]) && nxArgs[1] === 'desktop')
-  || selectedRendererTargets.size === 1;
 
 async function selectRendererPort() {
   const server = createServer();

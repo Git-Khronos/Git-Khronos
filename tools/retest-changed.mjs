@@ -155,7 +155,7 @@ for (const path of changed) {
   } else if (gitCoreTestModules.has(gitCoreModule) && existsSync(join(cwd, path))) {
     gitCoreModules.add(gitCoreModule + '::');
     plan = 'focused Git core Rust test module';
-  } else if (/^tools\/(?:retest-changed(?:\.test)?|renderer-artifacts\.test)\.mjs$/.test(path)
+  } else if (/^tools\/(?:retest-changed(?:\.test)?|renderer-artifacts\.test|run-validation(?:\.test)?|validation-(?:source|status))\.mjs$/.test(path)
     && existsSync(join(cwd, path))) {
     retestTools = true;
     plan = 'test selection and local process checks';
