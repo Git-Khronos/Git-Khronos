@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injector, OnDestroy, afterNextRender, inject, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injector, OnDestroy, afterNextRender, computed, inject, input, output, signal, viewChild } from '@angular/core';
 import { GitKhronosService, type OpenRepositoryResult } from './git-khronos.service';
 import { branchCheckoutOwner } from './repository-location';
 import { isTabKey } from './tab-key';
@@ -39,8 +39,11 @@ export interface CheckoutWorktreeRequest {
         @if (copyStatus(); as message) { <p role="status">{{ message }}</p> }
         @if (copyFallback()) {
           <label class="copy-fallback">Owning checkout path for manual copy
-            <input #copyPath type="text" [value]="request().worktreePath" readonly />
+            <textarea #copyPath rows="2" [value]="request().worktreePath" readonly></textarea>
           </label>
+          @if (copyPathMayNormalize()) {
+            <p>Manual copy may normalize carriage returns in this path. Retry automatic copy to preserve them.</p>
+          }
         }
         @if (phase() !== 'idle') {
           <p role="status">{{ phase() === 'checking' ? 'Checking branch ownership…' : 'Opening existing checkout…' }}</p>
@@ -64,11 +67,11 @@ export interface CheckoutWorktreeRequest {
     p { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
     code { overflow-wrap: anywhere; }
     .copy-fallback { display: grid; gap: 4px; font-size: 13px; }
-    .copy-fallback input { width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
+    .copy-fallback textarea { width: 100%; min-width: 0; padding: 6px; resize: vertical; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
     footer { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; margin-top: 18px; }
     button { min-height: 32px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
     button:disabled { opacity: .55; }
-    button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   `,
 })
 export class CheckoutWorktreeDialogComponent implements OnDestroy {
@@ -82,12 +85,13 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   readonly error = signal<string | null>(null);
   readonly copyStatus = signal<string | null>(null);
   readonly copyFallback = signal(false);
+  protected readonly copyPathMayNormalize = computed(() => this.request().worktreePath.includes('\r'));
   private readonly unavailableRequest = signal<CheckoutWorktreeRequest | null>(null);
   protected unavailable(): boolean {
     return this.request().prunable || this.unavailableRequest() === this.request();
   }
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
-  private readonly copyPath = viewChild<ElementRef<HTMLInputElement>>('copyPath');
+  private readonly copyPath = viewChild<ElementRef<HTMLTextAreaElement>>('copyPath');
   private readonly injector = inject(Injector);
   private destroyed = false;
   private closing = false;
@@ -191,7 +195,7 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
     if (event.key === 'Escape') { event.preventDefault(); this.close(); }
     if (!isTabKey(event)) return;
     event.preventDefault();
-    const controls = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)') ?? [])];
+    const controls = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled), textarea:not(:disabled)') ?? [])];
     if (!controls.length) return;
     const index = controls.indexOf(document.activeElement as HTMLElement);
     controls[event.shiftKey ? (index <= 0 ? controls.length - 1 : index - 1) : (index + 1) % controls.length].focus();

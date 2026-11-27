@@ -225,6 +225,24 @@ def occupied_branch_navigation(driver, fixtures, report):
     at(source)
     assert footprints() == before, 'Moving focus changed a checkout, index, configuration or reference'
     report['scenarios'].append('native-occupied-branch-review-wraps-shift-tab-without-navigating')
+    driver.script("""window.__ownedClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+        writeText: async () => { throw new Error('Owned clipboard refusal'); }
+      } });""")
+    try:
+        driver.click_visible('gk-checkout-worktree-dialog button', 'Copy owning path')
+        selected = driver.wait("""const field = document.querySelector('gk-checkout-worktree-dialog textarea');
+          return field === document.activeElement && field?.readOnly
+            && field.selectionStart === 0 && field.selectionEnd === field.value.length && field.value;""")
+        assert selected == str(owner), repr(selected)
+        at(source)
+        assert footprints() == before, 'Clipboard fallback changed checkout state'
+        report['scenarios'].append('native-occupied-branch-review-selects-the-literal-multiline-path-if-copy-fails')
+    finally:
+        driver.script("""const previous = window.__ownedClipboardDescriptor;
+          if (previous) Object.defineProperty(navigator, 'clipboard', previous);
+          else delete navigator.clipboard;
+          delete window.__ownedClipboardDescriptor;""")
     driver.click_visible('gk-checkout-worktree-dialog button', 'Cancel')
     driver.wait('return !document.querySelector(' + json.dumps(review) + ')')
     at(source)

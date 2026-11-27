@@ -1,14 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function setup(page: Page, sourceRegistrationPath?: string) {
+async function setup(page: Page, sourceRegistrationPath?: string, ownerPath = '/workspace/other-checkout') {
   await page.goto('/');
   await expect(page.locator('#unstaged-files-list')).toBeVisible();
-  return page.evaluate(sourceRegistrationPath => {
+  return page.evaluate(({ sourceRegistrationPath, ownerPath }) => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
     const source = git.repository();
     const branch = source.branches.find((entry: any) => entry.name === 'feature/partial-staging');
-    const ownerPath = '/workspace/other-checkout';
     const worktrees = [
       ...source.worktrees.filter((entry: any) => entry.branch !== branch.name)
         .map((entry: any) => sourceRegistrationPath && entry.current ? { ...entry, path: sourceRegistrationPath } : entry),
@@ -77,7 +76,7 @@ async function setup(page: Page, sourceRegistrationPath?: string) {
       return Promise.reject(new Error(`Unexpected ${command}`));
     } };
     return { branch: branch.name, sourcePath: source.path, sourceId: source.id, ownerPath };
-  }, sourceRegistrationPath);
+  }, { sourceRegistrationPath, ownerPath });
 }
 
 async function loseCachedOwner(page: Page, failureKind: string, failRefresh = false): Promise<void> {
@@ -182,7 +181,7 @@ test('copies the recorded owning path when the checkout is unavailable', async (
   const pathField = dialog.getByRole('textbox', { name: 'Owning checkout path for manual copy' });
   await expect(pathField).toBeFocused();
   await expect(pathField).toHaveValue(fixture.ownerPath);
-  expect(await pathField.evaluate((field: HTMLInputElement) => [field.readOnly, field.selectionStart, field.selectionEnd]))
+  expect(await pathField.evaluate((field: HTMLTextAreaElement) => [field.readOnly, field.selectionStart, field.selectionEnd]))
     .toEqual([true, 0, fixture.ownerPath.length]);
   await page.keyboard.press('Tab');
   await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
@@ -208,7 +207,7 @@ test('copies the recorded owning path when the checkout is unavailable', async (
 });
 
 test('a delayed clipboard denial offers manual copy without taking moved focus', async ({ page }) => {
-  const fixture = await setup(page);
+  const fixture = await setup(page, undefined, '/workspace/Linéa\tfirst\nsecond ');
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
       writeText: () => new Promise((_resolve, reject) => {
