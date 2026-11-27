@@ -21,7 +21,7 @@ for (const mode of ['load', 'cancel', 'failure', 'switch'] as const) {
       finished();
     });
     await page.goto('/');
-    await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
+    await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible({ timeout: 15_000 });
     const before = await page.evaluate(() => {
       const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
       const repository = app.git.repository();

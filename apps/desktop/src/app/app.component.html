@@ -2100,18 +2100,18 @@
       <gk-history-review-dialog #historyConfirmationDialog [action]="action" [parents]="historyMergeParents()" [checkoutReady]="historyCheckoutReady()"
         [mainline]="historyMainline()" [noCommit]="historyNoCommit()" [resetMode]="resetMode()"
         [preview]="resetPreview()" [previewBusy]="resetPreviewBusy()"
-        (mainlineChanged)="historyMainline.set($event)" (noCommitChanged)="historyNoCommit.set($event)"
-        (previewRequested)="refreshResetPreview($event)" (closed)="dismissHistoryConfirmation(true)"
-        (execute)="confirmHistoryAction()" (keyPressed)="handleHistoryConfirmationKeydown($event)" />
+        (mainlineChanged)="setHistoryMainline($event, action)" (noCommitChanged)="setHistoryNoCommit($event, action)"
+        (previewRequested)="refreshResetPreview($event, action)" (closed)="dismissHistoryConfirmation(true, action)"
+        (execute)="confirmHistoryAction(action)" (keyPressed)="handleHistoryConfirmationKeydown($event, action)" />
     } @loading {
-      <div class="confirmation-backdrop"><section #historyConfirmationDialog class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading history review" (keydown)="handleHistoryConfirmationKeydown($event)">
+      <div class="confirmation-backdrop"><section #historyConfirmationDialog class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading history review" (keydown)="handleHistoryConfirmationKeydown($event, action)">
         <p role="status">Loading history review. No history changes have been made.</p>
-        <button #historyReviewLoaderClose type="button" (click)="dismissHistoryConfirmation(true)">Cancel</button>
+        <button #historyReviewLoaderClose type="button" (click)="dismissHistoryConfirmation(true, action)">Cancel</button>
       </section></div>
     } @error {
-      <div class="confirmation-backdrop"><section #historyConfirmationDialog class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="History review unavailable" (keydown)="handleHistoryConfirmationKeydown($event)">
+      <div class="confirmation-backdrop"><section #historyConfirmationDialog class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="History review unavailable" (keydown)="handleHistoryConfirmationKeydown($event, action)">
         <p role="alert">The history review could not load. No history changes were made. Preserve drafts before restarting to retry.</p>
-        <button #historyReviewLoaderClose type="button" (click)="dismissHistoryConfirmation(true)">Close</button>
+        <button #historyReviewLoaderClose type="button" (click)="dismissHistoryConfirmation(true, action)">Close</button>
       </section></div>
     }
   }

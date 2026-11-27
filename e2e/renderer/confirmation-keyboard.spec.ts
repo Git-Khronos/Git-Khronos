@@ -42,7 +42,7 @@ async function openReview(page: Page, review: Review, gap = false) {
       bisect: ['pendingBisectStart', { checkoutScope: app.git.activeRepositoryReadScope(), repositoryId: repository.id,
         repositoryPath: repository.path, branch: repository.status.branch, goodOid: repository.commits[1].oid,
         goodLabel: 'Known good', badOid: repository.headOid, badLabel: 'Known bad' }],
-      history: ['pendingHistoryAction', { kind: 'cherry-pick', oid, oids: [oid], label: 'Owned commit' }],
+      history: ['pendingHistoryAction', { ...visitOwner, kind: 'cherry-pick', oid, oids: [oid], label: 'Owned commit' }],
     };
     app.publishRemote.set('origin');
     if (review === 'force-push') app.forcePushDestination.set({ state: 'd'.repeat(64), destinations: ['Owned destination fixture'] });

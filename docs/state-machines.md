@@ -384,6 +384,11 @@ Branch publishing and remote removal also require the original checkout
 visit. The remote removal review owns its target and focus opener together,
 so replacing the review cannot leave either value from the old one.
 
+Commit history confirmations carry both checkout-visit and rendered-review
+identity. An obsolete control cannot execute, change the options of, or
+dismiss a replacement review. Reset previews and mutation completions can
+update only the review that started them.
+
 ### Remote branch rename and deletion
 
 Before sending a rename or deletion, native checks that Git's configured

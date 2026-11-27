@@ -217,6 +217,42 @@ for (const revisit of [false, true]) {
   });
 }
 
+for (const change of ['revisit', 'replacement'] as const) {
+  test(`a history confirmation cannot dispatch after ${change}`, async ({ page }) => {
+    await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      const oid = app.git.repository().commits.find((commit: any) => commit.parents.length < 2).oid;
+      (window as any).__historyCalls = [];
+      app.git.cherryPick = (...args: unknown[]) => (window as any).__historyCalls.push(args);
+      app.openHistoryConfirmation({ kind: 'cherry-pick', oid, oids: [oid], label: 'Original history review' });
+    });
+    const dialog = page.locator('gk-history-review-dialog');
+    const confirm = dialog.getByRole('button', { name: 'Cherry-pick', exact: true });
+    await expect(confirm).toBeEnabled();
+    await confirm.evaluate((button, change) => {
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      const git = app.git, original = git.repository();
+      if (change === 'revisit') {
+        const other = { ...original, id: 'other-history', path: '/owned/other-history' };
+        git.repositories.update((items: any[]) => [...items, other]);
+        git.activateRepository(other.id);
+        git.activateRepository(original.id);
+      } else {
+        const { oid } = app.pendingHistoryAction();
+        app.openHistoryConfirmation({ kind: 'cherry-pick', oid, oids: [oid], label: 'Replacement history review' });
+      }
+      (button as HTMLButtonElement).click();
+    }, change);
+    expect(await page.evaluate(() => (window as any).__historyCalls)).toEqual([]);
+    if (change === 'revisit') await expect(dialog).toBeHidden();
+    else {
+      await expect(dialog).toContainText('Replacement history review');
+      await confirm.click();
+      expect(await page.evaluate(() => (window as any).__historyCalls)).toHaveLength(1);
+    }
+  });
+}
+
 test('an old unmerged-branch result cannot replace a newer review', async ({ page }) => {
   const modal = await open(page, 'branch');
   await page.evaluate(() => (window as any).__holdScope = 'delete_branch');

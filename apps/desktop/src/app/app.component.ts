@@ -341,6 +341,7 @@ interface SparseCheckoutReview extends CheckoutVisitReview {
 
 type PendingWorktreeRemoval = WorktreeRemovalReview & CheckoutVisitReview;
 type PendingForcePushReview = ForcePushReview & CheckoutVisitReview;
+type OwnedHistoryAction = PendingHistoryAction & CheckoutVisitReview;
 type PendingRemoteRemoval = CheckoutVisitReview & { readonly remote: Remote };
 
 interface RepositoryConfirmationLease {
@@ -964,7 +965,6 @@ export class AppComponent implements OnInit, OnDestroy {
   private focusedBranchDrop: ReviewedBranchPair | null = null;
   private repositoryTabMenuReturnFocus: HTMLElement | null = null;
   private terminalOpener: HTMLElement | null = null;
-  private historyActionReturnFocus: HTMLElement | null = null;
   private fileActionReturnFocus: HTMLElement | null = null;
   private readonly graphCommitChildrenByOid = computed(() => {
     const children = new Map<string, CommitSummary[]>();
@@ -1375,8 +1375,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly tagCreationKind = signal<'lightweight' | 'annotated'>('lightweight');
   protected readonly tagCreationMessage = signal('');
   protected readonly contextRenameName = signal('');
-  protected readonly pendingHistoryAction = signal<PendingHistoryAction | null>(null);
-  private historyActionRepositoryId: string | null = null;
+  protected readonly pendingHistoryAction = signal<OwnedHistoryAction | null>(null);
   protected readonly historyMainline = signal<number | null>(null);
   protected readonly historyNoCommit = signal(false);
   protected readonly historyMergeParents = computed(() => {
@@ -1587,7 +1586,6 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly resetPreview = signal<ResetPreview | null>(null);
   protected readonly resetPreviewBusy = signal(false);
   private resetPreviewRequest = 0;
-  private resetPreviewRepositoryId: string | null = null;
   protected readonly operationRecoveries = signal<OperationRecovery[] | null>(null);
   protected readonly recoveryCaptureBusy = signal(false);
   protected readonly recoveryCaptureAction = signal<{ record: OperationRecovery; kind: 'restore' | 'remove' } | null>(null);
@@ -2565,12 +2563,13 @@ export class AppComponent implements OnInit, OnDestroy {
         this.referenceAction.set(null);
         this.stashDialog.set(null);
         this.mergePreviewRequest.set(null);
-        this.pendingHistoryAction.set(null);
       });
     });
     effect(() => {
       const scope = this.git.activeRepositoryReadScope();
       untracked(() => {
+        const history = this.pendingHistoryAction();
+        if (history && history.checkoutVisit !== scope) this.dismissHistoryConfirmation(false, history);
         const request = this.checkoutWorktreeRequest();
         if (request && request.scope !== scope) this.checkoutWorktreeRequest.set(null);
         const workflow = this.branchWorkflowRequest();
@@ -15019,23 +15018,27 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.git.resetBisect();
   }
 
-  protected async confirmHistoryAction(): Promise<void> {
-    const action = this.pendingHistoryAction();
-    if (!action || this.git.busy()) return;
-    const repositoryId = this.historyActionRepositoryId;
-    if (!repositoryId || !this.git.requireRecoveryRepository(repositoryId)) return;
+  private ownsHistoryAction(action: OwnedHistoryAction | null): action is OwnedHistoryAction {
+    return !!action && this.pendingHistoryAction() === action && this.ownsCheckoutVisitReview(action);
+  }
+
+  protected async confirmHistoryAction(action = this.pendingHistoryAction()): Promise<void> {
+    if (!this.ownsHistoryAction(action) || this.git.busy()) return;
+    const repositoryId = action.repositoryId;
+    if (!this.git.requireRecoveryRepository(repositoryId)) return;
     const parents = this.historyMergeParents();
     const mainline = this.historyMainline();
     const noCommit = this.historyNoCommit();
     if (parents.length && (action.oids.length !== 1 || !mainline || mainline > parents.length)) return;
     if (action.kind === 'reset') {
       const preview = this.resetPreview();
-      const repositoryId = this.resetPreviewRepositoryId;
-      if (!preview || !repositoryId || preview.mode !== this.resetMode() || preview.targetOid !== action.oid) return;
+      if (!preview || preview.mode !== this.resetMode() || preview.targetOid !== action.oid) return;
       await this.git.resetPrepared(preview, repositoryId);
+      if (!this.ownsHistoryAction(action)) return;
       this.resetPreview.set(null);
-      if (!this.git.error()) this.dismissHistoryConfirmation(true);
+      if (!this.git.error()) this.dismissHistoryConfirmation(true, action);
       else afterNextRender(() => {
+        if (!this.ownsHistoryAction(action)) return;
         this.historyConfirmationDialog()?.nativeElement.querySelector<HTMLElement>('.recovery-error')?.focus();
       }, { injector: this.injector });
       return;
@@ -15047,7 +15050,7 @@ export class AppComponent implements OnInit, OnDestroy {
     } else if (action.kind === 'cherry-pick') {
       if (action.targetBranch && this.git.repository()?.status.branch !== action.targetBranch) {
         const result = await this.git.checkout(action.targetBranch);
-        if (result?.status !== 'success' || this.pendingHistoryAction() !== action) return;
+        if (result?.status !== 'success' || !this.ownsHistoryAction(action)) return;
         if (!this.git.requireRecoveryRepository(repositoryId)) return;
         if (this.git.repository()?.status.branch !== action.targetBranch) return;
       }
@@ -15059,45 +15062,52 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     else if (action.kind === 'split') {
       await this.git.beginRebaseSplit(action.oid);
-      if (!this.git.error() && repositoryId === this.git.activeRepositoryId()) {
+      if (!this.git.error() && this.ownsHistoryAction(action)) {
         this.amendPrevious.set(false);
         this.selectWip();
       }
     }
-    if (this.pendingHistoryAction() !== action || repositoryId !== this.git.activeRepositoryId()) return;
-    if (!this.git.error()) this.dismissHistoryConfirmation(true);
+    if (!this.ownsHistoryAction(action)) return;
+    if (!this.git.error()) this.dismissHistoryConfirmation(true, action);
     else afterNextRender(() => {
-      if (this.pendingHistoryAction() !== action || repositoryId !== this.git.activeRepositoryId()) return;
+      if (!this.ownsHistoryAction(action)) return;
       this.historyConfirmationDialog()?.nativeElement.querySelector<HTMLElement>('.recovery-error')?.focus();
     }, { injector: this.injector });
   }
 
-  protected async refreshResetPreview(mode: ResetMode = this.resetMode()): Promise<void> {
-    const action = this.pendingHistoryAction();
-    if (action?.kind !== 'reset' || this.git.busy()) return;
+  protected async refreshResetPreview(mode: ResetMode = this.resetMode(), action = this.pendingHistoryAction()): Promise<void> {
+    if (!this.ownsHistoryAction(action) || action.kind !== 'reset' || this.git.busy()) return;
     const request = ++this.resetPreviewRequest;
     this.resetMode.set(mode);
     this.resetPreview.set(null);
     this.resetPreviewBusy.set(true);
-    const repositoryId = this.git.activeRepositoryId();
-    this.resetPreviewRepositoryId = repositoryId;
     try {
       const preview = await this.git.previewReset(action.oid, mode);
-      if (request === this.resetPreviewRequest && this.pendingHistoryAction() === action
-        && repositoryId === this.git.activeRepositoryId()) {
+      if (request === this.resetPreviewRequest && this.ownsHistoryAction(action)) {
         this.resetPreview.set(preview);
       }
     } finally {
-      if (request === this.resetPreviewRequest) this.resetPreviewBusy.set(false);
+      if (request === this.resetPreviewRequest && this.ownsHistoryAction(action)) this.resetPreviewBusy.set(false);
     }
   }
 
-  protected handleHistoryConfirmationKeydown(event: KeyboardEvent): void {
-    if (!this.pendingHistoryAction()) return;
+  protected setHistoryMainline(value: number | null, action: OwnedHistoryAction): void {
+    if (this.ownsHistoryAction(action)) this.historyMainline.set(value);
+  }
+
+  protected setHistoryNoCommit(value: boolean, action: OwnedHistoryAction): void {
+    if (this.ownsHistoryAction(action)) this.historyNoCommit.set(value);
+  }
+
+  protected handleHistoryConfirmationKeydown(event: KeyboardEvent, action = this.pendingHistoryAction()): void {
+    if (!this.ownsHistoryAction(action)) {
+      if (this.pendingHistoryAction()) event.stopPropagation();
+      return;
+    }
     event.stopPropagation();
     if (event.key === 'Escape') {
       event.preventDefault();
-      this.dismissHistoryConfirmation(true);
+      this.dismissHistoryConfirmation(true, action);
       return;
     }
     this.cycleDialogFocus(this.historyConfirmationDialog()?.nativeElement, event);
@@ -15209,7 +15219,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (this.git.activeRepositoryReadScope() !== checkoutVisit || !this.ownsRepositoryScope(review)
         || this.pendingBranchAction() || this.pendingSparseCheckoutReview()
         || this.pendingWorktreeAction() || this.pendingForcePush() || this.pendingPublishBranch()
-        || this.remoteRemovalOwner() || this.lfsPruneReview()) return;
+        || this.remoteRemovalOwner() || this.lfsPruneReview() || this.pendingHistoryAction()) return;
       if (review.returnFocus?.isConnected) review.returnFocus.focus({ preventScroll: true });
     });
   }
@@ -15269,34 +15279,36 @@ export class AppComponent implements OnInit, OnDestroy {
     focusable[nextIndex].focus();
   }
 
-  protected dismissHistoryConfirmation(restoreFocus = true): void {
-    const target = restoreFocus ? this.historyActionReturnFocus : null;
+  protected dismissHistoryConfirmation(restoreFocus = true, action = this.pendingHistoryAction()): void {
+    if (!action || this.pendingHistoryAction() !== action) return;
+    const restore = restoreFocus && this.ownsCheckoutVisitReview(action);
     this.pendingHistoryAction.set(null);
     this.resetPreviewRequest++;
     this.resetPreview.set(null);
     this.resetPreviewBusy.set(false);
-    this.resetPreviewRepositoryId = null;
-    this.historyActionReturnFocus = null;
-    if (target?.isConnected) {
-      queueMicrotask(() => target.focus({ preventScroll: true }));
-    }
+    if (restore) this.restoreRepositoryReviewFocus(action);
   }
 
   private openHistoryConfirmation(
     action: PendingHistoryAction,
     returnFocus: HTMLElement | null = null,
   ): void {
+    const owner = this.captureRepositoryEditorOwner();
+    if (!owner) return;
     const activeElement = document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null;
-    this.historyActionReturnFocus = returnFocus ?? activeElement;
-    this.historyActionRepositoryId = this.git.activeRepositoryId();
+    const request: OwnedHistoryAction = { ...action, ...owner, returnFocus: returnFocus ?? activeElement,
+      checkoutVisit: this.git.activeRepositoryReadScope() };
     this.historyMainline.set(null);
     this.historyNoCommit.set(false);
-    this.pendingHistoryAction.set(action);
-    if (action.kind === 'reset') void this.refreshResetPreview();
+    this.resetPreviewRequest++;
+    this.resetPreview.set(null);
+    this.resetPreviewBusy.set(false);
+    this.pendingHistoryAction.set(request);
+    if (request.kind === 'reset') void this.refreshResetPreview(this.resetMode(), request);
     queueMicrotask(() => requestAnimationFrame(() => {
-      if (this.pendingHistoryAction() !== action) return;
+      if (!this.ownsHistoryAction(request)) return;
       this.historyConfirmationDialog()?.nativeElement
         .querySelector<HTMLElement>('[data-history-dialog-cancel]')
         ?.focus();

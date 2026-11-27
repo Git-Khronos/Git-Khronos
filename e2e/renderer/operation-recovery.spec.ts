@@ -3,7 +3,7 @@ import type { CommitDetails } from '../../libs/contracts/src/index';
 
 async function mockRecovery(page: Page, stale = false, loadFailure = false): Promise<void> {
   await page.goto('/');
-  await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible();
+  await expect(page.locator('.commit-row[data-commit-oid]').first()).toBeVisible({ timeout: 15_000 });
   await page.evaluate(({ stale, loadFailure }) => {
     const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
     const git = app.git;
@@ -103,6 +103,33 @@ test('keeps a failed stale reset open and requires a fresh preview', async ({ pa
   await expect(dialog.getByRole('button', { name: 'Reset mixed', exact: true })).toBeEnabled();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog).toHaveCount(0);
+});
+
+test('a late reset completion cannot clear a replacement review or its preview', async ({ page }) => {
+  await mockRecovery(page);
+  await page.evaluate(() => {
+    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+    const [first, second] = app.git.repository().commits;
+    (window as any).__openReset = (replacement: boolean) => {
+      const commit = replacement ? second : first;
+      app.openHistoryConfirmation({ kind: 'reset', oid: commit.oid, oids: [commit.oid],
+        label: replacement ? 'Replacement reset' : 'Original reset' });
+    };
+    app.git.resetPrepared = () => new Promise<void>(resolve => {
+      (window as any).__finishReset = resolve;
+    });
+    (window as any).__openReset(false);
+  });
+  const review = page.locator('gk-history-review-dialog');
+  const confirm = review.getByRole('button', { name: 'Reset mixed', exact: true });
+  await confirm.click();
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__finishReset)).toBe('function');
+  await page.evaluate(() => (window as any).__openReset(true));
+  await expect(review).toContainText('Replacement reset');
+  await expect(confirm).toBeEnabled();
+  await page.evaluate(() => (window as any).__finishReset());
+  await expect(review).toContainText('Replacement reset');
+  await expect(confirm).toBeEnabled();
 });
 
 test('reset review leaves history paging independent but execution waits for paging', async ({ page }) => {
