@@ -323,6 +323,23 @@ publisher signs the exact qualified package and hands off its public
 receive the private key. Official builds embed only the public key from the
 repository Actions variable.
 
+Generate the production key pair **once**, on the machine used for offline
+signing. From a checkout with the pinned toolchain installed:
+
+```sh
+install -d -m 700 "$HOME/.config/git-khronos-signing"
+pnpm exec tauri signer generate \
+  --write-keys "$HOME/.config/git-khronos-signing/git-khronos.key"
+```
+
+Enter a strong passphrase when prompted. Back up the encrypted
+`git-khronos.key` privately and keep the passphrase separate. Set
+`GIT_KHRONOS_UPDATER_PUBLIC_KEY` to the **contents** of
+`git-khronos.key.pub`, not to its path. Do not regenerate the pair for each
+release: already-installed builds continue to trust the key they shipped
+with. See [Tauri's updater signing guide](https://v2.tauri.app/plugin/updater/#signing-updates)
+for signer behavior.
+
 ### Publishing the signed GitHub release
 
 The release and publication workflows are separate, manual runs on the
