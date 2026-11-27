@@ -178,9 +178,19 @@ test('copies the recorded owning path when the checkout is unavailable', async (
   });
   const copy = dialog.getByRole('button', { name: 'Copy owning path' });
   await copy.press('Enter');
-  await expect(dialog.getByRole('status')).toHaveText('Could not copy the path. Select it above to copy it manually.');
+  await expect(dialog.getByRole('status')).toHaveText('Could not copy the path automatically. Copy it from the field below.');
+  const pathField = dialog.getByRole('textbox', { name: 'Owning checkout path for manual copy' });
+  await expect(pathField).toBeFocused();
+  await expect(pathField).toHaveValue(fixture.ownerPath);
+  expect(await pathField.evaluate((field: HTMLInputElement) => [field.readOnly, field.selectionStart, field.selectionEnd]))
+    .toEqual([true, 0, fixture.ownerPath.length]);
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(copy).toBeFocused();
   await copy.press('Enter');
   await expect(dialog.getByRole('status')).toHaveText('Owning checkout path copied.');
+  await expect(pathField).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).__copiedWorktreePath)).toBe(fixture.ownerPath);
   await dialog.getByRole('button', { name: 'Review registrations…' }).click();
   const registration = page.getByRole('dialog', { name: 'Review worktree registrations', exact: true });

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, afterNextRender, inject, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, HostListener, Injector, OnDestroy, afterNextRender, inject, input, output, signal, viewChild } from '@angular/core';
 import { GitKhronosService, type OpenRepositoryResult } from './git-khronos.service';
 import { branchCheckoutOwner } from './repository-location';
 import { isTabKey } from './tab-key';
@@ -37,6 +37,11 @@ export interface CheckoutWorktreeRequest {
         }
         @if (error(); as message) { <p role="alert" tabindex="-1">{{ message }}</p> }
         @if (copyStatus(); as message) { <p role="status">{{ message }}</p> }
+        @if (copyFallback()) {
+          <label class="copy-fallback">Owning checkout path for manual copy
+            <input #copyPath type="text" [value]="request().worktreePath" readonly />
+          </label>
+        }
         @if (phase() !== 'idle') {
           <p role="status">{{ phase() === 'checking' ? 'Checking branch ownership…' : 'Opening existing checkout…' }}</p>
         }
@@ -58,10 +63,12 @@ export interface CheckoutWorktreeRequest {
     h2 { margin: 0 0 12px; font-size: 16px; }
     p { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
     code { overflow-wrap: anywhere; }
+    .copy-fallback { display: grid; gap: 4px; font-size: 13px; }
+    .copy-fallback input { width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
     footer { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; margin-top: 18px; }
     button { min-height: 32px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
     button:disabled { opacity: .55; }
-    button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   `,
 })
 export class CheckoutWorktreeDialogComponent implements OnDestroy {
@@ -74,11 +81,14 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
   readonly phase = signal<'idle' | 'checking' | 'opening'>('idle');
   readonly error = signal<string | null>(null);
   readonly copyStatus = signal<string | null>(null);
+  readonly copyFallback = signal(false);
   private readonly unavailableRequest = signal<CheckoutWorktreeRequest | null>(null);
   protected unavailable(): boolean {
     return this.request().prunable || this.unavailableRequest() === this.request();
   }
   private readonly dialog = viewChild<ElementRef<HTMLElement>>('dialog');
+  private readonly copyPath = viewChild<ElementRef<HTMLInputElement>>('copyPath');
+  private readonly injector = inject(Injector);
   private destroyed = false;
   private closing = false;
   private copyAttempt = 0;
@@ -99,10 +109,21 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
     const request = this.request();
     if (!this.owns(request)) return;
     const attempt = ++this.copyAttempt;
+    const origin = document.activeElement;
     this.copyStatus.set(null);
+    this.copyFallback.set(false);
     const copied = await this.copyText()(request.worktreePath);
     if (this.owns(request) && attempt === this.copyAttempt) {
-      this.copyStatus.set(copied ? 'Owning checkout path copied.' : 'Could not copy the path. Select it above to copy it manually.');
+      this.copyStatus.set(copied ? 'Owning checkout path copied.' : 'Could not copy the path automatically. Copy it from the field below.');
+      if (!copied) {
+        this.copyFallback.set(true);
+        afterNextRender(() => {
+          if (!this.owns(request) || attempt !== this.copyAttempt || document.activeElement !== origin) return;
+          const field = this.copyPath()?.nativeElement;
+          field?.focus();
+          field?.select();
+        }, { injector: this.injector });
+      }
     }
   }
 
@@ -170,9 +191,9 @@ export class CheckoutWorktreeDialogComponent implements OnDestroy {
     if (event.key === 'Escape') { event.preventDefault(); this.close(); }
     if (!isTabKey(event)) return;
     event.preventDefault();
-    const buttons = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
-    if (!buttons.length) return;
-    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    buttons[event.shiftKey ? (index <= 0 ? buttons.length - 1 : index - 1) : (index + 1) % buttons.length].focus();
+    const controls = [...(this.dialog()?.nativeElement.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)') ?? [])];
+    if (!controls.length) return;
+    const index = controls.indexOf(document.activeElement as HTMLElement);
+    controls[event.shiftKey ? (index <= 0 ? controls.length - 1 : index - 1) : (index + 1) % controls.length].focus();
   }
 }
