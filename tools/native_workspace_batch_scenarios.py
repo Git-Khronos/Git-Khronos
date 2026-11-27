@@ -74,9 +74,12 @@ def workspace_batch_stop(driver, fixtures, report):
     upstream_refs = fixtures.git(upstream, 'show-ref')
     expected = fixtures.git(upstream, 'rev-parse', 'refs/heads/main')
     tracking_ref = 'refs/remotes/origin/main'
+    remote_head_ref = 'refs/remotes/origin/HEAD'
 
     def tracking_refs(repository):
-        return fixtures.git(repository, 'for-each-ref', '--format=%(refname) %(objectname)', 'refs/remotes')
+        return fixtures.git(repository, 'for-each-ref',
+                            '--format=%(refname) %(objectname)%(if)%(symref)%(then) -> %(symref)%(end)',
+                            'refs/remotes').splitlines()
 
     def dispatches():
         path = gate / 'dispatches'
@@ -88,8 +91,17 @@ def workspace_batch_stop(driver, fixtures, report):
             refs = current.pop('references')
             assert current == {key: value for key, value in previous.items() if key != 'references'}
             if repository in expected_fetched:
-                assert tracking_refs(repository) == f'{tracking_ref} {expected}'
-                assert sorted(refs.splitlines()) == sorted([*previous['references'].splitlines(), f'{expected} {tracking_ref}'])
+                actual_tracking = tracking_refs(repository)
+                allowed_tracking = [f'{tracking_ref} {expected}']
+                added_refs = [f'{expected} {tracking_ref}']
+                # Git can create origin/HEAD on first fetch. Only allow the
+                # symbolic alias of the exact tracking branch we expected.
+                remote_head = f'{remote_head_ref} {expected} -> {tracking_ref}'
+                if remote_head in actual_tracking:
+                    allowed_tracking.append(remote_head)
+                    added_refs.append(f'{expected} {remote_head_ref}')
+                assert sorted(actual_tracking) == sorted(allowed_tracking), actual_tracking
+                assert sorted(refs.splitlines()) == sorted([*previous['references'].splitlines(), *added_refs]), refs
             else:
                 assert not tracking_refs(repository), 'A skipped checkout unexpectedly fetched a remote ref'
                 assert refs == previous['references']
