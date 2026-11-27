@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, effect, ElementRef, inject, input, output, viewChild } from '@angular/core';
+import { afterRenderEffect, ChangeDetectionStrategy, Component, ElementRef, inject, input, output, viewChild } from '@angular/core';
 import type { Remote, PushDestinationReview } from '@git-khronos/contracts';
 import { GitKhronosService } from './git-khronos.service';
 import { IconComponent } from './icon.component';
@@ -61,13 +61,13 @@ export class RepositoryConfirmationsComponent {
   readonly publishAddRemote = output<void>();
 
   constructor() {
-    effect(() => {
-      this.remote();
-      this.sparseAction();
-      this.forcePush();
-      this.worktree();
-      this.publishBranch();
-      setTimeout(() => this.dialog()?.nativeElement.querySelector<HTMLButtonElement>('footer button')?.focus());
+    afterRenderEffect(() => {
+      const dialog = this.dialog()?.nativeElement;
+      // Give a newly rendered review a safe starting point without moving
+      // focus back to Cancel if the user already entered the review.
+      if (dialog && !dialog.contains(document.activeElement)) {
+        dialog.querySelector<HTMLButtonElement>('footer button')?.focus({ preventScroll: true });
+      }
     });
   }
 

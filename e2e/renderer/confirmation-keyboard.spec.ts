@@ -102,6 +102,7 @@ for (const review of reviews) {
 
   test(`${review} keeps Tab in the review and Escape dismisses it`, async ({ page }) => {
     const modal = await openReview(page, review);
+    if (review === 'publish') await expect(modal.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
     const controls = modal.locator('button:visible:not(:disabled), input:visible:not(:disabled), select:visible:not(:disabled), summary:visible, [tabindex="0"]:visible');
     await controls.last().focus();
     await page.keyboard.press('Tab');
