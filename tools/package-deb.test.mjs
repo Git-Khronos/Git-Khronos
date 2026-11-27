@@ -651,6 +651,36 @@ test('hosted release signing is opt-in, isolated, and cannot fall back after fai
   }
 });
 
+test('installed CI pins native runs to the Debian entry of a verified multi-asset manifest', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/linux-package-acceptance.yml', import.meta.url), 'utf8');
+  const blocks = [...workflow.matchAll(/- name: Verify the build job's exact artifact checksums\n\s+working-directory: ubuntu-package\n\s+shell: bash\n\s+run: \|\n([\s\S]*?)(?=      - name:|      - uses:)/g)];
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0][1], blocks[1][1]);
+  for (const line of workflow.split('\n').filter(line => /tools\/run-native-suites\.sh|--installed --package/.test(line))) {
+    assert.match(line, /--expect-package-sha256 "\$(PACKAGE_SHA256|4)"/);
+  }
+  const root = await mkdtemp(join(tmpdir(), 'gk-installed-archive-handoff-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const name = 'Git-Khronos_0.1.6_amd64.deb';
+  const digest = createHash('sha256').update('owned Debian package').digest('hex');
+  const other = createHash('sha256').update('owned SBOM').digest('hex');
+  await writeFile(join(root, name), 'owned Debian package');
+  await writeFile(join(root, 'package.cdx.json'), 'owned SBOM');
+  const envFile = join(root, 'github-env');
+  const run = () => spawnSync('bash', ['-c', blocks[0][1]], {
+    cwd: root, env: { ...process.env, GITHUB_ENV: envFile }, encoding: 'utf8',
+  });
+  const manifest = join(root, 'SHA256SUMS');
+  await writeFile(manifest, `${other}  package.cdx.json\n${digest}  ${name}\n`);
+  const valid = run();
+  assert.equal(valid.status, 0, valid.stderr);
+  assert.equal(await readFile(envFile, 'utf8'), `PACKAGE=${join(root, name)}\nPACKAGE_SHA256=${digest}\n`);
+  await unlink(envFile);
+  await writeFile(manifest, `${other}  package.cdx.json\n`);
+  assert.notEqual(run().status, 0);
+  await assert.rejects(readFile(envFile), { code: 'ENOENT' });
+});
+
 test('Linux runtime CI provisions authenticated X11, D-Bus and matching WebDriver packages', async (t) => {
   const workflow = (await readFile(join(repositoryRoot, '.github/workflows/linux-package-acceptance.yml'), 'utf8')).replaceAll('\r\n', '\n');
   const step = workflow.match(/      - name: Install runtime acceptance prerequisites\n([\s\S]*?)(?=      - name:)/)?.[1];
