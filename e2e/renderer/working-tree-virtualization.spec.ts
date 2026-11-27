@@ -87,6 +87,32 @@ async function loadLargeWorkingTree(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: `Unstaged Files (${FILES_PER_LIST})` })).toBeVisible();
 }
 
+test('collapsing Staged Files puts its heading below the expanded Unstaged viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await loadLargeWorkingTree(page);
+  const unstagedList = page.locator('#unstaged-files-list');
+  const staged = page.getByRole('button', { name: /^Staged Files/ });
+  const height = () => unstagedList.evaluate(list => list.clientHeight);
+  await expect(staged).toHaveAttribute('aria-expanded', 'true');
+  const normalHeight = await height();
+  await staged.press('Enter');
+  await expect(staged).toHaveAttribute('aria-expanded', 'false');
+  await expect(staged).toBeFocused();
+  await expect(page.locator('#staged-files-list')).toHaveCount(0);
+  await expect.poll(height).toBeGreaterThan(normalHeight);
+  const placement = await staged.evaluate(heading => {
+    const viewport = document.querySelector('.working-tree-scroll')!.getBoundingClientRect();
+    const list = document.querySelector('#unstaged-files-list')!.getBoundingClientRect();
+    const toggle = heading.getBoundingClientRect();
+    const section = heading.closest('.staged-section')!.getBoundingClientRect();
+    return { belowUnstaged: toggle.top >= list.bottom, docked: Math.abs(section.bottom - viewport.bottom) <= 1 };
+  });
+  expect(placement).toEqual({ belowUnstaged: true, docked: true });
+  await unstagedList.focus();
+  await unstagedList.press('End');
+  await expect(unstagedList.getByRole('button', { name: `Stage ${filePath('unstaged', FILES_PER_LIST - 1)}` })).toBeVisible();
+});
+
 test('bounds both working-tree lists while preserving scrolling and filtering', async ({ page }) => {
   test.setTimeout(60_000);
   await loadLargeWorkingTree(page);
