@@ -375,8 +375,12 @@ If Git Khronos opens and responds but the terminal reports
 `MESA: error: ZINK: failed to choose pdev` or
 `libEGL warning: egl: failed to create dri2 screen`, a graphics backend
 failed to initialize; those lines alone don't indicate that the app failed.
-If a normal launch is blank, fully quit Git Khronos and try one launch
-with Mesa software rendering from your WSL terminal:
+If a normal launch is blank, fully quit Git Khronos before trying a launch
+with Mesa software rendering from your WSL terminal. A second invocation can
+hand off to the existing instance and exit without applying the new settings.
+If there's only a taskbar icon, use its **Close window** action and check
+`pgrep -a -u "$(id -u)" -x git-khronos`. No output means there is no
+matching process for your user in this distribution.
 
 ```sh
 LIBGL_ALWAYS_SOFTWARE=1 git-khronos
@@ -389,7 +393,9 @@ rendering configuration. See [Microsoft's WSLg graphics guidance](https://github
 If a launch creates a taskbar entry but no visible window, do not diagnose it
 from `libEGL`/DRI3 warnings alone. From the checkout, run
 `python3 tools/check-wslg-transport.py` for a read-only check of the WSLg log.
-It does not restart WSL or test whether Windows displayed the window.
+It does not restart WSL or test whether Windows displayed the window. An
+“enabled” result means only that the last logged mode was graphics
+redirection; it does not rule out a stuck application or compositor.
 To check manually, look in `/mnt/wslg/weston.log` for a shared-memory
 `Input/output error` followed by `use_gfxredir = 0`, and the Windows window title
 for `[WARN:COPY MODE]`. This combination matches an upstream
