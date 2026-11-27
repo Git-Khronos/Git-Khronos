@@ -89,6 +89,7 @@ test('reference actions copy an exact namespace without changing the checkout', 
     const menu = surface.menu(page);
     await menu.getByRole('menuitem', { name: 'Copy full ref', exact: true }).click();
     await expect(menu).toHaveCount(0);
+    await expect(page.locator('[data-git-operation-status]')).toHaveText('Git status: Copied full Git ref');
     expect(await page.evaluate(() => (window as any).__copiedReference))
       .toBe(`refs/${refNamespace}/${label.slice(labelPrefix.length)}`);
   }
@@ -105,30 +106,36 @@ test('a refused reference clipboard write explains the failure', async ({ page }
   await expect(page.locator('.error-toast')).toContainText('Could not copy the Git ref');
 });
 
-test('a late ref-copy failure leaves a newer context menu open', async ({ page }) => {
-  await page.evaluate(() => {
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
-      writeText: () => new Promise<void>((_resolve, reject) => {
-        (window as any).__rejectRefCopy = () => reject(new Error('Clipboard refused after navigation'));
-      }),
-    } });
+for (const success of [false, true]) {
+  test(`a late ref-copy ${success ? 'success' : 'failure'} leaves a newer context menu and its activity alone`, async ({ page }) => {
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+        writeText: () => new Promise<void>((resolve, reject) => {
+          (window as any).__finishRefCopy = (copied: boolean) => copied
+            ? resolve() : reject(new Error('Clipboard refused after navigation'));
+        }),
+      } });
+    });
+    const localBranches = page.locator('#reference-section-local .branch-item');
+    const menu = page.locator('.context-menu');
+    await localBranches.first().click({ button: 'right' });
+    await menu.getByRole('menuitem', { name: 'Copy full ref', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => typeof (window as any).__finishRefCopy)).toBe('function');
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await localBranches.nth(1).click({ button: 'right' });
+    const newer = await menu.locator('.context-heading strong').innerText();
+    const status = page.locator('[data-git-operation-status]');
+    const activity = await status.innerText();
+    await page.evaluate(async (copied) => {
+      (window as any).__finishRefCopy(copied);
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    }, success);
+    await expect(menu.locator('.context-heading strong')).toHaveText(newer);
+    await expect(page.locator('.error-toast').filter({hasText: 'Could not copy the Git ref'})).toHaveCount(0);
+    await expect(status).toHaveText(activity);
   });
-  const localBranches = page.locator('#reference-section-local .branch-item');
-  const menu = page.locator('.context-menu');
-  await localBranches.first().click({ button: 'right' });
-  await menu.getByRole('menuitem', { name: 'Copy full ref', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => typeof (window as any).__rejectRefCopy)).toBe('function');
-  await page.keyboard.press('Escape');
-  await expect(menu).toHaveCount(0);
-  await localBranches.nth(1).click({ button: 'right' });
-  const newer = await menu.locator('.context-heading strong').innerText();
-  await page.evaluate(async () => {
-    (window as any).__rejectRefCopy();
-    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-  });
-  await expect(menu.locator('.context-heading strong')).toHaveText(newer);
-  await expect(page.locator('.error-toast').filter({hasText: 'Could not copy the Git ref'})).toHaveCount(0);
-});
+}
 
 test('keyboard ref copy returns focus to the branch that opened the menu', async ({ page }) => {
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {

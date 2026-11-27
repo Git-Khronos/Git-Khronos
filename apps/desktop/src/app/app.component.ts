@@ -14557,6 +14557,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.contextMenuGeneration !== generation || !this.contextMenu()) return;
     this.dismissGraphActionMenu(true);
     if (!copied) this.git.error.set('Could not copy the Git ref. Clipboard access is unavailable.');
+    else if (!this.git.busy()) this.git.activity.set('Copied full Git ref');
   }
 
   protected async checkoutContextTarget(): Promise<void> {
