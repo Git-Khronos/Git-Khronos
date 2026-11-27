@@ -2053,6 +2053,10 @@ Pushes and pull requests use one browser worker per shard and no retries.
 A manual Desktop CI dispatch can set `renderer-workers` to `2` to measure
 parallel execution on the same full test list; this does not change the
 default or skip any gate. Each shard logs its worker and logical CPU counts.
+In a sequential local Chromium run, the same 24 menu tests passed in 42.6 s
+with one worker and 35.8 s with two. This was a focused sample, with the
+single-worker run first and a native package build active in the background.
+It does not establish a full-suite or hosted speedup.
 Failure in one shard does not
 cancel the other shards; each failed shard uploads any available report, traces,
 and screenshots under `renderer-failure-<run>-attempt-<attempt>-shard-<shard>`.
