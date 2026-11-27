@@ -144,6 +144,15 @@ jobs:
             candidate/build-receipt.json "$RUNNER_TEMP/publisher.pub" \
             "candidate/Git-Khronos_${RELEASE_TAG#v}_amd64.deb" --reports-dir candidate-matrix \
             > "$RUNNER_TEMP/installed-release-matrix.json"
+      - name: Bind the candidate digest to its qualification evidence
+        id: qualified-bytes
+        run: |
+          set -euo pipefail
+          checksum="$(node tools/check-debian-update-evidence.mjs --release-package \
+            "candidate/Git-Khronos_${RELEASE_TAG#v}_amd64.deb" candidate/build-receipt.json \
+            candidate-evidence/report.json "$RUNNER_TEMP/publisher.pub")"
+          [[ "$checksum" =~ ^[a-f0-9]{64}$ ]]
+          printf 'sha256=%s\n' "$checksum" >> "$GITHUB_OUTPUT"
       - name: Retain the verified matrix for release reviewers
         uses: actions/upload-artifact@v4
         with:
@@ -173,6 +182,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GIT_KHRONOS_STAGED_RELEASE_DIR: ${{ steps.prepare.outputs.directory }}
+          GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256: ${{ steps.qualified-bytes.outputs.sha256 }}
         run: |
           set -euo pipefail
           baseline="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
@@ -181,11 +191,7 @@ jobs:
             echo "::error::The signed candidate must be newer than the current stable release."
             exit 1
           }
-          # Use the independently qualified digest, not a fresh hash of
-          # staging contents that could accidentally point at another build.
-          checksum="$(jq -er '.outputs.package.sha256 | select(type == "string" and test("^[a-f0-9]{64}$"))' candidate/build-receipt.json)"
           GIT_KHRONOS_STAGED_PUBLIC_KEY="$RUNNER_TEMP/publisher.pub" \
-          GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256="$checksum" \
           GIT_KHRONOS_STAGED_BASELINE_VERSION="${baseline#v}" \
             cargo test --locked -p git-khronos-desktop --example stage-debian-update \
             qualified_release_can_be_consumed_offline -- --ignored

@@ -588,6 +588,8 @@ test('signed publication requires installed reports from the selected candidate 
   assert.ok(publish.includes('pattern: debian-runtime-reports-${{ steps.candidate.outputs.attempt }}-*'));
   const beforeStaging = publish.split('name: Prepare and reverify exactly the assets to upload')[0];
   assert.match(beforeStaging, /report-installed-acceptance\.mjs --verify-release[\s\S]*?--reports-dir candidate-matrix/);
+  assert.match(beforeStaging, /--reports-dir candidate-matrix[\s\S]*?id: qualified-bytes[\s\S]*?check-debian-update-evidence\.mjs --release-package[\s\S]*?candidate-evidence\/report\.json/);
+  assert.ok(publish.includes('GIT_KHRONOS_QUALIFIED_PACKAGE_SHA256: ${{ steps.qualified-bytes.outputs.sha256 }}'));
 });
 
 test('Linux runtime CI provisions authenticated X11, D-Bus and matching WebDriver packages', async (t) => {
