@@ -479,7 +479,7 @@ test('local release checks include every installed Ubuntu 24.04 workflow review 
   const plans = steps.map(([, step], index) => {
     assert.match(step, /matrix\.ubuntu == '24\.04'/);
     assert.ok(step.includes(`matrix.lane == '${lanes[index]}'`));
-    const plan = step.match(/run: >-\r?\n\s+bash tools\/run-native-suites\.sh "\$PACKAGE"\s+([\s\S]+)$/)?.[1];
+    const plan = step.match(/run: >-\r?\n\s+bash tools\/run-native-suites\.sh --expect-package-sha256 "\$PACKAGE_SHA256" "\$PACKAGE"\s+([\s\S]+)$/)?.[1];
     assert.ok(plan, 'Missing the installed suite batch plan');
     return plan.trim().split(/\s+/);
   });
@@ -527,7 +527,7 @@ test('installed Ubuntu 26.04 review suites match the release verifier plan', () 
   const step = workflow.match(/- name: Verify installed GitLab refusal and occupied branch handling\r?\n([\s\S]*?)(?=      - name:)/)?.[1];
   assert.ok(step, 'Missing Ubuntu 26.04 review step');
   assert.match(step, /matrix\.ubuntu == '26\.04'/);
-  const plan = step.match(/run: bash tools\/run-native-suites\.sh "\$PACKAGE" (.+)/)?.[1];
+  const plan = step.match(/run: bash tools\/run-native-suites\.sh --expect-package-sha256 "\$PACKAGE_SHA256" "\$PACKAGE" (.+)/)?.[1];
   assert.ok(plan, 'Missing the installed suite batch plan');
   const localSuites = summarizeReleaseMatrix([]).checks.filter(check =>
     check.distribution.id === 'ubuntu' && check.distribution.versionId === '26.04' &&

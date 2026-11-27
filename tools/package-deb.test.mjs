@@ -418,8 +418,8 @@ test('installed review diagnostics continue after a sibling failure without publ
   const [ubuntu, debian] = workflow.split('\n  debian-runtime:\n');
   assert.ok(debian);
   assert.match(ubuntu, /id: package_install/);
-  assert.match(ubuntu, /run: bash tools\/run-native-suites\.sh "\$PACKAGE" smoke gitlab/);
-  assert.match(ubuntu, /Verify installed GitLab refusal and occupied branch handling\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '26\.04' \}\}\n\s+run: bash tools\/run-native-suites\.sh "\$PACKAGE" gitlab-connect-refused worktrees/);
+  assert.match(ubuntu, /run: bash tools\/run-native-suites\.sh --expect-package-sha256 "\$PACKAGE_SHA256" "\$PACKAGE" smoke gitlab/);
+  assert.match(ubuntu, /Verify installed GitLab refusal and occupied branch handling\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '26\.04' \}\}\n\s+run: bash tools\/run-native-suites\.sh --expect-package-sha256 "\$PACKAGE_SHA256" "\$PACKAGE" gitlab-connect-refused worktrees/);
   assert.match(ubuntu, /Verify the installed app recovers from renderer crashes\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '24\.04' && matrix\.lane == 'runtime' \}\}[\s\S]*?set -o pipefail[\s\S]*?check-installed-x11-launch\.sh --renderer-recovery "\$PACKAGE"[\s\S]*?tee ubuntu-package\/renderer-recovery\.log/);
   assert.match(ubuntu, /path: \|\n(?:\s+[^\n]+\n)*\s+ubuntu-package\/renderer-recovery\.log/);
   const reviews = [...ubuntu.matchAll(/Verify installed workspace and Git workflow reviews \(([^)]+)\)\n\s+if: \$\{\{ !cancelled\(\) && steps\.package_install\.outcome == 'success' && matrix\.ubuntu == '24\.04' && matrix\.lane == '([^']+)' \}\}/g)];
