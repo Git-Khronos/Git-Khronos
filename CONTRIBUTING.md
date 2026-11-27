@@ -23,6 +23,15 @@ pnpm test
 `pnpm check` includes Rust formatting. Run `cargo fmt --all` to fix
 formatting before rerunning the checks.
 
+For a change-specific local plan, run `pnpm test:changed`. It shows which
+checks cover your staged, unstaged, and untracked edits; add `--run` to
+execute them. Use `--base origin/dev` to include commits ahead of that
+local ref, or `--staged` to select only staged paths. Tests still execute
+the working files. Supply `--native-package /path/to/candidate.deb` to run
+mapped packaged scenarios against an archive you already built. Shared
+or unmapped changes may need a broader run, which requires `--allow-full`.
+This plan never replaces hosted CI or exact-artifact release qualification.
+
 On Debian or Ubuntu, changes that affect the packaged application should
 also build the real installer and run the relevant native acceptance suite.
 For example:

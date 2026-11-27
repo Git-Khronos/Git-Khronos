@@ -455,6 +455,21 @@ test('mapped native scenario edits require an explicit archive and do not start 
   assert.doesNotMatch(packaged, /desktop:e2e|desktop:check|project=webkit/);
 });
 
+test('dedicated Debian workflows select local packaging tests, while shared CI keeps broad checks', t => {
+  const f = fixture(t);
+  f.write('tools/package-deb.test.mjs');
+  f.commit();
+  for (const workflow of ['release', 'publish-signed-debian', 'linux-package-acceptance']) {
+    f.write(`.github/workflows/${workflow}.yml`);
+  }
+  const focused = f.run();
+  assert.match(focused, /local only; hosted qualification is separate/);
+  assert.equal(focused.match(/"desktop:package-test:focused"/g)?.length, 1);
+  assert.doesNotMatch(focused, /"desktop:check"|"desktop:test"|"desktop:e2e"/);
+  f.write('.github/workflows/ci.yml');
+  assert.match(f.run(), /"desktop:check"[\s\S]*"desktop:e2e"/);
+});
+
 test('updater fixture edits select offline package checks, not an installed update', t => {
   const f = fixture(t);
   f.write('.gitignore', 'artifacts/\n');

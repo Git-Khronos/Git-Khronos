@@ -73,6 +73,9 @@ const debianWorkflowSources = new Set([
   'tools/build-linux-package.sh', 'tools/manage-linux-package.sh',
   'tools/finish-linux-package-cache.mjs', 'tools/package-build-receipt.mjs',
   'tools/check-linux-package-watcher.mjs',
+  '.github/workflows/linux-package-acceptance.yml',
+  '.github/workflows/release.yml',
+  '.github/workflows/publish-signed-debian.yml',
 ]);
 const packageSourceTests = new Map([
   ['tools/download-qualified-debian.sh', 'tools/check-debian-candidate-run.test.mjs'],
@@ -226,7 +229,7 @@ for (const path of changed) {
       broad = true;
       plan = 'package tooling and broader checks (shared or removed file)';
     } else {
-      plan = 'Debian package workflow tests';
+      plan = 'Debian package workflow tests (local only; hosted qualification is separate)';
     }
   } else if (packageSourceTests.has(path) && existsSync(join(cwd, path))
     && isPackageTest(packageSourceTests.get(path))) {
