@@ -140,23 +140,23 @@
       </div>
     }
   }
-  @if (lfsTrackingRequest()) {
+  @if (lfsTrackingRequest(); as request) {
     @defer (on immediate) {
-      <gk-lfs-tracking-dialog [request]="lfsTrackingRequest()" (closed)="lfsTrackingRequest.set(null)" />
+      <gk-lfs-tracking-dialog [request]="request" (closed)="closeLfsTrackingLoader(request)" />
     } @loading {
-      <div class="confirmation-backdrop" (click)="$event.stopPropagation(); closeLfsTrackingLoader()">
+      <div class="confirmation-backdrop" (click)="$event.stopPropagation(); closeLfsTrackingLoader(request)">
         <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="Loading LFS tools"
           (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation(); handleLfsLoaderKey($event)">
           <div class="confirmation-copy"><p role="status">Loading LFS tools…</p></div>
-          <button #lfsLoaderClose type="button" (click)="closeLfsTrackingLoader()">Cancel</button>
+          <button #lfsLoaderClose type="button" (click)="closeLfsTrackingLoader(request)">Cancel</button>
         </section>
       </div>
     } @error {
-      <div class="confirmation-backdrop" (click)="$event.stopPropagation(); closeLfsTrackingLoader()">
+      <div class="confirmation-backdrop" (click)="$event.stopPropagation(); closeLfsTrackingLoader(request)">
         <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-label="LFS tools unavailable"
           (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation(); handleLfsLoaderKey($event)">
           <div class="confirmation-copy"><p role="alert">The LFS tools panel could not be loaded. Close it and restart the app before retrying. No command was run by this panel.</p></div>
-          <button #lfsLoaderClose type="button" (click)="closeLfsTrackingLoader()">Close</button>
+          <button #lfsLoaderClose type="button" (click)="closeLfsTrackingLoader(request)">Close</button>
         </section>
       </div>
     }

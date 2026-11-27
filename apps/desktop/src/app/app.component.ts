@@ -7130,10 +7130,11 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected closeLfsTrackingLoader(): void {
-    const opener = this.lfsTrackingRequest()?.returnFocus;
+  protected closeLfsTrackingLoader(request = this.lfsTrackingRequest()): void {
+    if (!request || this.lfsTrackingRequest() !== request) return;
+    const outgoing = document.activeElement?.closest('gk-lfs-tracking-dialog, .confirmation-dialog') ?? null;
     this.lfsTrackingRequest.set(null);
-    setTimeout(() => { if (opener?.isConnected) opener.focus(); });
+    this.restoreScopedReviewFocus(request, outgoing, () => !!this.lfsTrackingRequest());
   }
 
   protected closeWorktreeRegistrationLoader(request = this.worktreeRegistrationRequest()): void {

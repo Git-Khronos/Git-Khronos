@@ -253,6 +253,10 @@ for (const change of ['workspace', 'path']) {
     await expect(remove).toBeDisabled();
     expect(await page.evaluate(() => (window as any).__lfsTracking.calls.some((entry: any) =>
       entry.command === 'lfs_untrack_pattern'))).toBe(false);
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(page.getByRole('button', { name: 'Manage tracking patterns…', exact: true })).not.toBeFocused();
   });
 }
 

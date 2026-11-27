@@ -521,9 +521,7 @@ export class LfsTrackingDialogComponent {
 
   close(): void {
     if (this.git.busy() || this.loading()) return;
-    const opener = this.request()?.returnFocus;
     this.closed.emit();
-    setTimeout(() => { if (opener?.isConnected) opener.focus(); });
   }
 
   handleKey(event: KeyboardEvent): void {
