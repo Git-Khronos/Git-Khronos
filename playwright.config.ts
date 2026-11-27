@@ -28,7 +28,14 @@ export default defineConfig({
     colorScheme: 'dark',
     locale: 'en-US',
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure',
+    // Playwright keeps raw frame images in worker scratch until shutdown.
+    // Keep first-failure actions and DOM snapshots without that growing filmstrip.
+    trace: {
+      mode: 'retain-on-failure',
+      screenshots: process.env['GIT_KHRONOS_RENDERER_TRACE_SCREENCAST'] === '1',
+      snapshots: true,
+      sources: true,
+    },
     viewport: { width: 1440, height: 900 },
   },
   projects: [

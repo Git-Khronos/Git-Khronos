@@ -1502,6 +1502,10 @@ while the runner is alive. The test command's exit status is the final
 verdict. Renderer tests do not replace native Tauri acceptance for Git,
 filesystem, terminal, or operating-system dialogs.
 
+Renderer failures retain action traces, DOM snapshots, and a separate
+screenshot. Trace filmstrips are off by default to limit temporary disk usage.
+For a focused visual diagnosis, set `GIT_KHRONOS_RENDERER_TRACE_SCREENCAST=1`.
+
 Named renderer snapshots refuse to start if the run directory's filesystem
 has less than 2 GiB available to your user. This is a startup floor, not a
 disk quota or a guarantee that a full run will fit. If space is tight, use a

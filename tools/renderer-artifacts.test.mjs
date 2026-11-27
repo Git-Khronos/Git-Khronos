@@ -9,13 +9,19 @@ test('Playwright keeps custom ports separate without changing explicit artifact 
   const port = 'PLAYWRIGHT_PORT';
   const output = 'GIT_KHRONOS_RENDERER_OUTPUT_DIR';
   const report = 'GIT_KHRONOS_RENDERER_REPORT_DIR';
-  const keys = [port, output, report, 'CI'];
+  const screencast = 'GIT_KHRONOS_RENDERER_TRACE_SCREENCAST';
+  const keys = [port, output, report, screencast, 'CI'];
   const original = keys.map(key => process.env[key]);
   t.after(() => keys.forEach((key, i) => setEnv(key, original[i])));
   keys.forEach(key => setEnv(key));
 
   const load = async name => (await import('../playwright.config.ts?' + name)).default;
-  assert.equal((await load('default')).outputDir, './test-results/renderer');
+  const defaults = await load('default');
+  assert.equal(defaults.outputDir, './test-results/renderer');
+  assert.equal(defaults.use.screenshot, 'only-on-failure');
+  assert.deepEqual(defaults.use.trace, {
+    mode: 'retain-on-failure', screenshots: false, snapshots: true, sources: true,
+  });
   setEnv(port, '4287');
   assert.equal((await load('first')).outputDir, './test-results/renderer-port-4287');
   setEnv(port, '4288');
@@ -26,6 +32,9 @@ test('Playwright keeps custom ports separate without changing explicit artifact 
   setEnv(report, 'test-results/shard-report');
   const explicit = await load('explicit');
   assert.equal(explicit.outputDir, 'test-results/shard-artifacts');
+  assert.equal(explicit.use.trace.screenshots, false);
+  setEnv(screencast, '1');
+  assert.deepEqual((await load('screencast')).use.trace, { ...defaults.use.trace, screenshots: true });
   assert.deepEqual(explicit.reporter.find(([name]) => name === 'html'),
     ['html', { open: 'never', outputFolder: 'test-results/shard-report' }]);
 });
