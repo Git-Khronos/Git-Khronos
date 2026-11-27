@@ -266,6 +266,8 @@ exactly one allowed branch (`main`). Add `TAURI_SIGNING_PRIVATE_KEY` and, if
 needed, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` as secrets **only** in that
 environment. Use `GIT_KHRONOS_HOSTED_SIGNING_ENABLED=true` to opt in and set
 `hosted_signing=true` when dispatching publication, leaving `signature` empty.
+Run `task release:preflight -- --hosted v0.1.6` to check the GitHub configuration.
+It checks the signer secret name only, not its contents or correctness.
 Keep `GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED` unset for a signing-and-verification
 rehearsal with no publication. As with offline mode, the separate publication
 switch and `signed-release` approval are required before anything goes live.

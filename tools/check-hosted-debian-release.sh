@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # Read-only preflight for the official GitHub publication configuration.
 set -euo pipefail
+hosted=false
+if [[ ${1:-} == --hosted ]]; then
+  hosted=true
+  shift
+fi
 tag=${1:-}
 if (( $# > 1 )) || { (( $# == 1 )) && [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; }; then
-  echo 'Usage: bash tools/check-hosted-debian-release.sh [vMAJOR.MINOR.PATCH]' >&2
+  echo 'Usage: bash tools/check-hosted-debian-release.sh [--hosted] [vMAJOR.MINOR.PATCH]' >&2
   exit 2
 fi
 
 root=repos/Git-Khronos/Git-Khronos
-environment="$root/environments/signed-release"
 ready=true
 missing() { printf 'Not confirmed: %s\n' "$1"; ready=false; }
 for tool in gh jq node; do
@@ -57,22 +61,44 @@ else
 fi
 unset publisher
 
-if policy=$(get "$environment" 2>/dev/null) && one_json 'length == 1 and .[0].name == "signed-release"' >/dev/null <<<"$policy"; then
+check_environment() {
+  local name=$1 environment="$root/environments/$1" policy
+  if ! policy=$(get "$environment" 2>/dev/null) ||
+     ! one_json --arg name "$name" 'length == 1 and .[0].name == $name' >/dev/null <<<"$policy"; then
+    missing "$name environment (missing or unreadable)"
+    return
+  fi
   if jq -e 'any(.protection_rules[]?; .type == "required_reviewers" and (.reviewers | type == "array" and length > 0))' >/dev/null <<<"$policy"; then
-    echo 'Release environment: required reviewers configured.'
+    printf '%s environment: required reviewers configured.\n' "$name"
   else
-    missing 'required reviewers for signed-release'
+    missing "required reviewers for $name"
   fi
   if jq -e '.deployment_branch_policy.custom_branch_policies == true and .deployment_branch_policy.protected_branches == false' >/dev/null <<<"$policy" &&
      get "$environment/deployment-branch-policies?per_page=2" 2>/dev/null |
        one_json 'length == 1 and (.[0] | .total_count == 1 and (.branch_policies | type == "array" and length == 1) and
          .branch_policies[0].name == "main" and .branch_policies[0].type == "branch")' >/dev/null; then
-    echo 'Release environment: exactly one branch rule for main.'
+    printf '%s environment: exactly one branch rule for main.\n' "$name"
   else
-    missing 'main-only release environment policy (inspect branch and tag rules in GitHub settings)'
+    missing "main-only release environment policy for $name (inspect branch and tag rules in GitHub settings)"
   fi
-else
-  missing 'signed-release environment (missing or unreadable)'
+}
+
+check_environment signed-release
+
+if [[ "$hosted" == true ]]; then
+  check_environment signed-release-signer
+  if get "$root/actions/variables/GIT_KHRONOS_HOSTED_SIGNING_ENABLED" 2>/dev/null |
+      one_json 'length == 1 and .[0].value == "true"' >/dev/null; then
+    echo 'Hosted signing switch: enabled.'
+  else
+    missing 'hosted signing switch'
+  fi
+  if get "$root/environments/signed-release-signer/secrets/TAURI_SIGNING_PRIVATE_KEY" 2>/dev/null |
+      one_json 'length == 1 and .[0].name == "TAURI_SIGNING_PRIVATE_KEY"' >/dev/null; then
+    echo 'Signer key secret: metadata confirmed (not read or tested).'
+  else
+    missing 'signer key secret metadata (missing or unreadable)'
+  fi
 fi
 
 if get "$root/actions/variables/GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED" 2>/dev/null |

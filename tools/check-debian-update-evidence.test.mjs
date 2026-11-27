@@ -76,6 +76,14 @@ case "$6" in
     printf '{"value":"%s"}\n' "$FIXTURE_PUBLISHER" ;;
   repos/Git-Khronos/Git-Khronos/actions/variables/GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED)
     echo '{"value":"true"}' ;;
+  repos/Git-Khronos/Git-Khronos/actions/variables/GIT_KHRONOS_HOSTED_SIGNING_ENABLED)
+    echo '{"value":"true"}' ;;
+  repos/Git-Khronos/Git-Khronos/environments/signed-release-signer)
+    printf '%s\n' "$FIXTURE_SIGNER_ENVIRONMENT" ;;
+  'repos/Git-Khronos/Git-Khronos/environments/signed-release-signer/deployment-branch-policies?per_page=2')
+    printf '%s\n' "$FIXTURE_RULES" ;;
+  repos/Git-Khronos/Git-Khronos/environments/signed-release-signer/secrets/TAURI_SIGNING_PRIVATE_KEY)
+    echo '{"name":"TAURI_SIGNING_PRIVATE_KEY"}' ;;
   repos/Git-Khronos/Git-Khronos/environments/signed-release)
     printf '%s\n' "$FIXTURE_ENVIRONMENT" ;;
   'repos/Git-Khronos/Git-Khronos/environments/signed-release/deployment-branch-policies?per_page=2')
@@ -91,6 +99,7 @@ esac
     encoding: 'utf8', timeout: 5000,
     env: { ...process.env, PATH: `${root}:${process.env.PATH}`, FIXTURE_PUBLISHER: publisher,
       FIXTURE_ENVIRONMENT: JSON.stringify(environment),
+      FIXTURE_SIGNER_ENVIRONMENT: JSON.stringify({ ...environment, name: 'signed-release-signer' }),
       FIXTURE_QUALIFY_WORKFLOW: 'Qualify Debian release candidate', FIXTURE_PUBLISH_WORKFLOW_STATE: 'active',
       FIXTURE_RULES: JSON.stringify({ total_count: rules.length, branch_policies: rules }), ...overrides },
   });
@@ -100,6 +109,19 @@ esac
   assert.match(valid.stdout, /exactly one branch rule for main/);
   assert.match(valid.stdout, /Qualify Debian release candidate is registered and active/);
   assert.match(valid.stdout, /Publish signed Debian release is registered and active/);
+  assert.doesNotMatch(valid.stdout, /Signer key secret/);
+  const hosted = check([main], {}, ['--hosted', 'v0.1.6']);
+  assert.equal(hosted.status, 0, hosted.stderr + hosted.stdout);
+  assert.match(hosted.stdout, /signed-release-signer environment: required reviewers configured/);
+  assert.match(hosted.stdout, /Signer key secret: metadata confirmed/);
+  const noSigner = check([main], { FIXTURE_SIGNER_ENVIRONMENT: '' }, ['--hosted']);
+  assert.equal(noSigner.status, 1);
+  assert.match(noSigner.stdout, /Not confirmed: signed-release-signer environment/);
+  const noSecretMetadata = check([main], {
+    FIXTURE_EMPTY_ENDPOINT: 'repos/Git-Khronos/Git-Khronos/environments/signed-release-signer/secrets/TAURI_SIGNING_PRIVATE_KEY',
+  }, ['--hosted']);
+  assert.equal(noSecretMetadata.status, 1);
+  assert.match(noSecretMetadata.stdout, /Not confirmed: signer key secret metadata/);
   const legacy = check([main], { FIXTURE_QUALIFY_WORKFLOW: 'Debian release' });
   assert.equal(legacy.status, 1);
   assert.match(legacy.stdout, /Not confirmed: hosted workflow Qualify Debian release candidate/);
