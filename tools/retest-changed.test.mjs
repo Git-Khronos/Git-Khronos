@@ -42,6 +42,19 @@ test('renderer budget tooling changes verify emitted production assets without r
   assert.match(f.run(), /desktop:check/, 'do not select a narrow plan without its test');
 });
 
+test('read-only hosted release preflight changes select only its package fixture', t => {
+  const f = fixture(t);
+  f.write('tools/check-hosted-debian-release.sh');
+  f.write('tools/check-debian-update-evidence.test.mjs');
+  f.commit();
+  f.write('tools/check-hosted-debian-release.sh', 'updated');
+  const plan = f.run();
+  assert.match(plan, /"desktop:package-test:focused".*"tools\/check-debian-update-evidence\.test\.mjs"/);
+  assert.doesNotMatch(plan, /desktop:check|desktop:e2e|package-deb\.test\.mjs/);
+  f.git('rm', 'tools/check-debian-update-evidence.test.mjs');
+  assert.match(f.run(), /desktop:check/);
+});
+
 test('build storage checks select only the dedicated storage fixture', t => {
   const f = fixture(t);
   f.write('tools/finish-linux-package-cache.mjs');

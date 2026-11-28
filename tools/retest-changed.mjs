@@ -105,6 +105,7 @@ const releaseEvidenceSpecs = [
   'tools/package-deb.test.mjs',
 ];
 const packageSourceTests = new Map([
+  ['tools/check-hosted-debian-release.sh', 'tools/check-debian-update-evidence.test.mjs'],
   ['tools/finish-linux-package-cache.mjs', 'tools/finish-linux-package-cache.test.mjs'],
   ['tools/run-focused-installed-acceptance.mjs', 'tools/run-focused-installed-acceptance.test.mjs'],
   ['tools/verify-signed-debian-installer.sh', 'tools/package-deb.test.mjs'],

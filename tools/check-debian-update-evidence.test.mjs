@@ -117,7 +117,9 @@ esac
   assert.match(valid.stdout, /Publish signed Debian release is registered and active/);
   assert.doesNotMatch(valid.stdout, /Signer key secret/);
   const trusted = join(root, 'trusted public.key.pub');
-  await writeFile(trusted, publisher + '\n');
+  const sameKeyDifferentComment = Buffer.from(Buffer.from(publisher, 'base64').toString('utf8')
+    .replace('untrusted comment: fixture', 'untrusted comment: trusted fixture copy')).toString('base64');
+  await writeFile(trusted, sameKeyDifferentComment + '\n');
   const matched = check([main], {}, ['--trusted-public-key', trusted, 'v0.1.6']);
   assert.equal(matched.status, 0, matched.stderr + matched.stdout);
   assert.match(matched.stdout, /matches the independently trusted public key/);
