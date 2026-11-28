@@ -5,7 +5,7 @@ import subprocess
 from native_worktree_scenarios import checkout_footprint
 
 
-def conflict_navigation(driver, fixtures, report):
+def conflict_navigation(driver, fixtures, report, *, verify_copy_draft=False):
     from native_acceptance import open_ui
 
     repository = fixtures.repository('owned-conflict-navigation', commits=3)
@@ -117,6 +117,26 @@ def conflict_navigation(driver, fixtures, report):
     driver.click_scrolled_text('[title="Open Merge Tool for output.txt"]', 'output.txt', wait_for_ready=True)
     driver.wait("return document.querySelector('gk-conflict-editor textarea[aria-label=\"Resolved output for output.txt\"]')?.value.includes('side edit output.txt')")
     driver.script("const textarea=document.querySelector('gk-conflict-editor textarea[aria-label=\"Resolved output for output.txt\"]'); if(!textarea || textarea.readOnly) throw Error('Conflict output is not editable'); textarea.value='manually reconciled output\\n'; textarea.dispatchEvent(new Event('input',{bubbles:true}));")
+    if verify_copy_draft:
+        copy_before = checkout_footprint(fixtures, repository, ('output.txt',))
+        driver.click_scrolled_text('gk-conflict-editor .merge-output header button', 'Copy draft', wait_for_ready=True)
+        driver.wait("return document.querySelector('.merge-draft-copy-feedback')?.textContent.trim() === 'Copied merge draft.'")
+        driver.script("""
+          const target = document.createElement('textarea');
+          target.id = 'owned-merge-draft-paste';
+          target.style.cssText = 'position:fixed;top:8px;left:8px;z-index:2147483647';
+          document.querySelector('gk-conflict-editor .merge-tool').append(target);
+          target.focus();
+        """)
+        try:
+            driver.key('v', modifiers=('\ue009',))
+            expected = json.dumps('manually reconciled output\n')
+            driver.wait("return document.querySelector('#owned-merge-draft-paste')?.value === " + expected)
+        finally:
+            driver.script("document.querySelector('#owned-merge-draft-paste')?.remove()")
+        assert checkout_footprint(fixtures, repository, ('output.txt',)) == copy_before
+        assert (repository / '.git/MERGE_HEAD').read_bytes() == merge_head
+        report['scenarios'].append('native-merge-draft-copies-exact-output-without-resolving')
     driver.click_scrolled_text('gk-conflict-editor footer button', 'Save Output & Mark Resolved', wait_for_ready=True)
     driver.wait("return !document.querySelector('[aria-label=\"Merge conflict editor\"]')")
     assert (repository / 'output.txt').read_text() == 'manually reconciled output\n'

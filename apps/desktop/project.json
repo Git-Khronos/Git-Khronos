@@ -187,6 +187,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite tag-preview --headless" }
     },
+    "native-conflict-draft-copy": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite conflict-draft-copy --headless" }
+    },
     "native-conflict-navigation": {
       "executor": "nx:run-commands",
       "cache": false,

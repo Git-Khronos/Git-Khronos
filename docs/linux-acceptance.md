@@ -4801,3 +4801,11 @@ abort safety scenario. The retained archive SHA-256 is
 `dc76efaf563a2d33576a488b9ac3cb287cdb76c30535b5e891f69195ff391af8`.
 The archive and its reports were retained after cleaning the disposable
 checkout debug profile.
+
+
+For a build with **Copy draft** in the Merge Tool, use
+`desktop:native-conflict-draft-copy` instead of
+`desktop:native-conflict-navigation`. It runs the same conflict
+resolution and Continue checks and adds a system-clipboard round trip
+with an independent Git check that copying left the conflict untouched.
+The original profile remains available for historical packages.

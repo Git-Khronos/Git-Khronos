@@ -61,7 +61,7 @@ const packagedScenarios = new Map([
   ['tools/native_remote_review_scenarios.py', ['native-remote-reviews']],
   ['tools/native_stash_review_scenarios.py', ['native-stash-review', 'native-stash-selection']],
   ['tools/native_tracked_file_search_scenarios.py', ['native-file-history', 'native-file-history-search-copy']],
-  ['tools/native_conflict_navigation_scenarios.py', ['native-conflict-navigation']],
+  ['tools/native_conflict_navigation_scenarios.py', ['native-conflict-draft-copy']],
   ['tools/native_commit_signing_scenarios.py', ['native-signed-commit']],
   ['tools/native_signed_tag_scenarios.py', ['native-signed-tag']],
   ['tools/native_x509_signing_fixture.py', ['native-signed-commit', 'native-signed-tag']],

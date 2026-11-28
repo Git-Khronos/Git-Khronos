@@ -1435,7 +1435,7 @@ def main():
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "merge-abort", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "checkout-responsiveness", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "hosted-fork-remote", "comparison-responsiveness", "stash-responsiveness", "file-history", "file-history-search-copy", "file-menu-copy",
-        "commit-responsiveness", "history-control-responsiveness", "local-mutation-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
+        "commit-responsiveness", "history-control-responsiveness", "local-mutation-responsiveness", "ignore-responsiveness", "conflict-navigation", "conflict-draft-copy", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
     )
     forced_inherited = ("environment",)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1505,7 +1505,7 @@ def main():
         parser.error("signed-commit requires --headless (private Xvfb)")
     if args.suite == "empty-commit" and not args.headless:
         parser.error("empty-commit requires --headless (private Xvfb)")
-    if args.suite in ("file-history", "file-history-search-copy", "file-menu-copy") and not args.headless:
+    if args.suite in ("file-history", "file-history-search-copy", "file-menu-copy", "conflict-draft-copy") and not args.headless:
         parser.error(f"{args.suite} requires --headless (private Xvfb)")
     if args.suite == "lfs-lock-actions" and not args.headless:
         parser.error("lfs-lock-actions requires --headless (private Xvfb)")
@@ -2036,9 +2036,10 @@ def main():
             elif args.suite == "watcher-shallow-history":
                 from native_watcher_scenarios import watcher_shallow_history
                 repository, repo_id = watcher_shallow_history(driver, fixtures, report)
-            elif args.suite == "conflict-navigation":
+            elif args.suite in ("conflict-navigation", "conflict-draft-copy"):
                 from native_conflict_navigation_scenarios import conflict_navigation
-                repository, repo_id = conflict_navigation(driver, fixtures, report)
+                repository, repo_id = conflict_navigation(
+                    driver, fixtures, report, verify_copy_draft=args.suite == "conflict-draft-copy")
             elif args.suite == "reference-copy":
                 from native_scenarios import copy_reference_namespaces
                 progress.enter_phase("reference-copy")

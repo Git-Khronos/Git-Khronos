@@ -749,8 +749,8 @@ test('native conflict navigation edits select real packaged merge coverage', t =
   f.write('candidate.deb');
   f.write('tools/native_conflict_navigation_scenarios.py');
   const plan = f.run('--native-package', 'candidate.deb');
-  assert.match(plan, /"desktop:native-conflict-navigation".*"--expect-package-sha256"/);
-  assert.doesNotMatch(plan, /desktop:e2e|desktop:check|native-full/);
+  assert.match(plan, /"desktop:native-conflict-draft-copy".*"--expect-package-sha256"/);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check|native-full|native-conflict-navigation/);
 
   f.write('tools/native_tracked_file_search_scenarios.py');
   const both = f.run('--native-package', 'candidate.deb');
