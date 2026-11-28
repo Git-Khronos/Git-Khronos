@@ -834,6 +834,31 @@ fn guarded_state_data_len(state: &GuardedFile) -> usize {
     }
 }
 
+fn add_guarded_snapshot_size(
+    file: &str,
+    file_bytes: u64,
+    total: &mut u64,
+    max_file_snapshot_bytes: u64,
+    max_snapshot_bytes: u64,
+) -> Result<(), AppError> {
+    if file_bytes > max_file_snapshot_bytes {
+        return Err(AppError::new(
+            "repositoryFileRefused",
+            format!(
+                "The original and restored versions of '{file}' are too large for one discard recovery capture."
+            ),
+            Some(
+                "No working files were changed. Discarding this file on its own would still exceed the limit. Back it up before using another tool.",
+            ),
+        ));
+    }
+    *total = total.saturating_add(file_bytes);
+    if *total > max_snapshot_bytes {
+        return Err(discard_capture_size_error());
+    }
+    Ok(())
+}
+
 fn encode_guarded_capture_with_limits(
     changes: &[GuardedChange],
     patch: &[u8],
@@ -1083,12 +1108,16 @@ pub fn prepare_discard(
     // Base64 snapshot strings are ASCII and need no JSON escaping. Bound
     // retained snapshot data while assembling the plan; serialization still
     // enforces the exact cap including JSON fields, paths and separators.
-    let max_snapshot_bytes = guarded_header_payload_limit(
-        patch.len(),
-        MAX_GUARDED_HEADER_BYTES,
-        MAX_RECOVERY_PATCH_INSPECTION_BYTES,
-    ) / 4
-        * 3;
+    let snapshot_limit = |patch_bytes| {
+        guarded_header_payload_limit(
+            patch_bytes,
+            MAX_GUARDED_HEADER_BYTES,
+            MAX_RECOVERY_PATCH_INSPECTION_BYTES,
+        ) / 4
+            * 3
+    };
+    let max_snapshot_bytes = snapshot_limit(patch.len());
+    let max_file_snapshot_bytes = snapshot_limit(0);
     let mut snapshot_bytes = 0_u64;
     let changes = paths
         .iter()
@@ -1098,11 +1127,13 @@ pub fn prepare_discard(
             if !guarded_leaf(file) && !supported_nested_capture_states(&before, &after) {
                 return Err(nested_discard_error(std::slice::from_ref(file)));
             }
-            snapshot_bytes +=
-                (guarded_state_data_len(&before) + guarded_state_data_len(&after)) as u64;
-            if snapshot_bytes > max_snapshot_bytes {
-                return Err(discard_capture_size_error());
-            }
+            add_guarded_snapshot_size(
+                file,
+                (guarded_state_data_len(&before) + guarded_state_data_len(&after)) as u64,
+                &mut snapshot_bytes,
+                max_file_snapshot_bytes,
+                max_snapshot_bytes,
+            )?;
             Ok(GuardedChange {
                 path: file.clone(),
                 before,
@@ -4652,6 +4683,21 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn guarded_snapshot_budget_distinguishes_individual_and_batch_limits() {
+        let mut total = 0;
+        let file = "nested/large.txt";
+        let individual = add_guarded_snapshot_size(file, 101, &mut total, 100, 90).unwrap_err();
+        assert!(individual.message.contains(file));
+        assert!(individual.hint.as_deref().unwrap().contains("on its own"));
+        assert_eq!(total, 0);
+        add_guarded_snapshot_size(file, 60, &mut total, 100, 90).unwrap();
+        add_guarded_snapshot_size("nested/sibling", 30, &mut total, 100, 90).unwrap();
+        let batch =
+            add_guarded_snapshot_size("nested/another", 1, &mut total, 100, 90).unwrap_err();
+        assert_eq!(batch.message, discard_capture_size_error().message);
     }
 
     #[test]

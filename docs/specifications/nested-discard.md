@@ -122,3 +122,8 @@ now requires this mixed-batch evidence. A separate exploratory run with the
 snapshots of that file exceeds the encoded capture-header budget, even
 though each snapshot is below the per-file limit. That case is not
 qualified for discard.
+
+For an individual file whose two snapshots alone exceed the header budget,
+the preview names that file and explains that discarding it separately would
+not help. For an aggregate-only refusal, it still recommends reviewing a
+smaller selection. Neither refusal changes any working files.
