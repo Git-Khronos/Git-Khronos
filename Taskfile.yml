@@ -24,6 +24,12 @@ tasks:
     cmds:
       - python3 tools/check-wslg-transport.py {{.CLI_ARGS}}
 
+  updates:authorize:
+    desc: Run a terminal polkit agent for the installed app; does not initiate an update
+    platforms: [linux]
+    cmds:
+      - python3 tools/update-auth-agent.py {{.CLI_ARGS}}
+
   install:
     desc: Install the pinned frontend dependencies
     deps: [doctor]

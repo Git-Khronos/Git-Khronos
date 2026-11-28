@@ -324,12 +324,15 @@ test('editing renderer artifact tooling or the validation runner selects browser
   }
 });
 
-test('editing the WSLg diagnostic selects the harness tests without launching the native app', t => {
+test('editing a Linux session helper selects harness tests without launching the native app', t => {
   const f = fixture(t);
-  f.write('tools/check-wslg-transport.py');
-  const plan = f.run();
-  assert.match(plan, /desktop:native-harness-test/);
-  assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+  for (const path of ['tools/check-wslg-transport.py', 'tools/update-auth-agent.py']) {
+    f.write(path);
+    const plan = f.run();
+    assert.match(plan, /desktop:native-harness-test/);
+    assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+    f.commit();
+  }
 });
 
 test('staged selection does not include unstaged edits or untracked files', t => {

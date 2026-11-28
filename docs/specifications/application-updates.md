@@ -551,7 +551,12 @@ is refused, the updater will not retry that version automatically. On a
 minimal desktop or WSL session where no authorization prompt appears, check
 that a session authentication agent is running before retrying manually.
 A separately registered [polkit terminal agent](https://manpages.ubuntu.com/manpages/resolute/man1/pkttyagent.1.html)
-is an option for a terminal-based session.
+is an option for a terminal-based session. On Linux, run
+`task updates:authorize` from an interactive terminal, keep it open, then
+retry in the installed app. If multiple instances are running, use
+`task updates:authorize -- --pid PID` to select the intended process.
+Use `task updates:authorize -- --check` to identify the app and agent
+without starting an agent or requesting authorization.
 
 The updater rechecks the installed version before starting authorization.
 For Debian it also passes `--refuse-downgrade` to the actual dpkg

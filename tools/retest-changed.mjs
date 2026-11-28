@@ -230,7 +230,7 @@ for (const path of changed) {
   } else if (/^tools\/prune_local_build_caches(?:_test)?\.py$/.test(path) && existsSync(join(cwd, path))) {
     archiveCacheTests = true;
     plan = 'archive cache cleanup safety tests';
-  } else if ((/^tools\/native_[a-z0-9_]+_test\.py$/.test(path) || path === 'tools/check-wslg-transport.py')
+  } else if ((/^tools\/native_[a-z0-9_]+_test\.py$/.test(path) || ['tools/check-wslg-transport.py', 'tools/update-auth-agent.py'].includes(path))
     && existsSync(join(cwd, path))) {
     nativeHarnessTests = true;
     plan = 'native harness unit tests';
