@@ -466,11 +466,20 @@ for (const width of [320, 780]) {
 async function openMerge(page: Page, screenshots?: { normal: string; compact: string }) {
   await prepare(page);
   await page.getByRole('button', { name: 'Close file content', exact: true }).click();
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const state = (window as any).__editor;
-    state.git.conflictDetails.set({ path: 'notes.md', current: 'ours', incoming: 'theirs', output: 'draft',
-      currentExists: true, incomingExists: true, editable: true, binary: false, submodule: false });
-    state.app.conflictOutput.set('retained internal merge draft');
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    native.invoke = (command: string, args: unknown) => command === 'inspect_conflict'
+      ? Promise.resolve({ path: 'notes.md', current: 'ours', incoming: 'theirs', output: 'draft',
+        currentExists: true, incomingExists: true, editable: true, binary: false, submodule: false })
+      : invoke(command, args);
+    try {
+      await state.git.inspectConflict('notes.md');
+      state.app.conflictOutput.set('retained internal merge draft');
+    } finally {
+      native.invoke = invoke;
+    }
   });
   const external = page.getByRole('button', { name: 'Review external merge program', exact: true });
   await expect(external).toBeVisible();

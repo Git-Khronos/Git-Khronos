@@ -408,7 +408,8 @@ export class GitKhronosService implements OnDestroy {
   private conflictRepositoryId: string | null = null;
   private conflictReadScope: string | null = null;
   private conflictRequest = 0;
-  private publishedConflictRequest = 0;
+  private readonly conflictReviewIsCurrent = signal(false);
+  readonly conflictReviewCurrent = this.conflictReviewIsCurrent.asReadonly();
   readonly fileHistory = signal<FileHistoryEntry[] | null>(null);
   readonly fileBlame = signal<FileBlameLine[] | null>(null);
   readonly fileBlameStart = signal(1);
@@ -2288,6 +2289,7 @@ export class GitKhronosService implements OnDestroy {
       && this.conflictRepositoryId && !this.requireRecoveryRepository(this.conflictRepositoryId)) return null;
     let details: ConflictDetails | null = null;
     const request = ++this.conflictRequest;
+    this.conflictReviewIsCurrent.set(false);
     const scope = this.activeRepositoryReadScope();
     if (this.conflictDetails()?.path !== path) this.conflictDetails.set(null);
     await this.run(`Opening merge tool for ${path}…`, async report => {
@@ -2295,7 +2297,7 @@ export class GitKhronosService implements OnDestroy {
       if (this.activeRepositoryReadScope() !== scope || request !== this.conflictRequest) return;
       this.conflictRepositoryId = repo.id;
       this.conflictReadScope = scope;
-      this.publishedConflictRequest = request;
+      this.conflictReviewIsCurrent.set(true);
       this.conflictDetails.set(details);
       report(`Resolving conflict in ${path}`);
     }, repo.id, null, true, false);
@@ -2304,6 +2306,7 @@ export class GitKhronosService implements OnDestroy {
 
   closeConflict(): void {
     this.conflictRequest++;
+    this.conflictReviewIsCurrent.set(false);
     this.conflictRepositoryId = null;
     this.conflictReadScope = null;
     this.conflictDetails.set(null);
@@ -2320,7 +2323,7 @@ export class GitKhronosService implements OnDestroy {
       this.error.set('The active checkout visit changed. Reopen the Merge Tool to review this conflict again.');
       return false;
     }
-    if (this.publishedConflictRequest !== this.conflictRequest) {
+    if (!this.conflictReviewCurrent()) {
       this.error.set('This conflict review is no longer current. Reload it before applying a resolution.');
       return false;
     }

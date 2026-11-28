@@ -204,6 +204,35 @@ test('does not resolve an old conflict in a newly active repository', async ({ p
     (call: { command: string }) => call.command === 'resolve_conflict'))).toBe(false);
 });
 
+test('a failed conflict reload preserves the draft but disables resolution until retry', async ({ page }) => {
+  await openConflict(page);
+  const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
+  await dialog.getByRole('textbox').fill('draft kept after a failed read');
+  await page.evaluate(() => {
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    let failed = false;
+    native.invoke = (command: string, args: unknown) => {
+      if (command === 'inspect_conflict' && !failed) {
+        failed = true;
+        return Promise.reject({ message: 'Conflict read interrupted.' });
+      }
+      return invoke(command, args);
+    };
+  });
+  const reload = dialog.getByRole('button', { name: 'Reload conflict' });
+  const save = dialog.getByRole('button', { name: 'Save Output & Mark Resolved' });
+  await reload.click();
+  await expect(dialog.getByRole('alert')).toContainText('Conflict read interrupted.');
+  await expect(dialog.getByText('Reload this conflict before applying a resolution.', { exact: false })).toBeVisible();
+  await expect(dialog.getByRole('textbox')).toHaveValue('draft kept after a failed read');
+  await expect(save).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: 'Take Incoming', exact: true })).toBeDisabled();
+  await reload.click();
+  await expect(save).toBeEnabled();
+  await expect(dialog.getByRole('textbox')).toHaveValue('working conflict\n');
+});
+
 test('keeps pending reload visible and never reopens a dismissed conflict', async ({ page }) => {
   await openConflict(page);
   const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });

@@ -6,7 +6,7 @@
       <div><small>MERGE TOOL</small><h2>{{ conflict.path }}</h2><p>{{ conflict.editable ? 'Choose a side or edit and save the resolved output.' : 'Choose which complete side to keep.' }}</p></div>
       <button type="button" #closeButton aria-label="Close conflict editor" title="Close Merge Tool" (click)="act(conflict, { kind: 'close' })"><gk-icon name="x" [size]="14" /></button>
       @if (!conflict.submodule) {
-        <button class="merge-external-tool" type="button" [disabled]="git.busy() || git.browserPreview()" (click)="act(conflict, { kind: 'external' })">Review external merge program</button>
+        <button class="merge-external-tool" type="button" [disabled]="git.busy() || !git.conflictReviewCurrent() || git.browserPreview()" (click)="act(conflict, { kind: 'external' })">Review external merge program</button>
       }
     </header>
     <div class="merge-notices">
@@ -28,6 +28,9 @@
       <p class="merge-warning">Current is index stage 2 (ours); Incoming is index stage 3 (the changes being merged or replayed).</p>
     }
     @if (!conflict.currentExists || !conflict.incomingExists) { <p class="merge-warning">Accepting a missing side deletes the file instead of saving an empty file.</p> }
+    @if (!git.conflictReviewCurrent() && !git.busy()) {
+      <p class="merge-warning">Reload this conflict before applying a resolution. Your draft is still here.</p>
+    }
     @if (git.error()) { <p class="merge-warning" role="alert" tabindex="-1">{{ git.error() }}</p> }
     @if (conflict.submodule) { <p class="merge-warning">Choose which recorded submodule commit the parent repository should keep. The checked-out submodule directory and any local changes inside it stay untouched.</p> }
     </div>
@@ -64,9 +67,9 @@
     <footer>
       <span>{{ conflict.submodule ? 'Only the selected gitlink is staged' : !conflict.editable ? 'Choose the version to keep' : 'Saving stages the file as resolved' }}</span>
       <button type="button" title="Reload the latest conflict; replace unsaved editor output" (click)="act(conflict, { kind: 'reload' })" [disabled]="git.busy()">Reload conflict</button>
-      <button type="button" (click)="act(conflict, { kind: 'resolve', side: 'current' })" [disabled]="git.busy()">{{ !conflict.currentExists ? 'Accept current deletion' : conflict.submodule ? 'Keep Current Commit' : 'Take Current' }}</button>
-      <button type="button" (click)="act(conflict, { kind: 'resolve', side: 'incoming' })" [disabled]="git.busy()">{{ !conflict.incomingExists ? 'Accept incoming deletion' : conflict.submodule ? 'Keep Incoming Commit' : 'Take Incoming' }}</button>
-      @if (conflict.editable) { <button class="primary" type="button" (click)="act(conflict, { kind: 'resolve', side: 'output' })" [disabled]="git.busy()">Save Output &amp; Mark Resolved</button> }
+      <button type="button" (click)="act(conflict, { kind: 'resolve', side: 'current' })" [disabled]="git.busy() || !git.conflictReviewCurrent()">{{ !conflict.currentExists ? 'Accept current deletion' : conflict.submodule ? 'Keep Current Commit' : 'Take Current' }}</button>
+      <button type="button" (click)="act(conflict, { kind: 'resolve', side: 'incoming' })" [disabled]="git.busy() || !git.conflictReviewCurrent()">{{ !conflict.incomingExists ? 'Accept incoming deletion' : conflict.submodule ? 'Keep Incoming Commit' : 'Take Incoming' }}</button>
+      @if (conflict.editable) { <button class="primary" type="button" (click)="act(conflict, { kind: 'resolve', side: 'output' })" [disabled]="git.busy() || !git.conflictReviewCurrent()">Save Output &amp; Mark Resolved</button> }
     </footer>
   </section>
 </div>
