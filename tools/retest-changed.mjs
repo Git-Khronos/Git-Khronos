@@ -97,7 +97,13 @@ const debianWorkflowSources = new Set([
   '.github/workflows/release.yml',
   '.github/workflows/publish-signed-debian.yml',
 ]);
+const releaseEvidenceSpecs = [
+  'tools/report-installed-acceptance.test.mjs',
+  'tools/run-focused-installed-acceptance.test.mjs',
+  'tools/package-deb.test.mjs',
+];
 const packageSourceTests = new Map([
+  ['tools/run-focused-installed-acceptance.mjs', 'tools/run-focused-installed-acceptance.test.mjs'],
   ['tools/verify-signed-debian-installer.sh', 'tools/package-deb.test.mjs'],
   ['tools/sign-qualified-debian.sh', 'tools/package-deb.test.mjs'],
   ['tools/sign-downloaded-release.sh', 'tools/package-deb.test.mjs'],
@@ -278,6 +284,10 @@ for (const path of changed) {
     packageSpecs.add('tools/report-initial-renderer.test.mjs');
     productionRendererBuild = true;
     plan = 'renderer budget tooling and a production build';
+  } else if (path === 'tools/report-installed-acceptance.mjs' && existsSync(join(cwd, path))
+    && releaseEvidenceSpecs.every(isPackageTest)) {
+    for (const spec of releaseEvidenceSpecs) packageSpecs.add(spec);
+    plan = 'installed evidence, focused replay, and release handoff tests';
   } else if (packageSourceTests.has(path) && existsSync(join(cwd, path))
     && isPackageTest(packageSourceTests.get(path))) {
     packageSpecs.add(packageSourceTests.get(path));

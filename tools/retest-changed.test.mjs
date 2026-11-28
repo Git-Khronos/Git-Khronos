@@ -42,6 +42,21 @@ test('renderer budget tooling changes verify emitted production assets without r
   assert.match(f.run(), /desktop:check/, 'do not select a narrow plan without its test');
 });
 
+test('installed acceptance evidence changes cover the reporter and its consumers', t => {
+  const f = fixture(t);
+  for (const spec of ['report-installed-acceptance', 'run-focused-installed-acceptance', 'package-deb']) {
+    f.write(`tools/${spec}.test.mjs`);
+  }
+  f.commit();
+  f.write('tools/report-installed-acceptance.mjs');
+  const plan = f.run();
+  assert.equal([...plan.matchAll(/"desktop:package-test:focused"/g)].length, 1);
+  assert.match(plan, /"tools\/report-installed-acceptance\.test\.mjs".*"tools\/run-focused-installed-acceptance\.test\.mjs".*"tools\/package-deb\.test\.mjs"/);
+  assert.doesNotMatch(plan, /desktop:check|desktop:e2e/);
+  f.git('rm', 'tools/run-focused-installed-acceptance.test.mjs');
+  assert.match(f.run(), /desktop:check/, 'require a broad fallback when a downstream test is missing');
+});
+
 test('selects an untracked renderer spec and a staged feature edit', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/worktree-lock-dialog.component.ts', 'baseline');
