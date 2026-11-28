@@ -262,8 +262,9 @@ for (const strategy of ['merge', 'rebase'] as const) {
     const progress = page.getByRole('status', { name: `Git ${strategy} in progress` });
     await expect(progress).toContainText('1 conflicted file');
     await expect(progress.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
-    await expect(progress.getByRole('button', { name: 'Abort', exact: true })).toBeEnabled();
-    await progress.getByRole('button', { name: 'Abort', exact: true }).click();
+    const abortButton = progress.getByRole('button', { name: strategy === 'merge' ? 'Abort Merge' : 'Abort', exact: true });
+    await expect(abortButton).toBeEnabled();
+    await abortButton.click();
     await expect(progress).toHaveCount(0);
     const calls = await page.evaluate(() => (window as any).__pullCalls);
     expect(calls.filter((call: any) => call.command === 'pull_repository')).toHaveLength(1);
