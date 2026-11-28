@@ -7,7 +7,7 @@ const GiB = 1024n ** 3n;
 const minimumCargoFreeSpace = 12n * GiB;
 const minimumCheckoutFreeSpace = 2n * GiB;
 
-export function requireLinuxPackageSpace(directory, targetDirectory, readStats = statfsSync) {
+export function requireLinuxPackageSpace(directory, targetDirectory, readStats = statfsSync, temporaryDirectory = process.env.TMPDIR) {
   // Hosted CI images have their own disk allocation policy. This safeguard
   // applies to developer builds and to locally launched archive builders.
   if (process.env.CI === 'true' || process.env.CI === '1') return;
@@ -24,6 +24,7 @@ export function requireLinuxPackageSpace(directory, targetDirectory, readStats =
   // An external target directory doesn't relocate renderer/package assets.
   check('.', minimumCheckoutFreeSpace, 'checkout');
   if (targetDirectory) check('target', minimumCheckoutFreeSpace, 'package staging');
+  check(temporaryDirectory || 'target/package-tmp', minimumCheckoutFreeSpace, 'package temporary files');
 }
 
 export function pruneIsolatedLinuxPackageCache(directory, targetDirectory) {

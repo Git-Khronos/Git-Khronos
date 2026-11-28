@@ -3512,7 +3512,9 @@ Avoid the broader `task clean` when keeping packages or local evidence.
 Local Linux packaging refuses to start with less than 12 GiB available on the
 Cargo output filesystem or less than 2 GiB available in the checkout. With
 an external Cargo target, package staging under the checkout’s `target`
-folder is also checked for 2 GiB of headroom. The packager removes Rust intermediate caches from
+folder is also checked for 2 GiB of headroom. The temporary directory
+(`TMPDIR` if set) must have 2 GiB available too. The packager removes Rust
+intermediate caches from
 its known isolated qualification layouts on completion or ordinary failure;
 a normal checkout or explicitly configured shared Cargo target is left alone.
 Package files, verification receipts and reports are kept. An abrupt host stop

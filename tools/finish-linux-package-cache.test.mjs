@@ -64,12 +64,30 @@ test('an external Cargo target does not bypass the checkout and package staging 
     delete process.env.CI;
     const available = new Map([[checkout, 1n], [staging, 2n], [cargo, 12n]]);
     const stats = path => ({ bsize: 1024n ** 3n, bavail: available.get(path) });
-    assert.throws(() => requireLinuxPackageSpace(checkout, cargo, stats), /checkout:.*need at least 2 GiB/);
+    assert.throws(() => requireLinuxPackageSpace(checkout, cargo, stats, ''), /checkout:.*need at least 2 GiB/);
     available.set(checkout, 2n);
     available.set(staging, 1n);
-    assert.throws(() => requireLinuxPackageSpace(checkout, cargo, stats), /package staging:.*need at least 2 GiB/);
+    assert.throws(() => requireLinuxPackageSpace(checkout, cargo, stats, ''), /package staging:.*need at least 2 GiB/);
     available.set(staging, 2n);
-    assert.doesNotThrow(() => requireLinuxPackageSpace(checkout, cargo, stats));
+    assert.doesNotThrow(() => requireLinuxPackageSpace(checkout, cargo, stats, ''));
+  } finally {
+    if (ci === undefined) delete process.env.CI;
+    else process.env.CI = ci;
+  }
+});
+
+test('a custom temporary directory must have enough space independently of the checkout', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'gk-package-tmp-space-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const checkout = join(root, 'checkout');
+  const temporary = join(root, 'external-tmp');
+  await Promise.all([mkdir(checkout), mkdir(temporary)]);
+  const ci = process.env.CI;
+  try {
+    delete process.env.CI;
+    const stats = path => ({ bsize: 1024n ** 3n, bavail: path === temporary ? 1n : 12n });
+    assert.throws(() => requireLinuxPackageSpace(checkout, null, stats, join(temporary, 'new')),
+      /package temporary files:.*need at least 2 GiB/);
   } finally {
     if (ci === undefined) delete process.env.CI;
     else process.env.CI = ci;
