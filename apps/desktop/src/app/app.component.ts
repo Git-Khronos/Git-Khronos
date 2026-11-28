@@ -915,6 +915,24 @@ export class AppComponent implements OnInit, OnDestroy {
     return state.offerId && state.offeredVersion
       ? { version: state.offeredVersion, restartPending: false } : null;
   });
+  private focusedUpdateShortcut: HTMLElement | null = null;
+  private readonly restoreRemovedUpdateShortcutFocus = afterRenderEffect(() => {
+    if (this.applicationUpdateShortcut()) return;
+    const previous = this.focusedUpdateShortcut;
+    this.focusedUpdateShortcut = null;
+    if (!previous || previous.isConnected || this.applicationUpdatesRequest() || document.activeElement !== document.body) return;
+    const fallback = this.appMenuToggle()?.nativeElement;
+    if (fallback && !fallback.closest('[inert]')) fallback.focus({ preventScroll: true });
+  });
+
+  protected rememberUpdateShortcutFocus(button: HTMLElement): void {
+    this.focusedUpdateShortcut = button;
+  }
+
+  protected forgetUpdateShortcutFocus(button: HTMLElement): void {
+    if (this.focusedUpdateShortcut === button && this.applicationUpdateShortcut()) this.focusedUpdateShortcut = null;
+  }
+
   private readonly applicationUpdatesDialog = viewChild<ApplicationUpdatesDialogComponent>('applicationUpdatesDialog');
   protected readonly applicationUpdatesRequest = signal<ApplicationUpdatesRequest | null>(null);
   protected readonly ownsApplicationUpdates = (request: ApplicationUpdatesRequest): boolean => this.applicationUpdatesRequest() === request;

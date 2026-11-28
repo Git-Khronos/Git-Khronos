@@ -1594,6 +1594,7 @@
           : 'Review available update v' + update.version;
         <button #updateStatusButton class="status-update" type="button"
           [attr.aria-label]="label" [title]="label + ' — Open Updates'"
+          (focus)="rememberUpdateShortcutFocus(updateStatusButton)" (blur)="forgetUpdateShortcutFocus(updateStatusButton)"
           (click)="openApplicationUpdates(updateStatusButton)">
           @if (update.restartPending) {
             <gk-icon name="refresh" [size]="14" />

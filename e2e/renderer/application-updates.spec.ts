@@ -563,6 +563,23 @@ test('a deferred release remains available for manual retry without changing aut
     .filter((call: any) => /^(check_|download_|install_|set_automatic_)/.test(call.command)))).toEqual([]);
 });
 
+test('retiring a focused update shortcut outside the dialog restores keyboard focus', async ({ page }) => {
+  const dialog = await open(page);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.evaluate(() => (window as any).__updates.replace({
+    phase: 'available', offerId: 'footer-retired', offeredVersion: '0.2.0', canDownload: true,
+  }));
+  const shortcut = page.getByRole('button', { name: 'Review available update v0.2.0' });
+  await shortcut.focus();
+  await expect(shortcut).toBeFocused();
+  await page.evaluate(() => (window as any).__updates.replace({
+    phase: 'idle', offeredVersion: null, offerId: null, canDownload: false,
+  }));
+  await expect(shortcut).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Main menu', exact: true })).toBeFocused();
+  await expect(dialog).toHaveCount(0);
+});
+
 test('the version bar advertises a native offer and opens Updates without starting an action', async ({ page }) => {
   const indicator = page.getByRole('button', { name: 'Review available update v0.2.0' });
   const dialog = page.getByRole('dialog', { name: 'Updates', exact: true });
