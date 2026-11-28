@@ -171,6 +171,12 @@ if (values['native-package'] !== undefined) {
     console.error('--native-package requires the path to an existing .deb file.');
     process.exit(2);
   }
+  // Nx run-commands forwards these arguments through a shell. Refuse
+  // expansions instead of potentially launching a different archive.
+  if (process.platform !== 'win32' && /[=$`\\'"\x00-\x1f\x7f]/.test(nativePackage)) {
+    console.error('--native-package needs an archive path without shell expansion characters, quotes, or equals signs. Copy it to a plain path and retry.');
+    process.exit(2);
+  }
 }
 
 const revision = spawnSync('git', ['rev-parse', '--verify', '--end-of-options', values.base + '^{commit}'], {
@@ -429,10 +435,11 @@ for (const command of commands) {
     && command[0] !== 'desktop:native-harness-test';
   command.splice(1, 0, '--output-style=' + (stream ? 'stream' : 'static'));
 }
+const shellLiteral = value => "'" + value.replaceAll("'", "'\"'\"'") + "'";
 for (const command of commands) {
   let envPrefix = values.webkit && isBrowser(command) ? 'GIT_KHRONOS_RENDERER_WEBKIT=1 ' : '';
   if (rendererGrep && isBrowser(command)) {
-    envPrefix += rendererGrepEnv + "='" + rendererGrep.replaceAll("'", "'\"'\"'") + "' ";
+    envPrefix += rendererGrepEnv + "=" + shellLiteral(rendererGrep) + " ";
   }
   console.log(envPrefix + 'pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
 }

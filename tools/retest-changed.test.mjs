@@ -758,6 +758,22 @@ test('native conflict navigation edits select real packaged merge coverage', t =
   assert.match(both, /"desktop:native-file-history-search-copy"/);
 });
 
+test('packaged plans reject archive paths that are ambiguous at the Nx shell boundary', { skip: process.platform === 'win32' }, t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'artifacts/\n');
+  f.commit();
+  f.write('tools/native_conflict_navigation_scenarios.py');
+  for (const archive of ['artifacts/literal $.deb', "artifacts/archive's.deb", 'artifacts/build=local copy.deb']) {
+    f.write(archive);
+    const result = spawnSync(process.execPath, [
+      'tools/retest-changed.mjs', '--native-package', archive, '--run',
+    ], { cwd: f.cwd, encoding: 'utf8' });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /archive path without shell expansion characters, quotes, or equals signs/);
+    assert.doesNotMatch(result.stdout, /pnpm nx run/);
+  }
+});
+
 test('an invalid native archive fails before scheduling checks', t => {
   const f = fixture(t);
   f.write('tools/native_sparse_checkout_scenarios.py');
