@@ -1140,6 +1140,14 @@ attributes. Shallow/partial clones, configured custom merge drivers and
 replacement references are refused. A clean preview is an observation for the
 displayed commits, not a promise that a later merge or custom strategy succeeds.
 
+If a merge stops with conflicts, open **Conflicted Files** in the Work in
+Progress view and select **Merge Tool** beside a file. Use **Take Current**
+to keep the checked-out branch’s side, **Take Incoming** to keep the branch
+being merged, or edit the text and choose **Save Output & Mark Resolved**.
+After resolving every conflicted file, open the Command Palette and choose
+**Continue Merge** to create the merge commit. Choose **Abort Merge** if you
+want to stop instead.
+
 The conflict editor identifies Current/Incoming index stages and explains their
 rebase meanings. Accepting a deleted side is distinct from saving an empty file.
 Resolution checks the reviewed branch, index-stage objects and working contents;
