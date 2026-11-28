@@ -577,8 +577,21 @@ test('the version bar advertises a native offer and opens Updates without starti
   await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeDisabled();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(indicator).toBeFocused();
+  // The version text is collapsed at this width, but the update shortcut
+  // remains reachable. Once verification finishes, the same shortcut opens
+  // the same review with the explicit install action now available.
+  await page.setViewportSize({ width: 480, height: 750 });
+  await expect(page.locator('.status-version')).toBeHidden();
+  await page.evaluate(() => (window as any).__updates.replace({
+    phase: 'ready', verified: true, canDownload: false, canInstall: true,
+  }));
+  await indicator.click();
+  await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => (window as any).__updates.calls
     .filter((call: any) => /^(check_|download_|install_|set_automatic_)/.test(call.command)))).toEqual([]);
-  await page.evaluate(() => (window as any).__updates.replace({ phase: 'installed', installedVersion: '0.2.0' }));
+  await dialog.getByRole('button', { name: 'Install verified update', exact: true }).click();
+  await expect(dialog).toContainText('Owned installation confirmed; restart later');
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(indicator).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Main menu', exact: true })).toBeFocused();
 });

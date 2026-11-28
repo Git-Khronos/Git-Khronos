@@ -13871,8 +13871,11 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.ownsApplicationUpdates(request) || this.applicationUpdatesDialog()?.updates.installing()) return;
     this.applicationUpdatesRequest.set(null);
     queueMicrotask(() => {
-      if (!this.applicationUpdatesRequest() && this.applicationUpdatesSequence === request.id && request.returnFocus?.isConnected
-        && !request.returnFocus.closest('[inert]')) request.returnFocus.focus();
+      if (this.applicationUpdatesRequest() || this.applicationUpdatesSequence !== request.id) return;
+      const origin = request.returnFocus;
+      const target = origin?.isConnected ? origin : origin?.classList.contains('status-update')
+        ? document.querySelector<HTMLElement>('[aria-label="Main menu"]') : null;
+      if (target && !target.closest('[inert]')) target.focus();
     });
   }
 
