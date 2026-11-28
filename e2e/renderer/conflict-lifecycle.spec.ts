@@ -184,6 +184,31 @@ test('a conflict review cannot write in another workspace visit of the same chec
     error: 'The active checkout visit changed. Reopen the Merge Tool to review this conflict again.' });
 });
 
+test('a pending conflict inspection cannot publish into another workspace visit', async ({ page }) => {
+  await prepare(page, true);
+  const result = await page.evaluate(async () => {
+    const { git } = (window as any).__conflictLifecycle;
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    let release!: () => void;
+    let started!: () => void;
+    const waiting = new Promise<void>(resolve => { started = resolve; });
+    native.invoke = (command: string, args: unknown) => {
+      if (command !== 'inspect_conflict') return invoke(command, args);
+      return new Promise(resolve => {
+        release = () => resolve(invoke(command, args));
+        started();
+      });
+    };
+    const old = git.inspectConflict('original.txt');
+    await waiting;
+    git.activeWorkspaceId.set('same-checkout-different-workspace');
+    release();
+    return { result: await old, published: git.conflictDetails() };
+  });
+  expect(result).toEqual({ result: null, published: null });
+});
+
 for (const outcome of ['success', 'error', 'dismissed-error', 'unrelated-error']) {
   for (const navigation of ['same', 'new-file', 'reopened']) {
     test(`conflict resolution ${outcome} preserves the ${navigation} editor lifecycle`, async ({ page }) => {

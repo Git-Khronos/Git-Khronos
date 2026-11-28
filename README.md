@@ -1150,7 +1150,8 @@ want to stop instead.
 
 The conflict editor identifies Current/Incoming index stages and explains their
 rebase meanings. Accepting a deleted side is distinct from saving an empty file.
-Resolution checks the reviewed branch, index-stage objects and working contents;
+Resolution requires the current Merge Tool review for the active checkout visit.
+Git checks the reviewed branch, index-stage objects, and working contents;
 stale failures retain unsaved editor output and offer **Reload conflict**.
 Reload replaces editor output with the latest working contents.
 Text saves refuse binary/non-UTF-8, truncated, symlink and gitlink conflicts.
