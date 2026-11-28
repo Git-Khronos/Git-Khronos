@@ -114,7 +114,7 @@ export function buildCommandActions(source: CommandPaletteActionSources, search:
     { id: 'recovery-history', group: 'History', label: 'Recovery History', detail: 'Find previous reference positions and preserve a commit with a new branch', enabled: !!repository && !busy, icon: 'history' },
     ...((repository && source.repositoryOperation().mergeInProgress) ? [
       { id: 'merge-continue', group: 'Branch', label: 'Continue Merge', detail: repository.status.conflicted ? 'Resolve and stage every conflicted file first' : 'Create the merge commit from the resolved index', enabled: !repository.status.conflicted && !busy, icon: 'merge' as IconName },
-      { id: 'merge-abort', group: 'Branch', label: 'Abort Merge', detail: 'Stop the merge and restore its pre-merge state', enabled: !busy, icon: 'reset' as IconName },
+      { id: 'merge-abort', group: 'Branch', label: 'Abort Merge', detail: 'Stop the merge; conflict resolutions made during it may be lost', enabled: !busy, icon: 'reset' as IconName },
     ] : []),
     ...((repository && source.repositoryOperation().historyOperation) ? [
       { id: 'history-operation-continue', group: 'History', label: `Continue ${source.repositoryOperation().historyOperation === 'cherry-pick' ? 'Cherry-pick' : 'Revert'}`, detail: source.repositoryOperation().historyNoCommit ? 'Stage resolutions and apply remaining changes without committing' : repository.status.conflicted ? 'Resolve and stage every conflicted file first' : 'Continue the interrupted history operation', enabled: !repository.status.conflicted && !(source.repositoryOperation().historyNoCommit && repository.status.unstaged) && !busy, icon: (source.repositoryOperation().historyOperation === 'cherry-pick' ? 'cherry-pick' : 'revert') as IconName },

@@ -978,7 +978,7 @@
           <div class="merge-progress" role="status" aria-label="Git merge in progress">
             <span><gk-icon name="merge" [size]="13" /><strong>MERGE IN PROGRESS</strong></span>
             <small>{{ repo.status.conflicted ? repo.status.conflicted + ' conflicted file(s) need resolution' : 'Review the staged changes, then continue to commit the merge' }}</small>
-            <div><button type="button" [disabled]="git.busy()" (click)="controlMerge('abort')">Abort</button><button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted" (click)="controlMerge('continue')">Continue</button></div>
+            <div><button type="button" aria-label="Abort Merge" title="Stop the merge. Conflict resolutions made during it may be lost." [disabled]="git.busy()" (click)="controlMerge('abort')">Abort</button><button class="continue" type="button" [disabled]="git.busy() || !!repo.status.conflicted" (click)="controlMerge('continue')">Continue</button></div>
           </div>
         }
         @if (operationState.historyOperation; as operation) {

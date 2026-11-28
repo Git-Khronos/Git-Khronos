@@ -24,6 +24,10 @@ test('conflicts block bulk index actions without blocking staging a different fi
   });
   const indexCalls = () => page.evaluate(() => (window as any).__bulkIndexCalls.filter(
     (call: { command: string }) => ['stage_all', 'unstage_all', 'stage_path'].includes(call.command)));
+  const merge = page.getByRole('status', { name: 'Git merge in progress' });
+  await expect(merge.getByRole('button', { name: 'Abort Merge' })).toHaveAttribute(
+    'title', 'Stop the merge. Conflict resolutions made during it may be lost.');
+  await expect(merge.getByRole('button', { name: 'Continue' })).toBeDisabled();
   const stageAll = page.getByRole('button', { name: 'Stage all changes', exact: true });
   const unstageAll = page.getByRole('button', { name: 'Unstage all', exact: true });
   await expect(stageAll).toBeDisabled();
