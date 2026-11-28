@@ -188,13 +188,18 @@ jobs:
           set -euo pipefail
           [[ "$WORKERS" == 1 || "$WORKERS" == 2 ]]
           printf 'Renderer shard %s/%s: %s browser workers, %s logical CPUs\n' "$SHARD" "$SHARD_TOTAL" "$WORKERS" "$(nproc)"
+          if [[ -r /sys/fs/cgroup/cpu.max ]]; then
+            read -r quota period </sys/fs/cgroup/cpu.max
+            printf 'Renderer cgroup CPU quota: %s per %s microseconds\n' "$quota" "$period"
+          fi
           mkdir -p -- "$(dirname -- "$GIT_KHRONOS_RENDERER_PROGRESS_FILE")"
           plan="$(mktemp -d "$RUNNER_TEMP/renderer-shard.XXXXXX")"
           pnpm exec playwright test --list --reporter=line > "$plan/all"
           node tools/plan-renderer-shard.mjs "$plan/all" "$SHARD" "$SHARD_TOTAL" > "$plan/selected"
           pnpm exec playwright test --list --reporter=line --test-list "$plan/selected" > "$plan/resolved"
           diff -u "$plan/selected" <(sed -n '/^  \[chromium\] › /p' "$plan/resolved")
-          pnpm nx run desktop:e2e --output-style=stream --skipNxCache -- \
+          TIMEFORMAT='Renderer process timing: wall=%3R s user=%3U s system=%3S s'
+          time pnpm nx run desktop:e2e --output-style=stream --skipNxCache -- \
             --test-list "$plan/selected" --workers="$WORKERS" --retries=0
       - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}

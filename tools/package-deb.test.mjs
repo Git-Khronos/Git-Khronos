@@ -329,7 +329,7 @@ test('packaged CI gates both runtime lanes on one verified archive, not on each 
   const check = native.match(/id: verify-native-package\n\s+run: \|\n([\s\S]*?)(?=      - name:)/)?.[1].replace(/^          /gm, '');
   assert.ok(check);
   assert.match(native, /if: \$\{\{ !cancelled\(\) && steps\.verify-native-package\.outcome == 'success' \}\}[\s\S]*?name: packaged-native-[^\n]+\n\s+path: test-results\/native\/\n/);
-  assert.match(ci, /pnpm nx run desktop:e2e --output-style=stream --skipNxCache/);
+  assert.match(ci, /TIMEFORMAT='Renderer process timing: wall=%3R s user=%3U s system=%3S s'\n\s+time pnpm nx run desktop:e2e --output-style=stream --skipNxCache/);
   assert.match(ci, /WORKERS: \$\{\{ inputs\.renderer-workers \|\| '1' \}\}/);
   assert.match(ci, /\[\[ "\$WORKERS" == 1 \|\| "\$WORKERS" == 2 \]\]/);
   assert.match(ci, /--test-list "\$plan\/selected" --workers="\$WORKERS" --retries=0/);

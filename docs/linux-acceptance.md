@@ -2153,6 +2153,10 @@ excluded from each run. Duplicate IDs are always rejected.
 A ratio above 1 means the same tests ran slower in the
 repeat. Check several runs before attributing a difference to the runner or
 to scheduling. Case durations exclude job setup and artifact upload.
+The shard step also logs wall, user CPU and system CPU time for the Nx
+browser command, plus cgroup CPU allocation when available. Use them
+alongside the case timings to distinguish work performed from time spent
+waiting. The timing wrapper preserves the command's pass/fail outcome.
 
 Reproduce one shard on a machine with the lockfile dependencies and Chromium
 installed:
