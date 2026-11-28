@@ -1,5 +1,13 @@
 # Informational sources
 
+## Offline Debian publisher verification
+
+- [Minisign verification options and authenticated comments](https://jedisct1.github.io/minisign/#trusted-comments)
+
+Used to delegate signature and comment verification to the installed Minisign
+CLI. The wrapper independently checks the project's signed filename and
+version fields; no source code was copied.
+
 ## Reviewed commit rewrite publication
 
 - [Git update-ref compare-and-swap and transaction semantics](https://git-scm.com/docs/git-update-ref)

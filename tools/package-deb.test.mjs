@@ -494,6 +494,54 @@ cat metadata.json
   }
 });
 
+test('offline installer verification requires publisher proof and exact authenticated release identity', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'gk-installer-verification-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const name = 'Git-Khronos_0.1.6_amd64.deb';
+  const archive = join(root, name);
+  const key = join(root, 'publisher.pub');
+  const sidecar = join(root, name + '.sig');
+  const scratch = join(root, 'scratch');
+  await mkdir(scratch);
+  const encoded = value => Buffer.from(value).toString('base64');
+  await writeFile(archive, 'qualified package bytes');
+  await writeFile(sidecar, encoded('fixture signature'));
+  await writeFile(key, encoded('trusted publisher'));
+  await writeFile(join(root, 'minisign'), `#!/bin/sh
+set -eu
+test "$1 $2 $4 $6" = '-VQ -m -x -p'
+test "$(cat "$3")" = 'qualified package bytes'
+test "$(cat "$5")" = 'fixture signature'
+test "$(cat "$7")" = 'trusted publisher'
+printf '%s\\n' "$FIXTURE_COMMENT"
+`, { mode: 0o755 });
+  const comment = `timestamp:1795821739\tfile:${name}\tversion:0.1.6`;
+  const run = (tag = 'v0.1.6', trustedComment = comment) => spawnSync(
+    'bash', [join(repositoryRoot, 'tools/verify-signed-debian-installer.sh'), tag, name, key],
+    { cwd: root, encoding: 'utf8', env: { ...process.env, PATH: `${root}:${process.env.PATH}`, FIXTURE_COMMENT: trustedComment, TMPDIR: scratch } },
+  );
+  const success = run();
+  assert.equal(success.status, 0, success.stderr || success.stdout);
+  assert.match(success.stdout, /Verified publisher signature/);
+  for (const wrongIdentity of [
+    comment.replace('version:0.1.6', 'version:0.1.7'),
+    comment.replace(name, 'a-different-file.deb'),
+  ]) {
+    const bad = run('v0.1.6', wrongIdentity);
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /authenticated filename or version/);
+  }
+  assert.equal(run('v0.1.7').status, 1);
+  assert.equal(run('v0.1.6-beta').status, 2);
+  await writeFile(archive, 'substituted bytes');
+  const tampered = run();
+  assert.equal(tampered.status, 1);
+  assert.match(tampered.stderr, /Publisher signature verification failed/);
+  await unlink(sidecar);
+  assert.match(run().stderr, /adjacent .deb.sig/);
+  assert.deepEqual(await readdir(scratch), [], 'temporary verification files must be removed');
+});
+
 test('signer only signs qualified bytes and never replaces a sidecar', async t => {
   const root = await mkdtemp(join(tmpdir(), 'gk-qualified-signer-'));
   t.after(() => rm(root, { recursive: true, force: true }));

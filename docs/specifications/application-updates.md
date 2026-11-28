@@ -461,23 +461,20 @@ changes and deletion.
 For releases with a `.deb.sig` asset, use the publisher's public key obtained
 from a source you already trust—not a key furnished alongside an untrusted
 download. The Tauri key and sidecar are Base64-wrapped
-[Minisign](https://jedisct1.github.io/minisign/) files. With `PACKAGE`
-set to the downloaded installer and `PUBLIC_KEY_FILE` set to the trusted Tauri
-public key:
+[Minisign](https://jedisct1.github.io/minisign/) files. Install Minisign through your trusted package manager and put the
+downloaded `.deb.sig` beside the `.deb`. For example:
 
 ```sh
-(
-  set -e
-  verification=$(mktemp -d)
-  base64 -d "$PUBLIC_KEY_FILE" > "$verification/publisher.pub"
-  base64 -d "$PACKAGE.sig" > "$verification/package.minisig"
-  minisign -Vm "$PACKAGE" -x "$verification/package.minisig" -p "$verification/publisher.pub"
-)
+task release:verify-installer -- v0.1.7 "$PACKAGE" "$PUBLIC_KEY_FILE"
 ```
 
-Confirm that the verified trusted comment's `version:` matches the release
-you intended to download. This checks publisher authenticity, not just whether
-the download matches a checksum listed on the same page.
+This verifies the signature and requires the authenticated filename and version
+to match the requested release. It checks publisher authenticity, not just
+whether a download matches a checksum listed on the same page. It does not
+install the package. Without a source checkout, decode the Tauri public key
+and sidecar using `base64 -d`, then run
+`minisign -Vm "$PACKAGE" -x "$DECODED_SIGNATURE" -p "$DECODED_PUBLIC_KEY"`.
+Check that the verified comment identifies the intended filename and version.
 
 ### Verify automatic updates after the first signed release
 

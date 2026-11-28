@@ -58,6 +58,7 @@ const packagedScenarios = new Map([
   ['tools/native_main_menu_scenarios.py', ['native-smoke']],
   ['tools/native_remote_review_scenarios.py', ['native-remote-reviews']],
   ['tools/native_stash_review_scenarios.py', ['native-stash-review', 'native-stash-selection']],
+  ['tools/native_tracked_file_search_scenarios.py', ['native-file-history']],
   ['tools/native_commit_signing_scenarios.py', ['native-signed-commit']],
   ['tools/native_signed_tag_scenarios.py', ['native-signed-tag']],
   ['tools/native_x509_signing_fixture.py', ['native-signed-commit', 'native-signed-tag']],
@@ -96,6 +97,7 @@ const debianWorkflowSources = new Set([
   '.github/workflows/publish-signed-debian.yml',
 ]);
 const packageSourceTests = new Map([
+  ['tools/verify-signed-debian-installer.sh', 'tools/package-deb.test.mjs'],
   ['tools/sign-qualified-debian.sh', 'tools/package-deb.test.mjs'],
   ['tools/sign-downloaded-release.sh', 'tools/package-deb.test.mjs'],
   ['tools/check-debian-release-version.sh', 'tools/package-deb.test.mjs'],

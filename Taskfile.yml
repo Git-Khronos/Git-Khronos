@@ -103,6 +103,12 @@ tasks:
     cmds:
       - bash tools/check-debian-release-version.sh {{.CLI_ARGS}}
 
+  release:verify-installer:
+    desc: Verify a downloaded Debian installer and adjacent signature using a trusted public key
+    platforms: [linux]
+    cmds:
+      - bash tools/verify-signed-debian-installer.sh {{.CLI_ARGS}}
+
   release:download:
     desc: Download and verify a successful Debian candidate without signing or publishing
     platforms: [linux]

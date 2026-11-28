@@ -215,6 +215,16 @@ test('Git help changes select the reference browser and topic checks without rep
   assert.doesNotMatch(plan, /git-documentation\[\.\]spec\[\.\]ts|desktop:check/);
 });
 
+test('offline installer verifier edits select Debian tooling tests, not a package build', t => {
+  const f = fixture(t);
+  f.write('tools/package-deb.test.mjs');
+  f.commit();
+  f.write('tools/verify-signed-debian-installer.sh');
+  const plan = f.run();
+  assert.match(plan, /"desktop:package-test:focused"[^\n]*"tools\/package-deb\.test\.mjs"/);
+  assert.doesNotMatch(plan, /desktop:check|desktop:e2e|desktop:package-deb/);
+});
+
 test('changes to the release download handoff select only its candidate-attempt tests', t => {
   const f = fixture(t);
   f.write('tools/check-debian-candidate-run.test.mjs');
@@ -624,6 +634,16 @@ test('stash scenario edits retest the two consumers without full native acceptan
   const plan = f.run('--native-package', 'candidate.deb');
   assert.match(plan, /"desktop:native-stash-review"/);
   assert.match(plan, /"desktop:native-stash-selection"/);
+  assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
+});
+
+test('rename history fixture edits select focused file history acceptance', t => {
+  const f = fixture(t);
+  f.write('candidate.deb');
+  f.commit();
+  f.write('tools/native_tracked_file_search_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-file-history"/);
   assert.doesNotMatch(plan, /desktop:native-full|desktop:e2e|desktop:check/);
 });
 
