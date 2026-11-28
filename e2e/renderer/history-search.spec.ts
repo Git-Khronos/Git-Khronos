@@ -182,10 +182,15 @@ test('file history copies the exact path and full commit ID without Git mutation
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect.poll(() => page.evaluate((offset) => (window as any).__historyFixture.calls
     .slice(offset).some((call: { command: string }) => call.command === 'refresh_repository_status'), before.calls)).toBe(true);
+  const searchedPath = history.getByRole('button', { name: 'Copy searched path', exact: true });
+  await searchedPath.focus();
+  await searchedPath.press('Enter');
+  await expect(history.getByRole('status')).toHaveText(`Copied searched path: ${path}`);
+  await expect(searchedPath).toBeFocused();
   await copy.click();
   await expect(history.getByRole('status')).toHaveText(`Copied file path: ${path}`);
   await expect(history.getByRole('status')).toBeVisible();
-  expect(await page.evaluate(() => (window as any).__historyFixture.copyAttempts)).toEqual([path]);
+  expect(await page.evaluate(() => (window as any).__historyFixture.copyAttempts)).toEqual([path, path]);
 
   const commit = history.getByRole('button', { name: `Copy commit ID: ${before.oid.slice(0, 8)}`, exact: true });
   await commit.focus();
@@ -206,7 +211,7 @@ test('file history copies the exact path and full commit ID without Git mutation
     };
   }, before.calls);
   expect(after.head).toBe(before.head);
-  expect(after.copyAttempts).toEqual([path, before.oid, path]);
+  expect(after.copyAttempts).toEqual([path, path, before.oid, path]);
   expect(after.commands.filter((command: string) => command !== 'refresh_repository_status')).toEqual([]);
 });
 

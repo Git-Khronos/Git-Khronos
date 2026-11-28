@@ -11,6 +11,9 @@ import { HistorySearchService } from './history-search.service';
       <header><div><strong>File History</strong><small>{{ path() }} · renamed paths followed</small></div>
         <b>{{ owned() ? history.files().length : 0 }} {{ owned() && history.files().length === 1 ? 'commit' : 'commits' }}{{ owned() && history.fileComplete() ? ' · complete' : ' · incomplete' }}</b></header>
       <div class="history-feedback">
+        <div class="history-search-actions">
+          <button class="copy-history-search-path" type="button" (click)="copySearchPath()">Copy searched path</button>
+        </div>
         <details class="history-start">
           <summary [title]="startingPoint() ?? ''">Starting point: {{ alternateStart() ? startingPoint() : 'Diff revision' }}</summary>
           <form (submit)="$event.preventDefault(); applyStartingPoint()">
@@ -79,6 +82,9 @@ import { HistorySearchService } from './history-search.service';
     .history-feedback { padding: 8px 14px; }
     .copy-feedback { color: var(--text); overflow-wrap: anywhere; }
     .copy-feedback:not(:empty) { margin-top: 6px; }
+    .history-search-actions { margin-bottom: 4px; }
+    .copy-history-search-path { min-height: 26px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); color: var(--text); cursor: pointer; }
+    .copy-history-search-path:hover { background: var(--surface-hover); }
     .history-start { color: var(--muted); }
     .history-start summary { cursor: pointer; overflow-wrap: anywhere; }
     .history-start form { display: grid; gap: 6px; margin: 8px 0; }
@@ -146,16 +152,22 @@ export class FileHistoryComponent {
     void this.history.changeFileStartingPoint(this.revision(), this.path(), this.revision());
   }
 
-  async copyEntryValue(oid: string, path: string, kind: 'file path' | 'previous path' | 'commit ID'): Promise<void> {
-    const context = this.copyContext();
-    const hasEntry = () => this.entries().some(entry => entry.oid === oid
+  copySearchPath(): Promise<void> {
+    return this.copyValue(this.path(), 'searched path', () => true);
+  }
+
+  copyEntryValue(oid: string, path: string, kind: 'file path' | 'previous path' | 'commit ID'): Promise<void> {
+    const hasEntry = () => this.owned() && this.entries().some(entry => entry.oid === oid
       && (kind === 'previous path' ? entry.previousPath === path && entry.path !== path : entry.path === path));
-    if (!this.owned() || !hasEntry()) return;
+    return this.copyValue(kind === 'commit ID' ? oid : path, kind, hasEntry);
+  }
+
+  private async copyValue(value: string, kind: string, available: () => boolean): Promise<void> {
+    const context = this.copyContext();
+    if (!available()) return;
     const generation = ++this.copyGeneration;
-    const current = () => generation === this.copyGeneration && this.owned()
-      && this.copyContext() === context && hasEntry();
+    const current = () => generation === this.copyGeneration && this.copyContext() === context && available();
     this.copyAnnouncement.set('');
-    const value = kind === 'commit ID' ? oid : path;
     try {
       await navigator.clipboard.writeText(value);
       if (current()) this.copyAnnouncement.set(`Copied ${kind}: ${value}`);
