@@ -27,6 +27,10 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
           </dl>
           <p class="feedback" role="status">@if (updates.statusError()) { <strong>Last known status: </strong> }{{ state.message }}</p>
           @if (state.verified) { <p class="verified">Package signature and signed version verified</p> }
+          @if (!updates.statusError() && state.phase === 'installed' && state.installedVersion && state.installedVersion !== state.runningVersion) {
+            <p class="help"><strong>Restart required.</strong> Save your work, close Git Khronos, then reopen it from your
+              application launcher to use version {{ state.installedVersion }}. The app will not restart itself.</p>
+          }
           @if (state.installBlocker && !updates.statusError()) {
             <p id="application-update-install-blocker" class="help" role="status">{{ state.installBlocker }}</p>
           } @else if (authorizationHelp) {
