@@ -198,8 +198,10 @@ test('does not resolve an old conflict in a newly active repository', async ({ p
     git.repositories.update((repositories: any[]) => [...repositories, other]);
     git.activeRepositoryId.set(other.id);
   });
-  await dialog.getByRole('button', { name: 'Take Current', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('active repository changed');
+  await expect(dialog).toContainText('The active checkout changed.');
+  await expect(dialog.getByRole('button', { name: 'Take Current', exact: true })).toBeDisabled();
+  const external = dialog.getByRole('button', { name: 'Review external merge program', exact: true });
+  await expect(external).toBeDisabled();
   expect(await page.evaluate(() => (window as any).__conflictTest.calls.some(
     (call: { command: string }) => call.command === 'resolve_conflict'))).toBe(false);
 });

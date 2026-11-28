@@ -28,7 +28,9 @@
       <p class="merge-warning">Current is index stage 2 (ours); Incoming is index stage 3 (the changes being merged or replayed).</p>
     }
     @if (!conflict.currentExists || !conflict.incomingExists) { <p class="merge-warning">Accepting a missing side deletes the file instead of saving an empty file.</p> }
-    @if (!git.conflictReviewCurrent() && !git.busy()) {
+    @if (git.conflictReviewScopeChanged()) {
+      <p class="merge-warning">The active checkout changed. Close the Merge Tool and reopen it for the current checkout.</p>
+    } @else if (!git.conflictReviewCurrent() && !git.busy()) {
       <p class="merge-warning">Reload this conflict before applying a resolution. Your draft is still here.</p>
     }
     <p class="merge-draft-copy-feedback" role="status" aria-atomic="true">{{ copyFeedback() }}</p>

@@ -9584,7 +9584,9 @@ export class AppComponent implements OnInit, OnDestroy {
     switch (action.kind) {
       case 'close': this.closeConflictTool(); break;
       case 'reload': void this.openConflictTool(conflict.path); break;
-      case 'external': void this.openFileTools({ kind: 'merge', path: conflict.path }); break;
+      case 'external':
+        if (this.git.conflictReviewCurrent()) this.openFileTools({ kind: 'merge', path: conflict.path });
+        break;
       case 'copy': this.useConflictSide(action.side); break;
       case 'edit': this.conflictOutput.set(action.value); break;
       case 'resolve': void this.resolveOpenConflict(action.side); break;

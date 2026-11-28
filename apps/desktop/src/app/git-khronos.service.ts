@@ -406,10 +406,12 @@ export class GitKhronosService implements OnDestroy {
   readonly selectedWorkingTreeFile = signal<string | null>(null);
   readonly conflictDetails = signal<ConflictDetails | null>(null);
   private conflictRepositoryId: string | null = null;
-  private conflictReadScope: string | null = null;
+  private readonly conflictReadScope = signal<string | null>(null);
   private conflictRequest = 0;
   private readonly conflictReviewIsCurrent = signal(false);
-  readonly conflictReviewCurrent = this.conflictReviewIsCurrent.asReadonly();
+  readonly conflictReviewScopeChanged = computed(() => this.conflictReadScope() !== null
+    && this.conflictReadScope() !== this.activeRepositoryReadScope());
+  readonly conflictReviewCurrent = computed(() => this.conflictReviewIsCurrent() && !this.conflictReviewScopeChanged());
   readonly fileHistory = signal<FileHistoryEntry[] | null>(null);
   readonly fileBlame = signal<FileBlameLine[] | null>(null);
   readonly fileBlameStart = signal(1);
@@ -2296,7 +2298,7 @@ export class GitKhronosService implements OnDestroy {
       details = await ipc.inspect_conflict({ repoId: repo.id, path });
       if (this.activeRepositoryReadScope() !== scope || request !== this.conflictRequest) return;
       this.conflictRepositoryId = repo.id;
-      this.conflictReadScope = scope;
+      this.conflictReadScope.set(scope);
       this.conflictReviewIsCurrent.set(true);
       this.conflictDetails.set(details);
       report(`Resolving conflict in ${path}`);
@@ -2308,7 +2310,7 @@ export class GitKhronosService implements OnDestroy {
     this.conflictRequest++;
     this.conflictReviewIsCurrent.set(false);
     this.conflictRepositoryId = null;
-    this.conflictReadScope = null;
+    this.conflictReadScope.set(null);
     this.conflictDetails.set(null);
   }
 
@@ -2319,7 +2321,7 @@ export class GitKhronosService implements OnDestroy {
   ): Promise<boolean> {
     if (this.conflictDetails() !== details || !this.conflictRepositoryId
       || !this.requireRecoveryRepository(this.conflictRepositoryId)) return false;
-    if (this.conflictReadScope !== this.activeRepositoryReadScope()) {
+    if (this.conflictReviewScopeChanged()) {
       this.error.set('The active checkout visit changed. Reopen the Merge Tool to review this conflict again.');
       return false;
     }
