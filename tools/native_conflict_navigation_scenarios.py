@@ -155,4 +155,18 @@ def conflict_navigation(driver, fixtures, report):
     assert fixtures.git(repository, 'diff', '--name-only', '--diff-filter=U') == ''
     assert (repository / '.git/MERGE_HEAD').read_bytes() == merge_head
     report['scenarios'].append('native-merge-tool-resolves-binary-and-delete-modify-conflicts')
+
+    resolved_tree = fixtures.git(repository, 'write-tree')
+    driver.click_scrolled_text('.merge-progress button.continue', 'Continue', wait_for_ready=True)
+    driver.wait("return !document.querySelector('.merge-progress') && "
+                "document.querySelector('.activity-status')?.textContent.includes('Merge complete')")
+    assert not (repository / '.git/MERGE_HEAD').exists()
+    assert fixtures.git(repository, 'symbolic-ref', 'HEAD') == 'refs/heads/main'
+    parents = fixtures.git(repository, 'show', '-s', '--format=%P', 'HEAD').split()
+    assert parents == [before['head'], merge_head.decode('ascii').strip()], parents
+    assert fixtures.git(repository, 'rev-parse', 'HEAD^{tree}') == resolved_tree
+    assert fixtures.git(repository, 'rev-parse', 'owned-side') == parents[1]
+    assert fixtures.git(submodule_path, 'rev-parse', 'HEAD') == submodule_head_before
+    assert fixtures.git(submodule_path, 'status', '--porcelain=v1') == submodule_status_before
+    report['scenarios'].append('native-continue-merge-commits-exact-resolved-tree-with-both-parents')
     return repository, repo_id
