@@ -384,6 +384,21 @@ test('does not schedule a second browser run for a spec covered by the selected 
   assert.ok(!plan.includes('worktree-move[.]spec[.]ts$'));
 });
 
+test('a renderer title filter narrows only a single focused browser invocation', t => {
+  const f = fixture(t);
+  f.write('tools/retest-changed.test.mjs');
+  f.write('e2e/renderer/application-updates.spec.ts');
+  const plan = f.run('--renderer-grep', 'verified update', '--webkit');
+  assert.match(plan, /GIT_KHRONOS_RENDERER_TITLE_PATTERN='verified update' pnpm nx run "desktop:e2e".*"--project=webkit"/);
+  assert.doesNotMatch(plan, /GIT_KHRONOS_RENDERER_TITLE_PATTERN=.*"desktop:owned-process-test"/);
+  assert.throws(() => f.run('--renderer-grep', '['), /non-empty regular expression/);
+  f.write('apps/desktop/src/app/worktree-lock-dialog.component.ts');
+  assert.throws(() => f.run('--renderer-grep', 'verified update'), /one focused browser run/);
+  assert.match(f.run('--renderer-grep', 'verified update', '--batch-renderer'), /GIT_KHRONOS_RENDERER_TITLE_PATTERN='verified update' pnpm nx run "desktop:e2e"/);
+  f.write('apps/desktop/src/app/app.component.ts');
+  assert.throws(() => f.run('--renderer-grep', 'verified update', '--allow-full'), /one focused browser run/);
+});
+
 test('WebKit opt-in applies only to selected browser targets', t => {
   const f = fixture(t);
   f.write('tools/retest-changed.test.mjs');

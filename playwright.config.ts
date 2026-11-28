@@ -12,7 +12,10 @@ if (process.env['CI']) reporters.push(['html', { open: 'never', outputFolder: pr
 const rendererProgress = process.env['GIT_KHRONOS_RENDERER_PROGRESS_FILE'];
 if (rendererProgress) reporters.push(['./tools/renderer-progress-reporter.cjs', { path: rendererProgress }]);
 
+const titlePattern = process.env['GIT_KHRONOS_RENDERER_TITLE_PATTERN'];
+
 export default defineConfig({
+  ...(titlePattern === undefined ? {} : { grep: new RegExp(titlePattern) }),
   testDir: './e2e/renderer',
   // Playwright clears this directory at startup. Never clear native evidence
   // or another named audit stored alongside the renderer results.

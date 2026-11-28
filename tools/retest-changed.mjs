@@ -125,6 +125,7 @@ const { values } = parseArgs({ options: {
   staged: { type: 'boolean' },
   workers: { type: 'string' },
   webkit: { type: 'boolean' },
+  'renderer-grep': { type: 'string' },
   'batch-renderer': { type: 'boolean' },
   run: { type: 'boolean' },
   'native-package': { type: 'string' },
@@ -133,7 +134,7 @@ const { values } = parseArgs({ options: {
 } });
 
 if (values.help) {
-  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--batch-renderer] [--native-package <archive.deb> [--native-package-sha256 <sha256>]] [--run [--allow-full]]
+  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--batch-renderer] [--renderer-grep <pattern>] [--native-package <archive.deb> [--native-package-sha256 <sha256>]] [--run [--allow-full]]
 
 Preview checks for staged, unstaged and untracked changes against HEAD by default.
 Use --base to compare against another local commit, for example origin/dev.
@@ -141,6 +142,7 @@ Use --staged to select only changes in the index relative to the base.
 Tests still run against your working files, not an isolated staged snapshot.
 Use --workers to override the browser worker count and --webkit to select WebKit.
 Use --batch-renderer to share one browser server across plain profile filters.
+Use --renderer-grep for a title filter when the focused plan has one browser run; other checks are unchanged.
 Use --native-package to include mapped native scenario suites with an explicit Debian archive.
 Packaged suites pin the selected archive checksum. Use --native-package-sha256 to require a previously reviewed checksum.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
@@ -396,7 +398,23 @@ const commands = broad
      ...(unitSpecs.size ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
      ...rendererCommands];
 const isBrowser = command => command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:');
-for (const command of commands.filter(isBrowser)) {
+const browserCommands = commands.filter(isBrowser);
+const rendererGrep = values['renderer-grep'];
+const rendererGrepEnv = 'GIT_KHRONOS_RENDERER_TITLE_PATTERN';
+if (rendererGrep !== undefined) {
+  if (broad || browserCommands.length !== 1) {
+    console.error('--renderer-grep requires one focused browser run. Try --batch-renderer if multiple plain profiles were selected.');
+    process.exit(2);
+  }
+  try {
+    if (!rendererGrep.trim()) throw new Error('empty pattern');
+    new RegExp(rendererGrep);
+  } catch {
+    console.error('--renderer-grep requires a non-empty regular expression.');
+    process.exit(2);
+  }
+}
+for (const command of browserCommands) {
   if ((values.workers || values.webkit) && !command.includes('--')) command.push('--');
   if (values.workers) command.push('--workers=' + values.workers);
   if (values.webkit) command.push('--project=webkit');
@@ -409,7 +427,10 @@ for (const command of commands) {
   command.splice(1, 0, '--output-style=' + (stream ? 'stream' : 'static'));
 }
 for (const command of commands) {
-  const envPrefix = values.webkit && isBrowser(command) ? 'GIT_KHRONOS_RENDERER_WEBKIT=1 ' : '';
+  let envPrefix = values.webkit && isBrowser(command) ? 'GIT_KHRONOS_RENDERER_WEBKIT=1 ' : '';
+  if (rendererGrep && isBrowser(command)) {
+    envPrefix += rendererGrepEnv + "='" + rendererGrep.replaceAll("'", "'\"'\"'") + "' ";
+  }
   console.log(envPrefix + 'pnpm nx run ' + command.map(arg => JSON.stringify(arg)).join(' '));
 }
 if (nativeSuites.size && !nativePackage) {
@@ -434,10 +455,13 @@ else if (broad && !values['allow-full']) {
   // their own repositories and must not inherit the caller's Git-local paths.
   const testEnv = { ...process.env };
   for (const key of git('rev-parse', '--local-env-vars').trim().split(/\r?\n/)) delete testEnv[key];
+  delete testEnv[rendererGrepEnv];
   for (const args of commands) {
-    const env = values.webkit && isBrowser(args)
-      ? { ...testEnv, GIT_KHRONOS_RENDERER_WEBKIT: '1' }
-      : testEnv;
+    const env = { ...testEnv };
+    if (isBrowser(args)) {
+      if (values.webkit) env.GIT_KHRONOS_RENDERER_WEBKIT = '1';
+      if (rendererGrep) env[rendererGrepEnv] = rendererGrep;
+    }
     const result = spawnSync('pnpm', ['nx', 'run', ...args], { cwd, env, stdio: 'inherit' });
     if (result.error) throw result.error;
     if (result.status !== 0) process.exit(result.status ?? 1);
