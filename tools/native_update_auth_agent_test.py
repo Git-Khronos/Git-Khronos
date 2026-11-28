@@ -1,10 +1,12 @@
 """Exercise Linux update authorization target selection without registering an agent."""
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import os
 from pathlib import Path
 import runpy
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 agent = runpy.run_path(str(Path(__file__).with_name("update-auth-agent.py")))
 app_identity = agent["app_identity"]
@@ -50,6 +52,48 @@ class UpdateAuthAgentTests(unittest.TestCase):
         with patch.dict(app_identity.__globals__, {"process_start": lambda _: next(starts)}):
             starts = iter(("4567", "4568"))
             self.assertIsNone(self.identity())
+
+
+class AgentRegistrationTests(unittest.TestCase):
+    def exercise(self, ready, statuses):
+        child = Mock()
+        child.poll.side_effect = statuses
+        child.wait.return_value = 0
+        output, errors = StringIO(), StringIO()
+        run_agent = agent["run_agent"]
+        with (
+            patch("subprocess.Popen", return_value=child) as spawn,
+            patch("select.select", return_value=([1] if ready else [], [], [])),
+            redirect_stdout(output),
+            redirect_stderr(errors),
+        ):
+            status = run_agent("123,4567")
+        command = spawn.call_args.args[0]
+        self.assertEqual(command[1:-1], ["--fallback", "--process", "123,4567", "--notify-fd"])
+        self.assertEqual(spawn.call_args.kwargs["pass_fds"], (int(command[-1]),))
+        return status, output.getvalue(), errors.getvalue(), child
+
+    def test_prompts_for_retry_only_after_registration(self):
+        status, message, error, child = self.exercise(True, [None, 0])
+        self.assertEqual(status, 0)
+        self.assertIn("retry Install verified update", message)
+        self.assertFalse(error)
+        child.terminate.assert_not_called()
+
+    def test_reports_registration_failure_without_prompting_for_retry(self):
+        status, message, error, child = self.exercise(True, [1, 1])
+        self.assertEqual(status, 1)
+        self.assertFalse(message)
+        self.assertIn("did not stay running", error)
+        child.terminate.assert_not_called()
+
+    def test_cleans_up_only_the_agent_it_started_after_timeout(self):
+        status, message, error, child = self.exercise(False, [None])
+        self.assertEqual(status, 1)
+        self.assertFalse(message)
+        self.assertIn("did not register in time", error)
+        child.terminate.assert_called_once()
+        child.wait.assert_called_once_with(timeout=2)
 
 
 if __name__ == "__main__":

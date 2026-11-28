@@ -3,6 +3,8 @@
 import argparse
 import os
 from pathlib import Path
+import select
+import subprocess
 import sys
 
 
@@ -41,6 +43,42 @@ def app_identity(process, executable, uid):
     return None
 
 
+def run_agent(identity):
+    """Wait for polkit registration before suggesting a retry."""
+    reader, writer = os.pipe()
+    child = None
+    try:
+        child = subprocess.Popen(
+            [AGENT, "--fallback", "--process", identity, "--notify-fd", str(writer)],
+            pass_fds=(writer,),
+        )
+        os.close(writer)
+        writer = None
+        if not select.select([reader], [], [], 10)[0]:
+            print("The system authentication agent did not register in time.", file=sys.stderr)
+            return 1
+        if os.read(reader, 1) or child.poll() is not None:
+            print("The system authentication agent did not stay running.", file=sys.stderr)
+            return 1
+        print("Keep this terminal open, then retry Install verified update in Git Khronos. "
+              "Enter credentials only at the system prompt. Stop the agent with Ctrl+C when finished.",
+              flush=True)
+        return child.wait()
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        os.close(reader)
+        if writer is not None:
+            os.close(writer)
+        if child is not None and child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                child.wait()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Identify the app without registering an agent")
@@ -72,10 +110,11 @@ def main():
     if args.check:
         print("System pkttyagent is available. No agent was started; authorization was not requested.")
         return
-    print("Keep this terminal open, then retry Install verified update in Git Khronos. "
-          "Enter credentials only at the system prompt. Stop the agent with Ctrl+C when finished.", flush=True)
-    os.execl(AGENT, str(AGENT), "--fallback", "--process", identity)
+    try:
+        return run_agent(identity)
+    except OSError as error:
+        parser.exit(1, f"Could not start the system authentication agent: {error}\n")
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
