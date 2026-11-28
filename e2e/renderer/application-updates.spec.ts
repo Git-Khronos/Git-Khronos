@@ -533,3 +533,28 @@ test('late failure from an older poll cannot override newer native status', asyn
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
 });
+
+test('a deferred release remains available for manual retry without changing automatic consent', async ({ page }) => {
+  await page.evaluate(() => (window as any).__updates.replace({
+    automatic: true, offerId: 'owned-deferred', offeredVersion: '0.2.0',
+    phase: 'available', canDownload: true,
+    message: 'Automatic installation is paused for this version after an earlier installer refusal. Download and verify it to retry manually.',
+  }));
+  let dialog = await open(page);
+  await expect(dialog.getByRole('status')).toContainText('paused for this version');
+  await expect(dialog.getByRole('checkbox', { name: 'Enable automatic updates' })).toBeChecked();
+  await expect(dialog.getByRole('button', { name: 'Download and verify' })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Install verified update' })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await page.evaluate(() => (window as any).__updates.replace({
+    phase: 'ready', verified: true, canDownload: false, canInstall: true,
+    message: 'The package and signed version are verified. Automatic installation is paused for this version; a manual retry is required.',
+  }));
+  dialog = await open(page);
+  await expect(dialog.getByRole('status')).toContainText('a manual retry is required');
+  await expect(dialog.getByRole('checkbox', { name: 'Enable automatic updates' })).toBeChecked();
+  await expect(dialog.getByRole('button', { name: 'Install verified update' })).toBeEnabled();
+  expect(await page.evaluate(() => (window as any).__updates.calls
+    .filter((call: any) => /^(check_|download_|install_|set_automatic_)/.test(call.command)))).toEqual([]);
+});
