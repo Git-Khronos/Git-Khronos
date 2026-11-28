@@ -578,6 +578,19 @@ test('retiring a focused update shortcut outside the dialog restores keyboard fo
   await expect(shortcut).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Main menu', exact: true })).toBeFocused();
   await expect(dialog).toHaveCount(0);
+
+  await page.evaluate(() => (window as any).__updates.replace({
+    phase: 'available', offerId: 'footer-retired-again', offeredVersion: '0.2.0', canDownload: true,
+  }));
+  await shortcut.focus();
+  const other = page.locator('.wip-nav');
+  await other.focus();
+  await expect(other).toBeFocused();
+  await page.evaluate(() => (window as any).__updates.replace({
+    phase: 'idle', offeredVersion: null, offerId: null, canDownload: false,
+  }));
+  await expect(shortcut).toHaveCount(0);
+  await expect(other).toBeFocused();
 });
 
 test('the version bar advertises a native offer and opens Updates without starting an action', async ({ page }) => {
