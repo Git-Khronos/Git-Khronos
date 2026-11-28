@@ -13,9 +13,19 @@ export function selectCandidateRun(run, runId) {
       run.path !== WORKFLOW || run.event !== 'workflow_dispatch' ||
       run.head_branch !== 'main' || run.head_repository?.full_name !== REPO ||
       run.repository?.full_name !== REPO || !COMMIT.test(run.head_sha ?? '') ||
-      run.status !== 'completed' || run.conclusion !== 'success' ||
       !Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) {
-    throw new Error('Expected a successful release candidate workflow dispatched on official main.');
+    throw new Error('Expected a release candidate workflow dispatched on official main.');
+  }
+  const link = `https://github.com/${REPO}/actions/runs/${runId}`;
+  if (run.status !== 'completed') {
+    const active = ['queued', 'requested', 'waiting', 'pending', 'in_progress'].includes(run.status);
+    if (active) throw new Error(`Candidate qualification is not finished (${run.status.replaceAll('_', ' ')}). Wait for success: ${link}`);
+    throw new Error(`Cannot establish the status of candidate qualification: ${link}`);
+  }
+  if (run.conclusion !== 'success') {
+    const conclusion = ['failure', 'cancelled', 'timed_out', 'action_required', 'skipped', 'neutral', 'stale', 'startup_failure']
+      .includes(run.conclusion) ? run.conclusion.replaceAll('_', ' ') : 'unknown result';
+    throw new Error(`Candidate qualification did not pass (${conclusion}). Review the run before trying again: ${link}`);
   }
   return { head: run.head_sha, attempt: String(run.run_attempt) };
 }

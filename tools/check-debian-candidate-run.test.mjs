@@ -23,16 +23,27 @@ test('selects the exact successful official main workflow attempt and identifies
   assert.doesNotThrow(() => matchCandidateIdentity(run, candidate, '123456', 'v0.1.6', commit));
 });
 
-test('rejects nonterminal or failed runs and evidence from the wrong workflow, branch or repository', () => {
+test('an official run reports whether to wait or investigate before retrying', () => {
+  for (const status of ['queued', 'in_progress']) {
+    assert.throws(() => selectCandidateRun({ ...run, status, conclusion: null }, '123456'),
+      /Candidate qualification is not finished.*Wait for success: .*\/123456/);
+  }
+  assert.throws(() => selectCandidateRun({ ...run, conclusion: 'cancelled' }, '123456'),
+    /Candidate qualification did not pass \(cancelled\).*\/123456/);
+  assert.throws(() => selectCandidateRun({ ...run, status: 'unexpected status' }, '123456'),
+    /Cannot establish the status of candidate qualification/);
+});
+
+test('rejects evidence from the wrong workflow, branch or repository before reporting status', () => {
   for (const fields of [
-    { status: 'in_progress' }, { conclusion: 'cancelled' }, { run_attempt: null },
+    { run_attempt: null },
     { path: '.github/workflows/ci.yml' }, { head_branch: 'dev' }, { event: 'push' },
     { head_sha: 'refs/heads/main' }, { id: 123457 }, { repository: {} },
-    { head_repository: { full_name: 'fork/Git-Khronos' } },
+    { head_repository: { full_name: 'fork/Git-Khronos' }, status: 'in_progress' },
   ]) {
-    assert.throws(() => selectCandidateRun({ ...run, ...fields }, '123456'), /successful release candidate/);
+    assert.throws(() => selectCandidateRun({ ...run, ...fields }, '123456'), /release candidate workflow dispatched on official main/);
   }
-  assert.throws(() => selectCandidateRun(run, '../123456'), /successful release candidate/);
+  assert.throws(() => selectCandidateRun(run, '../123456'), /release candidate workflow dispatched on official main/);
 });
 
 test('rejects stale attempt, moved tag, wrong version, or substituted candidate records', () => {
@@ -95,11 +106,11 @@ printf '%s\\trefs/tags/v0.1.6\\n%s\\trefs/tags/v0.1.6^{}\\n' '${head}' '${commit
     await writeFile(runJson, JSON.stringify({ ...run, status: 'in_progress', conclusion: null }));
     const pending = invoke();
     assert.equal(pending.status, 1, pending.stderr);
-    assert.match(pending.stderr, /Expected a successful release candidate/);
+    assert.match(pending.stderr, /Candidate qualification is not finished/);
     assert.deepEqual(await readdir(output), []);
     assert.match(invoke(true).stderr, /Publisher public key is missing/);
     await writeFile(join(keyDir, 'git-khronos.key.pub'), 'trusted public key fixture');
-    assert.match(invoke(true).stderr, /Expected a successful release candidate/);
+    assert.match(invoke(true).stderr, /Candidate qualification is not finished/);
     await assert.rejects(readdir(defaultOutput), { code: 'ENOENT' });
     await writeFile(runJson, JSON.stringify(run));
     await writeFile(candidateJson, JSON.stringify({ ...candidate, attempt: '1' }));
