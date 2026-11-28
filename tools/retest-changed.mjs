@@ -10,6 +10,7 @@ const cwd = fileURLToPath(new URL('../', import.meta.url));
 const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
 const split = value => value.split('\0').filter(Boolean);
 const profiles = [
+  [/^conflict-editor\.component\.(?:ts|html|scss)$/, 'merge-conflicts'],
   [/^worktree-(?:lock|move|registration)-dialog\.component\.(?:ts|html|scss)$/, 'worktrees'],
   [/^checkout-worktree-dialog\.component\.(?:ts|html|scss)$/, 'branch-checkout'],
   [/^submodule-state-review\.component\.(?:ts|html|scss)$/, 'submodules'],

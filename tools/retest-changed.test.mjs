@@ -83,6 +83,17 @@ test('selects an untracked renderer spec and a staged feature edit', t => {
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('conflict editor changes run the conflict profile without duplicate specs', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/conflict-editor.component.html');
+  f.write('e2e/renderer/conflict-safety.spec.ts');
+  f.write('e2e/renderer/conflict-lifecycle.spec.ts');
+  const plan = f.run();
+  assert.equal([...plan.matchAll(/pnpm nx run/g)].length, 1);
+  assert.match(plan, /"desktop:e2e:merge-conflicts"/);
+  assert.doesNotMatch(plan, /"desktop:check"|"desktop:e2e"/);
+});
+
 test('main menu layout edits select the menu profile without narrowing shared menu logic', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/main-menu-content.component.scss');
