@@ -2093,6 +2093,15 @@ In a sequential local Chromium run, the same 24 menu tests passed in 42.6 s
 with one worker and 35.8 s with two. This was a focused sample, with the
 single-worker run first and a native package build active in the background.
 It does not establish a full-suite or hosted speedup.
+
+A later sequential CI-mode sample at `11a5aa5` used the same 82 Chromium
+cases for update controls, conflict lifecycle/safety, and status
+pagination. All 82 passed with either worker count. End-to-end time
+dropped from 95.5 s to 72.5 s (24%) with two workers, while combined user
+and system CPU time rose from 55.8 s to 69.0 s and the median individual
+case took 34% longer. Parallel execution helped elapsed time on this host
+but added contention. This is another local sample, not justification to
+change the hosted default without a comparable hosted repeat.
 Failure in one shard does not
 cancel the other shards; each failed shard uploads any available report, traces,
 and screenshots under `renderer-failure-<run>-attempt-<attempt>-shard-<shard>`.
