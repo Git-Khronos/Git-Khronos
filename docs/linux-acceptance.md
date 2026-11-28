@@ -4776,3 +4776,9 @@ pnpm nx run desktop:native-merge-abort --output-style=stream -- \
 These runs were extracted-package checks, not release or cross-platform
 qualification. The archive predates the later Merge Tool copy and conflict
 pagination changes.
+
+A separate source-renderer run at `3f87b43` passed all 120 combined
+Chromium/WebKit cases for conflict safety, conflict lifecycle, status
+pagination, and pull strategies. This run covers the newer Merge Tool
+guidance, the merge abort label, and keyboard focus after loading conflicts;
+it does not change the extracted-package checkpoint above.
