@@ -613,3 +613,27 @@ For Debian it also passes `--refuse-downgrade` to the actual dpkg
 transaction, so another update completing while authorization is pending
 cannot turn the older reviewed offer into a downgrade. Installer exit status
 alone never confirms the offered version.
+
+### Published 0.1.8 and app-driven WSL rehearsal
+
+The 52-check installed matrix in GitHub run `46098433266` qualified the
+Debian archive from tag `v0.1.8` (`7435788`), SHA-256
+`3429ae0d7ee0bb2c0c69bec169b0e6e797a90dc8bf3054ce49d1134f7b717a67`.
+Protected publication run `46100144513` published it under the title
+`0.1.8`. The public archive, signature and manifest matched the qualified
+bytes and the latest-release feed; the publisher signature was independently
+verified. The official 0.1.7 executable offered 0.1.8 in a read-only check
+without downloading or installing it.
+
+In a disposable Ubuntu 24.04 environment with the WSL path selected, an
+installed **development** 0.1.7 build containing the new transport (source
+`600fbf0`, archive SHA-256
+`d19e3b255e4bbe00fdf10082fd05425a0a43c3fdf2adb47986130e7c961b7d2b`)
+enabled Automatic updates through the app UI. Without a Check, Download, or
+Install click, it retrieved the public 0.1.8 offer, opened a system
+authorization window and installed after approval. The staged and untracked
+fixture files, index and refs did not change. The installed executable and
+desktop entry matched the signed archive and a fresh app session reported
+running version 0.1.8. The official 0.1.7 build lacks this transport;
+this rehearsal does not establish that older builds can open the new prompt,
+or that the user's Windows-pinned shortcut rendered it.
