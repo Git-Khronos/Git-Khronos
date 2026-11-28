@@ -87,6 +87,23 @@ test('the compact conflict shortcut focuses pagination when Git has more conflic
     call.command === 'load_more_changes'))).toBe(false);
 });
 
+test('the conflict section distinguishes loaded conflicts from the repository total', async ({ page }) => {
+  await prepare(page, true);
+  await page.evaluate(() => {
+    const { app, git } = (window as any).__conflictLifecycle;
+    git.repositories.update((repos: any[]) => repos.map(repo => repo.id !== git.activeRepositoryId() ? repo : {
+      ...repo, status: { ...repo.status, entries: repo.status.entries.slice(0, 1), conflicted: 2,
+        entriesTruncated: true, entryCount: 1001 },
+    }));
+    app.setPanelVisibility('commit-panel', false);
+  });
+  await page.getByRole('button', { name: 'Show conflicted files' }).click();
+  const inspector = page.getByRole('complementary', { name: 'Working directory inspector' });
+  await expect(inspector.getByRole('button', { name: 'Conflicted Files (1 of 2)', exact: true })).toBeFocused();
+  await expect(inspector.getByText('More conflicted files are outside the loaded list.', { exact: false })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: /Show 1,000 more files/ })).toBeVisible();
+});
+
 test('an outgoing conflict shortcut cannot open the inspector in another checkout visit', async ({ page }) => {
   await prepare(page, true);
   await page.evaluate(() => (window as any).__conflictLifecycle.app.setPanelVisibility('commit-panel', false));

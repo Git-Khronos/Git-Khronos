@@ -1243,7 +1243,7 @@
           </div>
           @if (conflictedEntries().length) {
             <section class="file-section conflict-section">
-              <div class="file-section-title"><button #conflictedSectionHeading class="file-section-toggle" type="button" [attr.aria-expanded]="conflictedFilesOpen()" (click)="conflictedFilesOpen.update(open => !open)"><gk-icon [name]="conflictedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Conflicted Files ({{ repo.status.conflicted }})</button></div>
+              <div class="file-section-title"><button #conflictedSectionHeading class="file-section-toggle" type="button" [attr.aria-expanded]="conflictedFilesOpen()" (click)="conflictedFilesOpen.update(open => !open)"><gk-icon [name]="conflictedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Conflicted Files ({{ conflictedEntries().length < repo.status.conflicted ? conflictedEntries().length + ' of ' : '' }}{{ repo.status.conflicted }})</button></div>
               @if (conflictedFilesOpen()) {
                 <div class="file-list">
                   @for (entry of conflictedEntries(); track entry.path) {
@@ -1326,6 +1326,8 @@
               } @else {
                 @if (repo.status.conflicted && !conflictedEntries().length) {
                   <small>Conflicted files are outside the loaded list. Show more files to find them.</small>
+                } @else if (conflictedEntries().length < repo.status.conflicted) {
+                  <small>More conflicted files are outside the loaded list. Show more files to find them.</small>
                 }
                 @if (repo.status.unstaged + repo.status.untracked && !unstagedEntries().length) {
                   <small>Unstaged changes are outside the loaded list. Show more files to find them.</small>
