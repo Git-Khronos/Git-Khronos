@@ -3492,7 +3492,9 @@ means Nx actually started, and both receipts identify the isolated directory.
 Use normal mode for Git-history-dependent targets such as `nx affected`.
 
 When an Nx snapshot finishes, including a build-only snapshot, the runner
-removes its `node_modules` and Angular/Nx caches. The exported source, build
+removes its `node_modules`, Angular/Nx caches, and on Linux, the Cargo
+intermediate directories under its own snapshot. It skips symlinks and mounted
+cache paths. The exported source, retained packages, build
 outputs, receipts, logs, traces, and screenshots are kept. To remove these
 caches from a legacy finished snapshot with matching ownership receipts, use
 `node tools/run-validation.mjs reclaim <run-directory> --completed`.

@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, closeSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, closeSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { delimiter, resolve, join } from 'node:path';
+import { delimiter, resolve, join, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
@@ -11,11 +11,31 @@ import { requireRendererRunSpace, requireValidationSnapshotSpace } from './valid
 
 function reclaimSnapshotCaches(source, output) {
   let failures = 0;
-  for (const cache of ['node_modules', '.angular/cache', '.nx/cache']) {
+  const caches = ['node_modules', '.angular/cache', '.nx/cache'];
+  let mounts = [];
+  if (process.platform === 'linux') {
+    try {
+      mounts = readFileSync('/proc/self/mountinfo', 'utf8').trimEnd().split('\n')
+        .map(line => line.split(' ')[4].replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8))));
+    } catch {
+      writeFileSync(output, '==> Could not enumerate mounts; snapshot caches retained.\n');
+      return 1;
+    }
+    for (const profile of ['debug', 'release']) {
+      for (const part of ['deps', 'build', 'incremental', '.fingerprint', 'examples']) {
+        caches.push(join('target', profile, part));
+      }
+    }
+  }
+  for (const cache of caches) {
     const path = join(source, cache);
     try {
       // Do not follow a replaced snapshot or cache parent/link outside it.
-      if (realpathSync(path) === path) rmSync(path, { recursive: true, force: true });
+      const mounted = mounts.some(mount => mount === source || mount === path || mount.startsWith(path + sep)
+        || (mount.startsWith(source + sep) && path.startsWith(mount + sep)));
+      if (realpathSync(path) === path && !mounted) {
+        rmSync(path, { recursive: true, force: true });
+      }
     } catch (error) {
       if (error.code !== 'ENOENT') {
         failures++;

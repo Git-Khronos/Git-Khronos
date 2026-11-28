@@ -855,6 +855,15 @@ test('reclaim can opt into a finished legacy build snapshot but refuses live or 
     t.after(() => rmSync(directory, { recursive: true, force: true }));
     const source = join(directory, 'source');
     mkdirSync(join(source, 'node_modules'), { recursive: true });
+    const cargoDeps = join(source, 'target/release/deps');
+    const packageBundle = join(source, 'target/release/bundle');
+    const sharedCache = join(directory, 'shared-build-cache');
+    mkdirSync(cargoDeps, { recursive: true });
+    mkdirSync(packageBundle, { recursive: true });
+    mkdirSync(sharedCache);
+    writeFileSync(join(sharedCache, 'keep'), 'shared');
+    symlinkSync(sharedCache, join(source, 'target/release/build'), 'dir');
+    writeFileSync(join(packageBundle, 'package.deb'), 'retained package');
     writeFileSync(join(source, 'source.ts'), 'snapshot');
     writeFileSync(join(directory, 'output.log'), 'retained log');
     const started = '2025-01-01T00:00:00.000Z';
@@ -882,6 +891,9 @@ test('reclaim can opt into a finished legacy build snapshot but refuses live or 
     const removed = reclaim('--completed');
     assert.equal(removed.status, 0, removed.stderr);
     assert.ok(!existsSync(join(source, 'node_modules')));
+    assert.ok(!existsSync(cargoDeps));
+    assert.equal(readFileSync(join(packageBundle, 'package.deb'), 'utf8'), 'retained package');
+    assert.equal(readFileSync(join(sharedCache, 'keep'), 'utf8'), 'shared');
     assert.equal(readFileSync(join(source, 'source.ts'), 'utf8'), 'snapshot');
     assert.equal(readFileSync(join(directory, 'output.log'), 'utf8'), 'retained log');
     assert.deepEqual(JSON.parse(readFileSync(done, 'utf8')), result);
