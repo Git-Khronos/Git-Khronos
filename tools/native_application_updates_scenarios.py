@@ -38,6 +38,10 @@ def application_updates_workflow(driver, fixtures, report):
 
     expect_trust = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST') == '1'
     check_public_baseline, expected_public_update = public_update_expectations(os.environ, expect_trust)
+    prove_automatic_download = os.environ.get('GIT_KHRONOS_NATIVE_PROVE_AUTOMATIC_DOWNLOAD') == '1'
+    if prove_automatic_download and expected_public_update is None:
+        raise RuntimeError('Automatic public download requires an explicitly expected newer release.')
+
 
     repository = fixtures.repository('application-updates-review', commits=2)
     (repository / 'fixture.txt').write_text('Owned updater staged data.\n')
@@ -180,6 +184,12 @@ def application_updates_workflow(driver, fixtures, report):
             assert re.fullmatch(r'[0-9]+(?:\.[0-9]+){2}', running), running
             assert tuple(map(int, expected_public_update.split('.'))) > tuple(map(int, running.split('.'))), (
                 'Expected public update must be newer than the running release', expected_public_update, running)
+            if prove_automatic_download:
+                result = automatic_public_download(driver, modal, expected_public_update)
+                report['applicationUpdates']['automaticPublicDownloadStatus'] = result
+                assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
+                report['scenarios'].append('native-older-release-automatically-downloads-and-verifies-exact-public-offer-without-installing')
+        if expected_public_update is not None and not prove_automatic_download:
             driver.click_visible(modal + ' button', 'Check for updates')
             driver.wait(f"""const dialog = document.querySelector({json.dumps(modal)});
               const check = [...(dialog?.querySelectorAll('button') ?? [])]
@@ -234,6 +244,27 @@ def application_updates_workflow(driver, fixtures, report):
     report['scenarios'].append('native-updater-refuses-manual-check-and-automatic-consent-without-trust-and-preserves-owned-git-data')
     verify_palette_entry()
     return repository, repo_id
+
+
+def automatic_public_download(driver, modal, expected_version):
+    """Opt in once; observe an automatic read without admitting an installer."""
+    if os.path.lexists('/usr/bin/pkexec'):
+        raise RuntimeError('An installer authorization executable is present; refusing to opt in.')
+    checkbox = modal + ' input[type=checkbox]'
+    driver.click_visible(checkbox)
+    try:
+        driver.wait(f"""const dialog = document.querySelector({json.dumps(modal)});
+          return dialog?.querySelector('.verified')?.textContent.includes('signed version verified');""",
+                    timeout=90)
+        state = driver.invoke('application_update_status')
+        assert state['automatic'] and state['configured'] and state['verified'], state
+        assert state['phase'] == 'ready' and state['offeredVersion'] == expected_version, state
+        assert state['offerId'] and state['downloadedBytes'] > 0, state
+        assert not state['canInstall'] and not state['canInspect'], state
+        assert state['installedVersion'] is None, state
+        return state
+    finally:
+        driver.invoke('set_automatic_application_updates', enabled=False)
 
 
 def application_update_consent(driver, fixtures, report):

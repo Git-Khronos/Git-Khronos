@@ -513,6 +513,24 @@ command against the older archive, replacing
 It checks the displayed offer and confirms that no download or installation
 started. This tests the feed and offer, not automatic installation.
 
+To verify automatic **download and signature verification** separately, run
+the extracted `application-updates` suite in a disposable Docker container
+without `/usr/bin/pkexec`. Pin the older archive with `--package`,
+`--expect-package-version`, and `--expect-package-sha256`; pass `--headless`
+and set `GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1`,
+`GIT_KHRONOS_NATIVE_EXPECT_PUBLIC_UPDATE` to the newer stable version, and
+`GIT_KHRONOS_NATIVE_PROVE_AUTOMATIC_DOWNLOAD=1`. The harness enables automatic
+updates in a disposable profile without clicking Check, Download, or Install.
+It checks the exact offered version, verified bytes, and blocked installation.
+The mode refuses normal host runs and containers with the authorization
+launcher present.
+
+The published 0.1.6 archive automatically fetched and verified the
+8,121,504-byte public 0.1.7 package in a disposable Ubuntu 24.04 container.
+Native status reported automatic mode on, version 0.1.7 verified, and no
+installed update. This establishes the live scheduler, feed, download, and
+signature path, not system authorization or installation.
+
 Use a disposable supported Debian or Ubuntu desktop with working polkit.
 Install the first official signed Debian release once from its GitHub release
 assets. Leave automatic updates off until a **strictly newer** signed Debian

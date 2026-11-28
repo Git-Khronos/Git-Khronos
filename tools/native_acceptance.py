@@ -1513,6 +1513,13 @@ def main():
         args.headless and args.installed and {name for _, name in socket.if_nameindex()} == {"lo"}
     ):
         parser.error("application-update-consent requires --headless --installed in a disposable loopback-only network namespace")
+    if os.environ.get("GIT_KHRONOS_NATIVE_PROVE_AUTOMATIC_DOWNLOAD") == "1" and not (
+        args.suite == "application-updates" and args.headless and not args.installed
+        and expected_version is not None and Path("/.dockerenv").is_file()
+        and not os.path.lexists("/usr/bin/pkexec")
+    ):
+        parser.error("Automatic public download requires an explicit extracted application-updates "
+                     "archive in a disposable Docker container without /usr/bin/pkexec")
     suite_label = "full-with-file-tools-delegated" if delegate_file_tools else args.suite
     try:
         output = args.output.resolve() / f"{suite_label}-{time.time_ns()}"
