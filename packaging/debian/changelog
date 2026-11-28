@@ -1,3 +1,17 @@
+git-khronos (0.1.8) unstable; urgency=medium
+
+  * Show an available-update shortcut next to the running version. It opens
+    Updates without starting a download or installer.
+  * Open WSL system authorization from the app, without requiring a terminal
+    command or collecting credentials in Git Khronos.
+  * Explain installer refusal and show when a saved deferral requires a
+    manual retry of this release.
+  * Clarify working-tree totals and bulk action scope while filtering changes.
+  * Identify tracked files whose own recovery snapshots exceed the discard
+    budget, without modifying their working contents.
+
+ -- Maurizio Casciano <mauriziocasciano7@gmail.com>  Sat, 28 Nov 2026 03:26:27 +0100
+
 git-khronos (0.1.7) unstable; urgency=medium
 
   * Show a running build ID in Updates to distinguish Debian builds that
