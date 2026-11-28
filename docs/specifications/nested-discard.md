@@ -171,3 +171,8 @@ Current Ubuntu 24.04 release qualification now requires the installed
 to it. The release report requires both mixed-batch scenarios for the
 same installed package, including recovery after restart. The old suite
 remains runnable for historical packages.
+The legacy suite was rerun successfully against the public v0.1.8 Debian
+archive (SHA-256
+`3429ae0d7ee0bb2c0c69bec169b0e6e797a90dc8bf3054ce49d1134f7b717a67`).
+Its reports remain useful for that release but cannot satisfy the compact
+check in the current release plan.

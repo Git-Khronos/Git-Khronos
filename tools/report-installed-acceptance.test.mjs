@@ -818,6 +818,18 @@ test('file path copy evidence does not substitute for full Git ref clipboard ver
   }
 });
 
+test('a legacy large-discard report does not satisfy the compact release check', () => {
+  const fixtures = matrixFixtures();
+  const legacy = fixtures.map(report => report.suite === 'discard-large-compact'
+    ? { ...report, suite: 'discard-large', scenarios: report.scenarios.filter(name =>
+      name !== 'native-cti-largest-tracked-file-and-untracked-siblings-discard-and-undo'
+      && name !== 'native-compact-mixed-discard-capture-recovers-exact-bytes-after-restart') }
+    : report);
+  const matrix = summarizeReleaseMatrix(legacy);
+  assert.equal(matrix.complete, false);
+  assert.deepEqual(matrix.checks.filter(check => check.report === null).map(check => check.suite), ['discard-large-compact']);
+});
+
 test('generic nested discard evidence does not substitute for the CTI path regressions', () => {
   const fixtures = matrixFixtures();
   for (const [suite, regression] of [
