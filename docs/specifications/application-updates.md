@@ -579,6 +579,16 @@ The app directly connects to its own terminal helper over a private socket and
 only dispatches the verified package after authenticating that process. If the
 window closes after dispatch and the package database does not confirm the
 version, the outcome remains uncertain and is never replayed automatically.
+The helper starts a non-fallback, process-scoped system polkit agent before
+invoking `pkexec --disable-internal-agent`. The built-in fallback can show a
+prompt but fail with “No session for cookie” outside a desktop login session.
+
+In disposable Ubuntu 24.04, the production transport opened the distro's
+XTerm through `x-terminal-emulator`, displayed a real non-echoing polkit
+prompt, received a successful installer exit, and installed the exact public
+0.1.7 executable and desktop entry from 0.1.6. The test used an owned fixture
+calling the production transport; it did not test the full packaged WSL
+app against a newer offer containing this transport.
 
 A separately registered [polkit terminal agent](https://manpages.ubuntu.com/manpages/resolute/man1/pkttyagent.1.html)
 is an option for a terminal-based session. On Linux, run

@@ -8,16 +8,17 @@ use std::{
         ffi::{OsStrExt, OsStringExt},
         fs::MetadataExt,
         net::{UnixListener, UnixStream},
-        process::ExitStatusExt,
+        process::{CommandExt, ExitStatusExt},
     },
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
     thread,
     time::{Duration, Instant},
 };
 
 const HELPER: &str = "--owned-update-authorization-terminal";
 pub(crate) const TERMINAL: &str = "/usr/bin/x-terminal-emulator";
+pub(crate) const AGENT: &str = "/usr/bin/pkttyagent";
 const MAX_PACKAGE_PATH: usize = 4096;
 
 fn terminal_command(executable: &Path, socket: &Path) -> Command {
@@ -35,6 +36,7 @@ fn terminal_command(executable: &Path, socket: &Path) -> Command {
 
 fn package_command(package: &Path) -> Option<Command> {
     let mut command = Command::new("/usr/bin/pkexec");
+    command.arg("--disable-internal-agent").stdin(Stdio::null());
     match package.file_name()?.as_encoded_bytes() {
         b"package.deb" => command.args(["/usr/bin/dpkg", "--refuse-downgrade", "-i"]),
         b"package.rpm" => command.args(["/usr/bin/rpm", "-U"]),
@@ -120,6 +122,56 @@ pub(crate) fn install(package: &Path) -> io::Result<ExitStatus> {
     Ok(ExitStatus::from_raw(i32::from(status[0]) << 8))
 }
 
+struct TerminalAgent(Child);
+
+impl Drop for TerminalAgent {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn self_process_identity() -> io::Result<String> {
+    let stat = std::fs::read_to_string("/proc/self/stat")?;
+    let start = stat
+        .rsplit_once(") ")
+        .and_then(|(_, fields)| fields.split_whitespace().nth(19))
+        .and_then(|field| field.parse::<u64>().ok())
+        .filter(|start| *start != 0)
+        .ok_or(io::ErrorKind::InvalidData)?;
+    Ok(format!("{},{start}", std::process::id()))
+}
+
+fn start_agent() -> io::Result<TerminalAgent> {
+    let (mut signal, child_signal) = UnixStream::pair()?;
+    signal.set_read_timeout(Some(Duration::from_secs(4)))?;
+    let fd = child_signal.as_raw_fd();
+    let mut command = Command::new(AGENT);
+    command.args([
+        "--process",
+        &self_process_identity()?,
+        "--notify-fd",
+        &fd.to_string(),
+    ]);
+    // Only this child inherits the registration endpoint. No credentials or
+    // terminal data ever travel over the socket.
+    unsafe {
+        command.pre_exec(move || {
+            let flags = libc::fcntl(fd, libc::F_GETFD);
+            if flags < 0 || libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut agent = TerminalAgent(command.spawn()?);
+    drop(child_signal);
+    if signal.read(&mut [0])? != 0 || agent.0.try_wait()?.is_some() {
+        return Err(io::ErrorKind::NotConnected.into());
+    }
+    Ok(agent)
+}
+
 fn run_helper(socket: &Path) -> io::Result<()> {
     if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
         return Err(io::ErrorKind::NotConnected.into());
@@ -142,7 +194,16 @@ fn run_helper(socket: &Path) -> io::Result<()> {
         return Err(io::ErrorKind::InvalidData.into());
     }
     let mut command = package_command(&path).ok_or(io::ErrorKind::InvalidData)?;
-    // All three standard streams are the external terminal, never the app.
+    // Use an explicitly registered process agent. pkexec's internal fallback
+    // may display a prompt but cannot complete authorization outside a
+    // desktop login session on affected polkit versions.
+    let _agent = match start_agent() {
+        Ok(agent) => agent,
+        Err(_) => {
+            eprintln!("The system authentication agent could not register for this update.");
+            return stream.write_all(&[127]);
+        }
+    };
     let status = command
         .status()?
         .code()
@@ -202,6 +263,7 @@ mod tests {
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
             [
+                OsStr::new("--disable-internal-agent"),
                 OsStr::new("/usr/bin/dpkg"),
                 OsStr::new("--refuse-downgrade"),
                 OsStr::new("-i"),

@@ -67,6 +67,16 @@ pub(super) fn install_blocker(format: Option<&str>) -> Option<&'static str> {
             "The update is verified, but WSL has no supported Linux terminal for the system authorization prompt.",
         );
     }
+    #[cfg(target_os = "linux")]
+    if use_authorization_terminal(format)
+        && !package_authorizer_available(std::path::Path::new(
+            crate::update_authorization_terminal::AGENT,
+        ))
+    {
+        return Some(
+            "The update is verified, but the WSL authorization agent (pkttyagent) is missing or not executable.",
+        );
+    }
     format
         .is_none()
         .then_some("This application bundle cannot self-update.")
