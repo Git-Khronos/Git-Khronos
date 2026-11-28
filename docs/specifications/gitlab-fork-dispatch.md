@@ -487,3 +487,14 @@ retained. Both the focused date check and the complete corrected fourth shard
 (379 cases) pass. The final combined report audit confirms exact collection
 matching and one successful attempt per case in that qualified set. The earlier
 failed fourth-shard evidence remains retained; it is not relabeled as a pass.
+
+## Published 0.1.7 catalogue regression
+
+The checksum-pinned public Debian archive for 0.1.7 (source `53f39a6`,
+SHA-256 `6331e0e4dbd33a6f145f31b97a6ae5ac037ae872535e078c94427020c03215b4`)
+passed all 11 scenarios in the current extracted `gitlab-fork-ui` profile on
+WSL2. The profile received a real WebDriver stale-element response and clicked
+only the enabled replacement. It also verified delayed readiness and operation
+without paint frames. The actual catalogue was reopened after a real process
+restart without replaying the fork POST. This is focused catalogue/fork
+evidence, not requalification of the full GitLab clone and SSH suite.
