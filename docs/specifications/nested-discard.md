@@ -42,15 +42,21 @@ If every path in a whole-worktree request is blocked, the review lists the
 blockers and offers a fresh eligibility check. It cannot be confirmed and
 does not generate a recovery capture. A direct single-file refusal remains
 an error, including its specific size limit when applicable.
-Capture serialization streams JSON into the existing base64 header and
-enforces the header and total capture budgets while writing. It does not
-allocate a separate full JSON document or a second full encoded header.
+Capture serialization streams JSON into a bounded header and enforces
+the header and total capture budgets while writing. It does not allocate
+a separate full JSON document or a second full encoded header.
 Preview also stops collecting snapshots once their data alone would
 exceed the header budget, and tells the user to review a smaller selection.
 The nested eligibility pass inspects opened-file metadata without reading
 or encoding the contents. The guarded snapshot still captures and checks the
 actual bytes separately before the review can be confirmed.
-The on-disk format and Undo compatibility are unchanged.
+The reader accepts both the original v1 format and compact v2. New
+captures keep v1 when it fits. Otherwise, v2 writes a single JSON line
+without the outer Base64 layer; each file snapshot remains Base64.
+The v2 header can use up to 192 MiB, within the existing 256 MiB total
+capture limit and 64 MiB per-file limit. Older builds cannot Undo v2
+captures; keep the capture and reopen it with a build that supports v2.
+Existing captures are not rewritten.
 Native code remains responsible for the reviewed target and the mutation;
 the renderer must not infer that a path is writable from its spelling.
 
@@ -119,11 +125,17 @@ Discard restored the tracked index bytes, removed only the three untracked
 files, and Undo restored all four working copies. The installed release gate
 now requires this mixed-batch evidence. A separate exploratory run with the
 55,277,605-byte enterprise fixture tracked was refused: keeping both full
-snapshots of that file exceeds the encoded capture-header budget, even
-though each snapshot is below the per-file limit. That case is not
-qualified for discard.
+snapshots of that file exceeded the original encoded capture-header
+budget, even though each snapshot was below the per-file limit. The
+compact format targets this case; the earlier package evidence does not
+qualify it.
 
 For an individual file whose two snapshots alone exceed the header budget,
 the preview names that file and explains that discarding it separately would
 not help. For an aggregate-only refusal, it still recommends reviewing a
 smaller selection. Neither refusal changes any working files.
+
+An opt-in native regression now verifies the 55,277,605-byte tracked
+fixture with v2: Discard restores the index bytes and Undo restores the
+exact pre-discard bytes without changing the index or HEAD. This is
+native-core evidence, not installed-package qualification.

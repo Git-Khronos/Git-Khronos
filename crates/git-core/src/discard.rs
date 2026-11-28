@@ -7,11 +7,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MAX_RECOVERY_PATHS: usize = 50;
 const MAX_RECOVERY_PATH_REPORT_BYTES: usize = 1024 * 1024;
 const MAX_GUARDED_FILE_BYTES: u64 = 64 * 1024 * 1024;
-// The recovery document holds base64 file snapshots in a base64 JSON header,
-// followed by a Git-readable patch. These are distinct from the per-file cap.
+// Captures contain a one-line JSON journal and a Git-readable patch. The
+// legacy envelope base64-encodes the whole journal as well as its snapshots.
 const MAX_GUARDED_HEADER_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_COMPACT_GUARDED_HEADER_BYTES: u64 = 192 * 1024 * 1024;
 const MAX_RECOVERY_PATCH_INSPECTION_BYTES: u64 = 256 * 1024 * 1024;
 const GUARDED_CAPTURE_PREFIX: &str = "# git-khronos-guard-v1 ";
+const COMPACT_GUARDED_CAPTURE_PREFIX: &str = "# git-khronos-guard-v2 ";
+const _: () = assert!(GUARDED_CAPTURE_PREFIX.len() == COMPACT_GUARDED_CAPTURE_PREFIX.len());
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -807,19 +810,71 @@ fn supported_nested_capture_states(before: &GuardedFile, after: &GuardedFile) ->
     )
 }
 
+#[derive(Clone, Copy)]
+enum GuardedHeaderEncoding {
+    Legacy,
+    Compact,
+}
+
+impl GuardedHeaderEncoding {
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::Legacy => GUARDED_CAPTURE_PREFIX,
+            Self::Compact => COMPACT_GUARDED_CAPTURE_PREFIX,
+        }
+    }
+
+    fn limit(self) -> u64 {
+        match self {
+            Self::Legacy => MAX_GUARDED_HEADER_BYTES,
+            Self::Compact => MAX_COMPACT_GUARDED_HEADER_BYTES,
+        }
+    }
+}
+
 fn encode_guarded_capture(changes: &[GuardedChange], patch: &[u8]) -> Result<Vec<u8>, AppError> {
+    let snapshot_bytes = changes.iter().fold(0_u64, |total, change| {
+        total.saturating_add(
+            (guarded_state_data_len(&change.before) + guarded_state_data_len(&change.after)) as u64,
+        )
+    });
+    let legacy_budget = guarded_header_payload_limit(
+        patch.len(),
+        GuardedHeaderEncoding::Legacy.limit(),
+        MAX_RECOVERY_PATCH_INSPECTION_BYTES,
+    ) / 4
+        * 3;
+    if snapshot_bytes <= legacy_budget {
+        match encode_guarded_capture_with_limits(
+            changes,
+            patch,
+            GuardedHeaderEncoding::Legacy,
+            GuardedHeaderEncoding::Legacy.limit(),
+            MAX_RECOVERY_PATCH_INSPECTION_BYTES,
+        ) {
+            Ok(capture) => return Ok(capture),
+            Err(error) if error.message == DISCARD_CAPTURE_SIZE_MESSAGE => {}
+            Err(error) => return Err(error),
+        }
+    }
+    // Keep the old format when it fits. Only larger captures require an
+    // app version that understands the compact header.
     encode_guarded_capture_with_limits(
         changes,
         patch,
-        MAX_GUARDED_HEADER_BYTES,
+        GuardedHeaderEncoding::Compact,
+        GuardedHeaderEncoding::Compact.limit(),
         MAX_RECOVERY_PATCH_INSPECTION_BYTES,
     )
 }
 
+const DISCARD_CAPTURE_SIZE_MESSAGE: &str =
+    "The files are too large for a safely inspectable discard capture.";
+
 fn discard_capture_size_error() -> AppError {
     AppError::new(
         "repositoryFileRefused",
-        "The files are too large for a safely inspectable discard capture.",
+        DISCARD_CAPTURE_SIZE_MESSAGE,
         Some(
             "No working files were changed. Select fewer or smaller files and review a new discard preview.",
         ),
@@ -869,6 +924,7 @@ fn add_guarded_snapshot_size(
 fn encode_guarded_capture_with_limits(
     changes: &[GuardedChange],
     patch: &[u8],
+    encoding: GuardedHeaderEncoding,
     max_header: u64,
     max_capture: u64,
 ) -> Result<Vec<u8>, AppError> {
@@ -895,25 +951,31 @@ fn encode_guarded_capture_with_limits(
     if payload_limit == 0 {
         return Err(discard_capture_size_error());
     }
-    let limit = payload_limit as usize + GUARDED_CAPTURE_PREFIX.len();
-    let mut encoder = base64::write::EncoderWriter::new(
-        BoundedHeader {
-            bytes: GUARDED_CAPTURE_PREFIX.as_bytes().to_vec(),
-            limit,
-        },
-        &BASE64,
-    );
-    serde_json::to_writer(&mut encoder, changes).map_err(|error| {
+    let prefix = encoding.prefix();
+    let mut header = BoundedHeader {
+        bytes: prefix.as_bytes().to_vec(),
+        limit: payload_limit as usize + prefix.len(),
+    };
+    let serialization_error = |error: serde_json::Error| {
         if error.io_error_kind() == Some(std::io::ErrorKind::FileTooLarge) {
             discard_capture_size_error()
         } else {
             unsafe_discard("The independent recovery data could not be encoded safely.")
         }
-    })?;
-    let mut result = encoder
-        .finish()
-        .map_err(|_| discard_capture_size_error())?
-        .bytes;
+    };
+    match encoding {
+        GuardedHeaderEncoding::Legacy => {
+            let mut encoder = base64::write::EncoderWriter::new(header, &BASE64);
+            serde_json::to_writer(&mut encoder, changes).map_err(serialization_error)?;
+            header = encoder.finish().map_err(|_| discard_capture_size_error())?;
+        }
+        GuardedHeaderEncoding::Compact => {
+            // serde_json escapes line breaks in paths; the journal remains a
+            // single comment line and cannot masquerade as patch metadata.
+            serde_json::to_writer(&mut header, changes).map_err(serialization_error)?;
+        }
+    }
+    let mut result = header.bytes;
     result.push(b'\n');
     result.extend_from_slice(patch);
     Ok(result)
@@ -1118,10 +1180,9 @@ pub fn prepare_discard(
     let snapshot_limit = |patch_bytes| {
         guarded_header_payload_limit(
             patch_bytes,
-            MAX_GUARDED_HEADER_BYTES,
+            GuardedHeaderEncoding::Compact.limit(),
             MAX_RECOVERY_PATCH_INSPECTION_BYTES,
-        ) / 4
-            * 3
+        )
     };
     let max_snapshot_bytes = snapshot_limit(patch.len());
     let max_file_snapshot_bytes = snapshot_limit(0);
@@ -1779,35 +1840,47 @@ fn valid_regular_snapshot(data: &str, max_bytes: u64) -> bool {
     copy_regular_snapshot(data, max_bytes, &mut std::io::sink()).is_ok()
 }
 
+fn read_guarded_header(reader: &mut impl std::io::Read) -> Result<Vec<GuardedChange>, AppError> {
+    let mut prefix = [0; GUARDED_CAPTURE_PREFIX.len()];
+    reader
+        .read_exact(&mut prefix)
+        .map_err(|_| changed_recovery_capture())?;
+    let encoding = if prefix == GUARDED_CAPTURE_PREFIX.as_bytes() {
+        GuardedHeaderEncoding::Legacy
+    } else if prefix == COMPACT_GUARDED_CAPTURE_PREFIX.as_bytes() {
+        GuardedHeaderEncoding::Compact
+    } else {
+        return Err(unsafe_discard(
+            "This recovery capture format cannot be applied safely by this version of the application.",
+        ));
+    };
+    let mut header = Vec::new();
+    let limited = std::io::Read::take(reader, encoding.limit() - prefix.len() as u64);
+    BufReader::new(limited)
+        .read_until(b'\n', &mut header)
+        .map_err(io_error)?;
+    let line = header
+        .strip_suffix(b"\n")
+        .ok_or_else(changed_recovery_capture)?;
+    let parsed = match encoding {
+        GuardedHeaderEncoding::Legacy => {
+            let decoded = BASE64
+                .decode(line)
+                .map_err(|_| changed_recovery_capture())?;
+            drop(header);
+            serde_json::from_slice(&decoded)
+        }
+        GuardedHeaderEncoding::Compact => serde_json::from_slice(line),
+    };
+    parsed.map_err(|_| changed_recovery_capture())
+}
+
 fn guarded_capture(
     path: &Path,
     snapshot: &mut RecoverySnapshot,
 ) -> Result<Vec<GuardedChange>, AppError> {
     snapshot.file.seek(SeekFrom::Start(0)).map_err(io_error)?;
-    let mut header = Vec::new();
-    {
-        let limited = (&mut snapshot.file).take(MAX_GUARDED_HEADER_BYTES);
-        BufReader::new(limited)
-            .read_until(b'\n', &mut header)
-            .map_err(io_error)?;
-    }
-    let encoded = header
-        .strip_prefix(GUARDED_CAPTURE_PREFIX.as_bytes())
-        .and_then(|line| line.strip_suffix(b"\n"))
-        .ok_or_else(|| {
-            unsafe_discard(
-                "This older recovery capture cannot be applied safely by the application.",
-            )
-        })?;
-    let json = BASE64
-        .decode(encoded)
-        .map_err(|_| changed_recovery_capture())?;
-    // The encoded header and decoded JSON can both be large. Release each
-    // as soon as its consumer owns the next representation.
-    drop(header);
-    let changes: Vec<GuardedChange> =
-        serde_json::from_slice(&json).map_err(|_| changed_recovery_capture())?;
-    drop(json);
+    let changes = read_guarded_header(&mut snapshot.file)?;
     if changes.is_empty() {
         return Err(changed_recovery_capture());
     }
@@ -4788,14 +4861,79 @@ mod tests {
         let expected = [legacy_header.as_bytes(), patch].concat();
 
         assert_eq!(
-            encode_guarded_capture_with_limits(&changes, patch, header_len, capture_len).unwrap(),
+            encode_guarded_capture_with_limits(
+                &changes,
+                patch,
+                GuardedHeaderEncoding::Legacy,
+                header_len,
+                capture_len
+            )
+            .unwrap(),
             expected
         );
         for (header, capture) in [(header_len - 1, capture_len), (header_len, capture_len - 1)] {
-            let error =
-                encode_guarded_capture_with_limits(&changes, patch, header, capture).unwrap_err();
+            let error = encode_guarded_capture_with_limits(
+                &changes,
+                patch,
+                GuardedHeaderEncoding::Legacy,
+                header,
+                capture,
+            )
+            .unwrap_err();
             assert!(error.message.contains("too large"));
         }
+    }
+
+    #[test]
+    fn compact_header_is_one_line_and_preserves_snapshots_and_literal_paths() {
+        let changes = vec![GuardedChange {
+            path: "nested/quote \" café\ndiff --git a/fake b/fake".into(),
+            before: GuardedFile::Regular {
+                data: BASE64.encode(b"working\0"),
+                mode: 0o640,
+            },
+            after: GuardedFile::Regular {
+                data: BASE64.encode(b"indexed"),
+                mode: 0o600,
+            },
+        }];
+        let patch = b"reviewed patch";
+        let encoding = GuardedHeaderEncoding::Compact;
+        let header_len = encoding.prefix().len() + serde_json::to_vec(&changes).unwrap().len() + 1;
+        let capture_len = header_len + patch.len();
+        let capture = encode_guarded_capture_with_limits(
+            &changes,
+            patch,
+            encoding,
+            header_len as u64,
+            capture_len as u64,
+        )
+        .unwrap();
+        assert!(capture.starts_with(COMPACT_GUARDED_CAPTURE_PREFIX.as_bytes()));
+        assert_eq!(
+            capture.iter().position(|byte| *byte == b'\n'),
+            Some(header_len - 1)
+        );
+        assert_eq!(
+            read_guarded_header(&mut capture.as_slice()).unwrap(),
+            changes
+        );
+        for (header, total) in [(header_len - 1, capture_len), (header_len, capture_len - 1)] {
+            assert!(
+                encode_guarded_capture_with_limits(
+                    &changes,
+                    patch,
+                    encoding,
+                    header as u64,
+                    total as u64
+                )
+                .is_err()
+            );
+        }
+        assert!(read_guarded_header(&mut &capture[..header_len - 1]).is_err());
+        let old = encode_guarded_capture(&changes, patch).unwrap();
+        assert!(old.starts_with(GUARDED_CAPTURE_PREFIX.as_bytes()));
+        assert_eq!(read_guarded_header(&mut old.as_slice()).unwrap(), changes);
     }
 
     #[test]
@@ -4852,7 +4990,7 @@ mod tests {
     #[test]
     #[ignore = "Exercises two 55 MB snapshots; run separately to bound memory and disk use"]
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    fn discard_large_tracked_file_names_the_individual_budget_refusal() {
+    fn discard_large_tracked_file_uses_compact_capture_and_recovers_original_bytes() {
         use std::io::Write;
 
         let repository = Repository::new();
@@ -4869,6 +5007,7 @@ mod tests {
             .unwrap();
         stage_all(&repository.0).unwrap();
         commit(&repository.0, "Track enterprise fixture").unwrap();
+        let indexed_hash = recovery_content_fingerprint(&target).unwrap();
         OpenOptions::new()
             .write(true)
             .open(&target)
@@ -4877,18 +5016,26 @@ mod tests {
             .unwrap();
         let working_hash = recovery_content_fingerprint(&target).unwrap();
         let index = fs::read(repository.0.join(".git/index")).unwrap();
-        let error = match prepare_discard(&repository.0, Some(vec![file.into()])) {
-            Err(error) => error,
-            Ok(_) => panic!("two 55 MB snapshots unexpectedly fit in the recovery budget"),
-        };
-        assert!(error.message.contains(file), "{error}");
-        assert!(error.hint.as_deref().unwrap().contains("on its own"));
+        let head = inspect_git(&repository.0, &["rev-parse", "HEAD"])
+            .unwrap()
+            .stdout;
+        let plan = prepare_discard(&repository.0, Some(vec![file.into()])).unwrap();
+        assert!(
+            plan.mutation_patch
+                .starts_with(COMPACT_GUARDED_CAPTURE_PREFIX.as_bytes())
+        );
+        assert_eq!(recovery_content_fingerprint(&target).unwrap(), working_hash);
+        let capture = execute_discard(&repository.0, &plan).unwrap();
+        drop(plan);
+        assert_eq!(recovery_content_fingerprint(&target).unwrap(), indexed_hash);
+        recover_discarded_changes(&repository.0, &capture, false).unwrap();
         assert_eq!(recovery_content_fingerprint(&target).unwrap(), working_hash);
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
-        assert!(
-            discarded_change_recoveries(&repository.0)
+        assert_eq!(
+            inspect_git(&repository.0, &["rev-parse", "HEAD"])
                 .unwrap()
-                .is_empty()
+                .stdout,
+            head
         );
     }
 
