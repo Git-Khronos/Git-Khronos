@@ -215,6 +215,30 @@ test('file history copies the exact path and full commit ID without Git mutation
   expect(after.commands.filter((command: string) => command !== 'refresh_repository_status')).toEqual([]);
 });
 
+test('file history copies the searched path even when no commits match', async ({ page }) => {
+  const path = 'docs/missing [old] résumé.md';
+  await page.evaluate(path => {
+    const state = (window as any).__historyFixture;
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    native.invoke = (command: string, args: unknown) => command === 'inspect_file_history_page'
+      ? Promise.resolve({ entries: [], cursor: null, complete: true })
+      : invoke(command, args);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (value: string) => { state.copiedSearchPath = value; } },
+    });
+    return state.app.openTrackedFileInsight(path, 'history');
+  }, path);
+
+  const history = page.getByRole('region', { name: 'File history', exact: true });
+  await expect(history).toContainText('No history was found for this file at the selected revision.');
+  await expect(history.getByRole('article')).toHaveCount(0);
+  await history.getByRole('button', { name: 'Copy searched path' }).click();
+  await expect(history.getByRole('status')).toHaveText(`Copied searched path: ${path}`);
+  expect(await page.evaluate(() => (window as any).__historyFixture.copiedSearchPath)).toBe(path);
+});
+
 test('a retired exact path action cannot look up history on a different HEAD', async ({ page }) => {
   await page.keyboard.press('Control+Shift+H');
   const search = page.getByRole('combobox', { name: 'Search tracked files', exact: true });

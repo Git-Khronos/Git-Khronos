@@ -3637,6 +3637,7 @@ pnpm test:changed --base origin/dev         # Compare with the local tracking re
 pnpm test:changed --staged                  # Select from the index; execution still uses working files
 pnpm test:changed --run                     # Run the selected local checks
 pnpm test:changed --run --batch-renderer    # Share one browser server across plain renderer profiles
+pnpm test:changed --run --renderer-grep "copies the searched path"
 pnpm test:changed --run --webkit --workers=4 # Opt into WebKit and override browser workers
 pnpm test:changed --run --native-package "$archive" # Also run mapped packaged scenarios
 ```
@@ -3645,7 +3646,10 @@ Recognized renderer components select their profile. Changed browser and
 renderer unit specs run directly unless already covered. With
 `--batch-renderer`, compatible Playwright path selections share one server
 startup; profiles with their own flags or environment and broad plans are
-not merged. Native harness edits
+not merged. Use `--renderer-grep` for a single test-title pattern when the
+focused plan has one browser invocation. It leaves selected non-browser
+checks unchanged and does not replace the full profile before release.
+Native harness edits
 select the harness unit tests, and edits to registered package-tooling specs
 run just those specs together. For edits to
 mapped GitLab, remote review, worktree, keyboard, recap, sparse-checkout,
