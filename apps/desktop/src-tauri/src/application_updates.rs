@@ -678,7 +678,7 @@ fn install_blocking(
     });
     changed(app);
     admission?;
-    let outcome = installer::install(&update, &bytes, format, prepared);
+    let (outcome, refusal) = installer::install(&update, &bytes, format, prepared);
     with_runtime(app, |runtime| {
         let mut next = runtime.model.preferences.clone();
         if outcome != InstallOutcome::Uncertain {
@@ -708,7 +708,10 @@ fn install_blocking(
                 runtime.message = "Update installed. Restart Git Khronos when convenient to use it; this window was not forcibly restarted.".into();
             }
             InstallOutcome::RefusedBeforeExecution => {
-                runtime.message = "The installer was not started. This version will not be retried automatically.".into();
+                runtime.message = refusal
+                    .unwrap_or(installer::InstallerRefusal::Preflight)
+                    .status()
+                    .into();
             }
             InstallOutcome::Uncertain => {
                 runtime.message = "Installation outcome is unconfirmed. Inspect the OS package manager; the updater will not replay this installer.".into();

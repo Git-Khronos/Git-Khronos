@@ -547,8 +547,10 @@ and select **Refresh status** in the app without restarting or discarding the
 verified download. The official release package can also be installed with
 the system package manager. Having `pkexec` does not guarantee a functioning
 polkit session, and there is no password-collection or `sudo` fallback. If authorization
-is refused, the updater will not retry that version automatically. If the same
-release is offered again after restart, Updates explains the saved deferral
+is refused, the updater will not retry that version automatically. If a
+Debian offer is refused by polkit, Updates distinguishes a dismissed prompt
+from authorization that could not be completed. If the same release is
+offered again after restart, Updates explains the saved deferral
 and identifies the manual retry path. The setting stays on for newer offers.
 On a minimal desktop or WSL session where no authorization prompt appears,
 check that a session authentication agent is running before retrying manually.

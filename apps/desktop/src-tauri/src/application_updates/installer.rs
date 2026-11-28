@@ -319,26 +319,57 @@ fn privileged_command(package_format: &str, path: &std::path::Path) -> Command {
     command
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum InstallerRefusal {
+    Preflight,
+    #[cfg(target_os = "linux")]
+    AuthorizationDismissed,
+    #[cfg(target_os = "linux")]
+    AuthorizationUnavailable,
+}
+
+impl InstallerRefusal {
+    pub(super) fn status(self) -> &'static str {
+        match self {
+            Self::Preflight => {
+                "The installer was not started. This version will not be retried automatically."
+            }
+            #[cfg(target_os = "linux")]
+            Self::AuthorizationDismissed => {
+                "System authorization was dismissed before the installer started. This version will not be retried automatically."
+            }
+            #[cfg(target_os = "linux")]
+            Self::AuthorizationUnavailable => {
+                "System authorization could not be completed. The installer did not start and this version will not be retried automatically."
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 fn classify_package_outcome(
     package_format: &str,
     status: std::io::Result<std::process::ExitStatus>,
     installed_version_matches: bool,
-) -> InstallOutcome {
+) -> (InstallOutcome, Option<InstallerRefusal>) {
+    use InstallOutcome::*;
+    use InstallerRefusal::*;
     if installed_version_matches {
-        return InstallOutcome::Confirmed;
+        return (Confirmed, None);
     }
     match status {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            InstallOutcome::RefusedBeforeExecution
+            (RefusedBeforeExecution, Some(Preflight))
         }
         // pkexec passes through the program's status. Only fixed dpkg has the
         // documented 0/1/2 range, so 126/127 identify authorization refusal here.
         // Do not assume the same for RPM or an arbitrary root program.
-        Ok(status) if package_format == "deb" && matches!(status.code(), Some(126 | 127)) => {
-            InstallOutcome::RefusedBeforeExecution
-        }
-        _ => InstallOutcome::Uncertain,
+        Ok(status) if package_format == "deb" => match status.code() {
+            Some(126) => (RefusedBeforeExecution, Some(AuthorizationDismissed)),
+            Some(127) => (RefusedBeforeExecution, Some(AuthorizationUnavailable)),
+            _ => (Uncertain, None),
+        },
+        _ => (Uncertain, None),
     }
 }
 
@@ -347,21 +378,30 @@ pub(super) fn install(
     bytes: &[u8],
     package_format: &str,
     prepared: PreparedPackage,
-) -> InstallOutcome {
+) -> (InstallOutcome, Option<InstallerRefusal>) {
     // Reverify immediately before the installation boundary, not only download.
     if install_blocker(Some(package_format)).is_some() {
-        return InstallOutcome::RefusedBeforeExecution;
+        return (
+            InstallOutcome::RefusedBeforeExecution,
+            Some(InstallerRefusal::Preflight),
+        );
     }
     if update.verify(bytes).is_err() {
-        return InstallOutcome::RefusedBeforeExecution;
+        return (
+            InstallOutcome::RefusedBeforeExecution,
+            Some(InstallerRefusal::Preflight),
+        );
     }
     #[cfg(target_os = "linux")]
     if matches!(package_format, "deb" | "rpm") {
         if observed_version(package_format).as_deref() == Some(update.version.as_str()) {
-            return InstallOutcome::Confirmed;
+            return (InstallOutcome::Confirmed, None);
         }
         if refuse_downgrade(package_format, &update.version).is_err() {
-            return InstallOutcome::RefusedBeforeExecution;
+            return (
+                InstallOutcome::RefusedBeforeExecution,
+                Some(InstallerRefusal::Preflight),
+            );
         }
         let path = prepared
             .directory
@@ -376,8 +416,8 @@ pub(super) fn install(
     }
     let _ = (package_format, prepared);
     match update.install(bytes) {
-        Ok(()) => InstallOutcome::Confirmed,
-        Err(_) => InstallOutcome::Uncertain,
+        Ok(()) => (InstallOutcome::Confirmed, None),
+        Err(_) => (InstallOutcome::Uncertain, None),
     }
 }
 
@@ -434,28 +474,31 @@ mod tests {
     #[test]
     fn application_update_debian_auth_refusal_is_retryable_but_installer_errors_remain_uncertain() {
         let exit = |code| Ok(std::process::ExitStatus::from_raw(code << 8));
-        for code in [126, 127] {
+        for (code, reason) in [
+            (126, InstallerRefusal::AuthorizationDismissed),
+            (127, InstallerRefusal::AuthorizationUnavailable),
+        ] {
             assert_eq!(
                 classify_package_outcome("deb", exit(code), false),
-                InstallOutcome::RefusedBeforeExecution
+                (InstallOutcome::RefusedBeforeExecution, Some(reason))
             );
             assert_eq!(
-                classify_package_outcome("rpm", exit(code), false),
+                classify_package_outcome("rpm", exit(code), false).0,
                 InstallOutcome::Uncertain
             );
         }
         for code in [0, 1, 2, 3] {
             assert_eq!(
-                classify_package_outcome("deb", exit(code), false),
+                classify_package_outcome("deb", exit(code), false).0,
                 InstallOutcome::Uncertain
             );
             assert_eq!(
-                classify_package_outcome("deb", exit(code), true),
+                classify_package_outcome("deb", exit(code), true).0,
                 InstallOutcome::Confirmed
             );
         }
         assert_eq!(
-            classify_package_outcome("deb", Ok(std::process::ExitStatus::from_raw(9)), false),
+            classify_package_outcome("deb", Ok(std::process::ExitStatus::from_raw(9)), false).0,
             InstallOutcome::Uncertain
         );
         assert_eq!(
@@ -463,7 +506,8 @@ mod tests {
                 "deb",
                 Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
                 false
-            ),
+            )
+            .0,
             InstallOutcome::RefusedBeforeExecution
         );
         assert_eq!(
@@ -471,7 +515,8 @@ mod tests {
                 "deb",
                 Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
                 false
-            ),
+            )
+            .0,
             InstallOutcome::Uncertain
         );
     }
