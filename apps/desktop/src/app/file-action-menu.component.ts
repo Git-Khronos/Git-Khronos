@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, afterNextRender, input, output } fr
 import type { FileActionMenu } from './app.component';
 import { IconComponent } from './icon.component';
 
-export type FileMenuAction = 'merge-tool' | 'content' | 'take-current' | 'take-incoming' | 'changes'
+export type FileMenuAction = 'merge-tool' | 'content' | 'changes'
   | 'stage-toggle' | 'lfs' | 'discard' | 'ignore-file' | 'ignore-extension' | 'ignore-directory'
   | 'history' | 'blame' | 'apply-stash' | 'restore' | 'copy-path';
 

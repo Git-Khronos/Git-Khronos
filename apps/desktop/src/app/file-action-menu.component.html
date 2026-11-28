@@ -5,10 +5,6 @@
   @if (menu.conflicted) {
     <button type="button" role="menuitem" (click)="choose('merge-tool')"><span><gk-icon name="merge" [size]="13" /></span>Open Merge Tool</button>
     <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gk-icon name="file" [size]="13" /></span>Preview file content</button>
-    <div class="context-divider"></div>
-    <div class="context-subheading">Resolve conflict</div>
-    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('take-current')"><span><gk-icon name="check" [size]="13" /></span>Take current</button>
-    <button type="button" role="menuitem" [disabled]="busy()" (click)="choose('take-incoming')"><span><gk-icon name="check" [size]="13" /></span>Take incoming</button>
   } @else {
     <button type="button" role="menuitem" (click)="choose('changes')"><span><gk-icon name="file" [size]="13" /></span>View changes</button>
     <button type="button" role="menuitem" [disabled]="!menu.content" (click)="choose('content')"><span><gk-icon name="file" [size]="13" /></span>Preview file content</button>

@@ -129,6 +129,23 @@ test('filtering out every conflict keeps the conflict total visible', async ({ p
   await expect(inspector.getByRole('button', { name: 'Merge Tool' })).toHaveCount(2);
 });
 
+test('the conflicted-file menu opens a review instead of resolving a side immediately', async ({ page }) => {
+  await prepare(page, true);
+  await page.getByRole('button', { name: 'Show conflicted files' }).click();
+  await page.getByRole('button', { name: 'original.txt', exact: true }).click({ button: 'right' });
+  const open = page.getByRole('menuitem', { name: 'Open Merge Tool', exact: true });
+  await expect(open).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /^Take (current|incoming)$/i })).toHaveCount(0);
+  await open.click();
+  const review = page.getByRole('dialog', { name: 'Merge conflict editor' });
+  await expect(review.getByRole('button', { name: 'Take Current', exact: true })).toBeVisible();
+  await expect(review.getByRole('button', { name: 'Take Incoming', exact: true })).toBeVisible();
+  const commands = await page.evaluate(() => (window as any).__conflictLifecycle.calls
+    .map((call: { command: string }) => call.command));
+  expect(commands).toContain('inspect_conflict');
+  expect(commands).not.toContain('resolve_conflict');
+});
+
 test('an outgoing conflict shortcut cannot open the inspector in another checkout visit', async ({ page }) => {
   await prepare(page, true);
   await page.evaluate(() => (window as any).__conflictLifecycle.app.setPanelVisibility('commit-panel', false));

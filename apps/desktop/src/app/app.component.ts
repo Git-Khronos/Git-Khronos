@@ -9654,13 +9654,6 @@ export class AppComponent implements OnInit, OnDestroy {
     this.cycleDialogFocus(event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined, event);
   }
 
-  protected async resolveContextConflict(resolution: 'current' | 'incoming'): Promise<void> {
-    const menu = this.fileContextMenu();
-    if (!menu || !menu.conflicted) return;
-    this.actionOverlays.close('file');
-    await this.git.resolveConflict(menu.path, resolution);
-  }
-
   private setSelectedRebaseAction(action: RebaseAction): void {
     const oid = this.selectedRebaseOid();
     if (oid) this.setRebaseAction(oid, action);
@@ -15768,8 +15761,6 @@ export class AppComponent implements OnInit, OnDestroy {
         case 'merge-tool': this.dismissFileActionMenu(); void this.openConflictTool(request.value.path); break;
         case 'content': void this.viewContextFileContent('working'); break;
         case 'changes': void this.viewFileChanges(); break;
-        case 'take-current': void this.resolveContextConflict('current'); break;
-        case 'take-incoming': void this.resolveContextConflict('incoming'); break;
         case 'stage-toggle': void this.toggleFileStaging(); break;
         case 'lfs': this.configureLfsForContextFile(); break;
         case 'discard': this.requestDiscardFile(); break;
