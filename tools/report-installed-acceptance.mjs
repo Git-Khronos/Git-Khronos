@@ -78,6 +78,7 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-large-discard-capture-survives-restart-and-recovers-exact-bytes',
     'native-cti-data-paths-and-sizes-recover-unchanged-after-restart',
     'native-cti-sized-bulk-discard-skips-and-preserves-staged-only-file',
+    'native-cti-sized-bulk-discard-restores-index-version-of-tracked-file-and-undo-recovers-edit',
   ]],
   ['discard-limit', [
     'native-oversized-nested-file-gets-size-specific-refusal-without-mutation',

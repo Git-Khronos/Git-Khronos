@@ -112,3 +112,13 @@ discard and recovery across an app restart preserved the index, HEAD, and
 a separate staged-only file. The subset and deletion profiles also verify
 ordinary tracked nested paths, a nested lockfile and deletion Undo/Redo.
 This evidence does not exercise the user's checkout or other platforms.
+
+The extended `discard-large` profile also passed on that package with the
+6,144,331-byte mobile fixture tracked and its three siblings untracked.
+Discard restored the tracked index bytes, removed only the three untracked
+files, and Undo restored all four working copies. The installed release gate
+now requires this mixed-batch evidence. A separate exploratory run with the
+55,277,605-byte enterprise fixture tracked was refused: keeping both full
+snapshots of that file exceeds the encoded capture-header budget, even
+though each snapshot is below the per-file limit. That case is not
+qualified for discard.

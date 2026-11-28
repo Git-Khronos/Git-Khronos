@@ -550,6 +550,42 @@ def discard_large_untracked_batch(driver, fixtures, report):
     report['scenarios'].append('native-large-discard-capture-survives-restart-and-recovers-exact-bytes')
     report['scenarios'].append('native-cti-data-paths-and-sizes-recover-unchanged-after-restart')
     report['scenarios'].append('native-cti-sized-bulk-discard-skips-and-preserves-staged-only-file')
+    # Reuse the same owned files with a tracked file and untracked siblings.
+    # The committed version differs only at byte 0. Tracking the largest
+    # fixture instead requires two 55 MB snapshots and exceeds the capture cap.
+    tracked = '_data_/mitre-attack/mobile-attack.json'
+    with (repository / tracked).open('r+b') as file:
+        original_byte = file.read(1)
+        file.seek(0)
+        file.write(b'#')
+    index_digest = digest(tracked)
+    fixtures.git(repository, 'add', '--', tracked)
+    fixtures.git(repository, 'commit', '-qm', 'Track one fixture', '--only', '--', tracked)
+    with (repository / tracked).open('r+b') as file:
+        file.write(original_byte)
+    index = fixtures.git(repository, '--no-optional-locks', 'ls-files', '--stage', '-z')
+    head = fixtures.git(repository, 'rev-parse', 'HEAD')
+    driver.restart_application()
+    repo_id = open_ui(driver, repository)
+    driver.click_visible('.wip-nav')
+    driver.click_scrolled_text(discard, wait_for_ready=True)
+    outcome = driver.wait(f"""const error = document.querySelector('.error-toast[role="alert"]')?.textContent.trim();
+      if (error) return {{error}};
+      return JSON.stringify([...document.querySelectorAll(
+      {str(dialog + ' .discard-preview-paths li')!r})].map(row => row.textContent.trim()).sort())
+      === JSON.stringify({expected}) ? {{ready: true}} : null""", 120)
+    assert outcome == {'ready': True}, f'mixed large discard preview refused: {outcome}'
+    assert {path: digest(path) for path in sizes} == before
+    driver.click_scrolled_text(confirm, 'Discard captured changes', wait_for_ready=True)
+    driver.wait(f"return !!document.querySelector({undo!r})", 120)
+    assert digest(tracked) == index_digest
+    assert all(not (repository / path).exists() for path in sizes if path != tracked)
+    assert_staged_unchanged()
+    driver.click_visible(undo)
+    driver.wait(f"return !!document.querySelector({redo!r})", 120)
+    assert {path: digest(path) for path in sizes} == before
+    assert_staged_unchanged()
+    report['scenarios'].append('native-cti-sized-bulk-discard-restores-index-version-of-tracked-file-and-undo-recovers-edit')
     return repository, repo_id
 
 

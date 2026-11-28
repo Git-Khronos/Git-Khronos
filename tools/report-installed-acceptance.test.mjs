@@ -824,6 +824,7 @@ test('generic nested discard evidence does not substitute for the CTI path regre
     ['discard-subset', 'native-ui-nested-lockfile-discard-preserves-index-and-sibling-edit'],
     ['discard-large', 'native-cti-data-paths-and-sizes-recover-unchanged-after-restart'],
     ['discard-large', 'native-cti-sized-bulk-discard-skips-and-preserves-staged-only-file'],
+    ['discard-large', 'native-cti-sized-bulk-discard-restores-index-version-of-tracked-file-and-undo-recovers-edit'],
   ]) {
     const older = fixtures.map(report => report.suite === suite
       ? { ...report, scenarios: report.scenarios.filter(name => name !== regression) } : report);
