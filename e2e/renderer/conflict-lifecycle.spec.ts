@@ -116,6 +116,19 @@ test('the conflict section distinguishes loaded conflicts from the repository to
   expect(mutations).toEqual([]);
 });
 
+test('filtering out every conflict keeps the conflict total visible', async ({ page }) => {
+  await prepare(page, true);
+  await page.getByRole('button', { name: 'Show conflicted files' }).click();
+  const inspector = page.getByRole('complementary', { name: 'Working directory inspector' });
+  await inspector.getByRole('searchbox', { name: 'Filter changed files' }).fill('no-matching-conflict');
+  await expect(inspector.getByRole('button', { name: 'Conflicted Files (0 of 2)', exact: true })).toBeVisible();
+  await expect(inspector.getByText('No loaded conflicts match the file filter.')).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'Merge Tool' })).toHaveCount(0);
+  await inspector.getByRole('button', { name: 'Clear file filter' }).click();
+  await expect(inspector.getByRole('button', { name: 'Conflicted Files (2)', exact: true })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'Merge Tool' })).toHaveCount(2);
+});
+
 test('an outgoing conflict shortcut cannot open the inspector in another checkout visit', async ({ page }) => {
   await prepare(page, true);
   await page.evaluate(() => (window as any).__conflictLifecycle.app.setPanelVisibility('commit-panel', false));

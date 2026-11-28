@@ -1241,7 +1241,7 @@
               <button type="button" data-file-view-mode="tree" [class.active]="workingTreeViewMode() === 'tree'" [attr.aria-pressed]="workingTreeViewMode() === 'tree'" [attr.tabindex]="workingTreeViewMode() === 'tree' ? 0 : -1" (click)="setWorkingTreeViewMode('tree')"><gk-icon name="folder-git" [size]="11" />Tree</button>
             </div>
           </div>
-          @if (conflictedEntries().length) {
+          @if (repo.status.conflicted && (conflictedEntries().length || fileFilterQuery())) {
             <section class="file-section conflict-section">
               <div class="file-section-title"><button #conflictedSectionHeading class="file-section-toggle" type="button" [attr.aria-expanded]="conflictedFilesOpen()" (click)="conflictedFilesOpen.update(open => !open)"><gk-icon [name]="conflictedFilesOpen() ? 'chevron-down' : 'chevron-right'" [size]="10" />Conflicted Files ({{ conflictedEntries().length < repo.status.conflicted ? conflictedEntries().length + ' of ' : '' }}{{ repo.status.conflicted }})</button></div>
               @if (conflictedFilesOpen()) {
@@ -1253,6 +1253,8 @@
                       <button class="file-name-button path-display" type="button" title="Open Merge Tool for {{ entry.path }}" (click)="openConflictTool(entry.path)"><span class="file-path-prefix">{{ fileDirectory(entry.path) }}</span><strong class="file-path-name">{{ fileName(entry.path) }}</strong></button>
                       <button class="open-merge-tool" type="button" (click)="openConflictTool(entry.path)">Merge Tool</button>
                     </div>
+                  } @empty {
+                    <div class="clean-state">No loaded conflicts match the file filter.</div>
                   }
                 </div>
               }
