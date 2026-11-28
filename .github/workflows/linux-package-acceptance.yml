@@ -153,7 +153,7 @@ jobs:
         if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '24.04' && matrix.lane == 'file-review' }}
         run: >-
           bash tools/run-native-suites.sh --expect-package-sha256 "$PACKAGE_SHA256" "$PACKAGE"
-          discard-large discard-limit submodule-initialize submodule-update stash-selection patch-export
+          discard-large-compact discard-limit submodule-initialize submodule-update stash-selection patch-export
           tracked-file-search file-menu-copy reference-copy feature-rebase comparison-responsiveness merge-rebase-review
       - name: Verify installed workspace and Git workflow reviews (history)
         if: ${{ !cancelled() && steps.package_install.outcome == 'success' && matrix.ubuntu == '24.04' && matrix.lane == 'history-review' }}

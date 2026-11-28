@@ -165,3 +165,9 @@ Redo re-discarded the four paths, then a full app restart left one
 outstanding capture. Recovery from that saved capture restored all four
 original hashes and preserved the staged file, index and HEAD. All seven
 scenarios passed.
+
+Current Ubuntu 24.04 release qualification now requires the installed
+`discard-large-compact` suite in place of `discard-large`, not in addition
+to it. The release report requires both mixed-batch scenarios for the
+same installed package, including recovery after restart. The old suite
+remains runnable for historical packages.

@@ -73,12 +73,14 @@ const UBUNTU_NOBLE_REVIEWS = [
     'native-ui-fresh-single-discard-after-stale-review-can-undo-newer-edit',
     'native-ui-refused-keyboard-discard-returns-focus-and-keeps-files',
   ]],
-  ['discard-large', [
+  ['discard-large-compact', [
     'native-ui-discards-and-recovers-four-large-nested-untracked-files',
     'native-large-discard-capture-survives-restart-and-recovers-exact-bytes',
     'native-cti-data-paths-and-sizes-recover-unchanged-after-restart',
     'native-cti-sized-bulk-discard-skips-and-preserves-staged-only-file',
     'native-cti-sized-bulk-discard-restores-index-version-of-tracked-file-and-undo-recovers-edit',
+    'native-cti-largest-tracked-file-and-untracked-siblings-discard-and-undo',
+    'native-compact-mixed-discard-capture-recovers-exact-bytes-after-restart',
   ]],
   ['discard-limit', [
     'native-oversized-nested-file-gets-size-specific-refusal-without-mutation',

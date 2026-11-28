@@ -129,7 +129,7 @@ const requiredMatrix = {
   'ubuntu:24.04': ['smoke', 'gitlab', 'application-update-consent', 'workspace-batch', 'workspace-pull-upstreams', 'pull-submodule-scope',
     'workspace-saved-removal',
     'workspace-locate', 'workspace-bulk-locate', 'workspace-locate-nearby', 'workspace-reopen',
-    'discard-subset', 'discard-deletion', 'discard-stale-review', 'discard-large', 'discard-limit', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
+    'discard-subset', 'discard-deletion', 'discard-stale-review', 'discard-large-compact', 'discard-limit', 'submodule-initialize', 'submodule-update', 'stash-selection', 'patch-export',
     'tracked-file-search', 'file-menu-copy', 'reference-copy', 'feature-rebase', 'comparison-responsiveness', 'merge-rebase-review', 'commit-rewrite', 'commit-responsiveness', 'file-review-scope', 'repository-creation-scope',
     'first-status', 'working-tree-recaps', 'repository-open-scope', 'detached-checkout', 'checkout-snapshot', 'checkout-responsiveness', 'history-control-responsiveness',
     'local-mutation-responsiveness'],
@@ -274,8 +274,8 @@ test('installed discard needs both actions, exact direct selection, recovery of 
     ['discard-stale-review', 'native-ui-single-discard-refuses-newer-working-edit-without-capture'],
     ['discard-stale-review', 'native-ui-fresh-single-discard-after-stale-review-can-undo-newer-edit'],
     ['discard-stale-review', 'native-ui-refused-keyboard-discard-returns-focus-and-keeps-files'],
-    ['discard-large', 'native-ui-discards-and-recovers-four-large-nested-untracked-files'],
-    ['discard-large', 'native-large-discard-capture-survives-restart-and-recovers-exact-bytes'],
+    ['discard-large-compact', 'native-ui-discards-and-recovers-four-large-nested-untracked-files'],
+    ['discard-large-compact', 'native-large-discard-capture-survives-restart-and-recovers-exact-bytes'],
     ['discard-limit', 'native-oversized-nested-file-gets-size-specific-refusal-without-mutation'],
     ['discard-limit', 'native-oversized-nested-bulk-reviews-and-rechecks-all-blocked-paths-without-mutation'],
     ['discard-limit', 'native-palette-restores-opener-after-canceling-an-all-blocked-discard-review'],
@@ -547,10 +547,10 @@ test('each supported release distribution produces a runnable focused plan witho
       check.distribution.id === id && check.distribution.versionId === versionId
     ).map(({ report, inheritedGitEnvironment = false, ...check }) => ({ ...check, inheritedGitEnvironment })));
   }
-  const selected = run('ubuntu', '24.04', '--suite', 'working-tree-recaps', '--suite', 'discard-large');
+  const selected = run('ubuntu', '24.04', '--suite', 'working-tree-recaps', '--suite', 'discard-large-compact');
   assert.equal(selected.status, 0, selected.stderr);
   assert.deepEqual(parseFocusedAcceptance(JSON.parse(selected.stdout)).map(({ suite }) => suite),
-    ['discard-large', 'working-tree-recaps']);
+    ['discard-large-compact', 'working-tree-recaps']);
   for (const [args, diagnostic] of [
     [['ubuntu', '24.04', '--suite'], /distinct native suite name/],
     [['ubuntu', '24.04', '--suite', 'smoke', '--suite', 'smoke'], /distinct native suite name/],
@@ -822,9 +822,11 @@ test('generic nested discard evidence does not substitute for the CTI path regre
   const fixtures = matrixFixtures();
   for (const [suite, regression] of [
     ['discard-subset', 'native-ui-nested-lockfile-discard-preserves-index-and-sibling-edit'],
-    ['discard-large', 'native-cti-data-paths-and-sizes-recover-unchanged-after-restart'],
-    ['discard-large', 'native-cti-sized-bulk-discard-skips-and-preserves-staged-only-file'],
-    ['discard-large', 'native-cti-sized-bulk-discard-restores-index-version-of-tracked-file-and-undo-recovers-edit'],
+    ['discard-large-compact', 'native-cti-data-paths-and-sizes-recover-unchanged-after-restart'],
+    ['discard-large-compact', 'native-cti-sized-bulk-discard-skips-and-preserves-staged-only-file'],
+    ['discard-large-compact', 'native-cti-sized-bulk-discard-restores-index-version-of-tracked-file-and-undo-recovers-edit'],
+    ['discard-large-compact', 'native-cti-largest-tracked-file-and-untracked-siblings-discard-and-undo'],
+    ['discard-large-compact', 'native-compact-mixed-discard-capture-recovers-exact-bytes-after-restart'],
   ]) {
     const older = fixtures.map(report => report.suite === suite
       ? { ...report, scenarios: report.scenarios.filter(name => name !== regression) } : report);

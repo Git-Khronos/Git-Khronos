@@ -2990,7 +2990,7 @@ focused working-tree check on Ubuntu 24.04:
 
 ```sh
 node tools/report-installed-acceptance.mjs --plan-release-lane ubuntu 24.04 \
-  --suite working-tree-recaps --suite discard-large > noble-working-tree.json
+  --suite working-tree-recaps --suite discard-large-compact > noble-working-tree.json
 ```
 
 With an installer and retained reports, it skips only checks satisfied by a
