@@ -5,7 +5,7 @@ from native_acceptance import open_ui, run
 from native_x509_signing_fixture import configure_x509_signing
 
 
-def _create_tag_through_ui(driver, repository, name, *, message=None, signed=False):
+def _create_tag_through_ui(driver, repository, name, *, message=None, signed=False, submit=True):
     repo_id = open_ui(driver, repository)
     driver.click_visible('[aria-label="Command palette"]')
     driver.wait("return !!document.querySelector('gk-command-palette input[aria-label=\"Search commands\"]')")
@@ -34,9 +34,14 @@ def _create_tag_through_ui(driver, repository, name, *, message=None, signed=Fal
         )
         if signed:
             driver.script("document.querySelector('.tag-creation-dialog input[name=signTag]').click()")
+    if submit:
+        _submit_tag(driver)
+    return repo_id
+
+
+def _submit_tag(driver):
     driver.click_visible(".tag-creation-dialog button.confirm-action")
     driver.wait("return !document.querySelector('.tag-creation-dialog')")
-    return repo_id
 
 
 def _verify_tag(fixtures, repository, target, name, message, signature_marker=None):
@@ -88,7 +93,7 @@ def signed_tag_creation(driver, fixtures, report):
         fixtures.git(repository, "ls-files", "--stage", "-z"),
         fixtures.git(repository, "status", "--porcelain=v1", "-z"),
     )
-    repo_id = _create_tag_through_ui(
+    _create_tag_through_ui(
         driver, repository, "v9.8.7-signed",
         message="Signed release acceptance fixture", signed=True,
     )
@@ -105,9 +110,7 @@ def signed_tag_creation(driver, fixtures, report):
     report["scenarios"].append(
         "native-ui-creates-and-verifies-configured-openpgp-signed-annotated-tag"
     )
-    driver.invoke(
-        "create_tag", repoId=repo_id, name="v9.8.7-lightweight", oid=target, message=None,
-    )
+    _create_tag_through_ui(driver, repository, "v9.8.7-lightweight")
     assert fixtures.git(repository, "cat-file", "-t", "refs/tags/v9.8.7-lightweight") == "commit"
     assert fixtures.git(repository, "rev-parse", "refs/tags/v9.8.7-lightweight") == target
     assert (
@@ -133,29 +136,47 @@ def signed_tag_creation(driver, fixtures, report):
         ("commit.gpgsign", "false"),
     ):
         fixtures.git(ssh_repository, "config", "--local", name, value)
-    ssh_before = (
-        fixtures.git(ssh_repository, "rev-parse", "HEAD"),
-        fixtures.git(ssh_repository, "ls-files", "--stage", "-z"),
-        fixtures.git(ssh_repository, "status", "--porcelain=v1", "-z"),
-    )
-    ssh_repo_id = open_ui(driver, ssh_repository)
-    driver.invoke(
-        "manage_reference", repoId=ssh_repo_id, action="signed-tag",
-        name="v9.8.7-ssh-signed", expectedOid=ssh_target,
-        message="SSH signed release acceptance fixture",
-    )
+    payload = ssh_repository / "tag-signing-payload.txt"
+    payload.write_text("Staged content.\n", encoding="utf-8")
+    fixtures.git(ssh_repository, "add", "--", payload.name)
+    payload.write_text("Staged content.\nUnstaged content.\n", encoding="utf-8")
+
+    def ssh_checkout_state():
+        return (
+            fixtures.git(ssh_repository, "rev-parse", "HEAD"),
+            fixtures.git(ssh_repository, "ls-files", "--stage", "-z"),
+            fixtures.git(ssh_repository, "status", "--porcelain=v1", "-z"),
+            payload.read_bytes(),
+        )
+
+    ssh_before = ssh_checkout_state()
+    ssh_name = "v9.8.7-ssh-signed"
+    ssh_message = "SSH signed release acceptance fixture"
+    missing_key = fixtures.root / "unavailable-tag-signing-key"
+    fixtures.git(ssh_repository, "config", "--local", "user.signingkey", str(missing_key))
+    failure_config = (ssh_repository / ".git/config").read_bytes()
+    refs_before = fixtures.git(ssh_repository, "for-each-ref", "--format=%(refname) %(objectname)")
+    _create_tag_through_ui(driver, ssh_repository, ssh_name, message=ssh_message, signed=True, submit=False)
+    driver.click_visible(".tag-creation-dialog button.confirm-action")
+    driver.wait("""const toast = document.querySelector('gk-error-toast');
+      const submit = document.querySelector('.tag-creation-dialog button.confirm-action');
+      return /sign|private key/i.test(toast?.textContent ?? '') && !!submit && !submit.disabled;""")
+    assert driver.script("""const dialog = document.querySelector('.tag-creation-dialog');
+      return [dialog.elements.tagName.value, dialog.elements.tagMessage.value, dialog.elements.signTag.checked];"""
+                         ) == [ssh_name, ssh_message, True]
+    assert fixtures.git(ssh_repository, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
+    assert ssh_checkout_state() == ssh_before
+    assert (ssh_repository / ".git/config").read_bytes() == failure_config
+    report["scenarios"].append("native-ssh-signing-failure-preserves-tag-review-and-refs")
+    fixtures.git(ssh_repository, "config", "--local", "user.signingkey", str(ssh_key))
+    _submit_tag(driver)
     _verify_tag(
         fixtures, ssh_repository, ssh_target, "v9.8.7-ssh-signed",
         "SSH signed release acceptance fixture", "-----BEGIN SSH SIGNATURE-----",
     )
-    ssh_after = (
-        fixtures.git(ssh_repository, "rev-parse", "HEAD"),
-        fixtures.git(ssh_repository, "ls-files", "--stage", "-z"),
-        fixtures.git(ssh_repository, "status", "--porcelain=v1", "-z"),
-    )
-    assert ssh_after == ssh_before, "Creating an SSH-signed tag changed commit/index/working-tree state"
+    assert ssh_checkout_state() == ssh_before, "Creating an SSH-signed tag changed the checkout"
     report["scenarios"].append(
-        "native-creates-and-verifies-configured-ssh-signed-annotated-tag"
+        "native-ui-creates-and-verifies-configured-ssh-signed-annotated-tag"
     )
 
     x509_repository = fixtures.repository("signed-tag-ui-x509", commits=3)
@@ -166,11 +187,9 @@ def signed_tag_creation(driver, fixtures, report):
         fixtures.git(x509_repository, "ls-files", "--stage", "-z"),
         fixtures.git(x509_repository, "status", "--porcelain=v1", "-z"),
     )
-    x509_repo_id = open_ui(driver, x509_repository)
-    driver.invoke(
-        "manage_reference", repoId=x509_repo_id, action="signed-tag",
-        name="v9.8.7-x509-signed", expectedOid=x509_target,
-        message="X509 signed release acceptance fixture",
+    x509_repo_id = _create_tag_through_ui(
+        driver, x509_repository, "v9.8.7-x509-signed",
+        message="X509 signed release acceptance fixture", signed=True,
     )
     _verify_tag(
         fixtures, x509_repository, x509_target, "v9.8.7-x509-signed",
@@ -183,6 +202,6 @@ def signed_tag_creation(driver, fixtures, report):
     )
     assert x509_after == x509_before, "Creating an X.509-signed tag changed commit/index/working-tree state"
     report["scenarios"].append(
-        "native-creates-and-verifies-configured-x509-signed-annotated-tag"
+        "native-ui-creates-and-verifies-configured-x509-signed-annotated-tag"
     )
     return x509_repository, x509_repo_id

@@ -3935,10 +3935,12 @@ Unix because GnuPG's agent sockets have a platform pathname-length limit.
 The CI checks job installs these tools and runs this target explicitly. Keys
 and trust stores are fixture-local; personal signing material is not used.
 `desktop:native-signed-tag` separately exercises packaged annotated-tag
-creation for lightweight and OpenPGP-signed annotated tags through the UI,
-plus SSH- and X.509-signed annotated tags through native IPC. It verifies all
-three signatures and checks tag objects, peeled targets, and unchanged
-worktree/index state. A signing-tool preflight reports missing `gpg`,
+creation through the UI for lightweight tags and annotated tags signed with
+OpenPGP, SSH, and X.509. It verifies all three signatures and checks tag
+objects, peeled targets, and unchanged worktree/index state. A missing SSH
+key must leave the form open with the requested name, annotation, and signing
+intent intact, without changing refs, staged or unstaged content, or config.
+Restoring the fixture key allows the same review to be submitted successfully. A signing-tool preflight reports missing `gpg`,
 `ssh-keygen`, `gpgsm`, or `openssl` before launching the application.
 `desktop:native-signed-commit` exercises the explicit Sign commit control with
 OpenPGP, SSH, and X.509 test keys. For each format, Git verifies the new
