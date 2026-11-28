@@ -122,6 +122,11 @@ test('signed tag refusal preserves the annotation and opt-in for explicit retry'
   await dialog.getByRole('checkbox', { name: 'Sign this tag with the configured Git key' }).check();
   await dialog.getByRole('button', { name: 'Create Tag', exact: true }).click();
   await expect(page.locator('.error-toast')).toContainText('signing key or tag signature unavailable');
+  await expect(dialog.locator('#tag-creation-error')).toContainText('signing key or tag signature unavailable');
+  await expect(dialog.getByRole('button', { name: 'Create Tag', exact: true }))
+    .toHaveAccessibleDescription(/signing key or tag signature unavailable/);
+  await page.getByRole('button', { name: 'Dismiss error' }).evaluate((button: HTMLButtonElement) => button.click());
+  await expect(dialog.locator('#tag-creation-error')).toBeVisible();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Tag name', { exact: true })).toHaveValue('signed-release');
   await expect(dialog.getByLabel('Tag message', { exact: true })).toHaveValue('Release annotation retained on failure');
@@ -139,6 +144,26 @@ test('signed tag refusal preserves the annotation and opt-in for explicit retry'
     .filter((call: any) => call.command === 'manage_reference'));
   expect(attempts).toHaveLength(2);
   expect(attempts[1].args).toEqual(attempts[0].args);
+});
+
+test('successful tag creation closes its review despite an unrelated error', async ({ page }) => {
+  await page.evaluate(() => {
+    const host = window as any;
+    const app = host.ng.getComponent(document.querySelector('gk-app'));
+    const invoke = host.__TAURI_INTERNALS__.invoke;
+    host.__TAURI_INTERNALS__.invoke = async (command: string, args: unknown) => {
+      const result = await invoke(command, args);
+      if (command === 'create_tag') app.git.error.set('Unrelated background error');
+      return result;
+    };
+  });
+  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Create tag here…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
+  await dialog.getByLabel('Tag name', { exact: true }).fill('new-tag');
+  await dialog.getByRole('button', { name: 'Create Tag', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('.error-toast')).toContainText('Unrelated background error');
 });
 
 test('a stale tag editor cannot dispatch into a newly selected repository', async ({ page }) => {
@@ -220,38 +245,44 @@ test('valid tag and upstream reviews retain their original native command payloa
   ]);
 });
 
-test('a completed tag write cannot close or clear a replacement draft', async ({ page }) => {
-  await page.evaluate(() => {
-    const host = window as any;
-    const invoke = host.__TAURI_INTERNALS__.invoke;
-    host.__TAURI_INTERNALS__.invoke = (command: string, args: any) => command === 'manage_reference'
-      ? new Promise(resolve => { host.__finishOwnedTag = () => invoke(command, args).then(resolve); })
-      : invoke(command, args);
+for (const outcome of ['successful', 'failed'] as const) {
+  test(`a ${outcome} tag write cannot close, clear or report into a replacement draft`, async ({ page }) => {
+    await page.evaluate((outcome) => {
+      const host = window as any;
+      const invoke = host.__TAURI_INTERNALS__.invoke;
+      host.__referenceSigningError = outcome === 'failed';
+      host.__TAURI_INTERNALS__.invoke = (command: string, args: any) => command === 'manage_reference'
+        ? new Promise((resolve, reject) => {
+          host.__finishOwnedTag = () => invoke(command, args).then(resolve, reject);
+        })
+        : invoke(command, args);
+    }, outcome);
+    await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Create tag here…' }).click();
+    let dialog = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
+    await dialog.getByLabel('Tag name', { exact: true }).fill('first-tag');
+    await dialog.getByRole('radio', { name: /Annotated/ }).check();
+    await dialog.getByLabel('Tag message', { exact: true }).fill('First annotation');
+    await dialog.getByRole('checkbox', { name: 'Sign this tag with the configured Git key' }).check();
+    await dialog.getByRole('button', { name: 'Create Tag', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => typeof (window as any).__finishOwnedTag)).toBe('function');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.evaluate(() => {
+      const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
+      app.showTagCreator(app.git.repository().headOid, 'replacement review');
+      app.contextTagName.set('keep-this-new-draft');
+    });
+    dialog = page.getByRole('dialog', { name: 'Create tag at replacement review' });
+    await expect(dialog).toBeVisible();
+    await page.evaluate(() => (window as any).__finishOwnedTag());
+    await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
+    await expect(dialog.getByLabel('Tag name', { exact: true })).toHaveValue('keep-this-new-draft');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('#tag-creation-error')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__referenceCalls
+      .filter((entry: any) => entry.command === 'manage_reference'))).toHaveLength(1);
   });
-  await page.getByRole('button', { name: 'Tag v0.1.0', exact: true }).first().click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Create tag here…' }).click();
-  let dialog = page.getByRole('dialog', { name: 'Create tag at v0.1.0' });
-  await dialog.getByLabel('Tag name', { exact: true }).fill('first-tag');
-  await dialog.getByRole('radio', { name: /Annotated/ }).check();
-  await dialog.getByLabel('Tag message', { exact: true }).fill('First annotation');
-  await dialog.getByRole('checkbox', { name: 'Sign this tag with the configured Git key' }).check();
-  await dialog.getByRole('button', { name: 'Create Tag', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => typeof (window as any).__finishOwnedTag)).toBe('function');
-  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.evaluate(() => {
-    const app = (window as any).ng.getComponent(document.querySelector('gk-app'));
-    app.showTagCreator(app.git.repository().headOid, 'replacement review');
-    app.contextTagName.set('keep-this-new-draft');
-  });
-  dialog = page.getByRole('dialog', { name: 'Create tag at replacement review' });
-  await expect(dialog).toBeVisible();
-  await page.evaluate(() => (window as any).__finishOwnedTag());
-  await expect.poll(() => page.evaluate(() => (window as any).ng.getComponent(document.querySelector('gk-app')).git.busy())).toBe(false);
-  await expect(dialog.getByLabel('Tag name', { exact: true })).toHaveValue('keep-this-new-draft');
-  await expect(dialog).toBeVisible();
-  expect(await page.evaluate(() => (window as any).__referenceCalls
-    .filter((entry: any) => entry.command === 'manage_reference'))).toHaveLength(1);
-});
+}
 
 for (const mode of ['hold', 'fail'] as const) {
   test(`reference editor preserves a keyboard escape when its chunk ${mode === 'hold' ? 'loads late' : 'fails'}`, async ({ page }) => {

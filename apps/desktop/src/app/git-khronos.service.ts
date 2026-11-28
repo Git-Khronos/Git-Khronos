@@ -2683,13 +2683,15 @@ export class GitKhronosService implements OnDestroy {
     ) === 'success';
   }
 
-  async createTag(name: string, oid: string, message: string | null = null): Promise<void> {
-    if (!name.trim()) return;
-    await this.mutate('create_tag', `Creating tag ${name}…`, `Created tag ${name}`, {
-      name: name.trim(),
-      oid,
-      message: message?.trim() || null,
-    });
+  async createTag(name: string, oid: string, message: string | null, signed: boolean): Promise<MutationResult | null> {
+    name = name.trim();
+    message = message?.trim() || null;
+    if (!name || (signed && !message)) return null;
+    return signed && message
+      ? this.mutateWithResult('manage_reference', `Signing tag ${name}…`, `Created signed tag ${name}`,
+        { action: 'signed-tag', name, expectedOid: oid, message })
+      : this.mutateWithResult('create_tag', `Creating tag ${name}…`, `Created tag ${name}`,
+        { name, oid, message });
   }
 
   async cherryPick(oids: string[], mainline: number | null = null, noCommit = false): Promise<void> {
@@ -3605,6 +3607,7 @@ export class GitKhronosService implements OnDestroy {
     let recoveryRefreshError: string | null = null;
     let failureKind: string | null = null;
     let ignoreFailure: string | null = null;
+    const reported: { failure: string | null } = { failure: null };
     let responseHeadOid: string | null = null;
     let preparedMerge = false;
     let fetchRecoveryGeneration: number | null = null;
@@ -3690,8 +3693,11 @@ export class GitKhronosService implements OnDestroy {
         }
         report(preparedMerge ? `${PREPARED_MERGE_LABEL} · ${this.pathLabel(repo.path)}`
           : typeof done === 'function' ? done(snapshot, checkoutOutcome) : done);
-      }, repo.id, operationId, true, true, { announceFailure: () => !expectedBranchRefusal() });
-      let failure = result === 'success' ? null : command === 'ignore_path' ? ignoreFailure ?? this.error() : this.error();
+      }, repo.id, operationId, true, true, {
+        announceFailure: () => !expectedBranchRefusal(),
+        captureFailure: detail => { reported.failure = detail; },
+      });
+      let failure = result === 'success' ? null : ignoreFailure ?? reported.failure;
       if (result === 'error' && ownsRepository()) {
         try {
           if (this.historyLoadsInFlight.size) await Promise.all(this.historyLoadsInFlight);
@@ -3944,7 +3950,10 @@ export class GitKhronosService implements OnDestroy {
     operationId: string | null = null,
     refreshOnCancel = true,
     changesHistory = true,
-    { announceFailure = true }: { announceFailure?: boolean | (() => boolean) } = {},
+    { announceFailure = true, captureFailure }: {
+      announceFailure?: boolean | (() => boolean);
+      captureFailure?: (detail: string) => void;
+    } = {},
   ): Promise<'success' | 'error' | 'cancelled'> {
     const id = this.nextActivityId++;
     const startedAt = Date.now();
@@ -3990,13 +3999,19 @@ export class GitKhronosService implements OnDestroy {
           this.activity.set('Operation canceled; repository state refreshed');
         } catch (refreshError: unknown) {
           detail += ` Repository refresh also failed: ${this.formatError(refreshError)}`;
-          if (shouldAnnounceFailure) this.error.set(detail);
+          if (shouldAnnounceFailure) {
+            captureFailure?.(detail);
+            this.error.set(detail);
+          }
           this.activity.set('Operation canceled; repository refresh failed');
         } finally {
           finishRecoveryBarrier?.();
         }
       } else {
-        if (shouldAnnounceFailure) this.error.set(detail);
+        if (shouldAnnounceFailure) {
+          captureFailure?.(detail);
+          this.error.set(detail);
+        }
         this.activity.set(cancelled ? 'Operation canceled' : 'Operation failed');
       }
       const status = cancelled ? 'cancelled' : 'error';

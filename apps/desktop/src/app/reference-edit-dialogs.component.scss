@@ -21,6 +21,7 @@
 .tag-kind-options span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .tag-kind-options strong { font-size: 12px; }
 .tag-kind-options small { color: #858497; font-size: 12px; line-height: 1.3; }
+.confirmation-copy .tag-creation-error { margin-top: 8px; color: var(--danger); overflow-wrap: anywhere; }
 .tag-creation-dialog code { color: #c1bfd2; font-size: 12px; }
 .upstream-dialog footer > span { flex: 1; }
 .confirmation-dialog { max-height: calc(100dvh - 36px); overflow: auto; }

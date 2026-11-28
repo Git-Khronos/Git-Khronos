@@ -1380,6 +1380,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly contextBranchError = signal<string | null>(null);
   private contextMenuGeneration = 0;
   protected readonly contextTagName = signal('');
+  private readonly tagCreationError = signal<string | null>(null);
   protected readonly pendingTagTarget = signal<{
     oid: string; label: string; repositoryId: string; repositoryPath: string; returnFocus: HTMLElement | null;
   } | null>(null);
@@ -1425,7 +1426,7 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly branchUpstreamChoice = signal('');
   protected readonly tagCreationView = computed(() => ({
     target: this.pendingTagTarget()!, name: this.contextTagName, kind: this.tagCreationKind,
-    message: this.tagCreationMessage, signed: this.signNewTag, busy: this.git.busy,
+    message: this.tagCreationMessage, signed: this.signNewTag, busy: this.git.busy, error: this.tagCreationError,
     shortOid: this.shortOid.bind(this), submit: this.submitTagCreation.bind(this),
     close: () => this.closeReferenceEditor('tag'),
     key: (event: KeyboardEvent) => this.handleReferenceEditorKey(event, 'tag'),
@@ -13237,6 +13238,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private showTagCreator(oid: string, label: string): void {
     const repository = this.git.repository();
     if (!repository) return;
+    this.tagCreationError.set(null);
     this.contextTagName.set('');
     this.signNewTag.set(false);
     this.tagCreationKind.set('lightweight');
@@ -13250,9 +13252,12 @@ export class AppComponent implements OnInit, OnDestroy {
     const name = this.contextTagName().trim();
     const message = this.tagCreationKind() === 'annotated' ? this.tagCreationMessage().trim() : null;
     if (!target || !this.ownsRepositoryScope(target) || !name || (this.tagCreationKind() === 'annotated' && !message) || this.git.busy()) return;
-    if (this.signNewTag() && message) await this.git.manageReference('signed-tag', name, { expectedOid: target.oid, message });
-    else await this.git.createTag(name, target.oid, message);
-    if (this.pendingTagTarget() === target && this.ownsRepositoryScope(target) && !this.git.error()) {
+    this.tagCreationError.set(null);
+    const result = await this.git.createTag(name, target.oid, message, message !== null && this.signNewTag());
+    if (this.pendingTagTarget() !== target || !this.ownsRepositoryScope(target)) return;
+    if (result?.status !== 'success') {
+      this.tagCreationError.set(result?.error ?? 'Tag creation did not complete. Refresh the repository before retrying.');
+    } else {
       this.pendingTagTarget.set(null);
       this.contextTagName.set('');
       this.tagCreationMessage.set('');

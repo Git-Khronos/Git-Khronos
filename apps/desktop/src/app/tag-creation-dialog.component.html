@@ -15,7 +15,10 @@
             <label class="tag-name-field">Tag message<textarea name="tagMessage" [disabled]="model.busy()" rows="3" placeholder="Release notes" [gkTextValue]="model.message()" (gkTextValueChange)="model.message.set($event)"></textarea></label>
             <label><input type="checkbox" [disabled]="model.busy()" name="signTag" [checked]="model.signed()" (change)="model.signed.set($any($event.target).checked)" /> Sign this tag with the configured Git key</label>
           }
+          @if (model.error(); as error) {
+            <p id="tag-creation-error" class="tag-creation-error">{{ error }}</p>
+          }
         </div>
-        <footer><button type="button" (click)="model.close()">Cancel</button><button class="confirm-action" type="submit" [disabled]="!model.name().trim() || (model.kind() === 'annotated' && !model.message().trim()) || model.busy()">Create Tag</button></footer>
+        <footer><button type="button" (click)="model.close()">Cancel</button><button class="confirm-action" type="submit" [attr.aria-describedby]="model.error() ? 'tag-creation-error' : null" [disabled]="!model.name().trim() || (model.kind() === 'annotated' && !model.message().trim()) || model.busy()">Create Tag</button></footer>
       </form>
     </div>
