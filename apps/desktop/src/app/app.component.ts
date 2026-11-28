@@ -11561,13 +11561,17 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.git.changesLoading()) return;
     const scope = this.git.activeRepositoryReadScope();
     const ownedFocus = document.activeElement === button;
+    const lookingForConflicts = !this.fileFilterQuery()
+      && !!this.git.repository()?.status.conflicted && !this.conflictedEntries().length;
     await this.git.loadMoreChanges();
     if (ownedFocus && !this.git.repository()?.status.entriesTruncated) {
       // Focus depends on Angular removing the pager, not on a compositor frame.
       afterNextRender(() => {
         if (this.git.activeRepositoryReadScope() === scope
           && !button.isConnected && document.activeElement === document.body) {
-          this.workingTreeFilterInput()?.nativeElement.focus({ preventScroll: true });
+          const conflicts = lookingForConflicts ? this.conflictedSectionHeading()?.nativeElement : null;
+          if (conflicts) conflicts.focus();
+          else this.workingTreeFilterInput()?.nativeElement.focus({ preventScroll: true });
         }
       }, { injector: this.injector });
     }

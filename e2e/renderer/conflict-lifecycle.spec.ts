@@ -74,18 +74,20 @@ test('the compact conflict shortcut focuses pagination when Git has more conflic
   await page.evaluate(() => {
     const { app, git } = (window as any).__conflictLifecycle;
     git.repositories.update((repos: any[]) => repos.map(repo => repo.id !== git.activeRepositoryId() ? repo : {
-      ...repo, status: { ...repo.status, entries: [], entriesTruncated: true, conflicted: 1, entryCount: 1001 },
+      ...repo, status: { ...repo.status, entries: [], entriesTruncated: true, conflicted: 2, entryCount: 1001 },
     }));
     app.setPanelVisibility('commit-panel', false);
   });
   const nav = page.getByRole('group', { name: 'Conflict navigation' });
-  await expect(nav.getByRole('status')).toHaveText('1 file needs conflict resolution');
+  await expect(nav.getByRole('status')).toHaveText('2 files need conflict resolution');
   await nav.getByRole('button', { name: 'Show conflicted files' }).click();
   const inspector = page.getByRole('complementary', { name: 'Working directory inspector' });
   await expect(inspector).toContainText('Conflicted files are outside the loaded list');
   await expect(inspector.getByRole('button', { name: /Show 1,000 more files/ })).toBeFocused();
   expect(await page.evaluate(() => (window as any).__conflictLifecycle.calls.some((call: any) =>
     call.command === 'load_more_changes'))).toBe(false);
+  await inspector.getByRole('button', { name: /Show 1,000 more files/ }).press('Enter');
+  await expect(inspector.getByRole('button', { name: 'Conflicted Files (2)', exact: true })).toBeFocused();
 });
 
 test('the conflict section distinguishes loaded conflicts from the repository total', async ({ page }) => {
