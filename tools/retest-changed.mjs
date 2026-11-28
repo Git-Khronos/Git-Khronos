@@ -91,7 +91,7 @@ const packagedScenarios = new Map([
 ]);
 const debianWorkflowSources = new Set([
   'tools/build-linux-package.sh', 'tools/manage-linux-package.sh',
-  'tools/finish-linux-package-cache.mjs', 'tools/package-build-receipt.mjs',
+  'tools/package-build-receipt.mjs',
   'tools/check-linux-package-watcher.mjs',
   '.github/workflows/linux-package-acceptance.yml',
   '.github/workflows/release.yml',
@@ -103,6 +103,7 @@ const releaseEvidenceSpecs = [
   'tools/package-deb.test.mjs',
 ];
 const packageSourceTests = new Map([
+  ['tools/finish-linux-package-cache.mjs', 'tools/finish-linux-package-cache.test.mjs'],
   ['tools/run-focused-installed-acceptance.mjs', 'tools/run-focused-installed-acceptance.test.mjs'],
   ['tools/verify-signed-debian-installer.sh', 'tools/package-deb.test.mjs'],
   ['tools/sign-qualified-debian.sh', 'tools/package-deb.test.mjs'],

@@ -42,6 +42,18 @@ test('renderer budget tooling changes verify emitted production assets without r
   assert.match(f.run(), /desktop:check/, 'do not select a narrow plan without its test');
 });
 
+test('build storage checks select only the dedicated storage fixture', t => {
+  const f = fixture(t);
+  f.write('tools/finish-linux-package-cache.mjs');
+  f.write('tools/finish-linux-package-cache.test.mjs');
+  f.write('tools/package-deb.test.mjs');
+  f.commit();
+  f.write('tools/finish-linux-package-cache.mjs', 'updated');
+  const plan = f.run();
+  assert.match(plan, /"desktop:package-test:focused".*"tools\/finish-linux-package-cache\.test\.mjs"/);
+  assert.doesNotMatch(plan, /package-deb\.test\.mjs|desktop:check|desktop:e2e/);
+});
+
 test('installed acceptance evidence changes cover the reporter and its consumers', t => {
   const f = fixture(t);
   for (const spec of ['report-installed-acceptance', 'run-focused-installed-acceptance', 'package-deb']) {
