@@ -159,3 +159,9 @@ the 55,277,605-byte tracked fixture to its index contents and removed the
 untracked siblings. Undo restored all four working hashes; the staged-only
 file, index entries, and HEAD remained unchanged. The restart scenario
 in this run covers the separate all-untracked batch, not the mixed batch.
+
+A second run pinned to the same archive SHA-256 extended the mixed case:
+Redo re-discarded the four paths, then a full app restart left one
+outstanding capture. Recovery from that saved capture restored all four
+original hashes and preserved the staged file, index and HEAD. All seven
+scenarios passed.

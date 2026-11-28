@@ -591,6 +591,26 @@ def discard_large_untracked_batch(driver, fixtures, report, *, compact=False):
         report['largeDiscardTrackedPath'] = tracked
         report['largeDiscardTrackedBytes'] = sizes[tracked]
         report['scenarios'].append('native-cti-largest-tracked-file-and-untracked-siblings-discard-and-undo')
+
+        driver.click_visible(redo)
+        driver.wait(f"return !!document.querySelector({undo!r})", 120)
+        assert digest(tracked) == index_digest
+        assert all(not (repository / path).exists() for path in sizes if path != tracked)
+        assert_staged_unchanged()
+
+        driver.restart_application()
+        repo_id = open_ui(driver, repository)
+        captures = driver.invoke('load_discard_recoveries', repoId=repo_id)
+        outstanding = [capture for capture in captures if not capture['restored']]
+        assert len(outstanding) == 1, captures
+        capture = outstanding[0]
+        assert sorted(capture['paths']) == sorted(sizes), capture
+        assert not capture['pathsError'] and capture['contentSha256'], capture
+        driver.invoke('apply_saved_discard', repoId=repo_id, id=capture['id'], reverse=False,
+                      expectedSha256=capture['contentSha256'])
+        assert {path: digest(path) for path in sizes} == before
+        assert_staged_unchanged()
+        report['scenarios'].append('native-compact-mixed-discard-capture-recovers-exact-bytes-after-restart')
     return repository, repo_id
 
 
