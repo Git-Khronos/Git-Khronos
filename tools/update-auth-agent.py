@@ -45,7 +45,7 @@ def app_identity(process, executable, uid):
 
 def run_agent(identity):
     """Wait for polkit registration before suggesting a retry."""
-    pid, _ = identity.split(",", 1)
+    pid, start = identity.split(",", 1)
     process = Path("/proc") / pid
     reader, writer = os.pipe()
     child = None
@@ -62,14 +62,19 @@ def run_agent(identity):
         if os.read(reader, 1) or child.poll() is not None:
             print("The system authentication agent did not stay running.", file=sys.stderr)
             return 1
-        print("Keep this terminal open, then retry Install verified update in Git Khronos. "
-              "Enter credentials only at the system prompt. Stop the agent with Ctrl+C when finished.",
-              flush=True)
+        announced = False
         while True:
-            if app_identity(process, APP, os.getuid()) != identity:
+            # A successful dpkg run can replace the executable before this process
+            # exits. The original process still has the same kernel start token.
+            if process_start(process) != start:
                 print("Git Khronos exited or restarted. Run this task again for the new app process.",
                       file=sys.stderr)
                 return 1
+            if not announced:
+                print("Keep this terminal open, then retry Install verified update in Git Khronos. "
+                      "Enter credentials only at the system prompt. Stop the agent with Ctrl+C when finished.",
+                      flush=True)
+                announced = True
             try:
                 return child.wait(timeout=1)
             except subprocess.TimeoutExpired:
