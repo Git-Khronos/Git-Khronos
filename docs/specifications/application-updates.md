@@ -1,8 +1,13 @@
 # Application updates
 
-Status: the manual and opt-in controls are implemented. Local publisher-key
-builds and signed test assets exist; the public update feed and end-to-end
-privileged installation are not yet qualified.
+Status: [0.1.8](https://github.com/Git-Khronos/Git-Khronos/releases/tag/v0.1.8)
+is a published, publisher-signed Debian release. The public feed and
+app-driven WSL installation were exercised end to end in a disposable
+Ubuntu 24.04 rehearsal using a development 0.1.7 build with the new
+authorization transport. This does not qualify an official 0.1.8-to-next
+upgrade or every Linux desktop configuration. See the
+[published 0.1.8 and app-driven WSL rehearsal](#published-018-and-app-driven-wsl-rehearsal)
+for the exact builds and scope.
 
 ## User-facing requirements
 
@@ -596,7 +601,8 @@ executable and verifies that the helper refuses before it receives any
 package path or starts authorization.
 
 A separately registered [polkit terminal agent](https://manpages.ubuntu.com/manpages/resolute/man1/pkttyagent.1.html)
-is an option for a terminal-based session. On Linux, run
+is a troubleshooting option for a terminal-based session, not a required
+step for supported WSL installs. On Linux, run
 `task updates:authorize` from an interactive terminal and keep it open.
 Wait for the task to say the agent is ready, then retry in the installed app.
 The task registers a process-scoped agent without `--fallback`: a fallback
