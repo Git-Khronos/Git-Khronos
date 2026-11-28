@@ -168,8 +168,8 @@ def abort_apply_rebase_preserves_ignored_settings(driver, fixtures, report):
     report['scenarios'].append('native-abort-apply-rebase-preserves-ignored-autostash-file')
 
 
-def recovery_reset_preserves_ignored_files(driver, fixtures, report):
-    for mode in ('rebase-merge', 'rebase-apply', 'merge-abort'):
+def recovery_reset_preserves_ignored_files(driver, fixtures, report, *, modes=('rebase-merge', 'rebase-apply', 'merge-abort')):
+    for mode in modes:
         repository = fixtures.repository(f'owned-recovery-reset-{mode}', commits=2)
         work_file = repository / 'fixture.txt'
         saved_copy = repository / 'saved-fixture.txt'
@@ -212,7 +212,7 @@ def recovery_reset_preserves_ignored_files(driver, fixtures, report):
             assert not staged.exists()
             staged.write_text('Only copy of later ignored text.\n')
             assert fixtures.git(repository, 'check-ignore', '--', staged.name) == staged.name
-        open_ui(driver, repository)
+        repo_id = open_ui(driver, repository)
         driver.wait(f'return !!document.querySelector({json.dumps(progress)})')
 
         def refuse(blocked, files):
@@ -253,6 +253,7 @@ def recovery_reset_preserves_ignored_files(driver, fixtures, report):
         else:
             scenario = f'native-skip-{mode}-preserves-ignored-reset-file'
         report['scenarios'].append(scenario)
+    return repository, repo_id
 
 
 def mail_recovery_preserves_ignored_files(driver, fixtures, report):

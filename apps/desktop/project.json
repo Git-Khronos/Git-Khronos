@@ -127,6 +127,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite empty-commit --headless" }
     },
+    "native-merge-abort": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite merge-abort --headless" }
+    },
     "native-merge-preview": {
       "executor": "nx:run-commands",
       "cache": false,

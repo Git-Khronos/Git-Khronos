@@ -1433,7 +1433,7 @@ def main():
         "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "merge-rebase-review", "discard-subset", "discard-busy", "discard-deletion", "discard-stale-review", "discard-large", "discard-large-compact", "discard-limit", "submodule-initialize", "submodule-update", "sparse-checkout",
         "stash-review", "stash-selection", "stash-clear", "autosquash-amend", "signed-tag", "signed-commit", "empty-commit", "lfs-lock-actions", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection", "diff-rendering",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
-        "repository-open-scope", "detached-checkout", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "checkout-responsiveness", "worktree-reservation",
+        "repository-open-scope", "detached-checkout", "merge-abort", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "checkout-responsiveness", "worktree-reservation",
         "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "hosted-fork-remote", "comparison-responsiveness", "stash-responsiveness", "file-history", "file-history-search-copy", "file-menu-copy",
         "commit-responsiveness", "history-control-responsiveness", "local-mutation-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
     )
@@ -1971,6 +1971,10 @@ def main():
             elif args.suite == "working-tree-recaps":
                 from native_unstaged_summary_scenarios import unstaged_summary_workflow
                 repository, repo_id = unstaged_summary_workflow(driver, fixtures, report)
+            elif args.suite == "merge-abort":
+                from native_detached_checkout_scenarios import recovery_reset_preserves_ignored_files
+                repository, repo_id = recovery_reset_preserves_ignored_files(
+                    driver, fixtures, report, modes=("merge-abort",))
             elif args.suite == "detached-checkout":
                 from native_detached_checkout_scenarios import reviewed_detached_checkout
                 repository, repo_id = reviewed_detached_checkout(driver, fixtures, report)
