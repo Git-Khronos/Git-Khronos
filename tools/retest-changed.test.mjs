@@ -742,6 +742,22 @@ test('rebase fixture edits select both packaged rebase reviews without a browser
   assert.doesNotMatch(plan, /--installed|desktop:native-full|desktop:e2e/);
 });
 
+test('native conflict navigation edits select real packaged merge coverage', t => {
+  const f = fixture(t);
+  f.write('.gitignore', 'candidate.deb\n');
+  f.commit();
+  f.write('candidate.deb');
+  f.write('tools/native_conflict_navigation_scenarios.py');
+  const plan = f.run('--native-package', 'candidate.deb');
+  assert.match(plan, /"desktop:native-conflict-navigation".*"--expect-package-sha256"/);
+  assert.doesNotMatch(plan, /desktop:e2e|desktop:check|native-full/);
+
+  f.write('tools/native_tracked_file_search_scenarios.py');
+  const both = f.run('--native-package', 'candidate.deb');
+  assert.match(both, /"desktop:native-file-history"/);
+  assert.match(both, /"desktop:native-file-history-search-copy"/);
+});
+
 test('an invalid native archive fails before scheduling checks', t => {
   const f = fixture(t);
   f.write('tools/native_sparse_checkout_scenarios.py');
