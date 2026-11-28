@@ -3685,8 +3685,9 @@ Recognized renderer components select their profile. Changed browser and
 renderer unit specs run directly unless already covered. With
 `--batch-renderer`, compatible Playwright path selections share one server
 startup; profiles with their own flags or environment and broad plans are
-not merged. Use `--renderer-grep` for a single test-title pattern when the
-focused plan has one browser invocation. It leaves selected non-browser
+not merged. Use `--renderer-grep` for a single test-title pattern. It
+automatically shares one browser invocation across compatible paths, and
+refuses plans requiring multiple incompatible invocations. It leaves selected non-browser
 checks unchanged and does not replace the full profile before release.
 Native harness edits
 select the harness unit tests, and edits to registered package-tooling specs

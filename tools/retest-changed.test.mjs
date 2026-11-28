@@ -416,8 +416,12 @@ test('a renderer title filter narrows only a single focused browser invocation',
   assert.doesNotMatch(plan, /GIT_KHRONOS_RENDERER_TITLE_PATTERN=.*"desktop:owned-process-test"/);
   assert.throws(() => f.run('--renderer-grep', '['), /non-empty regular expression/);
   f.write('apps/desktop/src/app/worktree-lock-dialog.component.ts');
+  const autoBatched = f.run('--renderer-grep', 'verified update');
+  assert.equal([...autoBatched.matchAll(/"desktop:e2e"/g)].length, 1);
+  assert.match(autoBatched, /GIT_KHRONOS_RENDERER_TITLE_PATTERN='verified update' pnpm nx run "desktop:e2e"/);
+  assert.match(autoBatched, /application-updates\[\.\]spec/);
+  f.write('apps/desktop/src/app/graph-viewport.component.ts');
   assert.throws(() => f.run('--renderer-grep', 'verified update'), /one focused browser run/);
-  assert.match(f.run('--renderer-grep', 'verified update', '--batch-renderer'), /GIT_KHRONOS_RENDERER_TITLE_PATTERN='verified update' pnpm nx run "desktop:e2e"/);
   f.write('apps/desktop/src/app/app.component.ts');
   assert.throws(() => f.run('--renderer-grep', 'verified update', '--allow-full'), /one focused browser run/);
 });

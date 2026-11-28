@@ -145,7 +145,7 @@ Use --staged to select only changes in the index relative to the base.
 Tests still run against your working files, not an isolated staged snapshot.
 Use --workers to override the browser worker count and --webkit to select WebKit.
 Use --batch-renderer to share one browser server across plain profile filters.
-Use --renderer-grep for a title filter when the focused plan has one browser run; other checks are unchanged.
+Use --renderer-grep for a title filter. Compatible browser profiles share one run; other checks are unchanged.
 Use --native-package to include mapped native scenario suites with an explicit Debian archive.
 Packaged suites pin the selected archive checksum. Use --native-package-sha256 to require a previously reviewed checksum.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
@@ -357,7 +357,7 @@ const selectedProfiles = [...selected].sort();
 const patterns = broad ? [] : filtersFor(selectedProfiles);
 const directSpecs = [...specs].filter(path => !patterns.some(({ filter }) => filter.test(path)));
 const unbatched = selectedProfiles.filter(profile => !plainProfilePattern(profile));
-const canBatchRenderer = !broad && values['batch-renderer']
+const canBatchRenderer = !broad && (values['batch-renderer'] || values['renderer-grep'] !== undefined)
   && targets().e2e?.executor === 'nx:run-commands'
   && targets().e2e.options?.command === 'playwright test'
   && Object.keys(targets().e2e.options).length === 1
@@ -412,7 +412,7 @@ const rendererGrep = values['renderer-grep'];
 const rendererGrepEnv = 'GIT_KHRONOS_RENDERER_TITLE_PATTERN';
 if (rendererGrep !== undefined) {
   if (broad || browserCommands.length !== 1) {
-    console.error('--renderer-grep requires one focused browser run. Try --batch-renderer if multiple plain profiles were selected.');
+    console.error('--renderer-grep requires one focused browser run. Profiles with differing flags cannot share a title-filtered run.');
     process.exit(2);
   }
   try {
