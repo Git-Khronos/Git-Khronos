@@ -456,7 +456,7 @@ class PackageIdentityTests(unittest.TestCase):
                       return_value=("2.3.4", "Git-Khronos_2.3.4_amd64.deb")) as package, \
                 patch("native_acceptance.Driver") as driver, patch("builtins.print") as output:
             self.assertIsNone(main())
-        package.assert_called_once_with()
+        package.assert_called_once_with(None)
         driver.assert_not_called()
         description = json.loads(output.call_args.args[0])
         self.assertIn("branch-workflow-recovery", description["suites"])
@@ -546,6 +546,25 @@ class PackageIdentityTests(unittest.TestCase):
             self.assertFalse(report["passed"])
             self.assertIn(f"('0.0.0', '{version}')", report["failure"])
             self.assertEqual(report["failurePhase"], "package-preflight")
+
+    def test_release_version_override_requires_pinned_extracted_updater_run(self):
+        package_args = ["--package", "Git-Khronos_0.1.6_amd64.deb"]
+        pinned_args = package_args + ["--expect-package-sha256", "a" * 64]
+        updater_args = ["--suite", "application-updates"]
+        for extra_args, version in (
+            (pinned_args, "0.1.6"),
+            (updater_args + package_args, "0.1.6"),
+            (updater_args + pinned_args + ["--installed"], "0.1.6"),
+            (updater_args + pinned_args + ["--describe-runner"], "0.1.6"),
+            (updater_args + pinned_args, "0.01.6"),
+        ):
+            with self.subTest(extra_args=extra_args, version=version), \
+                    patch("sys.argv", ["native_acceptance", "--expect-package-version", version, *extra_args]), \
+                    patch("sys.stderr"), patch("native_acceptance.Driver") as driver, \
+                    self.assertRaises(SystemExit) as result:
+                main()
+            self.assertEqual(result.exception.code, 2)
+            driver.assert_not_called()
 
     def test_wrong_reviewed_checksum_is_reported_without_extraction_or_launch(self):
         with tempfile.TemporaryDirectory() as directory:

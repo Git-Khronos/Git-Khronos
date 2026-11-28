@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import platform
 import pwd
+import re
 import select
 import secrets
 import signal
@@ -47,8 +48,9 @@ def linux_distribution():
     return {"id": identifier, "versionId": release.get("VERSION_ID")} if identifier else None
 
 
-def expected_debian_package():
-    version = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())["version"]
+def expected_debian_package(version=None):
+    if version is None:
+        version = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())["version"]
     if not isinstance(version, str) or not version:
         raise ValueError("The Tauri package version must be a nonempty string")
     return version, f"Git-Khronos_{version}_amd64.deb"
@@ -1440,6 +1442,8 @@ def main():
     parser.add_argument("--package", type=Path)
     parser.add_argument("--expect-package-sha256", metavar="SHA256",
                         help="Refuse to extract or launch unless the explicit archive matches this SHA-256")
+    parser.add_argument("--expect-package-version", metavar="VERSION",
+                        help="Check a specific release instead of the checkout version (extracted application-updates only)")
     parser.add_argument("--suite", choices=suites, default="smoke")
     parser.add_argument("--describe-runner", action="store_true",
                         help="Print the local distribution and suite capabilities as JSON without running a test")
@@ -1461,11 +1465,19 @@ def main():
         ):
             parser.error("--expect-package-sha256 requires exactly 64 hexadecimal characters")
         expected_package_sha256 = expected_package_sha256.lower()
+    expected_version = getattr(args, "expect_package_version", None)
+    if expected_version is not None:
+        if not re.fullmatch(r"(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}", expected_version):
+            parser.error("--expect-package-version requires a stable x.y.z version")
+        if (args.suite != "application-updates" or args.installed or args.describe_runner
+                or args.package is None or expected_package_sha256 is None):
+            parser.error("--expect-package-version requires an extracted application-updates run with "
+                         "--package and --expect-package-sha256")
     delegate_file_tools = getattr(args, "delegate_file_tools", False)
     if delegate_file_tools and (args.suite != "full" or not args.headless or args.installed
                                 or args.inherited_git_environment or args.describe_runner):
         parser.error("--delegate-file-tools requires --suite full --headless on an extracted package")
-    version, expected_package_name = expected_debian_package()
+    version, expected_package_name = expected_debian_package(expected_version)
     if args.describe_runner:
         print(json.dumps({"distribution": linux_distribution(), "suites": suites,
                           "forcedInheritedGitEnvironment": forced_inherited,
@@ -1560,6 +1572,7 @@ def main():
         assert run("dpkg-deb", "-f", str(staged_package), "Architecture") == "amd64"
         actual_version = run("dpkg-deb", "-f", str(staged_package), "Version")
         assert actual_version == version, (actual_version, version)
+        report["packageVersion"] = actual_version
         report["package"] = str(package)
         with staged_package.open("rb") as package_data:
             report["packageSha256"] = hashlib.file_digest(package_data, "sha256").hexdigest()

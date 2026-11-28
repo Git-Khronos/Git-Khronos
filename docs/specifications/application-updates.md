@@ -487,7 +487,18 @@ with `GIT_KHRONOS_NATIVE_CHECK_PUBLIC_BASELINE=1` and
 `desktop:native-application-updates` against the exact current signed release.
 It checks the public feed with a temporary profile, without changing automatic
 consent, downloading an installer, or installing anything. It expects no
-newer release and is not a replacement for the two-release test.
+newer release and is not a replacement for the two-release test. If the
+checkout version differs from the public baseline, pass the original archive,
+its reviewed SHA-256, and its exact version:
+
+```sh
+GIT_KHRONOS_NATIVE_CHECK_PUBLIC_BASELINE=1 GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1 \
+  pnpm nx run desktop:native-application-updates -- \
+  --package "$archive" --expect-package-sha256 "$sha256" --expect-package-version "$version"
+```
+
+This version override is restricted to the extracted application-updates suite.
+Other qualification suites still require the checkout's package version.
 
 Use a disposable supported Debian or Ubuntu desktop with working polkit.
 Install the first official signed Debian release once from its GitHub release
