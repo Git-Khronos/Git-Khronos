@@ -406,6 +406,7 @@ export class GitKhronosService implements OnDestroy {
   readonly selectedWorkingTreeFile = signal<string | null>(null);
   readonly conflictDetails = signal<ConflictDetails | null>(null);
   private conflictRepositoryId: string | null = null;
+  private conflictReadScope: string | null = null;
   private conflictRequest = 0;
   readonly fileHistory = signal<FileHistoryEntry[] | null>(null);
   readonly fileBlame = signal<FileBlameLine[] | null>(null);
@@ -2286,33 +2287,38 @@ export class GitKhronosService implements OnDestroy {
       && this.conflictRepositoryId && !this.requireRecoveryRepository(this.conflictRepositoryId)) return null;
     let details: ConflictDetails | null = null;
     const request = ++this.conflictRequest;
+    const scope = this.activeRepositoryReadScope();
     if (this.conflictDetails()?.path !== path) this.conflictDetails.set(null);
-    this.conflictRepositoryId = repo.id;
     await this.run(`Opening merge tool for ${path}…`, async report => {
       details = await ipc.inspect_conflict({ repoId: repo.id, path });
-      if (this.activeRepositoryId() !== repo.id || request !== this.conflictRequest) return;
+      if (this.activeRepositoryReadScope() !== scope || request !== this.conflictRequest) return;
+      this.conflictRepositoryId = repo.id;
+      this.conflictReadScope = scope;
       this.conflictDetails.set(details);
       report(`Resolving conflict in ${path}`);
     }, repo.id, null, true, false);
-    return this.activeRepositoryId() === repo.id && request === this.conflictRequest ? details : null;
+    return this.activeRepositoryReadScope() === scope && request === this.conflictRequest ? details : null;
   }
 
   closeConflict(): void {
     this.conflictRequest++;
     this.conflictRepositoryId = null;
+    this.conflictReadScope = null;
     this.conflictDetails.set(null);
   }
 
   async resolveConflict(
-    path: string,
+    details: ConflictDetails,
     resolution: 'current' | 'incoming' | 'output',
     output?: string,
   ): Promise<boolean> {
-    let details = this.conflictDetails();
-    if (!details || details.path !== path) {
-      details = await this.inspectConflict(path);
+    if (this.conflictDetails() !== details || !this.conflictRepositoryId
+      || !this.requireRecoveryRepository(this.conflictRepositoryId)) return false;
+    if (this.conflictReadScope !== this.activeRepositoryReadScope()) {
+      this.error.set('The active checkout visit changed. Reopen the Merge Tool to review this conflict again.');
+      return false;
     }
-    if (!details || !this.conflictRepositoryId || !this.requireRecoveryRepository(this.conflictRepositoryId)) return false;
+    const { path } = details;
     const result = await this.mutate(
       'resolve_conflict',
       `Resolving ${path}…`,

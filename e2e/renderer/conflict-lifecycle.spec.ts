@@ -159,6 +159,31 @@ test('an outgoing conflict shortcut cannot open the inspector in another checkou
   expect(opened).toBe(false);
 });
 
+test('a replaced conflict review cannot write even when the file path is unchanged', async ({ page }) => {
+  await prepare(page);
+  const result = await page.evaluate(async () => {
+    const { git, calls } = (window as any).__conflictLifecycle;
+    const retired = git.conflictDetails();
+    await git.inspectConflict(retired.path);
+    return { applied: await git.resolveConflict(retired, 'incoming'),
+      writes: calls.filter((call: { command: string }) => call.command === 'resolve_conflict').length };
+  });
+  expect(result).toEqual({ applied: false, writes: 0 });
+});
+
+test('a conflict review cannot write in another workspace visit of the same checkout', async ({ page }) => {
+  await prepare(page);
+  const result = await page.evaluate(async () => {
+    const { git, calls } = (window as any).__conflictLifecycle;
+    const review = git.conflictDetails();
+    git.activeWorkspaceId.set('same-checkout-different-workspace');
+    return { applied: await git.resolveConflict(review, 'incoming'), error: git.error(),
+      writes: calls.filter((call: { command: string }) => call.command === 'resolve_conflict').length };
+  });
+  expect(result).toEqual({ applied: false, writes: 0,
+    error: 'The active checkout visit changed. Reopen the Merge Tool to review this conflict again.' });
+});
+
 for (const outcome of ['success', 'error', 'dismissed-error', 'unrelated-error']) {
   for (const navigation of ['same', 'new-file', 'reopened']) {
     test(`conflict resolution ${outcome} preserves the ${navigation} editor lifecycle`, async ({ page }) => {
@@ -166,7 +191,7 @@ for (const outcome of ['success', 'error', 'dismissed-error', 'unrelated-error']
       const result = await page.evaluate(async ({ outcome, navigation }) => {
         const state = (window as any).__conflictLifecycle;
         state.outcome = outcome;
-        const pending = state.git.resolveConflict('original.txt', 'output', 'my resolution\n');
+        const pending = state.git.resolveConflict(state.git.conflictDetails(), 'output', 'my resolution\n');
         if (navigation === 'new-file') await state.git.inspectConflict('new.txt');
         if (navigation === 'reopened') { state.git.closeConflict(); await state.git.inspectConflict('original.txt'); }
         const expected = state.git.conflictDetails();

@@ -9620,7 +9620,7 @@ export class AppComponent implements OnInit, OnDestroy {
     const request = ++this.conflictActionRequest;
     const repositoryId = this.git.activeRepositoryId();
     const succeeded = await this.git.resolveConflict(
-      details.path,
+      details,
       resolution,
       resolution === 'output' ? this.conflictOutput() : undefined,
     );
