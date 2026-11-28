@@ -32,6 +32,7 @@ function sameSnapshot(first: Request, next: Request): boolean {
         <span>+{{ current.value.additions }}</span><i>−{{ current.value.deletions }}</i>
         @if (current.value.uncountedFiles) { <em>{{ current.value.uncountedFiles }} excluded</em> }
         @if (current.value.partial) { <em>(partial)</em> }
+        @if (filtered()) { <em>All files</em> }
         @if (refreshing) { <em aria-hidden="true">…</em> }
       </span>
     } @else if (current.phase === 'loading' || current.phase === 'waiting') {
@@ -58,6 +59,7 @@ function sameSnapshot(first: Request, next: Request): boolean {
 export class WorkingTreeSummaryComponent {
   readonly state = input.required<SummaryState>();
   readonly section = input.required<RecapSection>();
+  readonly filtered = input(false);
   readonly retryRequested = output<SummaryState>();
 
   description(refreshing: boolean): string {
@@ -65,6 +67,7 @@ export class WorkingTreeSummaryComponent {
       ? 'Staged line changes relative to the last commit, or an empty tree before the first commit.'
       : 'Unstaged line changes relative to the index, including untracked text files.';
     return `${basis} Binary or uncounted files are excluded from line totals.`
+      + (this.filtered() ? ' Totals cover the whole section, including files hidden by the filter.' : '')
       + (refreshing ? ' Updating; showing the last measured totals.' : '');
   }
 
@@ -74,6 +77,7 @@ export class WorkingTreeSummaryComponent {
     return `${additions} and ${deletions} in ${this.section()} files`
       + (value.uncountedFiles ? `; ${value.uncountedFiles} binary or uncounted ${value.uncountedFiles === 1 ? 'file' : 'files'} excluded` : '')
       + (value.partial ? '; partial totals' : '')
+      + (this.filtered() ? '; totals include files hidden by the filter' : '')
       + (refreshing ? '; updating' : '');
   }
 }

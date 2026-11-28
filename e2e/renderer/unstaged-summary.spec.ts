@@ -48,6 +48,24 @@ test('unstaged header shows additions and deletions with binary/partial disclosu
   await expect(page.getByRole('button', { name: 'Stage all changes', exact: true })).toBeEnabled();
 });
 
+test('a file filter discloses that totals and bulk actions still cover hidden files', async ({ page }) => {
+  await page.evaluate(() => (window as any).__unstagedSummary.requests[0].resolve({
+    staged: null, unstaged: { additions: 17, deletions: 8, uncountedFiles: 0, partial: false },
+  }));
+  const section = page.locator('.unstaged-section');
+  const recap = section.getByRole('img', { name: /17 additions and 8 deletions/ });
+  const stage = section.getByRole('button', { name: 'Stage all changes', exact: true });
+  await expect(recap).not.toContainText('All files');
+  await page.getByRole('searchbox', { name: 'Filter changed files' }).fill('no-file-should-match-this-query');
+  await expect(recap).toContainText('All files');
+  await expect(recap).toHaveAccessibleName(/17 additions and 8 deletions.*include files hidden by the filter/);
+  await expect(stage).toHaveAttribute('title', 'Stage all changes, including files hidden by the filter');
+  await expect(stage).toBeEnabled();
+  await page.getByRole('button', { name: 'Clear file filter' }).click();
+  await expect(recap).not.toContainText('All files');
+  expect(await page.evaluate(() => (window as any).__unstagedSummary.requests.length)).toBe(1);
+});
+
 test('large unstaged line totals wrap without overlapping bulk actions in a compact window', async ({ page }) => {
   await page.setViewportSize({ width: 700, height: 720 });
   await page.locator('.unstaged-section').evaluate(element => { element.style.width = '250px'; });
