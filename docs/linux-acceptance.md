@@ -4793,3 +4793,11 @@ Chromium/WebKit cases for conflict safety, conflict lifecycle, status
 pagination, and pull strategies. This run covers the newer Merge Tool
 guidance, the merge abort label, and keyboard focus after loading conflicts;
 it does not change the extracted-package checkpoint above.
+
+A second extracted Debian build from `65d8870` included the revised
+Merge Tool guidance and pagination. It passed nine conflict-navigation
+scenarios, including committing the exact resolved tree, and the focused
+abort safety scenario. The retained archive SHA-256 is
+`dc76efaf563a2d33576a488b9ac3cb287cdb76c30535b5e891f69195ff391af8`.
+The archive and its reports were retained after cleaning the disposable
+checkout debug profile.
