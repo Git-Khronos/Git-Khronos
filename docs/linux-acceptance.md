@@ -477,7 +477,9 @@ does not satisfy a launch check. Record the failing path and whether
 the window was missing, blank, or unresponsive. From the affected WSL
 distribution, run `task doctor:wslg` before changing the shortcut or
 restarting WSL. This reads the compositor log without starting or stopping
-anything; its result is not a window visibility check. Run
+anything; its result is not a window visibility check. It inspects complete
+lines in the last 1 MiB of a regular log, not older sessions outside that
+window. Run
 `task doctor:wslg -- --log "$saved_log"` to inspect a previously captured log.
 Add `--endpoints` when diagnosing the current shell to check the local Wayland
 and X11 sockets. This does not connect to the display or verify that a window

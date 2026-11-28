@@ -26,6 +26,7 @@ class WslgTransportTest(unittest.TestCase):
                 text=True,
                 capture_output=True,
                 check=False,
+                timeout=5,
                 env=environment,
             )
 
@@ -52,6 +53,27 @@ class WslgTransportTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("Cannot read", result.stderr)
         self.assertEqual(result.stdout, "")
+
+    def test_only_complete_lines_in_the_bounded_tail_are_used(self):
+        result = self.diagnostic(ERROR + COPY + "x" * 1024 * 1024 + ENABLED)
+        self.assertIn("No recent WSLg graphics redirection mode", result.stdout)
+        self.assertNotIn("wsl --shutdown", result.stdout)
+        result = self.diagnostic(ERROR + COPY + "x" * 1024 * 1024 + "\n" + ENABLED)
+        self.assertIn("last reported graphics redirection enabled", result.stdout)
+        result = self.diagnostic(COPY + ENABLED.rstrip("\n"))
+        self.assertIn("reported copy mode", result.stdout)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "requires POSIX FIFOs")
+    def test_refuses_pipe_without_waiting_for_a_writer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "weston.log"
+            os.mkfifo(log)
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "--log", str(log)],
+                text=True, capture_output=True, timeout=5, check=False,
+            )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Expected a regular WSLg log file", result.stderr)
 
     def test_endpoint_check_distinguishes_a_socket_from_a_file_without_showing_paths(self):
         with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX) as endpoint:

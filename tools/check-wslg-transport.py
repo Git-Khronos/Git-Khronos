@@ -4,6 +4,10 @@ import argparse
 import os
 from pathlib import Path
 import re
+import stat
+
+
+LOG_TAIL_BYTES = 1024 * 1024
 
 
 def transport_status(lines):
@@ -54,6 +58,27 @@ def socket_presence(path):
         return "local socket could not be inspected"
 
 
+def read_transport_status(path):
+    """Inspect one bounded window of a regular log without waiting on a pipe."""
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as log:
+        info = os.fstat(log.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise ValueError("Expected a regular WSLg log file.")
+        start = max(0, info.st_size - LOG_TAIL_BYTES)
+        # Use the last byte before the window to distinguish a complete first
+        # line from the suffix of a line split at the read boundary.
+        log.seek(max(0, start - 1))
+        if start:
+            previous = log.read(1)
+        data = log.read(info.st_size - start)
+    if start and previous != b"\n":
+        data = data.partition(b"\n")[2]
+    # Weston might be appending a line. Only use complete observations.
+    data = data.rpartition(b"\n")[0]
+    return transport_status(data.decode("utf-8", errors="replace").split("\n"))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", type=Path, default=Path("/mnt/wslg/weston.log"), help="WSLg Weston log path")
@@ -65,8 +90,9 @@ def main():
         print(f"X11: {x11}.")
         print("Socket presence does not establish display access or prove that a window renders.")
     try:
-        with args.log.open(encoding="utf-8", errors="replace") as log:
-            status = transport_status(log)
+        status = read_transport_status(args.log)
+    except ValueError as error:
+        parser.exit(2, f"{error}\n")
     except OSError as error:
         parser.exit(2, f"Cannot read the WSLg log: {error.strerror}. Run this from the affected WSL distribution.\n")
     messages = {
@@ -77,7 +103,7 @@ def main():
         ),
         "copy-mode": "WSLg reported copy mode, but the known shared-memory error was not found beside that entry.",
         "gfxredir": "WSLg last reported graphics redirection enabled. This does not test whether a window is visible.",
-        "unknown": "No recognized WSLg graphics redirection mode was found. This does not rule out a display issue.",
+        "unknown": "No recent WSLg graphics redirection mode was found. This does not rule out a display issue.",
     }
     print(messages[status])
 
