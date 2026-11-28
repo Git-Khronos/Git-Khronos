@@ -16,7 +16,8 @@ path = "src/main.rs"
 
 [lib]
 name = "git_khronos_desktop"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop entry points link this crate from Rust; no foreign-language library is shipped.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
