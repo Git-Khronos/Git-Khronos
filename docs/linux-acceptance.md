@@ -3941,7 +3941,9 @@ objects, peeled targets, and unchanged worktree/index state. A missing SSH
 key must leave the form open with the requested name, annotation, and signing
 intent intact, without changing refs, staged or unstaged content, or config.
 Restoring the fixture key allows the same review to be submitted successfully. A signing-tool preflight reports missing `gpg`,
-`ssh-keygen`, `gpgsm`, or `openssl` before launching the application.
+`ssh-keygen`, `gpgsm`, or `gpgconf` before launching the application. The
+X.509 fixture generates its key in the owned GnuPG agent and imports only the
+public certificate, avoiding Jammy's flaky legacy PKCS#12 import path.
 `desktop:native-signed-commit` exercises the explicit Sign commit control with
 OpenPGP, SSH, and X.509 test keys. For each format, Git verifies the new
 commit's signature; the suite checks its parent, tree content, valid signature

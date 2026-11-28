@@ -1,5 +1,13 @@
 # Informational sources
 
+## Disposable X.509 acceptance fixture
+
+- [GnuPG batch certificate generation parameters](https://www.gnupg.org/documentation/manuals/gnupg.pdf)
+
+Used to generate a short-lived self-signed certificate in a test-owned agent
+and import only the public certificate. No upstream source code or personal
+key material was copied.
+
 ## Debian package authorization recommendation
 
 - [Ubuntu's pkexec package and polkit role](https://packages.ubuntu.com/en/resolute/pkexec)

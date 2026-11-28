@@ -1,4 +1,5 @@
 """Isolated X.509 signing configuration for packaged acceptance fixtures."""
+from datetime import datetime, timedelta, timezone
 import shlex
 
 from native_acceptance import run
@@ -6,28 +7,26 @@ from native_acceptance import run
 
 def configure_x509_signing(fixtures, repository):
     gnupg_home = fixtures.env["GNUPGHOME"]
-    private_key = fixtures.root / "x509-fixture-private.pem"
-    certificate = fixtures.root / "x509-fixture-certificate.pem"
-    container = fixtures.root / "x509-fixture-certificate.p12"
-    run(
-        "openssl", "req", "-new", "-x509", "-newkey", "rsa:2048", "-nodes",
-        "-days", "2", "-subj", "/CN=Native UI X509 Fixture/emailAddress=native@example.test",
-        "-addext", "keyUsage=critical,digitalSignature", "-addext",
-        "extendedKeyUsage=emailProtection", "-keyout", str(private_key),
-        "-out", str(certificate), env=fixtures.env,
+    config = fixtures.root / "x509-fixture-parameters"
+    certificate = fixtures.root / "x509-fixture-certificate.der"
+    expiration = (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat()
+    config.write_text(
+        "Key-Type: RSA\nKey-Length: 2048\nKey-Usage: sign\n"
+        "Name-DN: CN=Native UI X509 Fixture\nName-Email: native@example.test\n"
+        f"Serial: random\nNot-After: {expiration}\n%commit\n",
+        encoding="utf-8",
     )
+    # Generate inside the owned agent and import only the public certificate.
+    # Jammy's legacy PKCS#12 decryption intermittently rejected the generated
+    # envelope before any Git signing operation had started.
     run(
-        # OpenSSL 3's default PBES2 envelope is not accepted by Jammy's
-        # gpgsm. This throwaway transport file does not set the signature's
-        # algorithm or change how production keys are handled.
-        "openssl", "pkcs12", "-export", "-keypbe", "PBE-SHA1-3DES",
-        "-certpbe", "PBE-SHA1-3DES", "-macalg", "sha1", "-passout", "pass:", "-inkey", str(private_key),
-        "-in", str(certificate), "-out", str(container), env=fixtures.env,
+        "gpgsm", "--no-options", "--homedir", gnupg_home, "--batch", "--no-tty",
+        "--pinentry-mode", "loopback", "--passphrase", "", "--output", str(certificate),
+        "--gen-key", str(config), env=fixtures.env,
     )
     run(
         "gpgsm", "--no-options", "--homedir", gnupg_home, "--batch", "--no-tty",
-        "--pinentry-mode", "loopback", "--passphrase", "", "--disable-dirmngr",
-        "--disable-crl-checks", "--import", str(container), env=fixtures.env,
+        "--disable-dirmngr", "--disable-crl-checks", "--import", str(certificate), env=fixtures.env,
     )
     certificate_listing = run(
         "gpgsm", "--no-options", "--homedir", gnupg_home, "--with-colons",

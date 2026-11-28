@@ -359,12 +359,12 @@ class SignedTagToolchainPreflightTests(unittest.TestCase):
             report = {}
             with patch("native_acceptance.shutil.which", side_effect=lambda name, **_: {
                 "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
-                "gpgsm": "/fixture/bin/gpgsm", "openssl": "/fixture/bin/openssl",
+                "gpgsm": "/fixture/bin/gpgsm", "gpgconf": "/fixture/bin/gpgconf",
             }[name]):
                 probe_signed_tag_toolchain(fixtures, report)
             self.assertEqual(report["signedTagTools"], {
                 "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
-                "gpgsm": "/fixture/bin/gpgsm", "openssl": "/fixture/bin/openssl",
+                "gpgsm": "/fixture/bin/gpgsm", "gpgconf": "/fixture/bin/gpgconf",
             })
 
     def test_preflight_names_missing_tools_before_launch(self):
@@ -373,13 +373,13 @@ class SignedTagToolchainPreflightTests(unittest.TestCase):
             report = {}
             with patch("native_acceptance.shutil.which", side_effect=lambda name, **_: {
                 "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
-                "gpgsm": None, "openssl": "/fixture/bin/openssl",
+                "gpgsm": None, "gpgconf": "/fixture/bin/gpgconf",
             }[name]):
                 with self.assertRaisesRegex(RuntimeError, "gpgsm"):
                     probe_signed_tag_toolchain(fixtures, report)
             self.assertEqual(report["signedTagTools"], {
                 "gpg": "/fixture/bin/gpg", "ssh-keygen": "/fixture/bin/ssh-keygen",
-                "gpgsm": None, "openssl": "/fixture/bin/openssl",
+                "gpgsm": None, "gpgconf": "/fixture/bin/gpgconf",
             })
 
 
@@ -388,7 +388,7 @@ class SignedCommitToolchainPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             fixtures = Fixtures(directory)
             report = {}
-            available = {tool: f"/fixture/bin/{tool}" for tool in ("gpg", "ssh-keygen", "gpgsm", "openssl")}
+            available = {tool: f"/fixture/bin/{tool}" for tool in ("gpg", "ssh-keygen", "gpgsm", "gpgconf")}
             with patch("native_acceptance.shutil.which", side_effect=lambda name, **_: available[name]):
                 probe_signed_commit_toolchain(fixtures, report)
             self.assertEqual(report["signedCommitTools"], available)
@@ -401,7 +401,7 @@ class SignedCommitToolchainPreflightTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "gpg"):
                     probe_signed_commit_toolchain(fixtures, report)
             self.assertEqual(report["signedCommitTools"], {
-                "gpg": None, "ssh-keygen": None, "gpgsm": None, "openssl": None,
+                "gpg": None, "ssh-keygen": None, "gpgsm": None, "gpgconf": None,
             })
 
 
