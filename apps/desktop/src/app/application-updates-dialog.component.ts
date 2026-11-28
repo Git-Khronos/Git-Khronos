@@ -10,6 +10,8 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let target = request();
+    @let status = updates.state();
+    @let authorizationHelp = status?.phase === 'refused' && status.verified && status.packageFormat === 'deb' && !status.installBlocker && !updates.statusError();
     <div class="backdrop" (click)="close(target)">
       <section #dialog tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="application-updates-title" (click)="$event.stopPropagation()" (keydown)="key($event, target)">
         <header><h2 id="application-updates-title">Updates</h2><button #closeButton type="button" [disabled]="updates.installing()" (click)="close(target)">Close</button></header>
@@ -26,6 +28,11 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
           @if (state.verified) { <p class="verified">Package signature and signed version verified</p> }
           @if (state.installBlocker && !updates.statusError()) {
             <p id="application-update-install-blocker" class="help" role="status">{{ state.installBlocker }}</p>
+          } @else if (authorizationHelp) {
+            <p id="application-update-authorization-help" class="help">
+              If no authorization prompt appeared, make sure a polkit authentication agent is running in this session.
+              Then retry manually, or use the official Debian installer with your system package manager.
+            </p>
           }
           @if (state.phase === 'downloading') {
             @let total = state.totalBytes !== null && state.totalBytes > 0 ? state.totalBytes : null;
@@ -64,7 +71,7 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
               @if (state.offerId) {
                 <button type="button" [disabled]="!state.canDownload || !!updates.statusError() || updates.actionPending()" (click)="download(target, state)">Download and verify</button>
                 <button class="primary" type="button" [disabled]="!state.canInstall || !!updates.statusError() || updates.actionPending()"
-                  [attr.aria-describedby]="state.installBlocker && !updates.statusError() ? 'application-update-install-blocker' : null"
+                  [attr.aria-describedby]="state.installBlocker && !updates.statusError() ? 'application-update-install-blocker' : authorizationHelp ? 'application-update-authorization-help' : null"
                   (click)="install(target, state)">Install verified update</button>
               }
               @if (state.canInspect) { <button type="button" [disabled]="updates.actionPending()" (click)="inspect(target)">Inspect installation</button> }

@@ -494,7 +494,7 @@ test('Updates keeps polling for install eligibility after a timed-out read is su
 
 test('Updates explains what blocks a verified package without hiding the earlier installer outcome', async ({ page }) => {
   await page.evaluate(() => (window as any).__updates.replace({
-    offerId: 'owned-refused', offeredVersion: '0.2.0', phase: 'refused', verified: true,
+    offerId: 'owned-refused', offeredVersion: '0.2.0', phase: 'refused', verified: true, packageFormat: 'deb',
     canDownload: false, canInstall: false, message: 'The installer was not started.',
     installBlocker: 'Close open Git Khronos terminal sessions before installing the update.',
   }));
@@ -502,6 +502,8 @@ test('Updates explains what blocks a verified package without hiding the earlier
   const install = dialog.getByRole('button', { name: 'Install verified update', exact: true });
   const reason = dialog.getByText('Close open Git Khronos terminal sessions before installing the update.', { exact: true });
   await expect(dialog).toContainText('The installer was not started.');
+  const authHelp = dialog.getByText(/make sure a polkit authentication agent is running/);
+  await expect(authHelp).toHaveCount(0);
   await expect(install).toBeDisabled();
   await expect(reason).toBeVisible();
   await expect(install).toHaveAccessibleDescription(await reason.innerText());
@@ -509,6 +511,8 @@ test('Updates explains what blocks a verified package without hiding the earlier
   await page.evaluate(() => (window as any).__updates.replace({ installBlocker: null, canInstall: true }));
   await expect(reason).toHaveCount(0);
   await expect(install).toBeEnabled();
+  await expect(authHelp).toBeVisible();
+  await expect(install).toHaveAccessibleDescription(/polkit authentication agent.*retry manually/);
   await expect(dialog).toContainText('The installer was not started.');
   expect(await page.evaluate(() => (window as any).__updates.calls
     .some((call: any) => call.command === 'install_application_update'))).toBe(false);

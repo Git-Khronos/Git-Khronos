@@ -546,7 +546,12 @@ where the recommendation was skipped, install the distro's `pkexec` package
 and select **Refresh status** in the app without restarting or discarding the
 verified download. The official release package can also be installed with
 the system package manager. Having `pkexec` does not guarantee a functioning
-polkit session, and there is no password-collection or `sudo` fallback.
+polkit session, and there is no password-collection or `sudo` fallback. If authorization
+is refused, the updater will not retry that version automatically. On a
+minimal desktop or WSL session where no authorization prompt appears, check
+that a session authentication agent is running before retrying manually.
+A separately registered [polkit terminal agent](https://manpages.ubuntu.com/manpages/resolute/man1/pkttyagent.1.html)
+is an option for a terminal-based session.
 
 The updater rechecks the installed version before starting authorization.
 For Debian it also passes `--refuse-downgrade` to the actual dpkg
