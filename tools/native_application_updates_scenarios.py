@@ -17,6 +17,22 @@ def public_update_expectations(environ, expect_trust):
     return baseline, expected
 
 
+def require_expected_update_trust(configured, expect_trust):
+    if configured is expect_trust:
+        return
+    if configured is True:
+        raise RuntimeError(
+            'The app embeds publisher trust but this run expects an unconfigured build. '
+            'For this trusted archive, rerun with GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1.'
+        )
+    if configured is False:
+        raise RuntimeError(
+            'This run requires publisher trust but the app is unconfigured. '
+            'Use the checksum-pinned package built with the intended public key.'
+        )
+    raise RuntimeError('The app did not report a boolean publisher-trust status.')
+
+
 def application_updates_workflow(driver, fixtures, report):
     from native_acceptance import open_ui
 
@@ -52,7 +68,9 @@ def application_updates_workflow(driver, fixtures, report):
 
     driver.wait('return document.querySelector(' + json.dumps(modal) + ')?.textContent.includes("Running version")')
     expected_build_id = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_BUILD_INPUT_ID')
-    build_id = driver.invoke('application_update_status').get('buildInputId')
+    initial_status = driver.invoke('application_update_status')
+    require_expected_update_trust(initial_status.get('configured'), expect_trust)
+    build_id = initial_status.get('buildInputId')
     if expected_build_id is not None:
         assert build_id == expected_build_id, (build_id, expected_build_id)
     if build_id is not None:

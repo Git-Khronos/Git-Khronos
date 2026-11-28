@@ -1,6 +1,6 @@
 import unittest
 
-from native_application_updates_scenarios import public_update_expectations
+from native_application_updates_scenarios import public_update_expectations, require_expected_update_trust
 
 
 class PublicUpdateExpectationTests(unittest.TestCase):
@@ -20,3 +20,16 @@ class PublicUpdateExpectationTests(unittest.TestCase):
         for invalid in ('', 'v0.1.7', '0.1.7-rc.1', '0.01.7', '0.1.7\n'):
             with self.subTest(invalid=invalid), self.assertRaisesRegex(RuntimeError, 'stable x.y.z'):
                 public_update_expectations({'GIT_KHRONOS_NATIVE_EXPECT_PUBLIC_UPDATE': invalid}, True)
+
+
+class PublisherTrustExpectationTests(unittest.TestCase):
+    def test_does_not_retry_with_a_weaker_expectation(self):
+        require_expected_update_trust(False, False)
+        require_expected_update_trust(True, True)
+        with self.assertRaisesRegex(RuntimeError, 'GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1'):
+            require_expected_update_trust(True, False)
+        with self.assertRaisesRegex(RuntimeError, 'checksum-pinned package'):
+            require_expected_update_trust(False, True)
+        for invalid in (None, "true", 1):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(RuntimeError, 'boolean'):
+                require_expected_update_trust(invalid, True)
