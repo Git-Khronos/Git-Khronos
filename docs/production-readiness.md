@@ -211,7 +211,10 @@ It prints the public
 release tag, checks that the updated qualification and publication workflows
 are registered and active on GitHub, checks the publisher key format without
 printing the key, and reports which settings are unconfirmed. Run
-`task release:preflight -- v0.1.6` to also check for that exact tag.
+`task release:preflight -- v0.1.6` to also check for that exact tag. Pass
+`--trusted-public-key /path/to/publisher.key.pub` before the optional tag
+to check that the hosted variable matches an independently trusted public
+key, without displaying either key or reading the signer secret.
 It makes no remote writes. The publication switch should remain off for an
 offline rehearsal; a successful
 preflight is not evidence of hosted qualification or signature verification.

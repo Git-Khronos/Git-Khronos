@@ -2,14 +2,23 @@
 # Read-only preflight for the official GitHub publication configuration.
 set -euo pipefail
 hosted=false
-if [[ ${1:-} == --hosted ]]; then
-  hosted=true
-  shift
-fi
+trusted_key=()
+usage() {
+  echo 'Usage: bash tools/check-hosted-debian-release.sh [--hosted] [--trusted-public-key FILE] [vMAJOR.MINOR.PATCH]' >&2
+  exit 2
+}
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --hosted) [[ $hosted == false ]] || usage; hosted=true; shift ;;
+    --trusted-public-key)
+      (( ${#trusted_key[@]} == 0 && $# >= 2 )) && [[ -n "$2" && "$2" != --* ]] || usage
+      trusted_key=("$2"); shift 2 ;;
+    *) usage ;;
+  esac
+done
 tag=${1:-}
 if (( $# > 1 )) || { (( $# == 1 )) && [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; }; then
-  echo 'Usage: bash tools/check-hosted-debian-release.sh [--hosted] [vMAJOR.MINOR.PATCH]' >&2
-  exit 2
+  usage
 fi
 
 root=repos/Git-Khronos/Git-Khronos
@@ -55,7 +64,16 @@ fi
 
 if publisher=$(get "$root/actions/variables/GIT_KHRONOS_UPDATER_PUBLIC_KEY" 2>/dev/null | one_json -r 'if length == 1 then .[0].value | strings else null end') &&
    GIT_KHRONOS_UPDATER_PUBLIC_KEY="$publisher" node "$(dirname -- "${BASH_SOURCE[0]}")/check-debian-update-evidence.mjs" --check-publisher-key >/dev/null 2>&1; then
-  echo 'Publisher key: configured and format checked (compare with the trusted publisher copy).'
+  if (( ${#trusted_key[@]} )); then
+    if GIT_KHRONOS_UPDATER_PUBLIC_KEY="$publisher" node "$(dirname -- "${BASH_SOURCE[0]}")/check-debian-update-evidence.mjs" \
+        --check-publisher-key "${trusted_key[@]}" >/dev/null 2>&1; then
+      echo 'Publisher key: matches the independently trusted public key.'
+    else
+      missing 'publisher key does not match the trusted public key, or the trusted file is invalid or unreadable'
+    fi
+  else
+    echo 'Publisher key: configured and format checked (compare with the trusted publisher copy).'
+  fi
 else
   missing 'publisher public key (missing, malformed, or unreadable)'
 fi

@@ -57,6 +57,22 @@ export function checkPublisherKeyConfiguration(value) {
   if (key.length !== 42 || key[0] !== 0x45 || (key[1] !== 0x64 && key[1] !== 0x44)) {
     throw new Error(invalid);
   }
+  return key;
+}
+
+async function compareTrustedPublisherKey(path, configured) {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size < 1 || info.size > 4096) throw new Error('Expected a small regular public .key.pub file.');
+    const buffer = Buffer.alloc(info.size + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead !== info.size) throw new Error('The trusted public key changed while being read.');
+    const trusted = checkPublisherKeyConfiguration(buffer.subarray(0, bytesRead).toString('utf8'));
+    if (!configured.equals(trusted)) throw new Error('Configured publisher key differs from the trusted public key.');
+  } finally {
+    await handle.close();
+  }
 }
 
 export function qualifiedPackageDigest(receipt, report, publicKey) {
@@ -137,13 +153,14 @@ export async function checkEvidenceWithReport(receiptPath, report, keyPath, rele
 if (isCliEntry(import.meta)) {
   const args = process.argv.slice(2);
   try {
-    if (args.length === 1 && args[0] === '--check-publisher-key') {
-      checkPublisherKeyConfiguration(process.env.GIT_KHRONOS_UPDATER_PUBLIC_KEY);
+    if (args[0] === '--check-publisher-key' && (args.length === 1 || args.length === 2)) {
+      const configured = checkPublisherKeyConfiguration(process.env.GIT_KHRONOS_UPDATER_PUBLIC_KEY);
+      if (args.length === 2) await compareTrustedPublisherKey(args[1], configured);
     } else {
       let releasePackage;
       if (args[0] === '--release-package') [, releasePackage] = args.splice(0, 2);
       if (args.length !== 3 || args.some(arg => arg.startsWith('--'))) {
-        throw new Error('Usage: check-debian-update-evidence --check-publisher-key | [--release-package PACKAGE] BUILD-RECEIPT NATIVE-REPORT PUBLIC-KEY');
+        throw new Error('Usage: check-debian-update-evidence --check-publisher-key [TRUSTED-PUBLIC-KEY] | [--release-package PACKAGE] BUILD-RECEIPT NATIVE-REPORT PUBLIC-KEY');
       }
       console.log(await checkEvidence(...args, releasePackage));
     }

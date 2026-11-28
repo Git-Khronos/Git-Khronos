@@ -116,6 +116,18 @@ esac
   assert.match(valid.stdout, /Qualify Debian release candidate is registered and active/);
   assert.match(valid.stdout, /Publish signed Debian release is registered and active/);
   assert.doesNotMatch(valid.stdout, /Signer key secret/);
+  const trusted = join(root, 'trusted public.key.pub');
+  await writeFile(trusted, publisher + '\n');
+  const matched = check([main], {}, ['--trusted-public-key', trusted, 'v0.1.6']);
+  assert.equal(matched.status, 0, matched.stderr + matched.stdout);
+  assert.match(matched.stdout, /matches the independently trusted public key/);
+  assert.doesNotMatch(matched.stdout + matched.stderr, new RegExp(publisher));
+  const different = Buffer.from(`untrusted comment: different fixture\n${Buffer.concat([Buffer.from('Ed'), Buffer.alloc(40, 2)]).toString('base64')}\n`).toString('base64');
+  await writeFile(trusted, different);
+  const mismatched = check([main], {}, ['--trusted-public-key', trusted]);
+  assert.equal(mismatched.status, 1);
+  assert.match(mismatched.stdout, /publisher key does not match the trusted public key/);
+  assert.doesNotMatch(mismatched.stdout + mismatched.stderr, new RegExp(different));
   const hosted = check([main], {}, ['--hosted', 'v0.1.6']);
   assert.equal(hosted.status, 0, hosted.stderr + hosted.stdout);
   assert.match(hosted.stdout, /Hosted signing workflow: present on main/);
