@@ -1,7 +1,13 @@
 """Packaged updater trust and offline preference boundaries, without installation."""
 import json
 import os
+from pathlib import Path
+import pty
 import re
+import select
+import socket
+import subprocess
+import tempfile
 from native_worktree_scenarios import checkout_footprint
 
 
@@ -72,6 +78,9 @@ def application_updates_workflow(driver, fixtures, report):
 
     driver.wait('return document.querySelector(' + json.dumps(modal) + ')?.textContent.includes("Running version")')
     expected_build_id = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_BUILD_INPUT_ID')
+    if os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TERMINAL_HELPER') == '1':
+        prove_foreign_terminal_peer_refused(driver.executable, fixtures.env)
+        report['scenarios'].append('native-update-terminal-rejects-an-unrelated-local-executable')
     initial_status = driver.invoke('application_update_status')
     require_expected_update_trust(initial_status.get('configured'), expect_trust)
     build_id = initial_status.get('buildInputId')
@@ -244,6 +253,36 @@ def application_updates_workflow(driver, fixtures, report):
     report['scenarios'].append('native-updater-refuses-manual-check-and-automatic-consent-without-trust-and-preserves-owned-git-data')
     verify_palette_entry()
     return repository, repo_id
+
+
+def prove_foreign_terminal_peer_refused(executable, env):
+    """Never send a package path; the caller is this unrelated Python executable."""
+    from native_acceptance import stop_owned_process_group
+
+    with tempfile.TemporaryDirectory(prefix='gk-terminal-probe-') as root:
+        path = str(Path(root) / 'authorization')
+        with socket.socket(socket.AF_UNIX) as server:
+            server.bind(path)
+            server.listen()
+            server.settimeout(5)
+            master, slave = pty.openpty()
+            process = None
+            try:
+                process = subprocess.Popen(
+                    [executable, '--owned-update-authorization-terminal', path],
+                    stdin=slave, stdout=slave, stderr=slave, env=env, start_new_session=True,
+                )
+                stream, _ = server.accept()
+                with stream:
+                    assert process.wait(timeout=2) == 1, 'Helper did not refuse the foreign executable'
+                    assert stream.recv(1) == b'', 'Helper sent data to the foreign executable'
+                assert select.select([master], [], [], 2)[0], 'Helper emitted no refusal diagnostic'
+                assert b'authorization window could not complete' in os.read(master, 4096)
+            finally:
+                if process is not None:
+                    stop_owned_process_group(process)
+                os.close(master)
+                os.close(slave)
 
 
 def automatic_public_download(driver, modal, expected_version):

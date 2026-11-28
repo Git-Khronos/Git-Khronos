@@ -589,6 +589,11 @@ prompt, received a successful installer exit, and installed the exact public
 0.1.7 executable and desktop entry from 0.1.6. The test used an owned fixture
 calling the production transport; it did not test the full packaged WSL
 app against a newer offer containing this transport.
+Set `GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TERMINAL_HELPER=1` on a checksum-pinned
+`application-updates` acceptance run for builds with this transport. The
+harness invokes the packaged helper on a private socket owned by an unrelated
+executable and verifies that the helper refuses before it receives any
+package path or starts authorization.
 
 A separately registered [polkit terminal agent](https://manpages.ubuntu.com/manpages/resolute/man1/pkttyagent.1.html)
 is an option for a terminal-based session. On Linux, run
