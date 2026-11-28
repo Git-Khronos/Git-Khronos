@@ -2101,7 +2101,12 @@ dropped from 95.5 s to 72.5 s (24%) with two workers, while combined user
 and system CPU time rose from 55.8 s to 69.0 s and the median individual
 case took 34% longer. Parallel execution helped elapsed time on this host
 but added contention. This is another local sample, not justification to
-change the hosted default without a comparable hosted repeat.
+change the hosted default without a comparable hosted repeat. A reverse-order sample at
+`5e17082` ran two workers first and one second: the matching 82 cases again
+all passed, in 64.9 s versus 100.3 s (35% less elapsed time). On this
+development host, two workers are a reasonable default for similar local
+renderer retests (`pnpm test:changed --run --workers 2`); do not extrapolate
+the result to all suites or the hosted runners.
 Failure in one shard does not
 cancel the other shards; each failed shard uploads any available report, traces,
 and screenshots under `renderer-failure-<run>-attempt-<attempt>-shard-<shard>`.
