@@ -8,11 +8,37 @@ from pathlib import Path
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
-from prune_local_build_caches import prune
+from prune_local_build_caches import inventory, prune
 
 
 class PruneTest(unittest.TestCase):
+    def test_inventory_ranks_archives_and_keeps_unusual_names_readable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            review = root / "target/local-review"
+            review.mkdir(parents=True)
+            report = io.StringIO()
+            entries = (
+                (review / "small", 1024),
+                (review / "bigger\nrun/cache", 3 * 1024**2),
+                (review / "bigger\nrun", 4 * 1024**2),
+                (review, 5 * 1024**2),
+            )
+            output = b"".join(f"{size}\t".encode() + os.fsencode(path) + b"\0" for path, size in entries)
+            with patch("prune_local_build_caches.subprocess.run") as run, contextlib.redirect_stdout(report):
+                run.return_value.stdout = output
+                run.return_value.returncode = 1
+                self.assertEqual(inventory(root), 1)
+            command = run.call_args.args[0]
+            self.assertIn("--null", command)
+            self.assertEqual(command[-1], str(review))
+            ranks = report.getvalue()
+            self.assertLess(ranks.index("bigger\\nrun"), ranks.index("small"))
+            self.assertIn("Inventory is incomplete", ranks)
+            self.assertEqual(list(review.iterdir()), [])
+
     def test_legacy_node_caches_require_verified_package_and_recognized_pnpm(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()

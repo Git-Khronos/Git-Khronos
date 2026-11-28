@@ -3505,6 +3505,11 @@ or renderer server started.
 A new validation snapshot needs at least 2 GiB free on the filesystem
 holding its run directory before it exports source and installs dependencies.
 This is a start check, not a quota for retained test evidence.
+Use `task clean:archives -- --inventory` to see which historical archive
+groups actually occupy the most disk space. It reports allocated space,
+not a list of files safe to remove. Unreadable paths are reported as an
+incomplete inventory; the command never deletes files.
+
 To reclaim the main checkout's regenerable Rust debug output, stop active
 builds and run `task clean:debug`; release bundles and reports are retained.
 Avoid the broader `task clean` when keeping packages or local evidence.

@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import shutil
 import stat
+import subprocess
 import time
 
 CACHE_PATHS = (
@@ -182,12 +183,57 @@ def prune(root, days, apply, explain=False):
     return int(failed)
 
 
+def inventory(root):
+    """Report allocated space; a large entry is not a deletion candidate."""
+    review = root / "target/local-review"
+    if not review.exists():
+        print("No local review archive found.")
+        return 0
+    if not owned_directory(review):
+        print("Local review archive is not an owned directory; inventory skipped.")
+        return 1
+    result = subprocess.run(
+        ["du", "-x", "--block-size=1", "--null", "--max-depth=2", "--", str(review)],
+        stdout=subprocess.PIPE, check=False,
+    )
+    sizes = {}
+    for record in result.stdout.split(b"\0"):
+        size, separator, path = record.partition(b"\t")
+        if separator:
+            sizes[Path(os.fsdecode(path))] = int(size)
+
+    def emit(path, size):
+        print(f"{size / 1024**2:10.1f} MiB  {os.fspath(path.relative_to(root))!r}")
+
+    if review in sizes:
+        emit(review, sizes[review])
+    print("Largest archive groups (allocated space; not cleanup candidates):")
+    groups = sorted(((size, path) for path, size in sizes.items() if path.parent == review),
+                    reverse=True)[:10]
+    for size, path in groups:
+        emit(path, size)
+        children = [(child_size, child) for child, child_size in sizes.items() if child.parent == path]
+        if children:
+            largest_size, largest = max(children)
+            print("    largest child:", end=" ")
+            emit(largest, largest_size)
+    if result.returncode:
+        print("Inventory is incomplete; some paths could not be measured.")
+    return int(bool(result.returncode))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="remove caches instead of listing them")
     parser.add_argument("--older-days", type=int, default=7)
     parser.add_argument("--explain", action="store_true", help="explain why known archive runs are retained")
+    parser.add_argument("--inventory", action="store_true", help="report the largest archive groups without changing files")
     args = parser.parse_args()
     if args.older_days < 1:
         parser.error("--older-days must be at least 1")
-    raise SystemExit(prune(Path(__file__).resolve().parent.parent, args.older_days, args.apply, args.explain))
+    root = Path(__file__).resolve().parent.parent
+    if args.inventory:
+        if args.apply:
+            parser.error("--inventory cannot be combined with --apply")
+        raise SystemExit(inventory(root))
+    raise SystemExit(prune(root, args.older_days, args.apply, args.explain))
