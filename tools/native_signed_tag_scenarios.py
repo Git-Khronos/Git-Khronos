@@ -158,9 +158,10 @@ def signed_tag_creation(driver, fixtures, report):
     refs_before = fixtures.git(ssh_repository, "for-each-ref", "--format=%(refname) %(objectname)")
     _create_tag_through_ui(driver, ssh_repository, ssh_name, message=ssh_message, signed=True, submit=False)
     driver.click_visible(".tag-creation-dialog button.confirm-action")
-    driver.wait("""const toast = document.querySelector('gk-error-toast');
+    driver.wait("""const error = document.querySelector('.tag-creation-dialog #tag-creation-error');
       const submit = document.querySelector('.tag-creation-dialog button.confirm-action');
-      return /sign|private key/i.test(toast?.textContent ?? '') && !!submit && !submit.disabled;""")
+      return /sign|private key/i.test(error?.textContent ?? '') && !!submit && !submit.disabled &&
+        submit.getAttribute('aria-describedby') === error.id;""")
     assert driver.script("""const dialog = document.querySelector('.tag-creation-dialog');
       return [dialog.elements.tagName.value, dialog.elements.tagMessage.value, dialog.elements.signTag.checked];"""
                          ) == [ssh_name, ssh_message, True]
