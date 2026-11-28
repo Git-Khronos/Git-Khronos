@@ -1749,6 +1749,15 @@ fn save_snapshot_capture(
     )
 }
 
+fn valid_regular_snapshot(data: &str, max_bytes: u64) -> bool {
+    if !base64::encoded_len(max_bytes as usize, true).is_some_and(|max| data.len() <= max) {
+        return false;
+    }
+    let decoded = base64::read::DecoderReader::new(data.as_bytes(), &BASE64);
+    let mut bounded = std::io::Read::take(decoded, max_bytes.saturating_add(1));
+    std::io::copy(&mut bounded, &mut std::io::sink()).is_ok_and(|decoded| decoded <= max_bytes)
+}
+
 fn guarded_capture(
     path: &Path,
     snapshot: &mut RecoverySnapshot,
@@ -1796,11 +1805,7 @@ fn guarded_capture(
             match state {
                 GuardedFile::Missing => {}
                 GuardedFile::Regular { data, mode } => {
-                    if *mode > 0o777
-                        || !BASE64
-                            .decode(data)
-                            .is_ok_and(|bytes| bytes.len() as u64 <= MAX_GUARDED_FILE_BYTES)
-                    {
+                    if *mode > 0o777 || !valid_regular_snapshot(data, MAX_GUARDED_FILE_BYTES) {
                         return Err(changed_recovery_capture());
                     }
                 }
@@ -4709,6 +4714,26 @@ mod tests {
         let batch =
             add_guarded_snapshot_size("nested/another", 1, &mut total, 100, 90).unwrap_err();
         assert_eq!(batch.message, discard_capture_size_error().message);
+    }
+
+    #[test]
+    fn snapshot_validation_checks_decoded_length_padding_and_trailing_data() {
+        assert!(valid_regular_snapshot("", 0));
+        assert!(valid_regular_snapshot("YQ==", 1));
+        assert!(valid_regular_snapshot("YWJj", 3));
+        assert!(!valid_regular_snapshot("YWI=", 1));
+        assert!(!valid_regular_snapshot("YQ=", 1));
+        assert!(!valid_regular_snapshot("YR==", 1));
+        assert!(!valid_regular_snapshot("YQ==Yg==", 6));
+        let bytes = vec![0xab; 32 * 1024 + 1];
+        assert!(valid_regular_snapshot(
+            &BASE64.encode(&bytes),
+            bytes.len() as u64
+        ));
+        assert!(!valid_regular_snapshot(
+            &BASE64.encode(&bytes),
+            bytes.len() as u64 - 1
+        ));
     }
 
     #[test]
