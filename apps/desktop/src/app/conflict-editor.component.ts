@@ -27,7 +27,10 @@ export class ConflictEditorComponent {
   readonly requested = output<{ conflict: ConflictDetails; action: ConflictEditorAction }>();
   readonly keyPressed = output<{ conflict: ConflictDetails; event: KeyboardEvent }>();
   protected readonly git = inject(GitKhronosService);
-  protected readonly copyFeedback = linkedSignal({ source: this.details, computation: (): string => '' });
+  protected readonly copyFeedback = linkedSignal({
+    source: () => [this.details(), this.git.activeRepositoryReadScope()],
+    computation: (): string => '',
+  });
   private draftCopyRequest = 0;
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
 
@@ -41,7 +44,9 @@ export class ConflictEditorComponent {
     if (this.suspended() || !this.ownsDetails()(conflict) || !conflict.editable) return;
     const request = ++this.draftCopyRequest;
     const value = this.draft();
-    const current = () => request === this.draftCopyRequest && !this.suspended() && this.ownsDetails()(conflict);
+    const scope = this.git.activeRepositoryReadScope();
+    const current = () => request === this.draftCopyRequest && !this.suspended() && this.ownsDetails()(conflict)
+      && scope === this.git.activeRepositoryReadScope();
     this.copyFeedback.set('');
     try {
       await navigator.clipboard.writeText(value);

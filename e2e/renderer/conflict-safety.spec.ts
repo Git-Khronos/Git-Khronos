@@ -244,6 +244,24 @@ test('a failed conflict reload preserves the draft but disables resolution until
   await expect(dialog.getByRole('textbox')).toHaveValue('working conflict\n');
 });
 
+test('clipboard failure leaves the merge draft editable and makes no Git change', async ({ page }) => {
+  await openConflict(page);
+  const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
+  const output = dialog.getByRole('textbox');
+  await output.fill('keep this unsaved output');
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true, value: { writeText: async () => { throw new Error('Clipboard denied'); } },
+    });
+  });
+  await dialog.getByRole('button', { name: 'Copy draft', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('Clipboard access is unavailable.');
+  await expect(output).toBeEditable();
+  await expect(output).toHaveValue('keep this unsaved output');
+  expect(await page.evaluate(() => (window as any).__conflictTest.calls
+    .some((call: { command: string }) => call.command === 'resolve_conflict'))).toBe(false);
+});
+
 test('keeps pending reload visible and never reopens a dismissed conflict', async ({ page }) => {
   await openConflict(page);
   const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
