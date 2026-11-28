@@ -1584,15 +1584,21 @@
           (click)="git.cancelActiveOperation()"
         >{{ git.activeOperationCancelling() ? 'Stopping…' : 'Cancel' }}</button>
       }
-      @if (availableApplicationUpdate(); as version) {
+      @if (applicationUpdateShortcut(); as update) {
+        @let label = update.restartPending
+          ? 'Restart required to use v' + update.version
+          : 'Review available update v' + update.version;
         <button #updateStatusButton class="status-update" type="button"
-          [attr.aria-label]="'Review available update v' + version"
-          [title]="'Update available: v' + version + ' — Review in Updates'"
+          [attr.aria-label]="label" [title]="label + ' — Open Updates'"
           (click)="openApplicationUpdates(updateStatusButton)">
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
-            stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="8" cy="8" r="6.5" /><path d="M8 11V5m-2.4 2.4L8 5l2.4 2.4" />
-          </svg>
+          @if (update.restartPending) {
+            <gk-icon name="refresh" [size]="14" />
+          } @else {
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor"
+              stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.5" /><path d="M8 11V5m-2.4 2.4L8 5l2.4 2.4" />
+            </svg>
+          }
         </button>
       }
       <span class="status-separator"></span><span class="status-version" [class.preview]="git.browserPreview()" [title]="git.browserPreview() ? 'Browser preview environment' : 'Git Khronos version'">{{ git.browserPreview() ? 'Preview' : (git.systemInfo()?.appVersion ? 'v' + git.systemInfo()?.appVersion : 'Starting…') }}</span>

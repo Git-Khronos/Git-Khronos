@@ -593,5 +593,17 @@ test('the version bar advertises a native offer and opens Updates without starti
   await expect(dialog).toContainText('Owned installation confirmed; restart later');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(indicator).toHaveCount(0);
+  const restart = page.getByRole('button', { name: 'Restart required to use v0.2.0' });
+  await expect(restart).toBeFocused();
+  await restart.press('Enter');
+  await expect(dialog).toContainText('Owned installation confirmed; restart later');
+  await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeDisabled();
+  await page.evaluate(() => (window as any).__updates.replace({ runningVersion: '0.2.0' }));
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(restart).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Main menu', exact: true })).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__updates.calls
+    .filter((call: any) => /^(install_|restart_)/.test(call.command)))).toEqual([
+    { command: 'install_application_update', args: { offerId: 'footer-offer' } },
+  ]);
 });

@@ -905,10 +905,15 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected readonly git = inject(GitKhronosService);
   private readonly applicationUpdates = inject(ApplicationUpdatesService);
-  protected readonly availableApplicationUpdate = computed(() => {
+  protected readonly applicationUpdateShortcut = computed(() => {
     const state = this.applicationUpdates.state();
-    return this.applicationUpdates.native() && state?.configured && state.offerId
-      && state.phase !== 'installed' ? state.offeredVersion : null;
+    if (!this.applicationUpdates.native() || !state?.configured) return null;
+    if (state.phase === 'installed') {
+      return state.installedVersion && state.installedVersion !== state.runningVersion
+        ? { version: state.installedVersion, restartPending: true } : null;
+    }
+    return state.offerId && state.offeredVersion
+      ? { version: state.offeredVersion, restartPending: false } : null;
   });
   private readonly applicationUpdatesDialog = viewChild<ApplicationUpdatesDialogComponent>('applicationUpdatesDialog');
   protected readonly applicationUpdatesRequest = signal<ApplicationUpdatesRequest | null>(null);
