@@ -127,9 +127,27 @@ printf '%s\\trefs/tags/v0.1.6\\n%s\\trefs/tags/v0.1.6^{}\\n' '${head}' '${commit
     const defaultStale = invoke(true);
     assert.equal(defaultStale.status, 1, defaultStale.stderr);
     assert.match(defaultStale.stderr, /does not match this workflow attempt and release tag commit/);
-    const [defaultWork] = await readdir(defaultOutput);
+    const [defaultWork] = (await readdir(defaultOutput)).filter(name => !name.startsWith('.'));
     assert.match(defaultWork, /^v0\.1\.6-run-123456-attempt-2\./);
     assert.deepEqual((await readdir(join(defaultOutput, defaultWork))).sort(), ['candidate', 'candidate-run.json']);
+
+    const retained = join(defaultOutput, defaultWork);
+    const pkgName = 'Git-Khronos_0.1.6_amd64.deb';
+    const sha = 'a'.repeat(64);
+    await writeFile(join(retained, 'candidate/candidate.json'), JSON.stringify(candidate));
+    await writeFile(join(retained, 'qualified-package.sha256'), `${sha}  ${pkgName}\n`);
+    await writeFile(join(fixtureTools, 'check-debian-update-evidence.mjs'),
+      `if (process.argv[2] !== '--release-package' || !process.argv[3].endsWith('${pkgName}')) process.exit(5); console.log('${sha}');`);
+    await writeFile(join(fixtureTools, 'report-installed-acceptance.mjs'),
+      `if (process.argv[2] !== '--verify-release' || !process.argv.at(-1).endsWith('candidate-matrix')) process.exit(6);`);
+    const reused = invoke(true);
+    assert.equal(reused.status, 0, reused.stderr);
+    assert.ok(reused.stdout.includes(`Reused verified package: ${join(retained, 'candidate', pkgName)}`));
+    await writeFile(join(retained, 'qualified-package.sha256'), `${'b'.repeat(64)}  ${pkgName}\n`);
+    const tampered = invoke(true);
+    assert.equal(tampered.status, 1, tampered.stderr);
+    assert.match(tampered.stderr, /did not reverify\. Do not sign/);
+    assert.deepEqual((await readdir(defaultOutput)).filter(name => !name.startsWith('.')), [defaultWork]);
   });
 
 test('signed submission pins the candidate and dispatches only the verified public sidecar', async t => {

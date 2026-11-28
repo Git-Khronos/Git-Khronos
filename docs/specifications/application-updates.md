@@ -417,7 +417,8 @@ changes and deletion.
 
    The default uses the locally trusted public key created by
    `task signer:generate` and stores the download where `task sign` looks for
-   it. To override both, append `"$PUBLIC_KEY_FILE" "$OUTPUT_PARENT"` to the
+   it. Repeating the default command rechecks and reuses the same qualified
+   attempt instead of creating a second copy. To override both, append `"$PUBLIC_KEY_FILE" "$OUTPUT_PARENT"` to the
    command and give it an existing output directory. The task prints the package path and qualified digest only after checking
    the tag, workflow attempt, package evidence and installed matrix. It
    does not sign, install, or publish. If downloading manually, use the
