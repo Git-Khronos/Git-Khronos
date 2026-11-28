@@ -1,6 +1,7 @@
 // Local feedback only; this is not a replacement for release checks.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -135,7 +136,7 @@ Tests still run against your working files, not an isolated staged snapshot.
 Use --workers to override the browser worker count and --webkit to select WebKit.
 Use --batch-renderer to share one browser server across plain profile filters.
 Use --native-package to include mapped native scenario suites with an explicit Debian archive.
-Use --native-package-sha256 to require a previously reviewed archive checksum.
+Packaged suites pin the selected archive checksum. Use --native-package-sha256 to require a previously reviewed checksum.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
 This command does not fetch or replace the release test suite.`);
   process.exit(0);
@@ -350,13 +351,24 @@ const rendererCommands = canBatchRenderer
     ...selectedProfiles.map(profile => ['desktop:e2e:' + profile]),
     ...(directPatterns.length ? [['desktop:e2e', '--', ...directPatterns]] : []),
   ];
+let pinnedNativeChecksum = nativeChecksum?.toLowerCase();
+if (nativePackage && nativeSuites.size && !pinnedNativeChecksum) {
+  try {
+    const hash = createHash('sha256');
+    for await (const chunk of createReadStream(nativePackage)) hash.update(chunk);
+    pinnedNativeChecksum = hash.digest('hex');
+  } catch (error) {
+    console.error(`Cannot checksum the selected native package: ${error.message}`);
+    process.exit(2);
+  }
+}
 const extraChecks = [
   ...(packageSpecs.size ? [broad ? ['desktop:package-test'] : ['desktop:package-test:focused', '--', ...packageSpecs]] : []),
   ...(productionRendererBuild ? [['desktop:build:production']] : []),
   ...(nativeHarnessTests ? [['desktop:native-harness-test']] : []),
   ...(archiveCacheTests ? [['desktop:archive-cache-test']] : []),
   ...(nativePackage ? [...nativeSuites].map(suite => ['desktop:' + suite, '--', '--package', nativePackage,
-    ...(nativeChecksum ? ['--expect-package-sha256', nativeChecksum.toLowerCase()] : [])]) : []),
+    '--expect-package-sha256', pinnedNativeChecksum]) : []),
 ];
 const commands = broad
   ? [['desktop:check'], ['desktop:test'], ...extraChecks, ['desktop:e2e']]

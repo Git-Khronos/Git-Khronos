@@ -597,12 +597,14 @@ test('updater fixture edits select offline package checks, not an installed upda
   const f = fixture(t);
   f.write('.gitignore', 'artifacts/\n');
   f.commit();
-  f.write('artifacts/candidate.deb');
+  f.write('artifacts/candidate.deb', 'abc');
   f.write('tools/native_application_updates_scenarios.py');
   const plan = f.run('--native-package', 'artifacts/candidate.deb');
   assert.match(plan, /"desktop:native-application-updates" "--output-style=stream" "--" "--package"/);
   assert.match(plan, /"desktop:native-application-update-release-link" "--output-style=stream" "--" "--package"/);
   assert.doesNotMatch(plan, /application-update-consent|--installed|desktop:native-full|desktop:e2e/);
+  const digest = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+  assert.equal(plan.split('"--expect-package-sha256" "' + digest + '"').length, 3);
   const pinned = f.run('--native-package', 'artifacts/candidate.deb', '--native-package-sha256', 'A'.repeat(64));
   assert.equal(pinned.split('"--expect-package-sha256" "' + 'a'.repeat(64) + '"').length, 3);
   for (const args of [
