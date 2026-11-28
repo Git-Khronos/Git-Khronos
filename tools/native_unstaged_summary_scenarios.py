@@ -194,8 +194,17 @@ def unstaged_summary_workflow(driver, fixtures, report):
     filter_paths('deleted.txt')
     driver.wait("""return document.querySelector('.unstaged-section .collapsed-file-matches')?.textContent.trim() === '1 loaded match'
       && document.querySelector('.staged-section .collapsed-file-matches')?.textContent.trim() === '0 loaded matches';""")
+    filtered_recaps = wait_for_line_recaps(driver, (4, 3), (1, 1), uncounted=1, filtered=True)
+    driver.wait("""const stage = document.querySelector('.unstaged-section [aria-label="Stage all changes"]');
+      const unstage = document.querySelector('.staged-section .file-section-title > button');
+      return stage?.title.includes('including files hidden by the filter')
+        && unstage?.title.includes('including files hidden by the filter');""")
+    assert checkout_footprint(fixtures, repository, files) == before
+    report['unstagedLineSummary']['filteredRecaps'] = filtered_recaps
+    report['scenarios'].append('native-filtered-recaps-and-bulk-actions-describe-the-whole-section-without-writes')
     driver.click_visible('button[aria-label="Clear file filter"]')
     driver.wait("return !document.querySelector('.collapsed-file-matches')")
+    recaps((4, 3), (1, 1))
     driver.click_visible(staged_toggle)
     assert checkout_footprint(fixtures, repository, files) == before
     report['scenarios'].append('native-collapsed-working-tree-headers-show-loaded-filter-matches')

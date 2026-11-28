@@ -3,7 +3,7 @@ import json
 
 
 def wait_for_line_recaps(driver, unstaged, staged, *, uncounted=0, changed_files=None,
-                        staged_partial=False, timeout=30):
+                        staged_partial=False, filtered=False, timeout=30):
     def expected(section, counts, excluded=0, partial=False):
         added, removed = counts
         label = (f'{added} {"addition" if added == 1 else "additions"} and '
@@ -14,6 +14,9 @@ def wait_for_line_recaps(driver, unstaged, staged, *, uncounted=0, changed_files
         if partial:
             label += '; partial totals'
             details.append('(partial)')
+        if filtered:
+            label += '; totals include files hidden by the filter'
+            details.append('All files')
         return {
             'selector': f'.{section}-section gk-working-tree-summary .summary',
             'label': label,
