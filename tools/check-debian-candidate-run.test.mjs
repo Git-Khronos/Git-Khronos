@@ -199,6 +199,6 @@ cat > "$CAPTURED"
   assert.match(result.stdout, /Submitted v0\.1\.6 for protected publication/);
   assert.ok(!result.stdout.includes(encoded));
   assert.deepEqual(JSON.parse(await readFile(captured, 'utf8')), {
-    release_tag: 'v0.1.6', candidate_run_id: '123456', signature: encoded, hosted_signing: false, verification_only: false,
+    release_tag: 'v0.1.6', candidate_run_id: '123456', signature: encoded, hosted_signing: 'false', verification_only: 'false',
   });
 });

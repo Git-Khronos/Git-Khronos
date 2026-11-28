@@ -66,6 +66,6 @@ key="${HOME:?Set HOME to the publisher home directory}/.config/git-khronos-signi
 bash "$tools/verify-signed-debian-installer.sh" "$tag" "$work/$name" "$key"
 
 jq -nc --arg tag "$tag" --arg run "$run" --rawfile signature "$work/$name.sig" \
-  '{release_tag:$tag,candidate_run_id:$run,signature:$signature,hosted_signing:false,verification_only:false}' |
+  '{release_tag:$tag,candidate_run_id:$run,signature:$signature,hosted_signing:"false",verification_only:"false"}' |
   gh workflow run publish-signed-debian.yml --repo github.com/Git-Khronos/Git-Khronos --ref main --json
 printf 'Submitted %s for protected publication; review and approve the release workflow on GitHub.\n' "$tag"
