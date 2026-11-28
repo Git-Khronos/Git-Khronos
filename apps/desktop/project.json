@@ -272,6 +272,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite discard-large --headless" }
     },
+    "native-discard-large-compact": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite discard-large-compact --headless" }
+    },
     "native-discard-limit": {
       "executor": "nx:run-commands",
       "cache": false,

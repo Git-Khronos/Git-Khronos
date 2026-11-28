@@ -139,3 +139,14 @@ An opt-in native regression now verifies the 55,277,605-byte tracked
 fixture with v2: Discard restores the index bytes and Undo restores the
 exact pre-discard bytes without changing the index or HEAD. This is
 native-core evidence, not installed-package qualification.
+
+For a package built with v2 support, run the opt-in desktop profile
+against that exact archive:
+
+```sh
+pnpm nx run desktop:native-discard-large-compact --output-style=stream -- --package "$archive"
+```
+
+It tracks the CTI-sized enterprise fixture, leaves its three siblings
+untracked, and verifies the real bulk-discard review and Undo. The
+existing `discard-large` profile remains compatible with older packages.

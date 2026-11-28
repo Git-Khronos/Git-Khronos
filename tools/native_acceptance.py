@@ -1430,7 +1430,7 @@ def main():
         "lfs-counts", "lfs-snapshot-timeout", "watcher-refresh", "file-media", "workspace-restore", "editor-close", "working-file-editor",
         "workspace-batch", "workspace-clone", "workspace-clone-recipe", "workspace-saved-removal", "workspace-saved-status", "workspace-locate", "workspace-bulk-locate",
         "workspace-pull-upstreams", "pull-submodule-scope", "merge-preview", "reference-hover", "reference-copy",
-        "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "merge-rebase-review", "discard-subset", "discard-busy", "discard-deletion", "discard-stale-review", "discard-large", "discard-limit", "submodule-initialize", "submodule-update", "sparse-checkout",
+        "workspace-locate-nearby", "workspace-reopen", "feature-rebase", "merge-rebase-review", "discard-subset", "discard-busy", "discard-deletion", "discard-stale-review", "discard-large", "discard-large-compact", "discard-limit", "submodule-initialize", "submodule-update", "sparse-checkout",
         "stash-review", "stash-selection", "stash-clear", "autosquash-amend", "signed-tag", "signed-commit", "empty-commit", "lfs-lock-actions", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection", "diff-rendering",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "checkout-responsiveness", "worktree-reservation",
@@ -1840,9 +1840,10 @@ def main():
             elif args.suite == "discard-stale-review":
                 from native_discard_subset_scenarios import discard_single_stale_review
                 repository, repo_id = discard_single_stale_review(driver, fixtures, report)
-            elif args.suite == "discard-large":
+            elif args.suite in ("discard-large", "discard-large-compact"):
                 from native_discard_subset_scenarios import discard_large_untracked_batch
-                repository, repo_id = discard_large_untracked_batch(driver, fixtures, report)
+                repository, repo_id = discard_large_untracked_batch(
+                    driver, fixtures, report, compact=args.suite == "discard-large-compact")
             elif args.suite == "discard-limit":
                 from native_discard_subset_scenarios import discard_file_size_limit
                 repository, repo_id = discard_file_size_limit(driver, fixtures, report)

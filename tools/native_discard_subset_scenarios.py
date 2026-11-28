@@ -458,7 +458,7 @@ def discard_refused_keyboard_focus(driver, fixtures, report):
     return repository, repo_id
 
 
-def discard_large_untracked_batch(driver, fixtures, report):
+def discard_large_untracked_batch(driver, fixtures, report, *, compact=False):
     """Exercise the actual app with the four CTI file sizes, not the user's data."""
     from hashlib import file_digest
     from native_acceptance import open_ui
@@ -551,9 +551,10 @@ def discard_large_untracked_batch(driver, fixtures, report):
     report['scenarios'].append('native-cti-data-paths-and-sizes-recover-unchanged-after-restart')
     report['scenarios'].append('native-cti-sized-bulk-discard-skips-and-preserves-staged-only-file')
     # Reuse the same owned files with a tracked file and untracked siblings.
-    # The committed version differs only at byte 0. Tracking the largest
-    # fixture instead requires two 55 MB snapshots and exceeds the capture cap.
-    tracked = '_data_/mitre-attack/mobile-attack.json'
+    # The committed version differs only at byte 0. The separate compact
+    # profile exercises the largest fixture without changing older release gates.
+    tracked = ('_data_/mitre-attack/enterprise-attack.json' if compact else
+               '_data_/mitre-attack/mobile-attack.json')
     with (repository / tracked).open('r+b') as file:
         original_byte = file.read(1)
         file.seek(0)
@@ -586,6 +587,10 @@ def discard_large_untracked_batch(driver, fixtures, report):
     assert {path: digest(path) for path in sizes} == before
     assert_staged_unchanged()
     report['scenarios'].append('native-cti-sized-bulk-discard-restores-index-version-of-tracked-file-and-undo-recovers-edit')
+    if compact:
+        report['largeDiscardTrackedPath'] = tracked
+        report['largeDiscardTrackedBytes'] = sizes[tracked]
+        report['scenarios'].append('native-cti-largest-tracked-file-and-untracked-siblings-discard-and-undo')
     return repository, repo_id
 
 
