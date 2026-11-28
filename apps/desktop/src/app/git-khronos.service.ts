@@ -408,6 +408,7 @@ export class GitKhronosService implements OnDestroy {
   private conflictRepositoryId: string | null = null;
   private conflictReadScope: string | null = null;
   private conflictRequest = 0;
+  private publishedConflictRequest = 0;
   readonly fileHistory = signal<FileHistoryEntry[] | null>(null);
   readonly fileBlame = signal<FileBlameLine[] | null>(null);
   readonly fileBlameStart = signal(1);
@@ -2294,6 +2295,7 @@ export class GitKhronosService implements OnDestroy {
       if (this.activeRepositoryReadScope() !== scope || request !== this.conflictRequest) return;
       this.conflictRepositoryId = repo.id;
       this.conflictReadScope = scope;
+      this.publishedConflictRequest = request;
       this.conflictDetails.set(details);
       report(`Resolving conflict in ${path}`);
     }, repo.id, null, true, false);
@@ -2316,6 +2318,10 @@ export class GitKhronosService implements OnDestroy {
       || !this.requireRecoveryRepository(this.conflictRepositoryId)) return false;
     if (this.conflictReadScope !== this.activeRepositoryReadScope()) {
       this.error.set('The active checkout visit changed. Reopen the Merge Tool to review this conflict again.');
+      return false;
+    }
+    if (this.publishedConflictRequest !== this.conflictRequest) {
+      this.error.set('This conflict review is no longer current. Reload it before applying a resolution.');
       return false;
     }
     const { path } = details;

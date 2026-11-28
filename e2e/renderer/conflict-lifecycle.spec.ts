@@ -184,6 +184,34 @@ test('a conflict review cannot write in another workspace visit of the same chec
     error: 'The active checkout visit changed. Reopen the Merge Tool to review this conflict again.' });
 });
 
+test('a same-file reload retires the previous conflict review before its reply', async ({ page }) => {
+  await prepare(page);
+  const result = await page.evaluate(async () => {
+    const { git, calls } = (window as any).__conflictLifecycle;
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    let release!: () => void;
+    let started!: () => void;
+    const waiting = new Promise<void>(resolve => { started = resolve; });
+    native.invoke = (command: string, args: unknown) => command !== 'inspect_conflict' ? invoke(command, args)
+      : new Promise(resolve => {
+        release = () => resolve(invoke(command, args));
+        started();
+      });
+    const retired = git.conflictDetails();
+    const reload = git.inspectConflict(retired.path);
+    await waiting;
+    const applied = await git.resolveConflict(retired, 'incoming');
+    const error = git.error();
+    release();
+    const fresh = await reload;
+    return { applied, error, fresh: !!fresh && fresh !== retired,
+      writes: calls.filter((call: { command: string }) => call.command === 'resolve_conflict').length };
+  });
+  expect(result).toEqual({ applied: false, fresh: true, writes: 0,
+    error: 'This conflict review is no longer current. Reload it before applying a resolution.' });
+});
+
 test('a pending conflict inspection cannot publish into another workspace visit', async ({ page }) => {
   await prepare(page, true);
   const result = await page.evaluate(async () => {
