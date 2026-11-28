@@ -18,6 +18,7 @@ async function prepare(page: Page, ui = false): Promise<void> {
     (window as any).__conflictLifecycle = state;
     (window as any).__TAURI_INTERNALS__ = { invoke: (command: string, args: any) => {
       state.calls.push({ command, args });
+      if (command === 'load_more_changes') return Promise.resolve(status);
       if (command === 'inspect_conflict') return Promise.resolve({ path: args.path, ancestor: 'base\n', current: 'current\n', incoming: 'incoming\n',
         output: 'working conflict\n', binary: false, truncated: false, editable: true,
         state: `${args.path}-reviewed`, currentExists: true, incomingExists: true, submodule: false });
@@ -100,8 +101,17 @@ test('the conflict section distinguishes loaded conflicts from the repository to
   await page.getByRole('button', { name: 'Show conflicted files' }).click();
   const inspector = page.getByRole('complementary', { name: 'Working directory inspector' });
   await expect(inspector.getByRole('button', { name: 'Conflicted Files (1 of 2)', exact: true })).toBeFocused();
-  await expect(inspector.getByText('More conflicted files are outside the loaded list.', { exact: false })).toBeVisible();
-  await expect(inspector.getByRole('button', { name: /Show 1,000 more files/ })).toBeVisible();
+  const hidden = inspector.getByText('More conflicted files are outside the loaded list.', { exact: false });
+  await expect(hidden).toBeVisible();
+  const loadMore = inspector.getByRole('button', { name: /Show 1,000 more files/ });
+  await loadMore.focus();
+  await loadMore.press('Enter');
+  await expect(inspector.getByRole('button', { name: 'Conflicted Files (2)', exact: true })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'new.txt', exact: true })).toBeVisible();
+  await expect(hidden).toHaveCount(0);
+  const mutations = await page.evaluate(() => (window as any).__conflictLifecycle.calls
+    .filter((call: { command: string }) => /^(resolve_conflict|continue_merge|abort_merge)$/.test(call.command)));
+  expect(mutations).toEqual([]);
 });
 
 test('an outgoing conflict shortcut cannot open the inspector in another checkout visit', async ({ page }) => {
