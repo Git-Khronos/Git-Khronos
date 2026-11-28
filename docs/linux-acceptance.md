@@ -2126,6 +2126,17 @@ than those same cases in the baseline. This points to a broad slowdown in
 that shard, not just a few disproportionately expensive tests; it does not
 identify the cause. Rebalancing by test titles alone would not address it.
 
+The comparison of [run 46144003368](https://github.com/Git-Khronos/Git-Khronos/actions/runs/46144003368)
+and [run 46144497167](https://github.com/Git-Khronos/Git-Khronos/actions/runs/46144497167)
+shows the slow shard changing even with identical assignments. Of 2,199
+matching cases with complete timings, shard 1's median case was 38% slower
+in the second run, while shard 4's was 27% faster. Shard 2's earlier timing
+sidecar was unavailable because its renderer step failed on renamed
+Abort Merge selectors. The successful run's four browser steps ranged
+from 773 to 1,116 seconds despite having exactly 733 cases each. This
+comparison supports keeping the assignment for now and measuring runner
+conditions before tuning the weights.
+
 For two clean runs of the same Chromium test set, download and unpack the
 successful `renderer-progress-<run>-attempt-<attempt>-shard-<shard>`
 artifacts into separate directories. Compare **only** their timing sidecars,
