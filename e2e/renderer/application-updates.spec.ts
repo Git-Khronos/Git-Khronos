@@ -558,3 +558,27 @@ test('a deferred release remains available for manual retry without changing aut
   expect(await page.evaluate(() => (window as any).__updates.calls
     .filter((call: any) => /^(check_|download_|install_|set_automatic_)/.test(call.command)))).toEqual([]);
 });
+
+test('the version bar advertises a native offer and opens Updates without starting an action', async ({ page }) => {
+  const indicator = page.getByRole('button', { name: 'Review available update v0.2.0' });
+  const dialog = page.getByRole('dialog', { name: 'Updates', exact: true });
+  await expect(indicator).toHaveCount(0);
+  // The browser fixture installs native IPC after startup; open once to attach its listener.
+  await open(page);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.evaluate(() => (window as any).__updates.replace({
+    phase: 'available', offerId: 'footer-offer', offeredVersion: '0.2.0', canDownload: true,
+  }));
+  await expect(indicator).toBeVisible();
+  await indicator.focus();
+  await indicator.press('Enter');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Download and verify', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(indicator).toBeFocused();
+  expect(await page.evaluate(() => (window as any).__updates.calls
+    .filter((call: any) => /^(check_|download_|install_|set_automatic_)/.test(call.command)))).toEqual([]);
+  await page.evaluate(() => (window as any).__updates.replace({ phase: 'installed', installedVersion: '0.2.0' }));
+  await expect(indicator).toHaveCount(0);
+});

@@ -23,6 +23,7 @@ import { FileContentDialogComponent, type FileContentDialogRequest } from './fil
 import { EditorDraftRecoveryComponent } from './editor-draft-recovery.component';
 import { WindowsLauncherComponent } from './windows-launcher.component';
 import { ApplicationUpdatesDialogComponent, type ApplicationUpdatesRequest } from './application-updates-dialog.component';
+import { ApplicationUpdatesService } from './application-updates.service';
 import { isTabKey } from './tab-key';
 import type { EditorDraftOpenRequest } from './editor-draft-recovery';
 import type { FileMediaSelection } from './file-media.component';
@@ -903,6 +904,12 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected readonly git = inject(GitKhronosService);
+  private readonly applicationUpdates = inject(ApplicationUpdatesService);
+  protected readonly availableApplicationUpdate = computed(() => {
+    const state = this.applicationUpdates.state();
+    return this.applicationUpdates.native() && state?.configured && state.offerId
+      && state.phase !== 'installed' ? state.offeredVersion : null;
+  });
   private readonly applicationUpdatesDialog = viewChild<ApplicationUpdatesDialogComponent>('applicationUpdatesDialog');
   protected readonly applicationUpdatesRequest = signal<ApplicationUpdatesRequest | null>(null);
   protected readonly ownsApplicationUpdates = (request: ApplicationUpdatesRequest): boolean => this.applicationUpdatesRequest() === request;
