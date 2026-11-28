@@ -849,6 +849,31 @@ test('reclaim removes only disposable caches from a renderer snapshot on a previ
   assert.equal(readStatus(directory).state, 'stopped-without-result');
 });
 
+test('scratch-only reclaim never touches a live checkout after a reboot', { skip: !currentBootId() }, t => {
+  const directory = mkdtempSync(join(tmpdir(), 'gk-reclaim-live-scratch-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const checkout = join(directory, 'checkout');
+  const scratch = join(directory, 'renderer-artifacts/.playwright-artifacts-0');
+  const evidence = join(directory, 'renderer-artifacts/failed-test');
+  for (const path of [join(checkout, 'node_modules'), scratch, evidence]) mkdirSync(path, { recursive: true });
+  writeFileSync(join(evidence, 'trace.zip'), 'retained');
+  const boot = currentBootId();
+  const owner = { runnerPid: process.pid, runnerStart: processStart(process.pid), runnerBootId: boot,
+    command: ['pnpm', 'nx', 'run', 'desktop:e2e'], source: { cwd: checkout } };
+  const receipt = join(directory, 'started.json');
+  const reclaim = (...args) => spawnSync(process.execPath, [launcher, 'reclaim', directory, ...args], { encoding: 'utf8' });
+  writeFileSync(receipt, JSON.stringify(owner));
+  assert.notEqual(reclaim('--discard-worker-scratch').status, 0);
+  assert.ok(existsSync(scratch));
+  writeFileSync(receipt, JSON.stringify({ ...owner, runnerBootId: boot.replace(/^./, c => c === '0' ? '1' : '0') }));
+  assert.notEqual(reclaim().status, 0);
+  const result = reclaim('--discard-worker-scratch');
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(!existsSync(scratch));
+  assert.ok(existsSync(join(checkout, 'node_modules')));
+  assert.equal(readFileSync(join(evidence, 'trace.zip'), 'utf8'), 'retained');
+});
+
 test('reclaim can opt into a finished legacy build snapshot but refuses live or mismatched receipts',
   { skip: process.platform !== 'linux' }, t => {
     const directory = mkdtempSync(join(tmpdir(), 'gk-reclaim-finished-'));

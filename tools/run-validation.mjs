@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, closeSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { delimiter, resolve, join, sep } from 'node:path';
+import { delimiter, isAbsolute, resolve, join, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { runOwnedCommand } from './owned-command.mjs';
@@ -9,14 +9,23 @@ import { completedSnapshotRetired, currentBootId, processStart, validationStatus
 import { validationSourceFingerprint } from './validation-source.mjs';
 import { requireRendererRunSpace, requireValidationSnapshotSpace } from './validation-space.mjs';
 
+function linuxMounts() {
+  return readFileSync('/proc/self/mountinfo', 'utf8').trimEnd().split('\n')
+    .map(line => line.split(' ')[4].replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8))));
+}
+
+function overlapsNestedMount(path, root, mounts) {
+  return mounts.some(mount => mount === root || mount === path || mount.startsWith(path + sep)
+    || (mount.startsWith(root + sep) && path.startsWith(mount + sep)));
+}
+
 function reclaimSnapshotCaches(source, output) {
   let failures = 0;
   const caches = ['node_modules', '.angular/cache', '.nx/cache'];
   let mounts = [];
   if (process.platform === 'linux') {
     try {
-      mounts = readFileSync('/proc/self/mountinfo', 'utf8').trimEnd().split('\n')
-        .map(line => line.split(' ')[4].replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8))));
+      mounts = linuxMounts();
     } catch {
       writeFileSync(output, '==> Could not enumerate mounts; snapshot caches retained.\n');
       return 1;
@@ -31,8 +40,7 @@ function reclaimSnapshotCaches(source, output) {
     const path = join(source, cache);
     try {
       // Do not follow a replaced snapshot or cache parent/link outside it.
-      const mounted = mounts.some(mount => mount === source || mount === path || mount.startsWith(path + sep)
-        || (mount.startsWith(source + sep) && path.startsWith(mount + sep)));
+      const mounted = overlapsNestedMount(path, source, mounts);
       if (realpathSync(path) === path && !mounted) {
         rmSync(path, { recursive: true, force: true });
       }
@@ -54,11 +62,12 @@ function discardRendererWorkerScratch(directory) {
     if (error.code === 'ENOENT') return 0;
     throw error;
   }
+  const mounts = process.platform === 'linux' ? linuxMounts() : [];
   let count = 0;
   for (const entry of readdirSync(artifacts, { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^\.playwright-artifacts-\d+$/.test(entry.name)) continue;
     const scratch = join(artifacts, entry.name);
-    if (realpathSync(scratch) !== scratch) continue;
+    if (realpathSync(scratch) !== scratch || overlapsNestedMount(scratch, directory, mounts)) continue;
     rmSync(scratch, { recursive: true, force: true });
     count++;
   }
@@ -131,6 +140,15 @@ if (mode === 'reclaim') {
   const nxSnapshot = Array.isArray(command) && command.every(arg => typeof arg === 'string')
     && command[0] === 'pnpm' && command[1] === 'nx' && command.length > 2;
   const rendererSnapshot = nxSnapshot && rendererSelection(command.slice(2)).rendererRun;
+  const interrupted = status.state === 'stopped-without-result' && status.stopReason === 'different-boot';
+  // An interrupted live-checkout job owns its artifacts, not the checkout's caches.
+  if (discardScratch && rendererSnapshot && interrupted && status.source?.mode === undefined
+    && typeof status.source?.cwd === 'string' && isAbsolute(status.source.cwd)
+    && realpathSync(directory) === directory && statSync(directory).uid === process.getuid()) {
+    const count = discardRendererWorkerScratch(directory);
+    console.log(`Reclaimed ${count} raw Playwright worker directories. The checkout and exported evidence are untouched.`);
+    process.exit(0);
+  }
   if (status.source?.mode !== 'commit-snapshot' || status.source.commandCwd !== source
     || !(completed ? nxSnapshot : rendererSnapshot)
     || realpathSync(directory) !== directory || realpathSync(source) !== source
