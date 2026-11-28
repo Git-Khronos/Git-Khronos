@@ -1,4 +1,4 @@
-import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, inject, input, output, viewChild } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, inject, input, linkedSignal, output, viewChild } from '@angular/core';
 import type { ConflictDetails } from '@git-khronos/contracts';
 import { BackgroundOperationWarningsComponent } from './background-operation-warnings.component';
 import { GitKhronosService } from './git-khronos.service';
@@ -27,12 +27,28 @@ export class ConflictEditorComponent {
   readonly requested = output<{ conflict: ConflictDetails; action: ConflictEditorAction }>();
   readonly keyPressed = output<{ conflict: ConflictDetails; event: KeyboardEvent }>();
   protected readonly git = inject(GitKhronosService);
+  protected readonly copyFeedback = linkedSignal({ source: this.details, computation: (): string => '' });
+  private draftCopyRequest = 0;
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
 
   constructor() {
     afterNextRender(() => {
       if (!this.suspended() && this.ownsDetails()(this.details())) this.closeButton()?.nativeElement.focus();
     });
+  }
+
+  protected async copyDraft(conflict: ConflictDetails): Promise<void> {
+    if (this.suspended() || !this.ownsDetails()(conflict) || !conflict.editable) return;
+    const request = ++this.draftCopyRequest;
+    const value = this.draft();
+    const current = () => request === this.draftCopyRequest && !this.suspended() && this.ownsDetails()(conflict);
+    this.copyFeedback.set('');
+    try {
+      await navigator.clipboard.writeText(value);
+      if (current()) this.copyFeedback.set('Copied merge draft.');
+    } catch {
+      if (current()) this.copyFeedback.set('Could not copy the merge draft. Clipboard access is unavailable.');
+    }
   }
 
   protected act(conflict: ConflictDetails, action: ConflictEditorAction): void {

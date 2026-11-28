@@ -19,7 +19,7 @@
 .merge-sides header, .merge-output header { display: flex; align-items: center; gap: 7px; padding: 0 10px; border-bottom: 1px solid #353447; background: #232333; }
 .merge-sides header span, .merge-output header span { color: #b9b8c8; font-size: 12px; font-weight: 850; letter-spacing: .07em; }
 .merge-sides header small, .merge-output header small { color: #8e8d9e; font-size: 12px; }
-.merge-sides header button { margin-left: auto; padding: 4px 7px; border-radius: 3px; background: #34334a; color: var(--accent); font-size: 12px; }
+.merge-sides header button, .merge-output header button { margin-left: auto; padding: 4px 7px; border-radius: 3px; background: #34334a; color: var(--accent); font-size: 12px; }
 .merge-sides pre { min-height: 0; margin: 0; overflow: auto; padding: 10px; background: #191925; color: #c9c8d3; font: 12px/1.55 var(--font-mono); tab-size: 2; white-space: pre; }
 .deleted-side { display: grid; place-items: center; background: #191925; color: #8e8d9e; font-size: 12px; font-style: italic; }
 .merge-output { display: grid; grid-template-rows: 34px minmax(0, 1fr); min-height: 0; border-top: 1px solid #454359; }
@@ -41,3 +41,6 @@
 .merge-warning { display: grid; place-items: center; padding: 12px; background: #392c2d; color: #e7ad86; font-size: 12px; }
 
 @keyframes palette-in { from { opacity: 0; transform: translateY(-7px) scale(.99); } }
+
+.merge-draft-copy-feedback { margin: 0; }
+.merge-draft-copy-feedback:not(:empty) { padding: 6px 12px; }

@@ -31,6 +31,7 @@
     @if (!git.conflictReviewCurrent() && !git.busy()) {
       <p class="merge-warning">Reload this conflict before applying a resolution. Your draft is still here.</p>
     }
+    <p class="merge-draft-copy-feedback" role="status" aria-atomic="true">{{ copyFeedback() }}</p>
     @if (git.error()) { <p class="merge-warning" role="alert" tabindex="-1">{{ git.error() }}</p> }
     @if (conflict.submodule) { <p class="merge-warning">Choose which recorded submodule commit the parent repository should keep. The checked-out submodule directory and any local changes inside it stay untouched.</p> }
     </div>
@@ -57,7 +58,9 @@
         </section>
       </div>
       <section class="merge-output">
-        <header><span>OUTPUT</span><small>{{ conflict.editable ? 'Edit the final file' : 'Read-only preview' }}</small></header>
+        <header><span>OUTPUT</span><small>{{ conflict.editable ? 'Edit the final file' : 'Read-only preview' }}</small>
+          @if (conflict.editable) { <button type="button" (click)="copyDraft(conflict)">Copy draft</button> }
+        </header>
         <textarea aria-label="Resolved output for {{ conflict.path }}" spellcheck="false" [readOnly]="!conflict.editable || git.busy()" [gkTextValue]="draft()" (gkTextValueChange)="act(conflict, { kind: 'edit', value: $event })"></textarea>
       </section>
       @if (conflict.truncated) { <div class="merge-warning">This preview was truncated at 256 KB. Text saving is disabled to prevent data loss.</div> }

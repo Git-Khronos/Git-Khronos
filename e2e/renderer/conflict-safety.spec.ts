@@ -209,6 +209,10 @@ test('a failed conflict reload preserves the draft but disables resolution until
   const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
   await dialog.getByRole('textbox').fill('draft kept after a failed read');
   await page.evaluate(() => {
+    const fixture = (window as any).__conflictTest;
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true, value: { writeText: async (value: string) => { fixture.copiedDraft = value; } },
+    });
     const native = (window as any).__TAURI_INTERNALS__;
     const invoke = native.invoke;
     let failed = false;
@@ -228,6 +232,13 @@ test('a failed conflict reload preserves the draft but disables resolution until
   await expect(dialog.getByRole('textbox')).toHaveValue('draft kept after a failed read');
   await expect(save).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Take Incoming', exact: true })).toBeDisabled();
+  const copy = dialog.getByRole('button', { name: 'Copy draft', exact: true });
+  await copy.focus();
+  await copy.press('Enter');
+  await expect(dialog.getByRole('status')).toHaveText('Copied merge draft.');
+  expect(await page.evaluate(() => (window as any).__conflictTest.copiedDraft)).toBe('draft kept after a failed read');
+  expect(await page.evaluate(() => (window as any).__conflictTest.calls
+    .some((call: { command: string }) => call.command === 'resolve_conflict'))).toBe(false);
   await reload.click();
   await expect(save).toBeEnabled();
   await expect(dialog.getByRole('textbox')).toHaveValue('working conflict\n');
