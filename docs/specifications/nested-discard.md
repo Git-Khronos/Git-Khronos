@@ -150,3 +150,12 @@ pnpm nx run desktop:native-discard-large-compact --output-style=stream -- --pack
 It tracks the CTI-sized enterprise fixture, leaves its three siblings
 untracked, and verifies the real bulk-discard review and Undo. The
 existing `discard-large` profile remains compatible with older packages.
+
+The extracted Debian package built from `cc6a74a` (SHA-256
+`9706ebc26ead446ba32a19a97b8903cae49b1bc96eeb601dfd6d906885b88ebc`)
+passed all six scenarios in this profile on local WSL2. The mixed batch
+covered 68,584,155 working bytes across four files. Bulk Discard restored
+the 55,277,605-byte tracked fixture to its index contents and removed the
+untracked siblings. Undo restored all four working hashes; the staged-only
+file, index entries, and HEAD remained unchanged. The restart scenario
+in this run covers the separate all-untracked batch, not the mixed batch.
