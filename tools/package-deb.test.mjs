@@ -494,6 +494,16 @@ cat metadata.json
   }
 });
 
+test('Debian package recommends the updater authorization launcher without requiring it', async () => {
+  const config = JSON.parse(await readFile(join(repositoryRoot, 'apps/desktop/src-tauri/tauri.conf.json'), 'utf8'));
+  const jammy = JSON.parse(await readFile(join(repositoryRoot, 'packaging/linux/ubuntu-jammy.conf.json'), 'utf8'));
+  const effectiveDeb = { ...config.bundle.linux.deb, ...jammy.bundle.linux.deb };
+  for (const deb of [config.bundle.linux.deb, effectiveDeb]) {
+    assert.ok(deb.recommends.includes('pkexec'));
+    assert.ok(!deb.depends.some(dep => /^pkexec\b/.test(dep)));
+  }
+});
+
 test('offline installer verification requires publisher proof and exact authenticated release identity', async t => {
   const root = await mkdtemp(join(tmpdir(), 'gk-installer-verification-'));
   t.after(() => rm(root, { recursive: true, force: true }));

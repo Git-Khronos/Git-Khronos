@@ -1,5 +1,13 @@
 # Informational sources
 
+## Debian package authorization recommendation
+
+- [Ubuntu's pkexec package and polkit role](https://packages.ubuntu.com/en/resolute/pkexec)
+
+Used to identify the system package that provides the existing authorization
+launcher. It is optional for Git Khronos and is supplied by the system
+package manager; no package assets or source code were copied.
+
 ## Offline Debian publisher verification
 
 - [Minisign verification options and authenticated comments](https://jedisct1.github.io/minisign/#trusted-comments)

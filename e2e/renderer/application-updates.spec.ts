@@ -167,7 +167,7 @@ test('automatic preference uses confirmed native state and restores the checkbox
   const dialog = await open(page);
   const automatic = dialog.getByRole('checkbox', { name: 'Enable automatic updates' });
   await expect(automatic).toHaveAccessibleDescription(
-    /Off by default.*downloads and verifies packages.*installs updates when no Git operation.*system may ask for authorization.*does not stop an installer/,
+    /Off by default.*downloads and verifies packages.*shortly after enabling or reopening the app.*about every six hours.*installs updates when no Git operation.*system may ask for authorization.*does not stop an installer/,
   );
   await page.evaluate(() => { (window as any).__updates.rejectSetting = true; });
   await automatic.click();

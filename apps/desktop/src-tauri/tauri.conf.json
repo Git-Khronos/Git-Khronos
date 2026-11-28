@@ -57,7 +57,8 @@
         ],
         "recommends": [
           "openssh-client",
-          "git-lfs"
+          "git-lfs",
+          "pkexec"
         ],
         "section": "vcs",
         "desktopTemplate": "../../../packaging/linux/git-khronos.desktop.hbs",

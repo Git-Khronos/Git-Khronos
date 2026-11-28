@@ -42,9 +42,15 @@ pub(super) fn install_blocker(format: Option<&str>) -> Option<&'static str> {
     if matches!(format, Some("deb" | "rpm"))
         && !package_authorizer_available(std::path::Path::new(PKEXEC))
     {
-        return Some(
-            "The package was verified, but this session does not have the system authorization launcher (pkexec). Install the official release package with your system package manager.",
-        );
+        return if format == Some("deb") {
+            Some(
+                "The update is verified, but pkexec is missing or not executable. Install the pkexec package and refresh update status, or install the official Debian package with your system package manager.",
+            )
+        } else {
+            Some(
+                "The package was verified, but this session does not have the system authorization launcher (pkexec). Install the official release package with your system package manager.",
+            )
+        };
     }
     format
         .is_none()

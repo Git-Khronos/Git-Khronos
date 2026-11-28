@@ -521,7 +521,10 @@ Then, in the older installation:
 
 1. Open **Updates** and confirm the old running version. Enable automatic
    updates without pressing **Check for updates**, **Download**, or **Install**.
-   Enabling resets the next-check deadline; let the scheduler run.
+   Enabling resets the next-check deadline. The running app checks on a
+   scheduler tick (about 15 seconds), then about every six hours. Fully
+   quitting and reopening with automatic updates enabled makes a fresh check
+   eligible immediately, without pressing the manual check button.
 2. Keep Git operations, terminal sessions, and editors idle. Observe the offer
    and verification; approve only the OS authorization for the expected
    update. An authorization prompt is compatible with automatic dispatch.
@@ -537,10 +540,13 @@ Neither does validating just the manifest or testing the offline updater.
 On Linux, a verified package can be downloaded even if the desktop cannot
 authorize an in-app installation. For Debian and RPM, a missing or unusable
 `/usr/bin/pkexec` disables the install action and suppresses automatic installer
-dispatch; checking and signature verification still work. The dialog explains
-that users can install the official release package with their system package
-manager instead. This check does not imply that a functioning polkit session
-exists, and there is no password-collection or `sudo` fallback.
+dispatch; checking and signature verification still work. The Debian package
+recommends `pkexec`, but it is not required for using Git Khronos. On systems
+where the recommendation was skipped, install the distro's `pkexec` package
+and select **Refresh status** in the app without restarting or discarding the
+verified download. The official release package can also be installed with
+the system package manager. Having `pkexec` does not guarantee a functioning
+polkit session, and there is no password-collection or `sudo` fallback.
 
 The updater rechecks the installed version before starting authorization.
 For Debian it also passes `--refuse-downgrade` to the actual dpkg
