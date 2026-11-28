@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { test } from 'node:test';
@@ -130,3 +131,74 @@ printf '%s\\trefs/tags/v0.1.6\\n%s\\trefs/tags/v0.1.6^{}\\n' '${head}' '${commit
     assert.match(defaultWork, /^v0\.1\.6-run-123456-attempt-2\./);
     assert.deepEqual((await readdir(join(defaultOutput, defaultWork))).sort(), ['candidate', 'candidate-run.json']);
   });
+
+test('signed submission pins the candidate and dispatches only the verified public sidecar', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'gk-submit-release-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const candidateDir = join(root, 'candidate');
+  const bin = join(root, 'bin');
+  const keyDir = join(root, '.config/git-khronos-signing');
+  const captured = join(root, 'workflow.json');
+  await mkdir(candidateDir);
+  await mkdir(bin);
+  await mkdir(keyDir, { recursive: true });
+  const name = 'Git-Khronos_0.1.6_amd64.deb';
+  const packagePath = join(candidateDir, name);
+  const bytes = 'qualified bytes';
+  const sha = createHash('sha256').update(bytes).digest('hex');
+  await writeFile(packagePath, bytes);
+  await writeFile(join(root, 'qualified-package.sha256'), `${sha}  ${name}\n`);
+  await writeFile(join(root, 'candidate-run.json'), JSON.stringify(run));
+  await writeFile(join(candidateDir, 'candidate.json'), JSON.stringify(candidate));
+  await writeFile(join(keyDir, 'git-khronos.key.pub'), Buffer.from('public key fixture').toString('base64'));
+  const comment = `timestamp:1795821739\tfile:${name}\tversion:0.1.6`;
+  const minisig = ['untrusted comment: signature from tauri secret key',
+    'A'.repeat(99) + '=', 'trusted comment: ' + comment, 'B'.repeat(86) + '==', ''].join('\n');
+  const sign = async (decoded = minisig) => {
+    const encoded = Buffer.from(decoded).toString('base64');
+    await writeFile(packagePath + '.sig', encoded);
+    return encoded;
+  };
+  await writeFile(join(bin, 'git'), `#!/bin/sh
+set -eu
+test "$*" = 'ls-remote --exit-code https://github.com/Git-Khronos/Git-Khronos.git refs/tags/v0.1.6^{}'
+printf '%s\\trefs/tags/v0.1.6^{}\\n' "$REMOTE_COMMIT"
+`, { mode: 0o700 });
+  await writeFile(join(bin, 'minisign'), `#!/bin/sh
+set -eu
+test "$1 $2 $4 $6" = '-VQ -m -x -p'
+test "$(cat "$3")" = 'qualified bytes'
+test "$(cat "$7")" = 'public key fixture'
+printf '%s\\n' "$VERIFIED_COMMENT"
+`, { mode: 0o700 });
+  await writeFile(join(bin, 'gh'), `#!/bin/sh
+set -eu
+test "$*" = 'workflow run publish-signed-debian.yml --repo github.com/Git-Khronos/Git-Khronos --ref main --json'
+cat > "$CAPTURED"
+`, { mode: 0o700 });
+  const script = fileURLToPath(new URL('./submit-signed-debian-release.sh', import.meta.url));
+  const invoke = (remoteCommit = commit, verifiedComment = comment) => spawnSync('bash', [script, root], {
+    encoding: 'utf8', env: { ...process.env, HOME: root, PATH: bin + delimiter + process.env.PATH,
+      REMOTE_COMMIT: remoteCommit, VERIFIED_COMMENT: verifiedComment, CAPTURED: captured },
+  });
+  assert.match(invoke().stderr, /Run task sign/);
+  const encoded = await sign();
+  assert.match(invoke(head).stderr, /tag no longer identifies/);
+  assert.match(invoke(commit, comment.replace('version:0.1.6', 'version:0.1.7')).stderr, /authenticated filename or version/);
+  await sign(minisig + 'appended fixture data\n');
+  assert.match(invoke().stderr, /extra data/);
+  await sign(minisig.replace('untrusted comment: signature from tauri secret key', 'untrusted comment: altered'));
+  assert.match(invoke().stderr, /unexpected comments/);
+  await sign();
+  await writeFile(packagePath, 'substituted bytes');
+  assert.match(invoke().stderr, /does not match the qualified SHA-256/);
+  await assert.rejects(readFile(captured), { code: 'ENOENT' });
+  await writeFile(packagePath, bytes);
+  const result = invoke();
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Submitted v0\.1\.6 for protected publication/);
+  assert.ok(!result.stdout.includes(encoded));
+  assert.deepEqual(JSON.parse(await readFile(captured, 'utf8')), {
+    release_tag: 'v0.1.6', candidate_run_id: '123456', signature: encoded, hosted_signing: false, verification_only: false,
+  });
+});

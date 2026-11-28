@@ -436,8 +436,11 @@ changes and deletion.
    qualified attempts or lives elsewhere. The task displays the reviewed
    release and digest before asking for the passphrase. It writes only the
    public sidecar; it does not publish.
-4. Dispatch **Publish signed Debian release** on `main` with the tag, candidate
-   run ID, and only the **public** `.deb.sig` content. The read-only verification
+4. Run `task release:submit -- /path/to/qualified-release-directory` to verify
+   the signature with Minisign and submit the public sidecar for approval.
+   You can also dispatch **Publish signed Debian release** on `main` with the
+   tag, candidate run ID, and only the **public** `.deb.sig` content.
+   The read-only verification
    job checks the successful run, attempt, exact tag commit, qualification
    digest, installed matrix, and publisher signature before creating
    `latest.json`. Reviewers can download the verified matrix separately

@@ -109,6 +109,12 @@ tasks:
     cmds:
       - bash tools/verify-signed-debian-installer.sh {{.CLI_ARGS}}
 
+  release:submit:
+    desc: Submit a qualified signed Debian release for protected publication on GitHub
+    platforms: [linux]
+    cmds:
+      - bash tools/submit-signed-debian-release.sh {{.CLI_ARGS}}
+
   release:download:
     desc: Download and verify a successful Debian candidate without signing or publishing
     platforms: [linux]

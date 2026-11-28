@@ -101,6 +101,7 @@ const packageSourceTests = new Map([
   ['tools/sign-qualified-debian.sh', 'tools/package-deb.test.mjs'],
   ['tools/sign-downloaded-release.sh', 'tools/package-deb.test.mjs'],
   ['tools/check-debian-release-version.sh', 'tools/package-deb.test.mjs'],
+  ['tools/submit-signed-debian-release.sh', 'tools/check-debian-candidate-run.test.mjs'],
   ['tools/download-qualified-debian.sh', 'tools/check-debian-candidate-run.test.mjs'],
   ['tools/check-debian-candidate-run.mjs', 'tools/check-debian-candidate-run.test.mjs'],
 ]);
