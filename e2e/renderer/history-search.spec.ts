@@ -110,6 +110,47 @@ test('a long file history subject keeps both copy actions available in a narrow 
   })).toEqual({ overflowX: 'hidden', textOverflow: 'ellipsis', clipped: true });
 });
 
+test('file history identifies the previous name on the rename row and copies it exactly', async ({ page }) => {
+  const path = 'docs/nouveau résumé.md';
+  const previous = 'archive/ancient [notes] naïve.md';
+  await page.setViewportSize({ width: 820, height: 800 });
+  await page.evaluate(({ path, previous }) => {
+    const state = (window as any).__historyFixture;
+    const native = (window as any).__TAURI_INTERNALS__;
+    const invoke = native.invoke;
+    native.invoke = async (command: string, args: any) => {
+      const result = await invoke(command, args);
+      if (command === 'inspect_file_history_page') {
+        result.entries[0] = state.filePages === 1
+          ? { ...result.entries[0], status: 'R', previousPath: previous }
+          : { ...result.entries[0], path: previous, status: 'M' };
+      }
+      return result;
+    };
+    const values: string[] = state.copiedPaths = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (value: string) => { values.push(value); } },
+    });
+    return state.app.openTrackedFileInsight(path, 'history');
+  }, { path, previous });
+  const panel = page.getByRole('region', { name: 'File history', exact: true });
+  const rename = panel.getByRole('article').first();
+  await expect(rename).toContainText(path);
+  const copy = rename.getByRole('button', { name: `Copy previous path: ${previous}`, exact: true });
+  await expect(copy).toHaveText(`Previous path: ${previous}`);
+  await expect(copy).toBeInViewport();
+  await copy.focus();
+  await copy.press('Enter');
+  await expect(panel.getByRole('status')).toHaveText(`Copied previous path: ${previous}`);
+  expect(await page.evaluate(() => (window as any).__historyFixture.copiedPaths)).toEqual([previous]);
+
+  await panel.getByRole('button', { name: 'Load older file history' }).click();
+  const older = panel.getByRole('article').nth(1);
+  await expect(older).toContainText(previous);
+  await expect(older.getByRole('button', { name: /^Copy previous path:/ })).toHaveCount(0);
+});
+
 test('file history copies the exact path and full commit ID without Git mutations', async ({ page }) => {
   const path = 'docs/Release notes/naïve résumé.md';
   await page.evaluate(() => {

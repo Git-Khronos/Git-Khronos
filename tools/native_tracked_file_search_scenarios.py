@@ -100,7 +100,7 @@ def deleted_file_history_from_exact_path(driver, fixtures, report):
 
     repository = fixtures.repository('history-of-deleted-path', commits=2)
     fixtures.git(repository, 'config', 'user.name', 'GC_HISTORY')
-    oldest = repository / 'GC_HISTORY'
+    oldest = repository / 'original [notes] naïve.txt'
     path = 'archived [1].txt'
     oldest.write_text('last committed contents before deletion\n')
     fixtures.git(repository, 'add', '--', oldest.name)
@@ -125,7 +125,7 @@ def deleted_file_history_from_exact_path(driver, fixtures, report):
     driver.click_scrolled_text('gk-command-palette [role=option] strong', 'File history for exact path: ' + path, wait_for_ready=True)
     driver.wait("""return [...document.querySelectorAll('.file-insight-panel .history-entry small')]
       .some(node => node.textContent.includes('Deleted'));""")
-    subjects = driver.script("return [...document.querySelectorAll('.file-insight-panel .history-entry > div > button')].map(node => node.textContent.trim())")
+    subjects = driver.script("return [...document.querySelectorAll('.file-insight-panel .history-entry .history-subject')].map(node => node.textContent.trim())")
     assert subjects == [deletion_subject, 'Rename historical file', 'GC_HISTORY'], subjects
     try:
         driver.request('POST', driver.path('window/rect'), {'width': 820, 'height': 720})
@@ -162,26 +162,35 @@ def deleted_file_history_from_exact_path(driver, fixtures, report):
     assert (repository / '.git/index').read_bytes() == index
     assert not (repository / path).exists()
     report['scenarios'].append('native-file-history-copies-deleted-path-without-git-mutation')
+    previous_path = '.file-insight-panel .history-entry .copy-history-previous-path'
+    assert driver.script("return document.querySelectorAll(arguments[0]).length", previous_path) == 1
+    driver.click_scrolled_text(previous_path, 'Previous path: ' + oldest.name, wait_for_ready=True)
+    driver.wait("return document.querySelector('gk-file-history .copy-feedback')?.textContent.trim()"
+                " === " + json.dumps('Copied previous path: ' + oldest.name))
+    assert fixtures.git(repository, 'rev-parse', 'HEAD') == tip
+    assert (repository / '.git/index').read_bytes() == index
+    assert not (repository / path).exists() and not oldest.exists()
+    report['scenarios'].append('native-file-history-copies-previous-rename-path-without-git-mutation')
     driver.click('gk-file-history .history-start summary')
     driver.script("const field=document.querySelector('gk-file-history .history-start input'); if(!field) throw Error('Missing history starting point field'); field.value='history-start'; field.dispatchEvent(new Event('input',{bubbles:true}));")
     driver.click_scrolled_text('gk-file-history .history-start button', 'Search from revision', wait_for_ready=True)
-    driver.wait("return document.querySelector('gk-file-history .history-start summary')?.textContent.includes('history-start') && [...document.querySelectorAll('gk-file-history .history-entry > div > button')].map(button=>button.textContent.trim()).join('|') === 'Rename historical file|GC_HISTORY'")
+    driver.wait("return document.querySelector('gk-file-history .history-start summary')?.textContent.includes('history-start') && [...document.querySelectorAll('gk-file-history .history-entry .history-subject')].map(button=>button.textContent.trim()).join('|') === 'Rename historical file|GC_HISTORY'")
     assert driver.script("return document.querySelector('gk-file-history .copy-feedback')?.textContent.trim()") == ''
     report['scenarios'].append('native-file-history-clears-copied-path-feedback-on-starting-revision-change')
     for starting_point in ('history/branch', rename_tip):
         driver.script("const field=document.querySelector('gk-file-history .history-start input'); field.value=arguments[0]; field.dispatchEvent(new Event('input',{bubbles:true}));", starting_point)
         driver.click_scrolled_text('gk-file-history .history-start button', 'Search from revision', wait_for_ready=True)
-        driver.wait(f"return document.querySelector('gk-file-history .history-start summary')?.textContent.includes({json.dumps(starting_point)}) && [...document.querySelectorAll('gk-file-history .history-entry > div > button')].map(button=>button.textContent.trim()).join('|') === 'Rename historical file|GC_HISTORY'")
+        driver.wait(f"return document.querySelector('gk-file-history .history-start summary')?.textContent.includes({json.dumps(starting_point)}) && [...document.querySelectorAll('gk-file-history .history-entry .history-subject')].map(button=>button.textContent.trim()).join('|') === 'Rename historical file|GC_HISTORY'")
     assert fixtures.git(repository, 'rev-parse', 'HEAD') == tip
     assert (repository / '.git/index').read_bytes() == index
     driver.click_scrolled_text('gk-file-history .history-start button', 'Use diff revision', wait_for_ready=True)
-    driver.wait("return document.querySelector('gk-file-history .history-entry > div > button')?.textContent.trim() === "
+    driver.wait("return document.querySelector('gk-file-history .history-entry .history-subject')?.textContent.trim() === "
                 + json.dumps(deletion_subject))
     assert fixtures.git(repository, 'rev-parse', 'HEAD') == tip
     assert (repository / '.git/index').read_bytes() == index
     report['scenarios'].append('native-file-history-selects-tag-branch-and-commit-start-points-and-restores-diff-revision')
 
-    driver.click_scrolled_text('.file-insight-panel .history-entry > div > button', deletion_subject, wait_for_ready=True)
+    driver.click_scrolled_text('.file-insight-panel .history-entry .history-subject', deletion_subject, wait_for_ready=True)
     driver.wait("return document.querySelector('.diff-primary-view')?.textContent.includes('last committed contents before deletion')")
     assert fixtures.git(repository, 'rev-parse', 'HEAD') == tip
     assert (repository / '.git/index').read_bytes() == index

@@ -37,7 +37,15 @@ import { HistorySearchService } from './history-search.service';
         @for (entry of entries(); track entry.oid) {
           <article class="history-entry">
             <span class="history-avatar" [style.--author-color]="authorColor()(entry.authorName, entry.authorEmail)">{{ initials()(entry.authorName) }}</span>
-            <div><button class="history-subject" type="button" [title]="entry.subject" (click)="navigate.emit(entry)">{{ entry.subject }}</button><small>{{ entry.path }} · @if (entry.status === 'D') { Deleted · } {{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small></div>
+            <div>
+              <button class="history-subject" type="button" [title]="entry.subject" (click)="navigate.emit(entry)">{{ entry.subject }}</button>
+              <small>{{ entry.path }} · @if (entry.status === 'D') { Deleted · } {{ entry.authorName }} · {{ entry.authoredAt | date: 'MMM d, y, HH:mm' }}</small>
+              @if (entry.previousPath && entry.previousPath !== entry.path) {
+                <button class="copy-history-previous-path" type="button" [attr.aria-label]="'Copy previous path: ' + entry.previousPath"
+                  [title]="'Copy previous path: ' + entry.previousPath"
+                  (click)="copyEntryValue(entry.oid, entry.previousPath, 'previous path')">Previous path: {{ entry.previousPath }}</button>
+              }
+            </div>
             <button class="copy-history-path" type="button" [attr.aria-label]="'Copy path: ' + entry.path" [title]="'Copy path: ' + entry.path"
               (click)="copyEntryValue(entry.oid, entry.path, 'file path')">Copy path</button>
             <button class="copy-history-commit" type="button"
@@ -79,7 +87,9 @@ import { HistorySearchService } from './history-search.service';
     button { font: inherit; }
     .history-entry button { padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; font-weight: 600; cursor: pointer; }
     .history-entry button:hover { color: var(--accent); }
-    .history-entry .history-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-entry :is(.history-subject, .copy-history-previous-path) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-entry .copy-history-previous-path { min-height: 24px; color: var(--muted); font-size: var(--font-size-caption); }
+    .history-entry .copy-history-previous-path:hover { color: var(--accent); }
     .history-entry :is(.copy-history-path, .copy-history-commit) { min-height: 28px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); color: var(--text); font-size: var(--font-size-caption); white-space: nowrap; }
     .history-entry :is(.copy-history-path, .copy-history-commit):hover { background: var(--surface-hover); }
     .history-entry .copy-history-commit { text-align: center; }
@@ -136,12 +146,14 @@ export class FileHistoryComponent {
     void this.history.changeFileStartingPoint(this.revision(), this.path(), this.revision());
   }
 
-  async copyEntryValue(oid: string, path: string, kind: 'file path' | 'commit ID'): Promise<void> {
+  async copyEntryValue(oid: string, path: string, kind: 'file path' | 'previous path' | 'commit ID'): Promise<void> {
     const context = this.copyContext();
-    if (!this.owned() || !this.entries().some(entry => entry.oid === oid && entry.path === path)) return;
+    const hasEntry = () => this.entries().some(entry => entry.oid === oid
+      && (kind === 'previous path' ? entry.previousPath === path && entry.path !== path : entry.path === path));
+    if (!this.owned() || !hasEntry()) return;
     const generation = ++this.copyGeneration;
     const current = () => generation === this.copyGeneration && this.owned()
-      && this.copyContext() === context && this.entries().some(entry => entry.oid === oid && entry.path === path);
+      && this.copyContext() === context && hasEntry();
     this.copyAnnouncement.set('');
     const value = kind === 'commit ID' ? oid : path;
     try {
