@@ -643,3 +643,11 @@ desktop entry matched the signed archive and a fresh app session reported
 running version 0.1.8. The official 0.1.7 build lacks this transport;
 this rehearsal does not establish that older builds can open the new prompt,
 or that the user's Windows-pinned shortcut rendered it.
+
+At `c0f6fd8`, all 54 Chromium/WebKit updater UI cases passed, including
+unconfigured trust, consent, native-status failures, one-shot install,
+and the restart guidance shown only after a confirmed version change.
+Separately, a read-only verification matched the installed 0.1.8 executable
+and desktop entry to the public signed Debian archive and validated the
+publisher signature and release checksums again. Neither check installed
+anything or qualified an upgrade to a later public version.
