@@ -86,7 +86,7 @@ const packagedScenarios = new Map([
   ['tools/native_submodule_update_scenarios.py', ['native-submodule-update']],
   ['tools/native_discard_subset_scenarios.py', [
     'native-discard-subset', 'native-discard-busy', 'native-discard-deletion',
-    'native-discard-stale-review', 'native-discard-large', 'native-discard-limit',
+    'native-discard-stale-review', 'native-discard-large-compact', 'native-discard-limit',
   ]],
 ]);
 const debianWorkflowSources = new Set([

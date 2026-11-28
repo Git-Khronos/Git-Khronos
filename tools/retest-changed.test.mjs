@@ -701,7 +701,7 @@ test('a shared discard scenario file selects all six registered discard suites',
   const plan = f.run('--native-package', 'candidate.deb');
   const suites = [...plan.matchAll(/"desktop:native-(discard-[a-z-]+)"/g)].map(match => match[1]).sort();
   assert.deepEqual(suites, [
-    'discard-busy', 'discard-deletion', 'discard-large', 'discard-limit',
+    'discard-busy', 'discard-deletion', 'discard-large-compact', 'discard-limit',
     'discard-stale-review', 'discard-subset',
   ]);
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check/);
