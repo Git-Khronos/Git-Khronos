@@ -5,6 +5,28 @@ review, not a release approval or an overall completion percentage. Refresh the
 snapshot after the active gates finish; run directories below are local retained
 artifacts, not checked-in or published reports.
 
+## Signed 0.1.7 publication — 2026-11-28
+
+The `v0.1.7` tag points to `53f39a6`. The
+[release qualification](https://github.com/Git-Khronos/Git-Khronos/actions/runs/46089260903)
+verified the publisher-trusted Debian installer against all 52 required
+installed checks. The `amd64` archive SHA-256 is
+`6331e0e4dbd33a6f145f31b97a6ae5ac037ae872535e078c94427020c03215b4`.
+
+The [protected publication](https://github.com/Git-Khronos/Git-Khronos/actions/runs/46091621320)
+published [0.1.7](https://github.com/Git-Khronos/Git-Khronos/releases/tag/v0.1.7)
+with six assets. The public files matched the staged files byte-for-byte.
+The public installer signature independently verified with the production
+publisher public key; the signature and exact feed matched the published
+manifest. The archive, staged files and reports are retained under
+`target/local-review/hosted-release-integration/publication-46091621320/`.
+
+The official 0.1.6 package, run with a temporary profile, displayed exactly
+the 0.1.7 offer in the live feed with automatic updates off. No download or
+installation started. The host's installed executable and desktop entry
+still matched the official 0.1.6 package before the trial. This evidence
+does not establish that the automatic install and restart succeeded.
+
 ## 0.1.7 preparation — 2026-11-28
 
 The local Debian build from `7d7eaa3` was configured with the production
