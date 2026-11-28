@@ -3,32 +3,39 @@
 set +x
 set -euo pipefail
 if (( $# > 1 )); then
-  echo 'Usage: task sign [-- QUALIFIED_RELEASE_DIRECTORY]' >&2
+  echo 'Usage: task sign [-- TAG | QUALIFIED_RELEASE_DIRECTORY]' >&2
   exit 2
 fi
 pattern='^([a-f0-9]{64})  (Git-Khronos_((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))_amd64\.deb)$'
-if (( $# == 1 )); then
+tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+requested_tag=
+if (( $# == 1 )) && [[ ! "$1" =~ $tag_pattern ]]; then
   directory=$1
 else
+  requested_tag=${1:-}
   shopt -s nullglob
   receipts=(target/local-review/hosted-release-integration/*/*/qualified-package.sha256)
   unsigned=()
   for candidate in "${receipts[@]}"; do
-    # Keep malformed records visible to the subsequent strict validation.
+    candidate_tag=
     if [[ -f "$candidate" && ! -L "$candidate" ]]; then
       entry=$(<"$candidate")
       if [[ "$entry" =~ $pattern ]]; then
+        candidate_tag="v${BASH_REMATCH[3]}"
         sidecar="${candidate%/*}/candidate/${BASH_REMATCH[2]}.sig"
         [[ ! -e "$sidecar" && ! -L "$sidecar" ]] || continue
       fi
     fi
+    # An explicit tag only considers candidates whose receipt names that tag.
+    # Without a filter, malformed records remain visible to strict validation.
+    [[ -z "$requested_tag" || "$candidate_tag" == "$requested_tag" ]] || continue
     unsigned+=("$candidate")
   done
   if (( ${#unsigned[@]} == 0 )); then
-    echo 'No unsigned qualified release found. Download a qualified candidate with task release:download first.' >&2
+    printf 'No unsigned qualified release found%s. Download a qualified candidate with task release:download first.\n' "${requested_tag:+ for $requested_tag}" >&2
     exit 2
   elif (( ${#unsigned[@]} > 1 )); then
-    echo 'Expected exactly one unsigned qualified download. Use task sign -- QUALIFIED_RELEASE_DIRECTORY to select it.' >&2
+    echo 'Expected exactly one unsigned qualified download. Use task sign -- TAG or select a specific QUALIFIED_RELEASE_DIRECTORY.' >&2
     exit 2
   fi
   directory=${unsigned[0]%/*}

@@ -63,6 +63,7 @@ if [[ -n "$prompt_key" ]]; then
     echo 'Open a terminal to enter the signing passphrase.' >&2
     exit 2
   fi
+  printf 'Signing %s (%s)\nQualified SHA-256: %s\n' "$tag" "$installer" "$digest" >&2
   unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
   export TAURI_SIGNING_PRIVATE_KEY_PATH="$prompt_key"
   if ! IFS= read -rsp 'Signing key passphrase: ' TAURI_SIGNING_PRIVATE_KEY_PASSWORD; then

@@ -431,9 +431,11 @@ changes and deletion.
    On the publisher's Linux checkout, run `task sign` from a terminal to sign
    the sole unsigned qualified download under
    `target/local-review/hosted-release-integration`. Already signed downloads
-   are left alone. For another location or multiple unsigned downloads, use
-   `task sign -- /path/to/qualified-release-directory`. This prompts locally
-   and writes only the public sidecar; it does not publish.
+   are left alone. Use `task sign -- v0.1.7` to select a version, or
+   `task sign -- /path/to/qualified-release-directory` if it has multiple
+   qualified attempts or lives elsewhere. The task displays the reviewed
+   release and digest before asking for the passphrase. It writes only the
+   public sidecar; it does not publish.
 4. Dispatch **Publish signed Debian release** on `main` with the tag, candidate
    run ID, and only the **public** `.deb.sig` content. The read-only verification
    job checks the successful run, attempt, exact tag commit, qualification

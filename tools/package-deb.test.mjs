@@ -603,10 +603,10 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
   await writeFile(join(tools, 'sign-qualified-debian.sh'), '#!/bin/bash\nprintf "signer: %s\\n" "$@"\n');
   const digest = 'a'.repeat(64);
   const candidate = 'Git-Khronos_0.1.6_amd64.deb';
-  const create = async id => {
+  const create = async (id, filename = candidate) => {
     const directory = join(root, 'target/local-review/hosted-release-integration', id, 'qualified download');
     await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, 'qualified-package.sha256'), `${digest}  ${candidate}\n`);
+    await writeFile(join(directory, 'qualified-package.sha256'), `${digest}  ${filename}\n`);
     return directory;
   };
   const run = (args = [], evidenceDigest = digest, matrix = 'complete') => spawnSync('bash', [wrapper, ...args], {
@@ -620,6 +620,17 @@ test('task sign wrapper selects one qualified download and rejects ambiguity or 
   assert.ok(one.stdout.includes('qualified download/candidate/' + candidate));
   const second = await create('run-2');
   assert.match(run().stderr, /Expected exactly one/);
+  const newestName = 'Git-Khronos_0.1.7_amd64.deb';
+  const newest = await create('run-3', newestName);
+  const byTag = run(['v0.1.7']);
+  assert.equal(byTag.status, 0, byTag.stderr);
+  assert.match(byTag.stdout, /signer: v0\.1\.7/);
+  assert.ok(byTag.stdout.includes(join('run-3', 'qualified download', 'candidate', newestName)));
+  assert.match(run(['v0.1.6']).stderr, /Expected exactly one/);
+  assert.match(run(['v0.1.8']).stderr, /No unsigned qualified release found for v0\.1\.8/);
+  await mkdir(join(newest, 'candidate'));
+  await writeFile(join(newest, 'candidate', newestName + '.sig'), 'existing public signature');
+  assert.match(run(['v0.1.7']).stderr, /No unsigned qualified release found for v0\.1\.7/);
   assert.equal(run([selected]).status, 0);
   await mkdir(join(selected, 'candidate'));
   await writeFile(join(selected, 'candidate', candidate + '.sig'), 'existing public signature');
