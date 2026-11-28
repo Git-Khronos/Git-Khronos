@@ -4752,3 +4752,27 @@ The old `979df50` archive failed that assertion by focusing **Close**.
 The newer archive also passed smoke (19) and large nested discard (4)
 in parallel after the private-display startup fix in `a033692`. APT's
 host simulation showed no removals. No installation or release was made.
+
+### Packaged merge workflow checkpoint
+
+The extracted Debian build from `71cb301` (SHA-256
+`d33f8ae57c0bdb27278e0a9b9f27102b3c2a27e828a89d520fdb427ddb337965`)
+passed these focused suites on WSL2:
+
+| Profile | Verified behavior |
+| --- | --- |
+| `native-merge-preview` | Read-only preview of exact refs, committed nested attributes, and clean fast-forward and two-parent merge outcomes. |
+| `native-conflict-navigation` | Resolve seven text, binary, rename, deletion, and gitlink conflicts; Continue commits exactly the resolved index tree with both expected parents and leaves the nested checkout untouched. |
+| `native-merge-abort` | Refuse abort when ignored files would be overwritten; after moving those files aside, restore the original branch tip, tracked contents, and autostashed change. |
+| `native-merge-rebase-review` | Review merge-parent topology, reject stale destinations, and preserve sibling refs and the original tip. |
+
+Pass the exact archive and its checksum to each profile, for example:
+
+```sh
+pnpm nx run desktop:native-merge-abort --output-style=stream -- \
+  --package "$archive" --expect-package-sha256 "$sha256"
+```
+
+These runs were extracted-package checks, not release or cross-platform
+qualification. The archive predates the later Merge Tool copy and conflict
+pagination changes.
