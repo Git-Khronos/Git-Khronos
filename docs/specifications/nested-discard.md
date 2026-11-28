@@ -100,3 +100,15 @@ the operation.
 
 Verify on disposable real Git repositories, then through the packaged desktop
 UI. Do not broaden eligibility beyond the tested file types and platforms.
+
+### Published 0.1.7 regression check
+
+The public Debian package built at `53f39a6` (SHA-256
+`6331e0e4dbd33a6f145f31b97a6ae5ac037ae872535e078c94427020c03215b4`)
+passed the extracted `discard-subset`, `discard-deletion`, and
+`discard-large` profiles on WSL2 (16 scenarios total). The large profile
+uses synthetic bytes with the four original CTI paths and sizes; bulk
+discard and recovery across an app restart preserved the index, HEAD, and
+a separate staged-only file. The subset and deletion profiles also verify
+ordinary tracked nested paths, a nested lockfile and deletion Undo/Redo.
+This evidence does not exercise the user's checkout or other platforms.
