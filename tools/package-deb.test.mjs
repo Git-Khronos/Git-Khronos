@@ -60,6 +60,30 @@ test('local package preflight refuses insufficient build space before allocating
     else process.env.CI = ci;
   }
 });
+test('an external Cargo target does not bypass the checkout and package staging storage checks', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'gk-package-space-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const checkout = join(root, 'checkout');
+  const staging = join(checkout, 'target');
+  const cargo = join(root, 'external-cargo');
+  await Promise.all([mkdir(staging, { recursive: true }), mkdir(cargo)]);
+  const ci = process.env.CI;
+  try {
+    delete process.env.CI;
+    const available = new Map([[checkout, 1n], [staging, 2n], [cargo, 12n]]);
+    const stats = path => ({ bsize: 1024n ** 3n, bavail: available.get(path) });
+    assert.throws(() => requireLinuxPackageSpace(checkout, cargo, stats), /checkout:.*need at least 2 GiB/);
+    available.set(checkout, 2n);
+    available.set(staging, 1n);
+    assert.throws(() => requireLinuxPackageSpace(checkout, cargo, stats), /package staging:.*need at least 2 GiB/);
+    available.set(staging, 2n);
+    assert.doesNotThrow(() => requireLinuxPackageSpace(checkout, cargo, stats));
+  } finally {
+    if (ci === undefined) delete process.env.CI;
+    else process.env.CI = ci;
+  }
+});
+
 test('task run follows the Cargo output directory without falling back to an old executable', { skip: process.platform === 'win32' }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'gk-cargo-launch-'));
   t.after(() => rm(root, { recursive: true, force: true }));

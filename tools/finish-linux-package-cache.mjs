@@ -4,19 +4,26 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const GiB = 1024n ** 3n;
-const minimumBuildFreeSpace = 12n * GiB;
+const minimumCargoFreeSpace = 12n * GiB;
+const minimumCheckoutFreeSpace = 2n * GiB;
 
 export function requireLinuxPackageSpace(directory, targetDirectory, readStats = statfsSync) {
   // Hosted CI images have their own disk allocation policy. This safeguard
   // applies to developer builds and to locally launched archive builders.
   if (process.env.CI === 'true' || process.env.CI === '1') return;
-  let path = resolve(directory, targetDirectory || 'target');
-  while (!existsSync(path)) path = dirname(path);
-  const { bsize, bavail } = readStats(path, { bigint: true });
-  const available = bsize * bavail;
-  if (available < minimumBuildFreeSpace) {
-    throw new Error(`Only ${available / GiB} GiB free for the Linux package build; need at least 12 GiB. Use task clean:debug or task clean:archives first.`);
-  }
+  const check = (output, minimum, label) => {
+    let path = resolve(directory, output);
+    while (!existsSync(path)) path = dirname(path);
+    const { bsize, bavail } = readStats(path, { bigint: true });
+    const available = bsize * bavail;
+    if (available < minimum) {
+      throw new Error(`Only ${available / GiB} GiB free for the Linux package build (${label}: ${path}); need at least ${minimum / GiB} GiB. Use task clean:debug or task clean:archives first.`);
+    }
+  };
+  check(targetDirectory || 'target', minimumCargoFreeSpace, 'Cargo output');
+  // An external target directory doesn't relocate renderer/package assets.
+  check('.', minimumCheckoutFreeSpace, 'checkout');
+  if (targetDirectory) check('target', minimumCheckoutFreeSpace, 'package staging');
 }
 
 export function pruneIsolatedLinuxPackageCache(directory, targetDirectory) {
