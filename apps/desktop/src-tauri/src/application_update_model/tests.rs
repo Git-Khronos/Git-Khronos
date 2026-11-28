@@ -267,3 +267,30 @@ fn installation_preflight_failure_retires_verified_bytes_without_creating_a_rece
             .is_ok()
     );
 }
+
+#[test]
+fn a_newer_offer_retains_automatic_eligibility_after_an_earlier_refusal() {
+    let preferences = UpdatePreferences {
+        automatic: true,
+        deferred_version: Some("0.2.0".into()),
+        attempt: None,
+    };
+    let mut model = UpdateModel::new(preferences, true);
+    let origin = model.automatic_origin();
+    let check = model.begin_check(origin).unwrap();
+    assert!(model.checked(
+        check,
+        Some(UpdateOffer {
+            token: "newer".into(),
+            version: "0.2.1".into(),
+        }),
+    ));
+    let download = model.begin_download("newer", origin).unwrap();
+    assert!(model.downloaded_and_verified(download));
+    assert!(model.can_automatically_install());
+    assert!(
+        model
+            .prepare_install("newer", origin, true, "new-attempt".into())
+            .is_ok()
+    );
+}

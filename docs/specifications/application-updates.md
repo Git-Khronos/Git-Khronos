@@ -547,9 +547,11 @@ and select **Refresh status** in the app without restarting or discarding the
 verified download. The official release package can also be installed with
 the system package manager. Having `pkexec` does not guarantee a functioning
 polkit session, and there is no password-collection or `sudo` fallback. If authorization
-is refused, the updater will not retry that version automatically. On a
-minimal desktop or WSL session where no authorization prompt appears, check
-that a session authentication agent is running before retrying manually.
+is refused, the updater will not retry that version automatically. If the same
+release is offered again after restart, Updates explains the saved deferral
+and identifies the manual retry path. The setting stays on for newer offers.
+On a minimal desktop or WSL session where no authorization prompt appears,
+check that a session authentication agent is running before retrying manually.
 A separately registered [polkit terminal agent](https://manpages.ubuntu.com/manpages/resolute/man1/pkttyagent.1.html)
 is an option for a terminal-based session. On Linux, run
 `task updates:authorize` from an interactive terminal and keep it open.

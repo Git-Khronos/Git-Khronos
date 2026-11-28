@@ -224,6 +224,18 @@ fn install_readiness(
         .map_or(InstallReadiness::Ready, InstallReadiness::Blocked)
 }
 
+fn update_status_message(runtime: &Runtime) -> String {
+    let model = &runtime.model;
+    if model.configured && model.preferences.automatic && model.deferred() {
+        match model.phase {
+            UpdatePhase::Available => return "Automatic installation is paused for this version after an earlier installer refusal. Download and verify it to retry manually.".into(),
+            UpdatePhase::Ready => return "The package and signed version are verified. Automatic installation is paused for this version; a manual retry is required.".into(),
+            _ => {}
+        }
+    }
+    runtime.message.clone()
+}
+
 fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
     let activity_blocker = native_activity_blocker(app);
     let format = installer::format();
@@ -253,7 +265,7 @@ fn snapshot(app: &AppHandle) -> Result<ApplicationUpdateStatus, AppError> {
             verified: model.verified,
             downloaded_bytes: runtime.downloaded,
             total_bytes: runtime.total,
-            message: runtime.message.clone(),
+            message: update_status_message(runtime),
             storage_error: runtime.storage_error.clone(),
             install_blocker: match readiness {
                 InstallReadiness::Blocked(reason) => Some(reason.to_owned()),
@@ -403,6 +415,7 @@ fn begin_check(app: AppHandle, origin: Origin) -> Result<ApplicationUpdateStatus
                             runtime.update = Some((offer.token.clone(), update));
                             if matches!(origin, Origin::Automatic(_))
                                 && runtime.model.origin_current(origin)
+                                && !runtime.model.deferred()
                             {
                                 download = Some(offer.token);
                             }

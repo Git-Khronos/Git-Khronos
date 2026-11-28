@@ -788,3 +788,44 @@ fn application_update_confirmed_restart_resumes_checks_without_requiring_a_secon
     assert!(pending.preferences.attempt.is_some());
     assert!(pending.begin_check(Origin::Manual).is_err());
 }
+
+#[test]
+fn application_update_status_explains_persisted_deferral_after_restart() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = directory.path().join("preferences.json");
+    let preferences = UpdatePreferences {
+        automatic: true,
+        deferred_version: Some("0.2.0".into()),
+        attempt: None,
+    };
+    model::save_preferences(&store, &preferences).unwrap();
+    let mut runtime = runtime_with_model(
+        store.clone(),
+        UpdateModel::new(model::load_preferences(&store).unwrap(), true),
+    );
+    let origin = runtime.model.automatic_origin();
+    let check = runtime.model.begin_check(origin).unwrap();
+    runtime.model.checked(
+        check,
+        Some(UpdateOffer {
+            token: "owned".into(),
+            version: "0.2.0".into(),
+        }),
+    );
+    runtime.message = "Generic status".into();
+    assert!(update_status_message(&runtime).contains("Download and verify"));
+    let download = runtime
+        .model
+        .begin_download("owned", Origin::Manual)
+        .unwrap();
+    assert!(settle_download(
+        &mut runtime,
+        download,
+        "owned",
+        Ok(VerifiedDownload(vec![1])),
+    ));
+    assert!(update_status_message(&runtime).contains("a manual retry is required"));
+    assert!(!runtime.model.can_automatically_install());
+    runtime.model.preferences.deferred_version = Some("0.1.9".into());
+    assert_eq!(update_status_message(&runtime), runtime.message);
+}

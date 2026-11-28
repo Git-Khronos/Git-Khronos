@@ -230,7 +230,7 @@ impl UpdateModel {
         true
     }
 
-    fn deferred(&self) -> bool {
+    pub(super) fn deferred(&self) -> bool {
         self.offer.as_ref().is_some_and(|offer| {
             self.preferences.deferred_version.as_deref() == Some(&offer.version)
         })
