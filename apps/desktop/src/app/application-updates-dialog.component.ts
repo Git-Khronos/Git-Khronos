@@ -54,20 +54,19 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
             @if (!state.configured) {
               This build cannot check for or install updates in the app. Use Browse official releases to find a package
               and install it manually.
-            }
-            Off by default. When enabled, the app checks for updates and downloads and verifies packages from the trusted publisher.
-            @if (state.configured) {
-              It checks shortly after enabling or reopening the app, then about every six hours while the app is open.
-            }
-            @if (state.packageFormat === 'msi' || state.packageFormat === 'nsis') {
-              On Windows, you must install the update yourself.
             } @else {
-              Where self-installation is supported, the app installs updates when no Git operation, terminal session or editor is active.
-              Your system may ask for authorization.
-              @if (state.packageFormat === 'deb' && git.systemInfo()?.windowsSubsystemForLinux) {
-                Git Khronos opens the system authorization window on WSL; no terminal command is required.
+              Off by default. When enabled, the app checks for updates and downloads and verifies packages from the trusted publisher.
+              It checks shortly after enabling or reopening the app, then about every six hours while the app is open.
+              @if (state.packageFormat === 'msi' || state.packageFormat === 'nsis') {
+                On Windows, you must install the update yourself.
+              } @else {
+                Where self-installation is supported, the app installs updates when no Git operation, terminal session or editor is active.
+                Your system may ask for authorization.
+                @if (state.packageFormat === 'deb' && git.systemInfo()?.windowsSubsystemForLinux) {
+                  Git Khronos opens the system authorization window on WSL; no terminal command is required.
+                }
+                Turning this off does not stop an installer that has already started.
               }
-              Turning this off does not stop an installer that has already started.
             }
           </p>
           @if (updates.settingPending()) { <p role="status">Saving automatic-update preference…</p> }

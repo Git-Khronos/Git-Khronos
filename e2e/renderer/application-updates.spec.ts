@@ -199,7 +199,7 @@ test('unconfigured publisher trust never exposes an install or automatic opt-in'
   await expect(dialog).toContainText('Owned publisher signing key missing');
   await expect(dialog.getByRole('checkbox')).toBeDisabled();
   await expect(dialog.getByRole('checkbox')).toHaveAccessibleDescription(
-    /^This build cannot check for or install updates in the app\. Use Browse official releases to find a package and install it manually\. Off by default\./,
+    /^This build cannot check for or install updates in the app\. Use Browse official releases to find a package and install it manually\.$/,
   );
   await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Browse official releases (opens browser)', exact: true })).toBeEnabled();
