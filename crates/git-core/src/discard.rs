@@ -1765,8 +1765,12 @@ fn guarded_capture(
     let json = BASE64
         .decode(encoded)
         .map_err(|_| changed_recovery_capture())?;
+    // The encoded header and decoded JSON can both be large. Release each
+    // as soon as its consumer owns the next representation.
+    drop(header);
     let changes: Vec<GuardedChange> =
         serde_json::from_slice(&json).map_err(|_| changed_recovery_capture())?;
+    drop(json);
     if changes.is_empty() {
         return Err(changed_recovery_capture());
     }
