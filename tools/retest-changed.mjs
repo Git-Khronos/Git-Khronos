@@ -118,6 +118,7 @@ const { values } = parseArgs({ options: {
   staged: { type: 'boolean' },
   workers: { type: 'string' },
   webkit: { type: 'boolean' },
+  'batch-renderer': { type: 'boolean' },
   run: { type: 'boolean' },
   'native-package': { type: 'string' },
   'native-package-sha256': { type: 'string' },
@@ -125,13 +126,14 @@ const { values } = parseArgs({ options: {
 } });
 
 if (values.help) {
-  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--native-package <archive.deb> [--native-package-sha256 <sha256>]] [--run [--allow-full]]
+  console.log(`Usage: pnpm test:changed [--base <local Git ref>] [--staged] [--workers <count>] [--webkit] [--batch-renderer] [--native-package <archive.deb> [--native-package-sha256 <sha256>]] [--run [--allow-full]]
 
 Preview checks for staged, unstaged and untracked changes against HEAD by default.
 Use --base to compare against another local commit, for example origin/dev.
 Use --staged to select only changes in the index relative to the base.
 Tests still run against your working files, not an isolated staged snapshot.
 Use --workers to override the browser worker count and --webkit to select WebKit.
+Use --batch-renderer to share one browser server across plain profile filters.
 Use --native-package to include mapped native scenario suites with an explicit Debian archive.
 Use --native-package-sha256 to require a previously reviewed archive checksum.
 Use --run for focused checks; add --allow-full to execute a broad fallback.
@@ -299,15 +301,24 @@ for (const path of changed) {
   console.log(JSON.stringify(path) + ': ' + plan);
 }
 
+function plainProfilePattern(profile) {
+  const config = targets().e2e?.configurations?.[profile];
+  // Extra flags and config overrides may affect what runs, not only which
+  // path matches. Do not infer stronger coverage or merge these profiles.
+  if (!config || Object.keys(config).length !== 1) return null;
+  const match = /^playwright test '(e2e\/renderer\/[^']+)'$/.exec(config.command ?? '');
+  if (!match) return null;
+  try {
+    return { source: match[1], filter: new RegExp(match[1]) };
+  } catch {
+    return null;
+  }
+}
+
 function filtersFor(selectedProfiles) {
-  if (!selectedProfiles.size) return [];
-  const configurations = targets().e2e.configurations;
-  // Only infer coverage for a plain Playwright file regex. If a profile gains
-  // flags or a wrapper, keep the direct spec rather than risking a missed test.
   return [...selectedProfiles].flatMap(profile => {
-    const command = configurations[profile]?.command ?? '';
-    const match = /^playwright test '(e2e\/renderer\/[^']+)'$/.exec(command);
-    return match ? [new RegExp(match[1])] : [];
+    const pattern = plainProfilePattern(profile);
+    return pattern ? [pattern] : [];
   });
 }
 
@@ -315,13 +326,30 @@ function filtersFor(selectedProfiles) {
 if (!broad && selected.has('worktrees')) {
   for (const [profile, spec] of [['submodules', 'submodule-review'], ['branch-checkout', 'branch-checkout-worktree']]) {
     if (targets().e2e.configurations[profile]?.command === `playwright test 'e2e/renderer/${spec}[.]spec[.]ts$'`
-      && filtersFor(new Set(['worktrees'])).some(filter => filter.test(`e2e/renderer/${spec}.spec.ts`))) {
+      && filtersFor(new Set(['worktrees'])).some(({ filter }) => filter.test(`e2e/renderer/${spec}.spec.ts`))) {
       selected.delete(profile);
     }
   }
 }
-const filters = broad ? [] : filtersFor(selected);
-const directSpecs = [...specs].filter(path => !filters.some(filter => filter.test(path)));
+const selectedProfiles = [...selected].sort();
+const patterns = broad ? [] : filtersFor(selectedProfiles);
+const directSpecs = [...specs].filter(path => !patterns.some(({ filter }) => filter.test(path)));
+const unbatched = selectedProfiles.filter(profile => !plainProfilePattern(profile));
+const canBatchRenderer = !broad && values['batch-renderer']
+  && targets().e2e?.executor === 'nx:run-commands'
+  && targets().e2e.options?.command === 'playwright test'
+  && Object.keys(targets().e2e.options).length === 1
+  && patterns.length + Number(directSpecs.length > 0) > 1;
+const directPatterns = directSpecs.map(path => path.replaceAll('.', '[.]') + '$');
+const rendererCommands = canBatchRenderer
+  ? [
+    ...unbatched.map(profile => ['desktop:e2e:' + profile]),
+    ['desktop:e2e', '--', ...new Set([...patterns.map(({ source }) => source), ...directPatterns])],
+  ]
+  : [
+    ...selectedProfiles.map(profile => ['desktop:e2e:' + profile]),
+    ...(directPatterns.length ? [['desktop:e2e', '--', ...directPatterns]] : []),
+  ];
 const extraChecks = [
   ...(packageSpecs.size ? [broad ? ['desktop:package-test'] : ['desktop:package-test:focused', '--', ...packageSpecs]] : []),
   ...(productionRendererBuild ? [['desktop:build:production']] : []),
@@ -339,8 +367,7 @@ const commands = broad
      ...(updateUnitTests ? [['desktop:update-unit-test']] : []),
      ...(gitCoreModules.size ? [['desktop:git-core-unit-test', '--', ...gitCoreModules]] : []),
      ...(unitSpecs.size ? [['desktop:renderer-unit-test:focused', '--', ...unitSpecs]] : []),
-     ...[...selected].sort().map(profile => ['desktop:e2e:' + profile]),
-     ...(directSpecs.length ? [['desktop:e2e', '--', ...directSpecs.map(path => path.replaceAll('.', '[.]') + '$')]] : [])];
+     ...rendererCommands];
 const isBrowser = command => command[0] === 'desktop:e2e' || command[0].startsWith('desktop:e2e:');
 for (const command of commands.filter(isBrowser)) {
   if ((values.workers || values.webkit) && !command.includes('--')) command.push('--');

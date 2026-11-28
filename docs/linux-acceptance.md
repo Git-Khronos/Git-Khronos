@@ -3636,12 +3636,16 @@ pnpm test:changed                           # Preview staged, unstaged and untra
 pnpm test:changed --base origin/dev         # Compare with the local tracking ref; does not fetch
 pnpm test:changed --staged                  # Select from the index; execution still uses working files
 pnpm test:changed --run                     # Run the selected local checks
+pnpm test:changed --run --batch-renderer    # Share one browser server across plain renderer profiles
 pnpm test:changed --run --webkit --workers=4 # Opt into WebKit and override browser workers
 pnpm test:changed --run --native-package "$archive" # Also run mapped packaged scenarios
 ```
 
 Recognized renderer components select their profile. Changed browser and
-renderer unit specs run directly unless already covered. Native harness edits
+renderer unit specs run directly unless already covered. With
+`--batch-renderer`, compatible Playwright path selections share one server
+startup; profiles with their own flags or environment and broad plans are
+not merged. Native harness edits
 select the harness unit tests, and edits to registered package-tooling specs
 run just those specs together. For edits to
 mapped GitLab, remote review, worktree, keyboard, recap, sparse-checkout,

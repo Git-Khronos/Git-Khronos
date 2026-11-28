@@ -825,3 +825,24 @@ test('archive cleaner edits run the cleanup safety tests without browser validat
   assert.equal([...plan.matchAll(/"desktop:archive-cache-test"/g)].length, 1);
   assert.doesNotMatch(plan, /desktop:e2e|desktop:check|desktop:native-harness-test/);
 });
+
+test('batching renderer checks shares one exact file-filter run and keeps flagged profiles separate', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/worktree-lock-dialog.component.ts');
+  f.write('apps/desktop/src/app/application-updates-dialog.component.ts');
+  f.write('apps/desktop/src/app/graph-viewport.component.ts');
+  f.write('e2e/renderer/application-updates.spec.ts');
+  f.write('e2e/renderer/keyboard-shortcuts.spec.ts');
+  const normal = f.run();
+  assert.match(normal, /"desktop:e2e:worktrees"/);
+  assert.match(normal, /"desktop:e2e:updates"/);
+  const batched = f.run('--batch-renderer', '--webkit', '--workers', '2');
+  const invocations = batched.split('\n').filter(line => line.includes('pnpm nx run'));
+  assert.equal(invocations.length, 2);
+  assert.match(invocations[0], /"desktop:e2e:graph"[^\n]*"--project=webkit"/);
+  assert.match(invocations[1], /"desktop:e2e"[^\n]*"e2e\/renderer\/application-updates\[\.\]spec\[\.\]ts\$"/);
+  assert.match(invocations[1], /worktree-\|branch-checkout-worktree\|submodule-review/);
+  assert.match(invocations[1], /keyboard-shortcuts/);
+  assert.match(invocations[1], /"--workers=2" "--project=webkit"/);
+  assert.doesNotMatch(batched, /desktop:check|desktop:e2e:(worktrees|updates)/);
+});
