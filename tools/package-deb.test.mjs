@@ -500,6 +500,7 @@ test('Debian package recommends the updater authorization launcher without requi
   const effectiveDeb = { ...config.bundle.linux.deb, ...jammy.bundle.linux.deb };
   for (const deb of [config.bundle.linux.deb, effectiveDeb]) {
     assert.ok(deb.recommends.includes('pkexec'));
+    assert.ok(deb.recommends.includes('x-terminal-emulator'));
     assert.ok(!deb.depends.some(dep => /^pkexec\b/.test(dep)));
   }
 });

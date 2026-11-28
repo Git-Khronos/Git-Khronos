@@ -572,6 +572,14 @@ offered again after restart, Updates explains the saved deferral
 and identifies the manual retry path. The setting stays on for newer offers.
 On a minimal desktop or WSL session where no authorization prompt appears,
 check that a session authentication agent is running before retrying manually.
+On WSL with a supported Linux terminal, the updater opens the system's
+authorization terminal itself; no command or terminal-agent setup is needed.
+The password is entered into the system prompt, not into Git Khronos.
+The app directly connects to its own terminal helper over a private socket and
+only dispatches the verified package after authenticating that process. If the
+window closes after dispatch and the package database does not confirm the
+version, the outcome remains uncertain and is never replayed automatically.
+
 A separately registered [polkit terminal agent](https://manpages.ubuntu.com/manpages/resolute/man1/pkttyagent.1.html)
 is an option for a terminal-based session. On Linux, run
 `task updates:authorize` from an interactive terminal and keep it open.

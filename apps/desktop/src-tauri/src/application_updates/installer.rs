@@ -30,6 +30,11 @@ fn package_authorizer_available(path: &std::path::Path) -> bool {
         .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
 }
 
+#[cfg(target_os = "linux")]
+fn use_authorization_terminal(format: Option<&str>) -> bool {
+    matches!(format, Some("deb" | "rpm")) && crate::display_environment::running_under_wsl()
+}
+
 /// Detect a missing authorization launcher without running anything. A launcher
 /// on disk does not prove there is an active polkit session or authorization.
 pub(super) fn install_blocker(format: Option<&str>) -> Option<&'static str> {
@@ -51,6 +56,16 @@ pub(super) fn install_blocker(format: Option<&str>) -> Option<&'static str> {
                 "The package was verified, but this session does not have the system authorization launcher (pkexec). Install the official release package with your system package manager.",
             )
         };
+    }
+    #[cfg(target_os = "linux")]
+    if use_authorization_terminal(format)
+        && !package_authorizer_available(std::path::Path::new(
+            crate::update_authorization_terminal::TERMINAL,
+        ))
+    {
+        return Some(
+            "The update is verified, but WSL has no supported Linux terminal for the system authorization prompt.",
+        );
     }
     format
         .is_none()
@@ -407,7 +422,11 @@ pub(super) fn install(
             .directory
             .path()
             .join(format!("package.{package_format}"));
-        let status = privileged_command(package_format, &path).status();
+        let status = if use_authorization_terminal(Some(package_format)) {
+            crate::update_authorization_terminal::install(&path)
+        } else {
+            privileged_command(package_format, &path).status()
+        };
         return classify_package_outcome(
             package_format,
             status,

@@ -108,6 +108,11 @@ use tauri_specta::Event;
 
 mod application_update_model;
 mod application_updates;
+#[cfg(target_os = "linux")]
+mod update_authorization_terminal;
+#[cfg(target_os = "linux")]
+#[doc(hidden)]
+pub use update_authorization_terminal::helper_entry as update_authorization_terminal_entry;
 mod authentication;
 mod branch_workflow_commands;
 mod display_environment;

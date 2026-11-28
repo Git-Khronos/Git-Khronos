@@ -1,6 +1,7 @@
 import { afterNextRender, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { ipc, type ApplicationUpdateStatus } from '@git-khronos/contracts';
 import { ApplicationUpdatesService } from './application-updates.service';
+import { GitKhronosService } from './git-khronos.service';
 import { isTabKey } from './tab-key';
 
 export interface ApplicationUpdatesRequest { readonly id: number; readonly returnFocus: HTMLElement | null }
@@ -30,8 +31,12 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
             <p id="application-update-install-blocker" class="help" role="status">{{ state.installBlocker }}</p>
           } @else if (authorizationHelp) {
             <p id="application-update-authorization-help" class="help">
-              If no authorization prompt appeared, make sure a polkit authentication agent is running in this session.
-              Then retry manually, or use the official Debian installer with your system package manager.
+              @if (git.systemInfo()?.windowsSubsystemForLinux) {
+                Retry from this window. Git Khronos opens a separate system authorization window on WSL.
+              } @else {
+                If no authorization prompt appeared, make sure a polkit authentication agent is running in this session.
+                Then retry manually, or use the official Debian installer with your system package manager.
+              }
             </p>
           }
           @if (state.phase === 'downloading') {
@@ -58,7 +63,11 @@ export interface ApplicationUpdatesRequest { readonly id: number; readonly retur
               On Windows, you must install the update yourself.
             } @else {
               Where self-installation is supported, the app installs updates when no Git operation, terminal session or editor is active.
-              Your system may ask for authorization. Turning this off does not stop an installer that has already started.
+              Your system may ask for authorization.
+              @if (state.packageFormat === 'deb' && git.systemInfo()?.windowsSubsystemForLinux) {
+                Git Khronos opens the system authorization window on WSL; no terminal command is required.
+              }
+              Turning this off does not stop an installer that has already started.
             }
           </p>
           @if (updates.settingPending()) { <p role="status">Saving automatic-update preference…</p> }
@@ -116,6 +125,7 @@ export class ApplicationUpdatesDialogComponent {
   readonly ownsRequest = input.required<(request: ApplicationUpdatesRequest) => boolean>();
   readonly closed = output<ApplicationUpdatesRequest>();
   readonly updates = inject(ApplicationUpdatesService);
+  protected readonly git = inject(GitKhronosService);
   protected readonly officialReleasesUrl = 'https://github.com/Git-Khronos/Git-Khronos/releases';
   protected readonly openingReleases = signal(false);
   protected readonly releaseError = signal(false);

@@ -58,7 +58,8 @@
         "recommends": [
           "openssh-client",
           "git-lfs",
-          "pkexec"
+          "pkexec",
+          "x-terminal-emulator"
         ],
         "section": "vcs",
         "desktopTemplate": "../../../packaging/linux/git-khronos.desktop.hbs",
