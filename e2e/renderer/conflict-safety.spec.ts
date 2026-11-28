@@ -143,6 +143,8 @@ test('explains rebase side meanings and traps focus in a compact editor', async 
 
 test('keeps truncated conflict output read-only and provides complete-side actions', async ({ page }) => {
   await openConflict(page, { truncated: true });
+  await expect(page.getByRole('dialog')).toContainText('Read-only preview');
+  await expect(page.getByRole('dialog')).toContainText('Choose which complete side to keep.');
   const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
   await expect(dialog).toContainText('truncated at 256 KB');
   await expect(dialog.getByRole('textbox')).toHaveAttribute('readonly', '');
@@ -151,8 +153,9 @@ test('keeps truncated conflict output read-only and provides complete-side actio
   await expect(dialog.getByRole('button', { name: 'Take Current', exact: true })).toBeEnabled();
 });
 
-test('labels accepting a deleted side separately from saving an empty file', async ({ page }) => {
-  await openConflict(page, { deleted: true });
+test('explains that accepting a missing rebase side deletes rather than empties the file', async ({ page }) => {
+  await openConflict(page, { deleted: true, rebase: true });
+  await expect(page.getByRole('dialog')).toContainText('Accepting a missing side deletes the file instead of saving an empty file.');
   const dialog = page.getByRole('dialog', { name: 'Merge conflict editor' });
   await expect(dialog.getByRole('button', { name: 'Accept incoming deletion' })).toBeEnabled();
   await expect(dialog.getByRole('button', { name: 'Use incoming', exact: true })).toBeDisabled();

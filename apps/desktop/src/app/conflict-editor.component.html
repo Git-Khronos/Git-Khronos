@@ -3,7 +3,7 @@
   <section class="merge-tool" [inert]="suspended()" role="dialog" aria-modal="true" aria-label="Merge conflict editor" (click)="$event.stopPropagation()" (keydown)="keyPressed.emit({ conflict, event: $event })">
     <header>
       <span class="merge-mark"><gk-icon name="merge" [size]="18" /></span>
-      <div><small>MERGE TOOL</small><h2>{{ conflict.path }}</h2><p>Choose a side or edit the resolved output, then mark the file resolved.</p></div>
+      <div><small>MERGE TOOL</small><h2>{{ conflict.path }}</h2><p>{{ conflict.editable ? 'Choose a side or edit and save the resolved output.' : 'Choose which complete side to keep.' }}</p></div>
       <button type="button" #closeButton aria-label="Close conflict editor" title="Close Merge Tool" (click)="act(conflict, { kind: 'close' })"><gk-icon name="x" [size]="14" /></button>
       @if (!conflict.submodule) {
         <button class="merge-external-tool" type="button" [disabled]="git.busy() || git.browserPreview()" (click)="act(conflict, { kind: 'external' })">Review external merge program</button>
@@ -25,8 +25,9 @@
     @if (git.repository()?.status?.rebaseInProgress) {
       <p class="merge-warning">During rebase, Current is the destination history plus commits already replayed. Incoming is the commit now being replayed, not the destination branch.</p>
     } @else {
-      <p class="merge-warning">Current is index stage 2 (ours); Incoming is index stage 3 (the changes being merged or replayed). A missing side means deletion, not an empty file.</p>
+      <p class="merge-warning">Current is index stage 2 (ours); Incoming is index stage 3 (the changes being merged or replayed).</p>
     }
+    @if (!conflict.currentExists || !conflict.incomingExists) { <p class="merge-warning">Accepting a missing side deletes the file instead of saving an empty file.</p> }
     @if (git.error()) { <p class="merge-warning" role="alert" tabindex="-1">{{ git.error() }}</p> }
     @if (conflict.submodule) { <p class="merge-warning">Choose which recorded submodule commit the parent repository should keep. The checked-out submodule directory and any local changes inside it stay untouched.</p> }
     </div>
@@ -53,7 +54,7 @@
         </section>
       </div>
       <section class="merge-output">
-        <header><span>OUTPUT</span><small>Edit the final file</small></header>
+        <header><span>OUTPUT</span><small>{{ conflict.editable ? 'Edit the final file' : 'Read-only preview' }}</small></header>
         <textarea aria-label="Resolved output for {{ conflict.path }}" spellcheck="false" [readOnly]="!conflict.editable || git.busy()" [gkTextValue]="draft()" (gkTextValueChange)="act(conflict, { kind: 'edit', value: $event })"></textarea>
       </section>
       @if (conflict.truncated) { <div class="merge-warning">This preview was truncated at 256 KB. Text saving is disabled to prevent data loss.</div> }
@@ -61,7 +62,7 @@
     }
     </div>
     <footer>
-      <span>{{ conflict.submodule ? 'Only the selected gitlink is staged' : conflict.binary ? 'Choose the version to keep' : 'Saving stages the file as resolved' }}</span>
+      <span>{{ conflict.submodule ? 'Only the selected gitlink is staged' : !conflict.editable ? 'Choose the version to keep' : 'Saving stages the file as resolved' }}</span>
       <button type="button" title="Reload the latest conflict; replace unsaved editor output" (click)="act(conflict, { kind: 'reload' })" [disabled]="git.busy()">Reload conflict</button>
       <button type="button" (click)="act(conflict, { kind: 'resolve', side: 'current' })" [disabled]="git.busy()">{{ !conflict.currentExists ? 'Accept current deletion' : conflict.submodule ? 'Keep Current Commit' : 'Take Current' }}</button>
       <button type="button" (click)="act(conflict, { kind: 'resolve', side: 'incoming' })" [disabled]="git.busy()">{{ !conflict.incomingExists ? 'Accept incoming deletion' : conflict.submodule ? 'Keep Incoming Commit' : 'Take Incoming' }}</button>
