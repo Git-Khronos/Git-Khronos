@@ -162,6 +162,14 @@ test('reference dialog edits select both action and deferred ownership scenarios
   assert.doesNotMatch(plan, /desktop:check/);
 });
 
+test('tag creation template edits select the reference actions profile', t => {
+  const f = fixture(t);
+  f.write('apps/desktop/src/app/tag-creation-dialog.component.html');
+  const plan = f.run();
+  assert.match(plan, /desktop:e2e:reference-actions/);
+  assert.doesNotMatch(plan, /desktop:check|desktop:e2e"/);
+});
+
 test('workflow dialog edits select the Gitflow review suite without duplicate cases', t => {
   const f = fixture(t);
   f.write('apps/desktop/src/app/branch-workflow-dialog.component.ts');
