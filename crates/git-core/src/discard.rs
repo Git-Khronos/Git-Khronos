@@ -4781,6 +4781,49 @@ mod tests {
         assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
     }
 
+    #[test]
+    #[ignore = "Exercises two 55 MB snapshots; run separately to bound memory and disk use"]
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn discard_large_tracked_file_names_the_individual_budget_refusal() {
+        use std::io::Write;
+
+        let repository = Repository::new();
+        repository.baseline();
+        let file = "_data_/mitre-attack/enterprise-attack.json";
+        repository.write(file, b"indexed");
+        let target = repository.0.join(file);
+        let dataset_size = 55_277_605;
+        OpenOptions::new()
+            .write(true)
+            .open(&target)
+            .unwrap()
+            .set_len(dataset_size)
+            .unwrap();
+        stage_all(&repository.0).unwrap();
+        commit(&repository.0, "Track enterprise fixture").unwrap();
+        OpenOptions::new()
+            .write(true)
+            .open(&target)
+            .unwrap()
+            .write_all(b"working")
+            .unwrap();
+        let working_hash = recovery_content_fingerprint(&target).unwrap();
+        let index = fs::read(repository.0.join(".git/index")).unwrap();
+        let error = match prepare_discard(&repository.0, Some(vec![file.into()])) {
+            Err(error) => error,
+            Ok(_) => panic!("two 55 MB snapshots unexpectedly fit in the recovery budget"),
+        };
+        assert!(error.message.contains(file), "{error}");
+        assert!(error.hint.as_deref().unwrap().contains("on its own"));
+        assert_eq!(recovery_content_fingerprint(&target).unwrap(), working_hash);
+        assert_eq!(fs::read(repository.0.join(".git/index")).unwrap(), index);
+        assert!(
+            discarded_change_recoveries(&repository.0)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn individual_and_partial_nested_discards_are_refused_before_capture() {
