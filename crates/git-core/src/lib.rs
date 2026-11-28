@@ -14693,6 +14693,27 @@ exec "$GIT_KHRONOS_OWNED_SLOW_TRACKED_FILE_REAL_GIT" "$@"
         assert_eq!(details.incoming.as_deref(), Some("feature\n"));
         assert!(!details.binary);
 
+        let index_path = repository.path.join(".git/index");
+        let merge_head_path = repository.path.join(".git/MERGE_HEAD");
+        let index_before = fs::read(&index_path).expect("read conflicted index");
+        let merge_head_before = fs::read(&merge_head_path).expect("read pending merge parent");
+        let working_path = repository.path.join("shared.txt");
+        let working_before = fs::read(&working_path).expect("read conflict markers");
+        let head_before = run_git(&repository.path, &["rev-parse", "HEAD"])
+            .expect("read current branch tip")
+            .stdout;
+
+        continue_merge(&repository.path).expect_err("unresolved conflicts cannot be committed");
+        assert_eq!(fs::read(&index_path).unwrap(), index_before);
+        assert_eq!(fs::read(&merge_head_path).unwrap(), merge_head_before);
+        assert_eq!(fs::read(&working_path).unwrap(), working_before);
+        assert_eq!(
+            run_git(&repository.path, &["rev-parse", "HEAD"])
+                .unwrap()
+                .stdout,
+            head_before
+        );
+
         resolve_conflict(&repository.path, "shared.txt", "output", Some("resolved\n"))
             .expect("save resolved output");
         let status = snapshot(&repository.path)
