@@ -3992,7 +3992,12 @@ commit and switches to the new branch without disturbing other refs or leaving
 worktree changes.
 `desktop:native-file-history` qualifies rename-following file history, bounded
 history and blame pages, exact literal paths, timeout/cancellation handling,
-and large-file blame navigation against the packaged application.
+and large-file blame navigation against the packaged application. For builds
+with the **Copy searched path** action, the smaller
+`desktop:native-file-history-search-copy` profile checks that a deleted
+literal path can be copied and pasted from the system clipboard under a
+private X11 display without changing the checkout.
+
 The CRLF-pointer regression first asks Git LFS to accept the pointer, writes it
 as an unreachable Git blob, and verifies that cleanup retains the referenced
 object and rejects a stale pre-pointer removal preview without changing HEAD or

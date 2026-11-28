@@ -157,6 +157,11 @@
       "cache": false,
       "options": { "command": "python3 tools/native_acceptance.py --suite lfs-lock-actions --headless" }
     },
+    "native-file-history-search-copy": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "python3 tools/native_acceptance.py --suite file-history-search-copy --headless" }
+    },
     "native-file-history": {
       "executor": "nx:run-commands",
       "cache": false,

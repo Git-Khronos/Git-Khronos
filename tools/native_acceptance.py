@@ -1434,7 +1434,7 @@ def main():
         "stash-review", "stash-selection", "stash-clear", "autosquash-amend", "signed-tag", "signed-commit", "empty-commit", "lfs-lock-actions", "patch-export", "bundle-incremental-export", "commit-source-zip", "tracked-file-search", "diff-line-selection", "diff-rendering",
         "watcher-checkout", "watcher-reftable", "watcher-shallow-history", "commit-rewrite", "file-review-scope", "first-status", "repository-creation-scope",
         "repository-open-scope", "detached-checkout", "bisect-voting", "working-tree-recaps", "checkout-snapshot", "checkout-responsiveness", "worktree-reservation",
-        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "hosted-fork-remote", "comparison-responsiveness", "stash-responsiveness", "file-history", "file-menu-copy",
+        "comparison-line-budget", "commit-coauthors", "branch-workflow-ui", "branch-workflow-recovery", "hosted-fork-ui", "hosted-fork-remote", "comparison-responsiveness", "stash-responsiveness", "file-history", "file-history-search-copy", "file-menu-copy",
         "commit-responsiveness", "history-control-responsiveness", "local-mutation-responsiveness", "ignore-responsiveness", "conflict-navigation", "revision-comparison", "comparison-patch", "branch-picker-exact", "previous-branch", "tag-preview", "history-depth",
     )
     forced_inherited = ("environment",)
@@ -1505,7 +1505,7 @@ def main():
         parser.error("signed-commit requires --headless (private Xvfb)")
     if args.suite == "empty-commit" and not args.headless:
         parser.error("empty-commit requires --headless (private Xvfb)")
-    if args.suite in ("file-history", "file-menu-copy") and not args.headless:
+    if args.suite in ("file-history", "file-history-search-copy", "file-menu-copy") and not args.headless:
         parser.error(f"{args.suite} requires --headless (private Xvfb)")
     if args.suite == "lfs-lock-actions" and not args.headless:
         parser.error("lfs-lock-actions requires --headless (private Xvfb)")
@@ -1717,7 +1717,7 @@ def main():
                               "stash-responsiveness", "commit-responsiveness", "history-control-responsiveness",
                               "local-mutation-responsiveness", "ignore-responsiveness", "discard-busy"):
                 application_env.update(fixtures.history_environment())
-            if args.suite == "file-history":
+            if args.suite in ("file-history", "file-history-search-copy"):
                 application_env.update(fixtures.history_environment())
             if args.suite in ("gitlab", "gitlab-connect", "gitlab-connect-after-smoke", "gitlab-connect-refused",
                               "gitlab-fork-ui", "repository-creation-scope"):
@@ -1893,6 +1893,10 @@ def main():
             elif args.suite == "lfs-lock-actions":
                 from native_lfs_lock_ui_scenarios import lfs_lock_dialog_actions
                 repository, repo_id = lfs_lock_dialog_actions(driver, fixtures, report)
+            elif args.suite == "file-history-search-copy":
+                from native_tracked_file_search_scenarios import deleted_file_history_from_exact_path
+                repository, repo_id = deleted_file_history_from_exact_path(
+                    driver, fixtures, report, verify_search_copy=True)
             elif args.suite == "file-history":
                 from native_scenarios import (
                     blame_parent_follows_rename, blame_read_acceptance, bounded_file_history_reads, commit_preview_output,

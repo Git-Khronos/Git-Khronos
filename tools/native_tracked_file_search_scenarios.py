@@ -95,13 +95,13 @@ def tracked_file_search_during_merge(driver, fixtures, report):
     report['scenarios'].append('native-tracked-file-palette-keeps-one-history-and-blame-per-path-without-changing-merge-state')
     return repository, repo_id
 
-def deleted_file_history_from_exact_path(driver, fixtures, report):
+def deleted_file_history_from_exact_path(driver, fixtures, report, *, verify_search_copy=False):
     from native_acceptance import open_ui
 
     repository = fixtures.repository('history-of-deleted-path', commits=2)
     fixtures.git(repository, 'config', 'user.name', 'GC_HISTORY')
     oldest = repository / 'original [notes] naïve.txt'
-    path = 'archived [1].txt'
+    path = 'archived [1] résumé.txt' if verify_search_copy else 'archived [1].txt'
     oldest.write_text('last committed contents before deletion\n')
     fixtures.git(repository, 'add', '--', oldest.name)
     fixtures.git(repository, 'commit', '-qm', 'GC_HISTORY')
@@ -146,6 +146,30 @@ def deleted_file_history_from_exact_path(driver, fixtures, report):
     finally:
         driver.request('POST', driver.path('window/rect'), {'width': 1440, 'height': 900})
     driver.wait('return innerWidth >= 1300')
+    if verify_search_copy:
+        worktree = fixtures.git(repository, '--no-optional-locks', 'status', '--porcelain=v1', '-z')
+        selector = 'gk-file-history .copy-history-search-path'
+        driver.click_scrolled_text(selector, 'Copy searched path', wait_for_ready=True)
+        driver.wait("return document.querySelector('gk-file-history .copy-feedback')?.textContent.trim()"
+                    " === " + json.dumps('Copied searched path: ' + path))
+        driver.script("""
+          const field = document.createElement('input');
+          field.id = 'file-history-clipboard-check';
+          field.style.cssText = 'position:fixed;top:8px;left:8px;z-index:2147483647';
+          document.body.append(field);
+          field.focus();
+        """)
+        try:
+            driver.key('v', modifiers=('\ue009',))
+            driver.wait("return document.querySelector('#file-history-clipboard-check')?.value === "
+                        + json.dumps(path))
+        finally:
+            driver.script("document.querySelector('#file-history-clipboard-check')?.remove()")
+        assert fixtures.git(repository, 'rev-parse', 'HEAD') == tip
+        assert (repository / '.git/index').read_bytes() == index
+        assert not (repository / path).exists()
+        assert fixtures.git(repository, '--no-optional-locks', 'status', '--porcelain=v1', '-z') == worktree
+        report['scenarios'].append('native-file-history-copies-searched-path-to-system-clipboard')
     copy_commit = '.file-insight-panel .history-entry:first-child .copy-history-commit'
     driver.click_scrolled_text(copy_commit, tip[:8], wait_for_ready=True)
     driver.wait("return document.querySelector('gk-file-history .copy-feedback')?.textContent.trim()"
