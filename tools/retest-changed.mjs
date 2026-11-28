@@ -352,11 +352,16 @@ const rendererCommands = canBatchRenderer
     ...(directPatterns.length ? [['desktop:e2e', '--', ...directPatterns]] : []),
   ];
 let pinnedNativeChecksum = nativeChecksum?.toLowerCase();
-if (nativePackage && nativeSuites.size && !pinnedNativeChecksum) {
+if (nativePackage && nativeSuites.size && (!pinnedNativeChecksum || values.run)) {
   try {
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(nativePackage)) hash.update(chunk);
-    pinnedNativeChecksum = hash.digest('hex');
+    const actualChecksum = hash.digest('hex');
+    if (pinnedNativeChecksum && pinnedNativeChecksum !== actualChecksum) {
+      console.error(`Selected native package SHA-256 does not match: expected ${pinnedNativeChecksum}, got ${actualChecksum}.`);
+      process.exit(2);
+    }
+    pinnedNativeChecksum = actualChecksum;
   } catch (error) {
     console.error(`Cannot checksum the selected native package: ${error.message}`);
     process.exit(2);

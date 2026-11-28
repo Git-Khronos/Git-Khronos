@@ -607,6 +607,14 @@ test('updater fixture edits select offline package checks, not an installed upda
   assert.equal(plan.split('"--expect-package-sha256" "' + digest + '"').length, 3);
   const pinned = f.run('--native-package', 'artifacts/candidate.deb', '--native-package-sha256', 'A'.repeat(64));
   assert.equal(pinned.split('"--expect-package-sha256" "' + 'a'.repeat(64) + '"').length, 3);
+  const wrongPackage = spawnSync(process.execPath, [
+    'tools/retest-changed.mjs', '--native-package', 'artifacts/candidate.deb',
+    '--native-package-sha256', 'A'.repeat(64), '--run',
+  ], { cwd: f.cwd, encoding: 'utf8' });
+  assert.equal(wrongPackage.status, 2);
+  assert.match(wrongPackage.stderr, /Selected native package SHA-256 does not match/);
+  assert.match(wrongPackage.stderr, new RegExp(digest));
+  assert.doesNotMatch(wrongPackage.stdout, /pnpm nx run/);
   for (const args of [
     ['--native-package-sha256', 'A'.repeat(64)],
     ['--native-package', 'artifacts/candidate.deb', '--native-package-sha256', 'wrong'],
