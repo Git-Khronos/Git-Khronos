@@ -661,7 +661,7 @@ test('publication fails closed without reviewer protection and a main-only branc
   assert.ok(preflight);
   assert.match(preflight, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs\.verification_only/);
   assert.match(publish, /needs: verify[\s\S]*?environment: signed-release[\s\S]*?actions: read/);
-  assert.match(publish, /if: vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs\.verification_only\n/);
+  assert.match(publish, /if: >-\n\s*!cancelled\(\) && needs\.verify\.result == 'success' &&\n\s*vars\.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs\.verification_only\n/);
   const step = preflight.split('        run: |\n')[1]?.replace(/^          /gm, '');
   assert.ok(step);
   const lastGuard = publish.match(/          # A missing environment[\s\S]*?\n(          environment=[\s\S]*?)\n          gh release create/)?.[1];

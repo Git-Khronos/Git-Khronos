@@ -395,7 +395,11 @@ jobs:
 
   publish:
     name: Publish exact signed assets to GitHub Releases
-    if: vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs.verification_only
+    # The optional hosted signer is skipped for offline signatures. Depend
+    # on the actual verification result, not the implicit chain success check.
+    if: >-
+      !cancelled() && needs.verify.result == 'success' &&
+      vars.GIT_KHRONOS_SIGNED_PUBLICATION_ENABLED == 'true' && !inputs.verification_only
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 15
