@@ -5,11 +5,12 @@ workflows run in the packaged desktop application—not merely in a browser mock
 
 ## Near-term priorities
 
-1. **Debian release first.** Keep the tested installer stable. Review the
-   integration on `dev`, then qualify the tagged production-key archive
-   through the [release checklist](docs/production-readiness.md#release-operator-checklist).
-   The fixture-key matrix is evidence for the local archive only. Confirm
-   the one-time manual upgrade path before promising public automatic updates.
+1. **Qualify the next signed Debian update.** Public 0.1.8 has a
+   publisher-signed installer and an independently verified update feed.
+   The in-app WSL authorization path passed a disposable rehearsal from an
+   owned development build; the next release must prove the upgrade from
+   the exact public 0.1.8 installer without relying on a terminal command.
+   Follow the [release checklist](docs/production-readiness.md#release-operator-checklist).
    Move the hosted Jammy jobs to a supported runner before the
    [March 2027 brownouts](https://github.com/actions/runner-images/issues/14254)
    without raising the installer ABI baseline.
@@ -22,6 +23,9 @@ workflows run in the packaged desktop application—not merely in a browser mock
    local protocol fixtures.
 3. **Keep high-risk Git actions recoverable.** Prioritize stale-review and
    restart evidence for destructive actions over adding more write commands.
+   The Linux package now has focused evidence for large mixed discard and
+   recovery after restart, and for merge Continue and Abort. Extend that
+   coverage across supported platforms rather than treating it as universal.
    Broader AppImage, RPM, and other platform publication should wait until
    their own packaging, runtime, and signing gates are met.
 
