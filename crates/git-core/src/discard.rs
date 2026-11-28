@@ -692,11 +692,16 @@ fn read_guarded_file(root: &fs::File, name: &str) -> Result<GuardedFile, AppErro
             if before.len() > MAX_GUARDED_FILE_BYTES {
                 return Err(discard_file_size_error("The selected file"));
             }
-            let mut bytes = Vec::new();
-            std::io::Read::take(&mut file, MAX_GUARDED_FILE_BYTES + 1)
-                .read_to_end(&mut bytes)
-                .map_err(io_error)?;
-            if bytes.len() as u64 > MAX_GUARDED_FILE_BYTES {
+            let capacity = base64::encoded_len(before.len() as usize, true)
+                .ok_or_else(|| discard_file_size_error("The selected file"))?;
+            let mut encoded =
+                base64::write::EncoderWriter::new(Vec::with_capacity(capacity), &BASE64);
+            let copied = std::io::copy(
+                &mut std::io::Read::take(&mut file, MAX_GUARDED_FILE_BYTES + 1),
+                &mut encoded,
+            )
+            .map_err(io_error)?;
+            if copied > MAX_GUARDED_FILE_BYTES {
                 return Err(discard_file_size_error("The selected file"));
             }
             let after = file.metadata().map_err(io_error)?;
@@ -707,7 +712,9 @@ fn read_guarded_file(root: &fs::File, name: &str) -> Result<GuardedFile, AppErro
                 ));
             }
             Ok(GuardedFile::Regular {
-                data: BASE64.encode(bytes),
+                data: String::from_utf8(encoded.finish().map_err(io_error)?).map_err(|_| {
+                    unsafe_discard("The selected file could not be encoded safely.")
+                })?,
                 mode: before.mode() & 0o777,
             })
         }
