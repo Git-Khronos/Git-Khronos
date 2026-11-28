@@ -483,6 +483,20 @@ Add `--endpoints` when diagnosing the current shell to check the local Wayland
 and X11 sockets. This does not connect to the display or verify that a window
 can render.
 
+If the window is actually blank or missing, quit the existing instance and
+run `LIBGL_ALWAYS_SOFTWARE=true git-khronos` as a one-launch comparison.
+[Mesa documents this EGL software-rendering switch](https://docs.mesa3d.org/egl.html#bootstrapping).
+Do not persist the flag merely to hide a warning. This test does not change
+the pinned shortcut, repair WSLg, or affect installer authorization.
+
+A follow-up probe on the installed public 0.1.6 executable and desktop entry,
+verified byte-for-byte against the archive above, rendered both launch paths
+on private Xvfb (544 sampled colors each) despite DRI3 warnings. The live
+WSLg diagnostic reported both local display sockets present and redirection
+enabled. Those observations isolate the checks: Xvfb proves the installed app
+can render in a controlled X11 session, and the socket probe does not prove
+that the actual Windows-pinned window renders.
+
 ## GitLab catalogue stale-element regression
 
 The exact archive passed 48 installed GitLab scenarios on each of the
