@@ -412,11 +412,13 @@ changes and deletion.
    attempt in one step:
 
    ```sh
-   task release:download -- "$RELEASE_TAG" "$RUN_ID" "$PUBLIC_KEY_FILE" "$OUTPUT_PARENT"
+   task release:download -- "$RELEASE_TAG" "$RUN_ID"
    ```
 
-   Use the trusted publisher **public** key and an existing output directory.
-   The task prints the package path and qualified digest only after checking
+   The default uses the locally trusted public key created by
+   `task signer:generate` and stores the download where `task sign` looks for
+   it. To override both, append `"$PUBLIC_KEY_FILE" "$OUTPUT_PARENT"` to the
+   command and give it an existing output directory. The task prints the package path and qualified digest only after checking
    the tag, workflow attempt, package evidence and installed matrix. It
    does not sign, install, or publish. If downloading manually, use the
    downloaded `.deb`, `build-receipt.json`, and evidence

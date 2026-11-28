@@ -1,20 +1,28 @@
 #!/usr/bin/env bash
 # Read-only GitHub handoff. Never takes a private signing key or signs a file.
 set -euo pipefail
-if (( $# != 4 )) || [[ ! "$1" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || ! "$2" =~ ^[1-9][0-9]{0,15}$ ]]; then
-  echo 'Usage: bash tools/download-qualified-debian.sh TAG RUN-ID PUBLIC-KEY OUTPUT-PARENT' >&2
+if (( $# != 2 && $# != 4 )) || [[ ! "$1" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || ! "$2" =~ ^[1-9][0-9]{0,15}$ ]]; then
+  echo 'Usage: task release:download -- TAG RUN-ID [PUBLIC-KEY OUTPUT-PARENT]' >&2
   exit 2
 fi
 tag=$1 run=$2
-public_key=$3
-parent=$4
 repo=Git-Khronos/Git-Khronos
 tools="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-if [[ "$parent" == -* || ! -d "$parent" || ! -f "$public_key" || ! -r "$public_key" ]]; then
-  echo 'Provide a readable publisher public key and an existing output directory.' >&2
+if (( $# == 2 )); then
+  public_key="${HOME:?Set HOME to the publisher home directory}/.config/git-khronos-signing/git-khronos.key.pub"
+  parent="$tools/../target/local-review/hosted-release-integration/candidate-$run"
+else
+  public_key=$3
+  parent=$4
+  if [[ "$parent" == -* || ! -d "$parent" ]]; then
+    echo 'Provide an existing output directory.' >&2
+    exit 2
+  fi
+fi
+if [[ ! -f "$public_key" || ! -r "$public_key" ]]; then
+  printf 'Publisher public key is missing or unreadable: %s\n' "$public_key" >&2
   exit 2
 fi
-parent="$(cd -- "$parent" && pwd -P)"
 for cmd in gh git node; do command -v "$cmd" >/dev/null; done
 
 # Refuse pending/failed attempts before allocating a persistent destination.
@@ -28,6 +36,9 @@ tag_refs="$(git ls-remote --exit-code "https://github.com/$repo.git" "refs/tags/
 commit="$(awk -v ref="refs/tags/$tag" '$2 == ref { raw=$1 } $2 == ref "^{}" { peeled=$1 } END { print peeled ? peeled : raw }' <<< "$tag_refs")"
 [[ "$commit" =~ ^[a-f0-9]{40}$ ]]
 
+# The standard run directory is also where task sign looks for its next candidate.
+if (( $# == 2 )); then mkdir -p -- "$parent"; fi
+parent="$(cd -- "$parent" && pwd -P)"
 work="$(mktemp -d "$parent/$tag-run-$run-attempt-$attempt.XXXXXX")"
 trap 'printf "Qualification did not verify; retained evidence in %s. Do not sign it.\n" "$work" >&2' ERR
 cp -- "$run_json" "$work/candidate-run.json"

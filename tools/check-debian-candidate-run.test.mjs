@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { test } from 'node:test';
@@ -75,8 +75,20 @@ test "$*" = 'ls-remote --exit-code https://github.com/Git-Khronos/Git-Khronos.gi
 printf '%s\\trefs/tags/v0.1.6\\n%s\\trefs/tags/v0.1.6^{}\\n' '${head}' '${commit}'
 `, { mode: 0o700 });
     const script = fileURLToPath(new URL('./download-qualified-debian.sh', import.meta.url));
-    const invoke = () => spawnSync('bash', [script, 'v0.1.6', '123456', publicKey, output], {
-      env: { ...process.env, PATH: bin + delimiter + process.env.PATH,
+    const fixtureTools = join(root, 'tools');
+    const fixtureHome = join(root, 'publisher');
+    const keyDir = join(fixtureHome, '.config/git-khronos-signing');
+    const defaultOutput = join(root, 'target/local-review/hosted-release-integration/candidate-123456');
+    await mkdir(fixtureTools);
+    await mkdir(keyDir, { recursive: true });
+    for (const name of ['download-qualified-debian.sh', 'check-debian-candidate-run.mjs', 'cli-entry.mjs']) {
+      await copyFile(fileURLToPath(new URL('./' + name, import.meta.url)), join(fixtureTools, name));
+    }
+    const invoke = (useDefaults = false) => spawnSync('bash', [
+      useDefaults ? join(fixtureTools, 'download-qualified-debian.sh') : script, 'v0.1.6', '123456',
+      ...(useDefaults ? [] : [publicKey, output]),
+    ], {
+      cwd: output, env: { ...process.env, HOME: fixtureHome, PATH: bin + delimiter + process.env.PATH,
         RUN_JSON: runJson, CANDIDATE_JSON: candidateJson },
       encoding: 'utf8',
     });
@@ -85,6 +97,10 @@ printf '%s\\trefs/tags/v0.1.6\\n%s\\trefs/tags/v0.1.6^{}\\n' '${head}' '${commit
     assert.equal(pending.status, 1, pending.stderr);
     assert.match(pending.stderr, /Expected a successful release candidate/);
     assert.deepEqual(await readdir(output), []);
+    assert.match(invoke(true).stderr, /Publisher public key is missing/);
+    await writeFile(join(keyDir, 'git-khronos.key.pub'), 'trusted public key fixture');
+    assert.match(invoke(true).stderr, /Expected a successful release candidate/);
+    await assert.rejects(readdir(defaultOutput), { code: 'ENOENT' });
     await writeFile(runJson, JSON.stringify(run));
     await writeFile(candidateJson, JSON.stringify({ ...candidate, attempt: '1' }));
     const stale = invoke();
@@ -96,4 +112,10 @@ printf '%s\\trefs/tags/v0.1.6\\n%s\\trefs/tags/v0.1.6^{}\\n' '${head}' '${commit
     const [work] = await readdir(output);
     assert.match(work, /^v0\.1\.6-run-123456-attempt-2\./);
     assert.deepEqual((await readdir(join(output, work))).sort(), ['candidate', 'candidate-run.json']);
+    const defaultStale = invoke(true);
+    assert.equal(defaultStale.status, 1, defaultStale.stderr);
+    assert.match(defaultStale.stderr, /does not match this workflow attempt and release tag commit/);
+    const [defaultWork] = await readdir(defaultOutput);
+    assert.match(defaultWork, /^v0\.1\.6-run-123456-attempt-2\./);
+    assert.deepEqual((await readdir(join(defaultOutput, defaultWork))).sort(), ['candidate', 'candidate-run.json']);
   });
