@@ -70,7 +70,7 @@ class AgentRegistrationTests(unittest.TestCase):
         ):
             status = run_agent("123,4567")
         command = spawn.call_args.args[0]
-        self.assertEqual(command[1:-1], ["--fallback", "--process", "123,4567", "--notify-fd"])
+        self.assertEqual(command[1:-1], ["--process", "123,4567", "--notify-fd"])
         self.assertEqual(spawn.call_args.kwargs["pass_fds"], (int(command[-1]),))
         return status, output.getvalue(), errors.getvalue(), child
 

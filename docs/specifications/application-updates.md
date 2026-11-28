@@ -576,6 +576,9 @@ A separately registered [polkit terminal agent](https://manpages.ubuntu.com/manp
 is an option for a terminal-based session. On Linux, run
 `task updates:authorize` from an interactive terminal and keep it open.
 Wait for the task to say the agent is ready, then retry in the installed app.
+The task registers a process-scoped agent without `--fallback`: a fallback
+agent registered successfully in testing but was not selected by `pkexec` for
+a process outside a desktop login session.
 If the app restarts before authorization, rerun the task: the old agent is
 bound to the previous process. If multiple instances are running, use
 `task updates:authorize -- --pid PID` to select the intended process.

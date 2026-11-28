@@ -51,7 +51,7 @@ def run_agent(identity):
     child = None
     try:
         child = subprocess.Popen(
-            [AGENT, "--fallback", "--process", identity, "--notify-fd", str(writer)],
+            [AGENT, "--process", identity, "--notify-fd", str(writer)],
             pass_fds=(writer,),
         )
         os.close(writer)
