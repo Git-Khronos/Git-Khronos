@@ -395,7 +395,7 @@ jobs:
           pnpm nx run desktop:native-lfs-lock-actions --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
           pnpm nx run desktop:native-tag-preview --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
           pnpm nx run desktop:native-file-history --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
-          pnpm nx run desktop:native-conflict-navigation --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
+          pnpm nx run desktop:native-conflict-draft-copy --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
           pnpm nx run desktop:native-working-tree-recaps --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
           pnpm nx run desktop:native-discard-busy --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
           pnpm nx run desktop:native-integrity-ui --output-style=stream -- --package "$PACKAGE" --expect-package-sha256 "$PACKAGE_SHA256"
