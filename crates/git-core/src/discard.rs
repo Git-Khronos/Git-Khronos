@@ -1749,13 +1749,34 @@ fn save_snapshot_capture(
     )
 }
 
-fn valid_regular_snapshot(data: &str, max_bytes: u64) -> bool {
-    if !base64::encoded_len(max_bytes as usize, true).is_some_and(|max| data.len() <= max) {
-        return false;
+fn copy_regular_snapshot(
+    data: &str,
+    max_bytes: u64,
+    writer: &mut impl std::io::Write,
+) -> Result<(), AppError> {
+    let max_encoded = usize::try_from(max_bytes)
+        .ok()
+        .and_then(|max| base64::encoded_len(max, true));
+    if !max_encoded.is_some_and(|max| data.len() <= max) {
+        return Err(changed_recovery_capture());
     }
     let decoded = base64::read::DecoderReader::new(data.as_bytes(), &BASE64);
     let mut bounded = std::io::Read::take(decoded, max_bytes.saturating_add(1));
-    std::io::copy(&mut bounded, &mut std::io::sink()).is_ok_and(|decoded| decoded <= max_bytes)
+    let copied = std::io::copy(&mut bounded, writer).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::InvalidData {
+            changed_recovery_capture()
+        } else {
+            io_error(error)
+        }
+    })?;
+    if copied > max_bytes {
+        return Err(changed_recovery_capture());
+    }
+    Ok(())
+}
+
+fn valid_regular_snapshot(data: &str, max_bytes: u64) -> bool {
+    copy_regular_snapshot(data, max_bytes, &mut std::io::sink()).is_ok()
 }
 
 fn guarded_capture(
@@ -1946,9 +1967,6 @@ fn write_guarded_file(
     let temporary = format!("{capture_id}.original-{suffix}");
     match state {
         GuardedFile::Regular { data, mode } => {
-            let bytes = BASE64
-                .decode(data)
-                .map_err(|_| changed_recovery_capture())?;
             let mut file = fs::File::from(
                 openat(
                     recovery,
@@ -1964,8 +1982,10 @@ fn write_guarded_file(
                     unsafe_discard(&format!("A replacement file could not be created: {error}"))
                 })?,
             );
-            file.write_all(&bytes)
-                .and_then(|_| file.set_permissions(fs::Permissions::from_mode(*mode)))
+            // Decode directly into the private replacement. Publishing it is
+            // still conditional on a successful write, sync, and guarded rename.
+            copy_regular_snapshot(data, MAX_GUARDED_FILE_BYTES, &mut file)?;
+            file.set_permissions(fs::Permissions::from_mode(*mode))
                 .and_then(|_| file.sync_all())
                 .map_err(io_error)?;
         }
@@ -4734,6 +4754,18 @@ mod tests {
             &BASE64.encode(&bytes),
             bytes.len() as u64 - 1
         ));
+    }
+
+    #[test]
+    fn snapshot_copy_round_trips_bytes_and_never_writes_past_the_sentinel() {
+        let original = vec![0xab; 32 * 1024 + 1];
+        let encoded = BASE64.encode(&original);
+        let mut written = Vec::new();
+        copy_regular_snapshot(&encoded, original.len() as u64, &mut written).unwrap();
+        assert_eq!(written, original);
+        written.clear();
+        assert!(copy_regular_snapshot("YWI=", 1, &mut written).is_err());
+        assert!(written.len() <= 2);
     }
 
     #[test]
