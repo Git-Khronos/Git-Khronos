@@ -4566,7 +4566,7 @@ test('keeps conflicted merge recovery visible until it is completed or aborted',
   await expect(page.locator('.wip-nav > b')).toHaveText('4');
   await expect(page.getByRole('button', { name: 'Staged Files (0)' })).toBeVisible();
   await expect(page.getByText('No staged files', { exact: true })).toBeVisible();
-  await progress.getByRole('button', { name: 'Abort' }).click();
+  await progress.getByRole('button', { name: 'Abort Merge', exact: true }).click();
 
   await expect(progress).toHaveCount(0);
   await expect(page.locator('.activity-status')).toContainText('Merge aborted');

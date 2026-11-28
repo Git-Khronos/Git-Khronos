@@ -82,7 +82,7 @@ test('merge and bisect remain independently visible and actionable', async ({ pa
   const merge = page.getByRole('status', { name: 'Git merge in progress', exact: true });
   await expect(merge).toBeVisible();
   await expect(merge.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
-  await expect(merge.getByRole('button', { name: 'Abort', exact: true })).toBeEnabled();
+  await expect(merge.getByRole('button', { name: 'Abort Merge', exact: true })).toBeEnabled();
   await expect(page.getByRole('status', { name: 'Git bisect in progress', exact: true })).toBeVisible();
   expect(await operationCommands(page)).toMatchObject({
     'merge-continue': false, 'merge-abort': true, 'bisect-good': true,
