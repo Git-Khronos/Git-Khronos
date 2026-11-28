@@ -907,7 +907,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly applicationUpdates = inject(ApplicationUpdatesService);
   protected readonly applicationUpdateShortcut = computed(() => {
     const state = this.applicationUpdates.state();
-    if (!this.applicationUpdates.native() || !state?.configured) return null;
+    if (!this.applicationUpdates.native() || !state?.configured || this.applicationUpdates.statusError()) return null;
     if (state.phase === 'installed') {
       return state.installedVersion && state.installedVersion !== state.runningVersion
         ? { version: state.installedVersion, restartPending: true } : null;

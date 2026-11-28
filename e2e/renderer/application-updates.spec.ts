@@ -393,12 +393,15 @@ test('stale status disables new update actions but still permits disabling autom
     phase: 'ready', canDownload: true, canInstall: true, message: 'Owned ready status',
   }));
   const dialog = await open(page);
+  const indicator = page.locator('.status-update');
+  await expect(indicator).toHaveAttribute('aria-label', 'Review available update v0.2.0');
   const refresh = dialog.getByRole('button', { name: 'Refresh status', exact: true });
   await page.evaluate(() => { (window as any).__updates.rejectStatus = true; });
   await refresh.click();
   const error = dialog.getByRole('alert');
   await expect(error).toContainText('Native update status could not be read');
   await expect(dialog.getByText('Last known status:')).toBeVisible();
+  await expect(indicator).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Download and verify', exact: true })).toBeDisabled();
   await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeDisabled();
@@ -416,6 +419,7 @@ test('stale status disables new update actions but still permits disabling autom
   await page.evaluate(() => { (window as any).__updates.rejectStatus = false; });
   await refresh.click();
   await expect(error).toHaveCount(0);
+  await expect(indicator).toHaveAttribute('aria-label', 'Review available update v0.2.0');
   await expect(dialog.getByRole('button', { name: 'Install verified update', exact: true })).toBeEnabled();
 });
 
