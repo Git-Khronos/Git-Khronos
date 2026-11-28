@@ -45,6 +45,8 @@ def app_identity(process, executable, uid):
 
 def run_agent(identity):
     """Wait for polkit registration before suggesting a retry."""
+    pid, _ = identity.split(",", 1)
+    process = Path("/proc") / pid
     reader, writer = os.pipe()
     child = None
     try:
@@ -63,7 +65,15 @@ def run_agent(identity):
         print("Keep this terminal open, then retry Install verified update in Git Khronos. "
               "Enter credentials only at the system prompt. Stop the agent with Ctrl+C when finished.",
               flush=True)
-        return child.wait()
+        while True:
+            if app_identity(process, APP, os.getuid()) != identity:
+                print("Git Khronos exited or restarted. Run this task again for the new app process.",
+                      file=sys.stderr)
+                return 1
+            try:
+                return child.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                continue
     except KeyboardInterrupt:
         return 130
     finally:

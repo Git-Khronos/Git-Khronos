@@ -55,13 +55,14 @@ class UpdateAuthAgentTests(unittest.TestCase):
 
 
 class AgentRegistrationTests(unittest.TestCase):
-    def exercise(self, ready, statuses):
+    def exercise(self, ready, statuses, identity="123,4567"):
         child = Mock()
         child.poll.side_effect = statuses
         child.wait.return_value = 0
         output, errors = StringIO(), StringIO()
         run_agent = agent["run_agent"]
         with (
+            patch.dict(run_agent.__globals__, {"app_identity": lambda *_: identity}),
             patch("subprocess.Popen", return_value=child) as spawn,
             patch("select.select", return_value=([1] if ready else [], [], [])),
             redirect_stdout(output),
@@ -86,6 +87,12 @@ class AgentRegistrationTests(unittest.TestCase):
         self.assertFalse(message)
         self.assertIn("did not stay running", error)
         child.terminate.assert_not_called()
+
+    def test_exits_if_agent_is_attached_to_a_stale_app_process(self):
+        status, _, error, child = self.exercise(True, [None, None], identity=None)
+        self.assertEqual(status, 1)
+        self.assertIn("exited or restarted", error)
+        child.terminate.assert_called_once()
 
     def test_cleans_up_only_the_agent_it_started_after_timeout(self):
         status, message, error, child = self.exercise(False, [None])
