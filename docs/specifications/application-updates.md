@@ -499,6 +499,14 @@ GIT_KHRONOS_NATIVE_CHECK_PUBLIC_BASELINE=1 GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUS
 This version override is restricted to the extracted application-updates suite.
 Other qualification suites still require the checkout's package version.
 
+After a newer signed release is published, you can separately check whether
+the older app sees the exact offer without installing anything. Run the same
+command against the older archive, replacing
+`GIT_KHRONOS_NATIVE_CHECK_PUBLIC_BASELINE=1` with
+`GIT_KHRONOS_NATIVE_EXPECT_PUBLIC_UPDATE=x.y.z` (the newer version).
+It checks the displayed offer and confirms that no download or installation
+started. This tests the feed and offer, not automatic installation.
+
 Use a disposable supported Debian or Ubuntu desktop with working polkit.
 Install the first official signed Debian release once from its GitHub release
 assets. Leave automatic updates off until a **strictly newer** signed Debian

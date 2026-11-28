@@ -5,8 +5,23 @@ import re
 from native_worktree_scenarios import checkout_footprint
 
 
+def public_update_expectations(environ, expect_trust):
+    baseline = environ.get('GIT_KHRONOS_NATIVE_CHECK_PUBLIC_BASELINE') == '1'
+    expected = environ.get('GIT_KHRONOS_NATIVE_EXPECT_PUBLIC_UPDATE')
+    if (baseline or expected is not None) and not expect_trust:
+        raise RuntimeError('Live public update checks require GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1.')
+    if baseline and expected is not None:
+        raise RuntimeError('Choose either the public baseline check or an expected newer release, not both.')
+    if expected is not None and not re.fullmatch(r'(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}', expected):
+        raise RuntimeError('GIT_KHRONOS_NATIVE_EXPECT_PUBLIC_UPDATE requires a stable x.y.z version.')
+    return baseline, expected
+
+
 def application_updates_workflow(driver, fixtures, report):
     from native_acceptance import open_ui
+
+    expect_trust = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST') == '1'
+    check_public_baseline, expected_public_update = public_update_expectations(os.environ, expect_trust)
 
     repository = fixtures.repository('application-updates-review', commits=2)
     (repository / 'fixture.txt').write_text('Owned updater staged data.\n')
@@ -17,11 +32,6 @@ def application_updates_workflow(driver, fixtures, report):
     driver.click('[aria-label="Main menu"]')
     driver.click_visible('.app-menu-popover [role=menuitem] strong', 'Updates')
     modal = 'gk-application-updates-dialog [role=dialog]'
-    expect_trust = os.environ.get('GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST') == '1'
-    check_public_baseline = os.environ.get('GIT_KHRONOS_NATIVE_CHECK_PUBLIC_BASELINE') == '1'
-    if check_public_baseline and not expect_trust:
-        raise RuntimeError('The live baseline check requires GIT_KHRONOS_NATIVE_EXPECT_UPDATE_TRUST=1.')
-
     def verify_palette_entry():
         origin = 'input[aria-label="Filter changed files"]'
         search = 'gk-command-palette input[aria-label="Search commands"]'
@@ -147,6 +157,32 @@ def application_updates_workflow(driver, fixtures, report):
             assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
             report['applicationUpdates']['publicBaselineStatus'] = checked
             report['scenarios'].append('native-current-stable-release-checks-public-feed-without-offer-or-install')
+        elif expected_public_update is not None:
+            running = status['runningVersion']
+            assert re.fullmatch(r'[0-9]+(?:\.[0-9]+){2}', running), running
+            assert tuple(map(int, expected_public_update.split('.'))) > tuple(map(int, running.split('.'))), (
+                'Expected public update must be newer than the running release', expected_public_update, running)
+            driver.click_visible(modal + ' button', 'Check for updates')
+            driver.wait(f"""const dialog = document.querySelector({json.dumps(modal)});
+              const check = [...(dialog?.querySelectorAll('button') ?? [])]
+                .find(button => button.textContent.trim() === 'Check for updates');
+              const feedback = dialog?.querySelector('.feedback')?.textContent.trim();
+              return !!check && !check.disabled && !!feedback && feedback !== {json.dumps(status['message'])};""",
+                        timeout=45)
+            offered = driver.invoke('application_update_status')
+            assert offered['phase'] == 'available' and offered['offeredVersion'] == expected_public_update, offered
+            assert offered['runningVersion'] == running and offered['offerId'] and offered['canDownload'], offered
+            assert not offered['automatic'] and not offered['verified'] and not offered['canInstall'], offered
+            assert offered['downloadedBytes'] == 0, offered
+            driver.wait(f"""const dialog = document.querySelector({json.dumps(modal)});
+              const version = [...dialog.querySelectorAll('dt')].find(field => field.textContent.trim() === 'Available version');
+              const buttons = [...dialog.querySelectorAll('button')];
+              return version?.nextElementSibling?.textContent.trim() === {json.dumps(expected_public_update)}
+                && buttons.some(b => b.textContent.trim() === 'Download and verify' && !b.disabled)
+                && buttons.some(b => b.textContent.trim() === 'Install verified update' && b.disabled);""", timeout=5)
+            assert checkout_footprint(fixtures, repository, ('fixture.txt', 'update-note.txt')) == before
+            report['applicationUpdates']['publicOfferStatus'] = offered
+            report['scenarios'].append('native-older-release-offers-exact-public-update-without-download-or-install')
         driver.click_visible(modal + ' button', 'Close')
         driver.wait('return !document.querySelector(' + json.dumps(modal) + ')')
         driver.wait('return document.activeElement?.getAttribute("aria-label") === "Main menu"')
